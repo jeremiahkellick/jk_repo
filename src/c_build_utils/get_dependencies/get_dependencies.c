@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
   }
   jk_normalize_path(argv[1]);
   paths[0] = argv[1];
-  printf("\"%s\"", paths[0]);
+  printf("%s", paths[0]);
 
   int current = 0;
   int path_count = 1;
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
             }
           }
           if (!alreadyExists) {
-            printf(" \"%s\"", paths[path_count]);
+            printf(" %s", paths[path_count]);
             path_count++;
           }
         }
