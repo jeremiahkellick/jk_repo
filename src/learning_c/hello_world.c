@@ -1,3 +1,3 @@
 #include <stdio.h>
 
-int main(void) { printf("Hello, world!"); }
+int main(void) { printf("Hello, world!\n"); }
