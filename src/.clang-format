@@ -1,2 +1,10 @@
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+AllowShortFunctionsOnASingleLine: Empty
 BasedOnStyle: LLVM
-BreakBeforeBraces: Linux
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Mozilla
+ContinuationIndentWidth: 8
+IndentWidth: 4
+InsertBraces: true

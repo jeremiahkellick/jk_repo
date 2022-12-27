@@ -10,10 +10,10 @@
  */
 int main(void)
 {
-  printf("Fahrenheit\tCelsius\n");
-  for (int fahrenheit = LOWER; fahrenheit <= UPPER; fahrenheit += STEP) {
-    float celsius = 5.0 / 9.0 * (fahrenheit - 32.0);
-    printf("%10d\t%7.1f\n", fahrenheit, celsius);
-  }
-  return 0;
+    printf("Fahrenheit\tCelsius\n");
+    for (int fahrenheit = LOWER; fahrenheit <= UPPER; fahrenheit += STEP) {
+        float celsius = 5.0 / 9.0 * (fahrenheit - 32.0);
+        printf("%10d\t%7.1f\n", fahrenheit, celsius);
+    }
+    return 0;
 }
