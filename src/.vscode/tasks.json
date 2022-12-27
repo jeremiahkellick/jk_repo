@@ -9,6 +9,9 @@
         "kind": "build",
         "isDefault": true
       },
+      "presentation": {
+        "clear": true,
+      },
       "windows": {
         "command": "${workspaceFolder}\\..\\bin\\c.bat ${file}",
       },
