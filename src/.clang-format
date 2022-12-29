@@ -4,7 +4,7 @@ AllowShortFunctionsOnASingleLine: Empty
 BasedOnStyle: LLVM
 BinPackArguments: false
 BinPackParameters: false
-BreakBeforeBraces: Mozilla
+BreakBeforeBraces: Linux
 ContinuationIndentWidth: 8
 IndentPPDirectives: BeforeHash
 IndentWidth: 4

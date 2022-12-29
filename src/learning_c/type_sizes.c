@@ -1,11 +1,20 @@
 #include <stdio.h>
 
+#define print_size_in_bits(type) printf(#type "\t%3d\n", (int)sizeof(type) * 8)
+
+typedef struct Struct {
+    int size;
+    void *buf;
+} Struct;
+
 int main(void)
 {
-    printf("char\t%ld\n", (int)sizeof(char) * 8);
-    printf("short\t%ld\n", (int)sizeof(short) * 8);
-    printf("int\t%ld\n", (int)sizeof(int) * 8);
-    printf("long\t%ld\n", (int)sizeof(long) * 8);
-    printf("float\t%ld\n", (int)sizeof(float) * 8);
-    printf("double\t%ld\n", (int)sizeof(double) * 8);
+    print_size_in_bits(char);
+    print_size_in_bits(short);
+    print_size_in_bits(int);
+    print_size_in_bits(long);
+    print_size_in_bits(float);
+    print_size_in_bits(double);
+    print_size_in_bits(char *);
+    print_size_in_bits(Struct);
 }
