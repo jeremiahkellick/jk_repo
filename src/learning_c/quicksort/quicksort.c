@@ -1,39 +1,36 @@
 #include "quicksort.h"
 
+static void swap(int *a, int *b)
+{
+    int tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
 void quicksort(int array[], int length)
 {
-    if (length <= 1) {
+    if (length < 2) {
         return;
     }
 
-    int pivot = array[0];
     int low = 0;
-    int mid = 0;
+    int mid = 1;
     int high = length - 1;
+
+    // Move middle element to start to use as pivot
+    swap(array, array + length / 2);
+    int pivot = array[0];
 
     while (mid <= high) {
         if (array[mid] < pivot) {
-            int tmp = array[low];
-            array[low] = array[mid];
-            array[mid] = tmp;
-
-            low++;
-            mid++;
+            swap(array + low++, array + mid++);
         } else if (array[mid] > pivot) {
-            int tmp = array[high];
-            array[high] = array[mid];
-            array[mid] = tmp;
-
-            high--;
+            swap(array + mid, array + high--);
         } else {
             mid++;
         }
     }
 
-    if (low > 0) {
-        quicksort(array, low);
-    }
-    if (mid < length) {
-        quicksort(array + mid, length - mid);
-    }
+    quicksort(array, low);
+    quicksort(array + mid, length - mid);
 }

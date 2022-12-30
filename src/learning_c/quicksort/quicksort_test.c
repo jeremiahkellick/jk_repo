@@ -5,10 +5,10 @@
 
 #define LENGTH 10
 
-int numbers[LENGTH] = {40, 34, 49, 28, 4, 42, 30, 27, 23, 12};
-int sorted_numbers[LENGTH] = {4, 12, 23, 27, 28, 30, 34, 40, 42, 49};
+static int numbers[LENGTH] = {40, 34, 49, 28, 4, 42, 30, 27, 23, 12};
+static int sorted_numbers[LENGTH] = {4, 12, 23, 27, 28, 30, 34, 40, 42, 49};
 
-void print_array(int array[])
+static void print_array(int array[])
 {
     printf("{");
     for (int i = 0; i < LENGTH; i++) {
