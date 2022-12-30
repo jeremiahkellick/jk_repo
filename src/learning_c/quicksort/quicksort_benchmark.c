@@ -18,7 +18,7 @@ int main(void)
     }
 
     double start_time = clock();
-    quicksort(array, ARRAY_LENGTH);
+    quicksort_ints(array, ARRAY_LENGTH);
     double end_time = clock();
     printf("seconds\n%.3f\n", (end_time - start_time) / CLOCKS_PER_SEC);
 }
