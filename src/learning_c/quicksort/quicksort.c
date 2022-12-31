@@ -51,9 +51,9 @@ void quicksort(void *array_void,
     quicksort(mid, right_count, element_size, tmp, compare);
 }
 
-static int int_compare(int *a, int *b)
+static int int_compare(void *a, void *b)
 {
-    return *a - *b;
+    return *(int *)a - *(int *)b;
 }
 
 void quicksort_ints(int *array, int length)
@@ -62,9 +62,9 @@ void quicksort_ints(int *array, int length)
     quicksort(array, length, sizeof(int), &tmp, int_compare);
 }
 
-static int string_compare(char **a, char **b)
+static int string_compare(void *a, void *b)
 {
-    return strcmp(*a, *b);
+    return strcmp(*(char **)a, *(char **)b);
 }
 
 void quicksort_strings(char **array, int length)
