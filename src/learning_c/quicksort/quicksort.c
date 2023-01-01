@@ -31,7 +31,7 @@ void quicksort(void *array_void,
 
     while (mid <= high) {
         // Compare mid with pivot. Pivot is always 1 element before mid.
-        int comparison = (*compare)(mid, mid - element_size);
+        int comparison = compare(mid, mid - element_size);
 
         if (comparison < 0) {
             swap(low, mid, element_size, tmp);
