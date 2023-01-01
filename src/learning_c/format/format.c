@@ -38,9 +38,10 @@ int jk_format(void (*put_char)(char c, void *args),
             continue;
         }
         char type_signifier = *++c;
+        char *string;
         switch (type_signifier) {
         case 's':
-            char *string = va_arg(ap, char *);
+            string = va_arg(ap, char *);
             for (; *string; string++) {
                 limited_put_char(*string);
             }
@@ -71,7 +72,7 @@ int jk_fprintf(FILE *file, char *format_string, ...)
     va_list ap;
     va_start(ap, format_string);
     int result = jk_format(file_put_char, file, -1, format_string, ap);
-    va_end(format_string);
+    va_end(ap);
     return result;
 }
 
