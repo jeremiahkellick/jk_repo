@@ -1,6 +1,5 @@
 #include <array>
-#include <iomanip>
-#include <iostream>
+#include <stdio.h>
 
 using namespace std;
 
@@ -29,10 +28,9 @@ constexpr auto temperature_table = build_temperature_table();
 
 int main()
 {
-    cout << "Fahrenheit\tCelsuis\n";
+    printf("Fahrenheit\tCelsius\n");
     for (const auto &temp : temperature_table) {
-        cout << setw(10) << setprecision(0) << temp.fahrenheit << "\t"
-             << setw(7) << setprecision(1) << fixed << temp.celsuis << endl;
+        printf("%10.0f\t%7.1f\n", temp.fahrenheit, temp.celsuis);
     }
     return 0;
 }
