@@ -23,5 +23,5 @@ files_to_compile=$($get_dependencies_path $file_path)
 if [ $source_file_name == "$output_name.cpp" ]; then
   g++-10 -std=c++20 -pedantic -g -pipe -Wall -Wextra -fstack-protector -o "$build_path/$output_name" $files_to_compile
 else
-  gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -o "$build_path/$output_name" $files_to_compile
+  gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -o "$build_path/$output_name" $files_to_compile -lm
 fi
