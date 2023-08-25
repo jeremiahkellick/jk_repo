@@ -51,17 +51,14 @@ int main(int argc, char *argv[])
                         line[length - 3] == 'h' && line[length - 2] == '"') {
                     line[length - 3] = 'c';
                     line[length - 2] = '\0';
-                    if (jk_combine_paths(line + 10,
-                                relative_to,
-                                paths[path_count],
-                                BUFFER_SIZE) == ERROR_BUFFER_TOO_SMALL) {
+                    if (jk_combine_paths(line + 10, relative_to, paths[path_count], BUFFER_SIZE) ==
+                            ERROR_BUFFER_TOO_SMALL) {
                         printf("Buffer too small");
                         return 1;
                     };
                     bool alreadyExists = false;
                     for (int i = 0; i < path_count; i++) {
-                        if (strncmp(paths[i], paths[path_count], BUFFER_SIZE) ==
-                                0) {
+                        if (strncmp(paths[i], paths[path_count], BUFFER_SIZE) == 0) {
                             alreadyExists = true;
                         }
                     }

@@ -1,10 +1,10 @@
 #include <stdio.h>
 
-#define swap(t, a, b)                                                          \
-    {                                                                          \
-        t = a;                                                                 \
-        a = b;                                                                 \
-        b = t;                                                                 \
+#define swap(t, a, b) \
+    {                 \
+        t = a;        \
+        a = b;        \
+        b = t;        \
     }
 
 #define dbg_print_string(str) printf(#str ": \"%s\"\n", str)

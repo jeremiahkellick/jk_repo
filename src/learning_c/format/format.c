@@ -1,12 +1,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#define limited_put_char(c)                                                    \
-    {                                                                          \
-        put_char((c), put_char_args);                                          \
-        if (++char_count == max_characters) {                                  \
-            return char_count;                                                 \
-        }                                                                      \
+#define limited_put_char(c)                   \
+    {                                         \
+        put_char((c), put_char_args);         \
+        if (++char_count == max_characters) { \
+            return char_count;                \
+        }                                     \
     }
 
 /**
@@ -90,8 +90,7 @@ int jk_sprintf(char *buffer, int buffer_size, char *format_string, ...)
     va_list ap;
     va_start(ap, format_string);
     char *pointer = buffer;
-    int num_written = jk_format(
-            string_put_char, &pointer, buffer_size - 1, format_string, ap);
+    int num_written = jk_format(string_put_char, &pointer, buffer_size - 1, format_string, ap);
     buffer[num_written] = '\0';
     va_end(ap);
     return num_written;

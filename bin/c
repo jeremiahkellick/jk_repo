@@ -11,17 +11,17 @@ get_dependencies_src_path="$jk_repo_path/src/c_build_utils/get_dependencies/get_
 jk_path_utils_src_path="$jk_repo_path/src/jk_lib/jk_path_utils.c"
 
 if [ ! -d $build_path ]; then
-  mkdir $build_path
+    mkdir $build_path
 fi
 
 if [ ! -f $get_dependencies_path ]; then
-  gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -o "$build_path/get_dependencies" $get_dependencies_src_path $jk_path_utils_src_path
+    gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -o "$build_path/get_dependencies" $get_dependencies_src_path $jk_path_utils_src_path
 fi
 
 files_to_compile=$($get_dependencies_path $file_path)
 
 if [ $source_file_name == "$output_name.cpp" ]; then
-  g++-10 -std=c++20 -pedantic -g -pipe -Wall -Wextra -fstack-protector -o "$build_path/$output_name" $files_to_compile
+    g++-10 -std=c++20 -pedantic -g -pipe -Wall -Wextra -fstack-protector -o "$build_path/$output_name" $files_to_compile
 else
-  gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -o "$build_path/$output_name" $files_to_compile -lm
+    gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -o "$build_path/$output_name" $files_to_compile -lm
 fi

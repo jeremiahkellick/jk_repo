@@ -11,8 +11,7 @@ class DynamicArray
 {
   public:
     DynamicArray()
-        : start{0}, end{0}, count{0},
-          buffer_size{STARTING_SIZE}, buffer{new int[STARTING_SIZE]}
+        : start{0}, end{0}, count{0}, buffer_size{STARTING_SIZE}, buffer{new int[STARTING_SIZE]}
     {
     }
 
@@ -95,8 +94,7 @@ class DynamicArray
         int new_buffer_size = buffer_size + (buffer_size / 2);
         int *new_buffer = new int[new_buffer_size];
         if (start < end) {
-            std::memcpy(
-                    new_buffer, buffer + start, (end - start) * sizeof(int));
+            std::memcpy(new_buffer, buffer + start, (end - start) * sizeof(int));
         } else {
             int copy1_count = buffer_size - start;
             std::memcpy(new_buffer, buffer + start, copy1_count * sizeof(int));

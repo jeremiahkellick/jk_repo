@@ -1,11 +1,14 @@
 AlignAfterOpenBracket: DontAlign
+AlignEscapedNewlines: Left
 AlignOperands: DontAlign
 AllowShortFunctionsOnASingleLine: Empty
 BasedOnStyle: LLVM
 BinPackArguments: false
 BinPackParameters: false
 BreakBeforeBraces: Linux
+ColumnLimit: 100
 ContinuationIndentWidth: 8
 IndentPPDirectives: BeforeHash
 IndentWidth: 4
 InsertBraces: true
+TabWidth: 4

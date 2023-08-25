@@ -81,9 +81,7 @@ int jk_combine_paths(char *path, char *relative_to, char *buffer, size_t size)
             } else {
                 size_t buffer_length = strlen(buffer);
                 if (buffer_length == 0) {
-                    memcpy(buffer,
-                            buffer + segment_start,
-                            cursor - segment_start + 1);
+                    memcpy(buffer, buffer + segment_start, cursor - segment_start + 1);
                 } else {
                     buffer[buffer_length] = '/';
                     cursor++;
