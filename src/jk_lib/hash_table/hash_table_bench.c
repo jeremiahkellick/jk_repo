@@ -1,23 +1,23 @@
+#include "hash_table.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <unordered_map>
 
-using namespace std;
+#define NUM_ELEMENTS 50000000
 
-constexpr int NUM_ELEMENTS = 50'000'000;
-
-int main()
+int main(void)
 {
-    unordered_map<int, int> map;
+    JkHashTable *t = jk_hash_table_create();
 
     clock_t start_time = clock();
     for (int i = 0; i < NUM_ELEMENTS; i++) {
-        map[rand()]++;
+        (*jk_hash_table_get_with_default(t, rand(), 0))++;
     }
     clock_t end_time = clock();
 
     printf("%.2f\n", (double)(end_time - start_time) / CLOCKS_PER_SEC);
+
+    jk_hash_table_destroy(t);
 
     return 0;
 }
