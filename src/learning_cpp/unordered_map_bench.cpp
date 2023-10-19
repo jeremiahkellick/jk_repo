@@ -5,7 +5,7 @@
 
 using namespace std;
 
-constexpr int NUM_ELEMENTS = 50'000'000;
+constexpr int NUM_ELEMENTS = 46'976'204;
 constexpr int SEED = 1608690770;
 
 int main()

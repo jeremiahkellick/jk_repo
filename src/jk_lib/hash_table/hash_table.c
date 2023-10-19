@@ -47,7 +47,7 @@ static bool is_present(JkHashTableSlot *slot)
 
 static bool is_load_factor_exceeded(size_t count, size_t capacity)
 {
-    return count > (capacity * JK_HASH_TABLE_LOAD_FACTOR / 100);
+    return count > (capacity * JK_HASH_TABLE_LOAD_FACTOR / 10);
 }
 
 static bool resize(JkHashTable *t)

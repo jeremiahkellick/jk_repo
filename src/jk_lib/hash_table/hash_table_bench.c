@@ -3,7 +3,8 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define NUM_ELEMENTS 50000000
+#define CAPACITY (1 << 26)
+#define NUM_ELEMENTS (CAPACITY * JK_HASH_TABLE_LOAD_FACTOR / 10)
 #define SEED 1608690770
 
 int main(void)
@@ -12,6 +13,8 @@ int main(void)
     int sum = 0;
     clock_t start_time;
     clock_t end_time;
+
+    printf("NUM_ELEMENTS: %d\n", NUM_ELEMENTS);
 
     srand(SEED);
     start_time = clock();
