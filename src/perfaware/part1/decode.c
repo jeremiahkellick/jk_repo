@@ -1,24 +1,17 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-#define OPCODE_SHIFT 2
+#define OPCODE_MOV_RM_REG_MASK 0xfc
+#define OPCODE_MOV_RM_REG 0x88
 
-#define OPCODE_MOV 0x22
+#define OPCODE_MOV_IMMEDIATE_REG_MASK 0xf0
+#define OPCODE_MOV_IMMEDIATE_REG 0xb0
 
-#define D_MASK 0x2
-#define D_SHIFT 1
-
-#define W_MASK 0x1
-
-#define MOD_SHIFT 6
-
+#define MOD_MEMORY_8_BIT_DISP 0x1
+#define MOD_MEMORY_16_BIT_DISP 0x2
 #define MOD_REGISTER 0x3
-
-#define REG_MASK 0x38
-#define REG_SHIFT 3
-
-#define RM_MASK 0x7
 
 // Usage: register_names[reg][w]
 char *register_names[8][2] = {
@@ -30,6 +23,17 @@ char *register_names[8][2] = {
         {"ch", "bp"},
         {"dh", "si"},
         {"bh", "di"},
+};
+
+char *effective_address_base[8] = {
+        "bx + si",
+        "bx + di",
+        "bp + si",
+        "bp + di",
+        "si",
+        "di",
+        "bp",
+        "bx",
 };
 
 int main(int argc, char **argv)
@@ -50,39 +54,74 @@ int main(int argc, char **argv)
 
     printf("; %s disassembly:\nbits 16\n", argv[1]);
 
-    while (true) {
-        uint8_t byte1;
-        if (fread(&byte1, 1, 1, file) != 1) {
-            break;
-        }
-        uint8_t opcode = byte1 >> OPCODE_SHIFT;
-        bool d = (byte1 & D_MASK) >> D_SHIFT;
-        bool w = byte1 & W_MASK;
-        switch (opcode) {
-        case OPCODE_MOV: {
+    uint8_t byte1;
+    while (fread(&byte1, 1, 1, file) == 1) {
+        bool d = (byte1 >> 1) & 0x1;
+        bool w = byte1 & 0x1;
+        if ((byte1 & OPCODE_MOV_RM_REG_MASK) == OPCODE_MOV_RM_REG) {
             uint8_t byte2;
             if (fread(&byte2, 1, 1, file) != 1) {
-                break;
+                goto file_ended_mid_instruction;
             }
-            uint8_t mod = byte2 >> MOD_SHIFT;
-            uint8_t reg = (byte2 & REG_MASK) >> REG_SHIFT;
-            uint8_t rm = byte2 & RM_MASK;
-            switch (mod) {
-            case MOD_REGISTER: {
-                char *dest_name = register_names[d ? reg : rm][w];
-                char *src_name = register_names[d ? rm : reg][w];
-                printf("mov %s, %s\n", dest_name, src_name);
-            } break;
-            default:
-                fprintf(stderr, "%s: mod '0x%x' not supported\n", argv[0], mod);
+            uint8_t mod = byte2 >> 6;
+            uint8_t reg = (byte2 >> 3) & 0x7;
+            char *reg_name = register_names[reg][w];
+            uint8_t rm = byte2 & 0x7;
+            char rm_name[32];
+            if (mod == MOD_REGISTER) {
+                strncpy(rm_name, register_names[rm][w], 32);
+            } else {
+                int rm_name_idx = 0;
+                rm_name_idx += sprintf(&rm_name[rm_name_idx], "[%s", effective_address_base[rm]);
+                if (mod == MOD_MEMORY_8_BIT_DISP) {
+                    uint8_t disp;
+                    if (fread(&disp, 1, 1, file) != 1) {
+                        goto file_ended_mid_instruction;
+                    }
+                    if (disp != 0) {
+                        rm_name_idx += sprintf(&rm_name[rm_name_idx], " + %hhd", disp);
+                    }
+                }
+                if (mod == MOD_MEMORY_16_BIT_DISP) {
+                    uint16_t disp;
+                    if (fread(&disp, 1, 2, file) != 2) {
+                        goto file_ended_mid_instruction;
+                    }
+                    if (disp != 0) {
+                        rm_name_idx += sprintf(&rm_name[rm_name_idx], " + %hd", disp);
+                    }
+                }
+                rm_name_idx += sprintf(&rm_name[rm_name_idx], "]");
             }
-        } break;
-        default:
-            fprintf(stderr, "%s: opcode '0x%x' not supported\n", argv[0], opcode);
-            exit(1);
+            printf("mov %s, %s\n", d ? reg_name : rm_name, d ? rm_name : reg_name);
+        } else if ((byte1 & OPCODE_MOV_IMMEDIATE_REG_MASK) == OPCODE_MOV_IMMEDIATE_REG) {
+            bool w = (byte1 >> 3) & 0x1;
+            uint8_t reg = byte1 & 0x7;
+            if (w) {
+                uint16_t data;
+                if (fread(&data, 1, 2, file) != 2) {
+                    goto file_ended_mid_instruction;
+                }
+                printf("mov %s, %hd\n", register_names[reg][w], data);
+            } else {
+                uint8_t data;
+                if (fread(&data, 1, 1, file) != 1) {
+                    goto file_ended_mid_instruction;
+                }
+                printf("mov %s, %hhd\n", register_names[reg][w], data);
+            }
+        } else {
+            fprintf(stderr, "%s: Unknown byte1 pattern '0x%x'\n", argv[0], byte1);
+            goto error_exit;
         }
     }
 
     fclose(file);
     return 0;
+
+file_ended_mid_instruction:
+    fprintf(stderr, "%s: File ended in the middle of an instruction\n", argv[0]);
+error_exit:
+    fclose(file);
+    return 1;
 }
