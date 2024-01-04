@@ -6,6 +6,9 @@
 #define OPCODE_MOV_RM_REG_MASK 0xfc
 #define OPCODE_MOV_RM_REG 0x88
 
+#define OPCODE_MOV_IMMEDIATE_RM_MASK 0xfe
+#define OPCODE_MOV_IMMEDIATE_RM 0xc6
+
 #define OPCODE_MOV_IMMEDIATE_REG_MASK 0xf0
 #define OPCODE_MOV_IMMEDIATE_REG 0xb0
 
@@ -56,9 +59,9 @@ int main(int argc, char **argv)
 
     uint8_t byte1;
     while (fread(&byte1, 1, 1, file) == 1) {
-        bool d = (byte1 >> 1) & 0x1;
-        bool w = byte1 & 0x1;
         if ((byte1 & OPCODE_MOV_RM_REG_MASK) == OPCODE_MOV_RM_REG) {
+            bool d = (byte1 >> 1) & 0x1;
+            bool w = byte1 & 0x1;
             uint8_t byte2;
             if (fread(&byte2, 1, 1, file) != 1) {
                 goto file_ended_mid_instruction;
@@ -66,6 +69,43 @@ int main(int argc, char **argv)
             uint8_t mod = byte2 >> 6;
             uint8_t reg = (byte2 >> 3) & 0x7;
             char *reg_name = register_names[reg][w];
+            uint8_t rm = byte2 & 0x7;
+            char rm_name[32];
+
+            if (mod == MOD_REGISTER) {
+                strncpy(rm_name, register_names[rm][w], 32);
+            } else {
+                int rm_name_idx = 0;
+                rm_name_idx += sprintf(&rm_name[rm_name_idx], "[%s", effective_address_base[rm]);
+                if (mod == MOD_MEMORY_8_BIT_DISP) {
+                    uint8_t disp;
+                    if (fread(&disp, 1, 1, file) != 1) {
+                        goto file_ended_mid_instruction;
+                    }
+                    if (disp != 0) {
+                        rm_name_idx += sprintf(&rm_name[rm_name_idx], " + %hhd", disp);
+                    }
+                }
+                if (mod == MOD_MEMORY_16_BIT_DISP) {
+                    uint16_t disp;
+                    if (fread(&disp, 1, 2, file) != 2) {
+                        goto file_ended_mid_instruction;
+                    }
+                    if (disp != 0) {
+                        rm_name_idx += sprintf(&rm_name[rm_name_idx], " + %hd", disp);
+                    }
+                }
+                rm_name_idx += sprintf(&rm_name[rm_name_idx], "]");
+            }
+            printf("mov %s, %s\n", d ? reg_name : rm_name, d ? rm_name : reg_name);
+        } else if ((byte1 & OPCODE_MOV_IMMEDIATE_RM_MASK) == OPCODE_MOV_IMMEDIATE_RM) {
+            uint8_t byte2;
+            if (fread(&byte2, 1, 1, file) != 1) {
+                goto file_ended_mid_instruction;
+            }
+            bool w = byte1 & 0x1;
+            char *w_string = w ? "word " : "byte ";
+            uint8_t mod = byte2 >> 6;
             uint8_t rm = byte2 & 0x7;
             char rm_name[32];
             if (mod == MOD_REGISTER) {
@@ -93,7 +133,19 @@ int main(int argc, char **argv)
                 }
                 rm_name_idx += sprintf(&rm_name[rm_name_idx], "]");
             }
-            printf("mov %s, %s\n", d ? reg_name : rm_name, d ? rm_name : reg_name);
+            if (w) {
+                uint16_t data;
+                if (fread(&data, 1, 2, file) != 2) {
+                    goto file_ended_mid_instruction;
+                }
+                printf("mov %s%s, %hd\n", mod != MOD_REGISTER ? w_string : "", rm_name, data);
+            } else {
+                uint8_t data;
+                if (fread(&data, 1, 1, file) != 1) {
+                    goto file_ended_mid_instruction;
+                }
+                printf("mov %s%s, %hhd\n", mod != MOD_REGISTER ? w_string : "", rm_name, data);
+            }
         } else if ((byte1 & OPCODE_MOV_IMMEDIATE_REG_MASK) == OPCODE_MOV_IMMEDIATE_REG) {
             bool w = (byte1 >> 3) & 0x1;
             uint8_t reg = byte1 & 0x7;
