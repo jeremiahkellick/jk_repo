@@ -121,10 +121,22 @@ int main(int argc, char **argv)
     }
     fclose(file);
 
+    FILE *errors = fopen("errors.txt", "w");
+    if (errors == NULL) {
+        perror(argv[0]);
+        exit(1);
+    }
+
     // Questions with indexes >= this were answered correctly. We're done when this reachers zero.
     int correct = num_questions;
     srand(time(NULL));
+    int iteration = 0; // true during first loop iteration
+    if (!(correct > 0)) {
+        fclose(errors);
+    }
     while (correct > 0) {
+        printf("Round %d\n", iteration + 1);
+
         // Shuffle questions
         for (int i = correct - 1; i > 0; i--) {
             swap(&questions[i], &questions[rand() % (i + 1)]);
@@ -143,9 +155,17 @@ int main(int argc, char **argv)
                 // Move question to correct
                 swap(&questions[i], &questions[--correct]);
             } else {
+                if (iteration == 0) {
+                    fprintf(errors, "\n%s\n%s\n", questions[i].question, questions[i].answer);
+                }
                 i++;
             }
         }
+
+        if (iteration == 0) {
+            fclose(errors);
+        }
+        iteration++;
     }
 
     printf("\nAll questions answered correctly!");
