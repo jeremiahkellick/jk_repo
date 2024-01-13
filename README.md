@@ -12,7 +12,7 @@ For example, here's how to build and run the hello_world.c program. First, navig
 
 Build
 ```
-.\bin\c.bat .\src\learning_c\hello_world.c
+.\bin\c.bat .\jk_src\learning_c\hello_world.c
 ```
 
 Run
@@ -24,7 +24,7 @@ Run
 
 Build
 ```
-./bin/c ./src/learning_c/hello_world.c
+./bin/c ./jk_src/learning_c/hello_world.c
 ```
 
 Run
