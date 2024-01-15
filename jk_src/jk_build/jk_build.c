@@ -1,128 +1,80 @@
-#include <windows.h>
-
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
+
+#ifdef WIN32
+#define realpath(N, R) _fullpath((R), (N), PATH_MAX)
+#endif
+
 #define BUF_SIZE 4096
 #define MAX_SEARCH_LEVELS 20
 
-typedef enum PathInfo {
-    PATH_INFO_ACCESS_FAILED,
-    PATH_INFO_DIRECTORY,
-    PATH_INFO_OTHER,
-} PathInfo;
+static char *program_name = NULL;
 
-PathInfo get_path_info(char *path)
+#define MAX_ARGS 63
+
+typedef struct Command {
+    int args_count;
+    char *args[MAX_ARGS + 1];
+} Command;
+
+void command_append_array(Command *c, int args_count, char **args)
 {
-    struct stat info;
-    if (stat(path, &info) != 0) {
-        return PATH_INFO_ACCESS_FAILED;
-    } else if (info.st_mode & S_IFDIR) {
-        return PATH_INFO_DIRECTORY;
-    } else {
-        return PATH_INFO_OTHER;
+    if (c->args_count + args_count > MAX_ARGS) {
+        fprintf(stderr, "%s: MAX_ARGS (%d) exceeded", program_name, MAX_ARGS);
+        exit(1);
+    }
+    for (int i = 0; i < args_count; i++) {
+        c->args[c->args_count++] = args[i];
     }
 }
 
-int main(int argc, char **argv)
+/**
+ * Append arguments onto a command
+ *
+ * @param c Command to append arguments onto
+ * @param ... Arguments to append, any number of char * null terminated strings
+ */
+#define command_append(c, ...) \
+    command_append_array(      \
+            c, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
+
+void command_run(Command *c)
 {
+#ifdef _WIN32
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
-
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s [program main source file]\n", argv[0]);
-        exit(1);
-    }
-
-    // Ensure file given as the first argument exists
-    if (get_path_info(argv[1]) != PATH_INFO_OTHER) {
-        fprintf(stderr, "%s: Invalid build path \"%s\"\n", argv[0], argv[1]);
-        exit(1);
-    }
-
-    // Find repository root directory from a source file path by going up the file tree looking for
-    // a parent directory that contains a 'jk_src' directory. If we find one we assume that's the
-    // jk_repo root.
-    char root_dir[BUF_SIZE];
-    char base_name[BUF_SIZE];
-    {
-        strncpy(root_dir, argv[1], BUF_SIZE);
-        size_t length = strlen(root_dir);
-        int last_slash = -1;
-        for (int i = 0; i < length; i++) {
-            if (root_dir[i] == '/' || root_dir[i] == '\\') {
-                last_slash = i;
-            }
-        }
-
-        // Write source file base name
-        int last_dot = length;
-        for (int i = last_slash + 1; i < length; i++) {
-            if (root_dir[i] == '.') {
-                last_dot = i;
-            }
-        }
-        root_dir[last_dot] = '\0';
-        strcpy(base_name, &root_dir[last_slash + 1]);
-
-        if (last_slash == -1) {
-            strcpy(root_dir, ".\\");
-        } else {
-            length = last_slash + 1;
-            if (length + 1 > BUF_SIZE) {
-                fprintf(stderr, "%s: Insufficient BUF_SIZE\n", argv[0]);
-                exit(1);
-            }
-            root_dir[length] = '\0';
-        }
-
-        bool found = false;
-        int i = 0;
-        while (!found) {
-            if (i > MAX_SEARCH_LEVELS) {
-                fprintf(stderr,
-                        "%s: Couldn't find jk_repo root after searching %d levels up from the "
-                        "source file",
-                        argv[0],
-                        MAX_SEARCH_LEVELS);
-                exit(1);
-            }
-            if (length + 10 > BUF_SIZE) {
-                fprintf(stderr, "%s: Insufficient BUF_SIZE\n", argv[0]);
-                exit(1);
-            }
-            strcat(root_dir, "..\\jk_src");
-            found = get_path_info(root_dir) == PATH_INFO_DIRECTORY;
-            length += 3; // keep the appended "..\" but discard the "jk_src"
-            root_dir[length] = '\0';
-            i++;
+    char command_string[BUF_SIZE];
+    int string_i = 0;
+    for (int args_i = 0; c->args[args_i] != NULL; args_i++) {
+        string_i += snprintf(&command_string[string_i],
+                BUF_SIZE - string_i,
+                "%s%s",
+                args_i == 0 ? "" : " ",
+                c->args[args_i]);
+        if (string_i >= BUF_SIZE) {
+            fprintf(stderr, "%s: Insufficient BUF_SIZE\n", program_name);
+            exit(1);
         }
     }
 
-    char command[BUF_SIZE];
-    int length = snprintf(command,
-            BUF_SIZE,
-            "cl %s /W4 /D _CRT_SECURE_NO_WARNINGS /Zi /std:c++20 /EHsc /link "
-            "/out:\"%sbuild\\%s.exe\"",
-            argv[1],
-            root_dir,
-            base_name);
-    if (length + 1 > BUF_SIZE) {
-        fprintf(stderr, "%s: Insufficient BUF_SIZE\n", argv[0]);
-        exit(1);
-    }
-
-    printf("%s\n", command);
-
-    // Start the child process.
-    if (!CreateProcess(NULL, command, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        fprintf(stderr, "%s: Error attempting to run this command:\n%s\n", argv[0], command);
+    printf("%s\n", command_string);
+    if (!CreateProcess(NULL, command_string, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "%s: ", program_name);
         DWORD error_code = GetLastError();
         if (error_code == 0) {
-            fprintf(stderr, "Unknown\n");
+            fprintf(stderr, "Unknown error\n");
         } else {
             char message_buf[BUF_SIZE] = {'\0'};
             FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -143,6 +95,91 @@ int main(int argc, char **argv)
     // Close process and thread handles.
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+#endif
+}
+
+int main(int argc, char **argv)
+{
+    program_name = argv[0];
+
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s [program main source file]\n", program_name);
+        exit(1);
+    }
+
+    char source_file_path[PATH_MAX] = {0};
+    char basename[PATH_MAX] = {0};
+    char build_path[PATH_MAX] = {0};
+    {
+        // Get absolute path of the source file
+        realpath(argv[1], source_file_path);
+        if (source_file_path == NULL) {
+            fprintf(stderr, "%s: Invalid source file path\n", program_name);
+            exit(1);
+        }
+
+        // Find basename
+        size_t length = strlen(source_file_path);
+        size_t last_component = 0;
+        size_t last_dot = 0;
+        for (int i = 0; i < length; i++) {
+            switch (source_file_path[i]) {
+            case '/':
+            case '\\':
+                last_component = i + 1;
+                break;
+            case '.':
+                last_dot = i;
+                break;
+            default:
+                break;
+            }
+        }
+        if (last_component == length) {
+            fprintf(stderr, "%s: Invalid source file path\n", program_name);
+            exit(1);
+        }
+        if (last_dot == 0 || last_dot <= last_component) {
+            last_dot = length;
+        }
+        strncpy(basename, &source_file_path[last_component], last_dot - last_component);
+
+        // Find repository root path
+        char *jk_src = strstr(source_file_path, "jk_src");
+        if (jk_src == NULL) {
+            fprintf(stderr, "%s: File not located under the jk_src directory\n", program_name);
+            exit(1);
+        }
+        size_t build_path_length = jk_src - source_file_path;
+        if (build_path_length > PATH_MAX - 6) {
+            fprintf(stderr, "%s: PATH_MAX exceeded\n", program_name);
+            exit(1);
+        }
+        strncpy(build_path, source_file_path, jk_src - source_file_path);
+        // Append "build" to the repository root path to make the build path
+        strcat(build_path, "build");
+    }
+
+    chdir(build_path);
+
+    Command c = {0};
+
+#ifdef _WIN32
+    command_append(&c, "cl", source_file_path);
+
+    // MSVC compiler options
+    command_append(&c, "/W4");
+    command_append(&c, "/D");
+    command_append(&c, "_CRT_SECURE_NO_WARNINGS");
+    command_append(&c, "/Zi");
+    command_append(&c, "/std:c++20");
+    command_append(&c, "/EHsc");
+
+    // MSVC linker options
+    // command_append(&c, "/link");
+#endif
+
+    command_run(&c);
 
     return 0;
 }
