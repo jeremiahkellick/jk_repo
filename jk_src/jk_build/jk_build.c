@@ -1,16 +1,20 @@
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #ifdef _WIN32
+
 #include <windows.h>
-#endif
 
 #ifndef PATH_MAX
 #define PATH_MAX MAX_PATH
+#endif
+
 #endif
 
 #ifdef WIN32
@@ -50,14 +54,14 @@ void command_append_array(Command *c, int args_count, char **args)
     command_append_array(      \
             c, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
 
-void command_run(Command *c)
+int command_run(Command *c)
 {
 #ifdef _WIN32
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
     char command_string[BUF_SIZE];
     int string_i = 0;
-    for (int args_i = 0; c->args[args_i] != NULL; args_i++) {
+    for (int args_i = 0; args_i < c->args_count; args_i++) {
         string_i += snprintf(&command_string[string_i],
                 BUF_SIZE - string_i,
                 "%s%s",
@@ -95,6 +99,35 @@ void command_run(Command *c)
     // Close process and thread handles.
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+#else
+    // Print command
+    for (int i = 0; i < c->args_count; i++) {
+        if (i != 0) {
+            printf(" ");
+        }
+        printf("%s", c->args[i]);
+    }
+    printf("\n");
+
+    // Run command
+    int command_pid;
+    if ((command_pid = fork())) {
+        if (command_pid == -1) {
+            perror(program_name);
+            exit(1);
+        }
+        int status;
+        waitpid(command_pid, &status, 0);
+        return status;
+    } else {
+        int result = execvp(c->args[0], c->args);
+        if (result == -1) {
+            perror(program_name);
+        } else {
+            fprintf(stderr, "%s: execve returned unexpectedly\n", program_name);
+        }
+        exit(1);
+    }
 #endif
 }
 
@@ -112,8 +145,8 @@ int main(int argc, char **argv)
     char build_path[PATH_MAX] = {0};
     {
         // Get absolute path of the source file
-        realpath(argv[1], source_file_path);
-        if (source_file_path == NULL) {
+        char *realpath_result = realpath(argv[1], source_file_path);
+        if (realpath_result == NULL) {
             fprintf(stderr, "%s: Invalid source file path\n", program_name);
             exit(1);
         }
@@ -122,7 +155,7 @@ int main(int argc, char **argv)
         size_t length = strlen(source_file_path);
         size_t last_component = 0;
         size_t last_dot = 0;
-        for (int i = 0; i < length; i++) {
+        for (size_t i = 0; i < length; i++) {
             switch (source_file_path[i]) {
             case '/':
             case '\\':
@@ -177,6 +210,19 @@ int main(int argc, char **argv)
 
     // MSVC linker options
     // command_append(&c, "/link");
+#else
+    command_append(&c, "gcc", source_file_path);
+    command_append(&c, "-o", basename);
+    command_append(&c, "-std=c99");
+    command_append(&c, "-pedantic");
+    command_append(&c, "-g");
+    command_append(&c, "-pipe");
+    command_append(&c, "-Wall");
+    command_append(&c, "-Wextra");
+    command_append(&c, "-fstack-protector");
+    command_append(&c, "-Werror=vla");
+    command_append(&c, "-Wno-pointer-arith");
+    command_append(&c, "-lm");
 #endif
 
     command_run(&c);
