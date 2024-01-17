@@ -7,30 +7,52 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 
 #ifdef _WIN32
 
+#include <direct.h>
 #include <windows.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX MAX_PATH
 #endif
 
+#define chdir _chdir
 #define realpath(N, R) _fullpath((R), (N), PATH_MAX)
 
-#else
+#else // If not Windows, assume Unix
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 #endif
 
 #define BUF_SIZE 4096
-#define MAX_SEARCH_LEVELS 20
+#define MAX_ARGS 63
 
 static char *program_name = NULL;
 
-#define MAX_ARGS 63
+#ifdef _WIN32
+void windows_print_last_error_and_exit(void)
+{
+    fprintf(stderr, "%s: ", program_name);
+    DWORD error_code = GetLastError();
+    if (error_code == 0) {
+        fprintf(stderr, "Unknown error\n");
+    } else {
+        char message_buf[BUF_SIZE] = {'\0'};
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                error_code,
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                message_buf,
+                BUF_SIZE - 1,
+                NULL);
+        fprintf(stderr, "%s", message_buf);
+    }
+    exit(1);
+}
+#endif
 
 typedef struct Command {
     int args_count;
@@ -40,7 +62,7 @@ typedef struct Command {
 void command_append_array(Command *c, int args_count, char **args)
 {
     if (c->args_count + args_count > MAX_ARGS) {
-        fprintf(stderr, "%s: MAX_ARGS (%d) exceeded", program_name, MAX_ARGS);
+        fprintf(stderr, "%s: MAX_ARGS (%d) exceeded\n", program_name, MAX_ARGS);
         exit(1);
     }
     for (int i = 0; i < args_count; i++) {
@@ -78,31 +100,18 @@ int command_run(Command *c)
     }
 
     printf("%s\n", command_string);
-    if (!CreateProcess(NULL, command_string, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        fprintf(stderr, "%s: ", program_name);
-        DWORD error_code = GetLastError();
-        if (error_code == 0) {
-            fprintf(stderr, "Unknown error\n");
-        } else {
-            char message_buf[BUF_SIZE] = {'\0'};
-            FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                    NULL,
-                    error_code,
-                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                    message_buf,
-                    BUF_SIZE - 1,
-                    NULL);
-            fprintf(stderr, "%s", message_buf);
-        }
-        exit(1);
+
+    if (!CreateProcessA(NULL, command_string, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        windows_print_last_error_and_exit();
     }
-
-    // Wait until child process exits.
-    WaitForSingleObject(pi.hProcess, INFINITE);
-
-    // Close process and thread handles.
-    CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exit_status;
+    if (!GetExitCodeProcess(pi.hProcess, &exit_status)) {
+        windows_print_last_error_and_exit();
+    }
+    CloseHandle(pi.hProcess);
+    return (int)exit_status;
 #else
     // Print command
     for (int i = 0; i < c->args_count; i++) {
@@ -120,16 +129,17 @@ int command_run(Command *c)
             perror(program_name);
             exit(1);
         }
-        int status;
-        waitpid(command_pid, &status, 0);
-        return status;
-    } else {
-        int result = execvp(c->args[0], c->args);
-        if (result == -1) {
-            perror(program_name);
+        int wstatus;
+        waitpid(command_pid, &wstatus, 0);
+        if (WIFEXITED(wstatus)) {
+            return WEXITSTATUS(wstatus);
         } else {
-            fprintf(stderr, "%s: execve returned unexpectedly\n", program_name);
+            fprintf(stderr, "%s: Compiler exited abnormally\n", program_name);
+            exit(1);
         }
+    } else {
+        execvp(c->args[0], c->args);
+        perror(program_name);
         exit(1);
     }
 #endif
@@ -205,9 +215,8 @@ int main(int argc, char **argv)
     Command c = {0};
 
 #ifdef _WIN32
-    command_append(&c, "cl", source_file_path);
-
     // MSVC compiler options
+    command_append(&c, "cl");
     command_append(&c, "/W4");
     command_append(&c, "/D");
     command_append(&c, "_CRT_SECURE_NO_WARNINGS");
@@ -215,11 +224,9 @@ int main(int argc, char **argv)
     command_append(&c, "/std:c++20");
     command_append(&c, "/EHsc");
     command_append(&c, "/I", root_path);
-
-    // MSVC linker options
-    // command_append(&c, "/link");
 #else
-    command_append(&c, "gcc", source_file_path);
+    // GCC compiler options
+    command_append(&c, "gcc");
     command_append(&c, "-o", basename);
     command_append(&c, "-std=c99");
     command_append(&c, "-pedantic");
@@ -230,11 +237,12 @@ int main(int argc, char **argv)
     command_append(&c, "-fstack-protector");
     command_append(&c, "-Werror=vla");
     command_append(&c, "-Wno-pointer-arith");
-    command_append(&c, "-lm");
     command_append(&c, "-I", root_path);
+    // GCC linker options
+    command_append(&c, "-lm");
 #endif
 
-    command_run(&c);
+    command_append(&c, source_file_path);
 
-    return 0;
+    return command_run(&c);
 }
