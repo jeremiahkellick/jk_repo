@@ -5,7 +5,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #ifdef _WIN32
 
@@ -15,10 +14,12 @@
 #define PATH_MAX MAX_PATH
 #endif
 
-#endif
-
-#ifdef WIN32
 #define realpath(N, R) _fullpath((R), (N), PATH_MAX)
+
+#else
+
+#include <unistd.h>
+
 #endif
 
 #define BUF_SIZE 4096
@@ -142,6 +143,7 @@ int main(int argc, char **argv)
 
     char source_file_path[PATH_MAX] = {0};
     char basename[PATH_MAX] = {0};
+    char root_path[PATH_MAX] = {0};
     char build_path[PATH_MAX] = {0};
     {
         // Get absolute path of the source file
@@ -183,13 +185,15 @@ int main(int argc, char **argv)
             fprintf(stderr, "%s: File not located under the jk_src directory\n", program_name);
             exit(1);
         }
-        size_t build_path_length = jk_src - source_file_path;
-        if (build_path_length > PATH_MAX - 6) {
+        size_t root_path_length = jk_src - source_file_path;
+        strncpy(root_path, source_file_path, root_path_length);
+
+        // Append "build" to the repository root path to make the build path
+        if (root_path_length > PATH_MAX - 6) {
             fprintf(stderr, "%s: PATH_MAX exceeded\n", program_name);
             exit(1);
         }
-        strncpy(build_path, source_file_path, jk_src - source_file_path);
-        // Append "build" to the repository root path to make the build path
+        strcpy(build_path, root_path);
         strcat(build_path, "build");
     }
 
@@ -207,6 +211,7 @@ int main(int argc, char **argv)
     command_append(&c, "/Zi");
     command_append(&c, "/std:c++20");
     command_append(&c, "/EHsc");
+    command_append(&c, "/I", root_path);
 
     // MSVC linker options
     // command_append(&c, "/link");
@@ -223,6 +228,7 @@ int main(int argc, char **argv)
     command_append(&c, "-Werror=vla");
     command_append(&c, "-Wno-pointer-arith");
     command_append(&c, "-lm");
+    command_append(&c, "-I", root_path);
 #endif
 
     command_run(&c);
