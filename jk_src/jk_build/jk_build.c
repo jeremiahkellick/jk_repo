@@ -30,10 +30,19 @@
 #define BUF_SIZE 4096
 #define MAX_ARGS 63
 
+/** argv[0] */
 static char *program_name = NULL;
+/** Abolsute path of source file passed in as argv[1] */
+static char source_file_path[PATH_MAX] = {0};
+/** Basename of source file without extension */
+static char basename[PATH_MAX] = {0};
+/** jk_repo/ */
+static char root_path[PATH_MAX] = {0};
+/** jk_repo/build/ */
+static char build_path[PATH_MAX] = {0};
 
 #ifdef _WIN32
-void windows_print_last_error_and_exit(void)
+static void windows_print_last_error_and_exit(void)
 {
     fprintf(stderr, "%s: ", program_name);
     DWORD error_code = GetLastError();
@@ -59,7 +68,7 @@ typedef struct Command {
     char *args[MAX_ARGS + 1];
 } Command;
 
-void command_append_array(Command *c, int args_count, char **args)
+static void command_append_array(Command *c, int args_count, char **args)
 {
     if (c->args_count + args_count > MAX_ARGS) {
         fprintf(stderr, "%s: MAX_ARGS (%d) exceeded\n", program_name, MAX_ARGS);
@@ -80,7 +89,7 @@ void command_append_array(Command *c, int args_count, char **args)
     command_append_array(      \
             c, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
 
-int command_run(Command *c)
+static int command_run(Command *c)
 {
 #ifdef _WIN32
     STARTUPINFO si = {.cb = sizeof(si)};
@@ -145,7 +154,8 @@ int command_run(Command *c)
 #endif
 }
 
-int main(int argc, char **argv)
+/** Populates globals program_name, source_file_path, basename, root_path, and build_path */
+static void populate_globals(int argc, char **argv)
 {
     program_name = argv[0];
 
@@ -154,61 +164,60 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    char source_file_path[PATH_MAX] = {0};
-    char basename[PATH_MAX] = {0};
-    char root_path[PATH_MAX] = {0};
-    char build_path[PATH_MAX] = {0};
-    {
-        // Get absolute path of the source file
-        char *realpath_result = realpath(argv[1], source_file_path);
-        if (realpath_result == NULL) {
-            fprintf(stderr, "%s: Invalid source file path\n", program_name);
-            exit(1);
-        }
-
-        // Find basename
-        size_t length = strlen(source_file_path);
-        size_t last_component = 0;
-        size_t last_dot = 0;
-        for (size_t i = 0; i < length; i++) {
-            switch (source_file_path[i]) {
-            case '/':
-            case '\\':
-                last_component = i + 1;
-                break;
-            case '.':
-                last_dot = i;
-                break;
-            default:
-                break;
-            }
-        }
-        if (last_component == length) {
-            fprintf(stderr, "%s: Invalid source file path\n", program_name);
-            exit(1);
-        }
-        if (last_dot == 0 || last_dot <= last_component) {
-            last_dot = length;
-        }
-        strncpy(basename, &source_file_path[last_component], last_dot - last_component);
-
-        // Find repository root path
-        char *jk_src = strstr(source_file_path, "jk_src");
-        if (jk_src == NULL) {
-            fprintf(stderr, "%s: File not located under the jk_src directory\n", program_name);
-            exit(1);
-        }
-        size_t root_path_length = jk_src - source_file_path;
-        strncpy(root_path, source_file_path, root_path_length);
-
-        // Append "build" to the repository root path to make the build path
-        if (root_path_length > PATH_MAX - 6) {
-            fprintf(stderr, "%s: PATH_MAX exceeded\n", program_name);
-            exit(1);
-        }
-        strcpy(build_path, root_path);
-        strcat(build_path, "build");
+    // Get absolute path of the source file
+    char *realpath_result = realpath(argv[1], source_file_path);
+    if (realpath_result == NULL) {
+        fprintf(stderr, "%s: Invalid source file path\n", program_name);
+        exit(1);
     }
+
+    // Find basename
+    size_t length = strlen(source_file_path);
+    size_t last_component = 0;
+    size_t last_dot = 0;
+    for (size_t i = 0; i < length; i++) {
+        switch (source_file_path[i]) {
+        case '/':
+        case '\\':
+            last_component = i + 1;
+            break;
+        case '.':
+            last_dot = i;
+            break;
+        default:
+            break;
+        }
+    }
+    if (last_component == length) {
+        fprintf(stderr, "%s: Invalid source file path\n", program_name);
+        exit(1);
+    }
+    if (last_dot == 0 || last_dot <= last_component) {
+        last_dot = length;
+    }
+    strncpy(basename, &source_file_path[last_component], last_dot - last_component);
+
+    // Find repository root path
+    char *jk_src = strstr(source_file_path, "jk_src");
+    if (jk_src == NULL) {
+        fprintf(stderr, "%s: File not located under the jk_src directory\n", program_name);
+        exit(1);
+    }
+    size_t root_path_length = jk_src - source_file_path;
+    strncpy(root_path, source_file_path, root_path_length);
+
+    // Append "build" to the repository root path to make the build path
+    if (root_path_length > PATH_MAX - 7) {
+        fprintf(stderr, "%s: PATH_MAX exceeded\n", program_name);
+        exit(1);
+    }
+    strcpy(build_path, root_path);
+    strcat(build_path, "build/");
+}
+
+int main(int argc, char **argv)
+{
+    populate_globals(argc, argv);
 
     chdir(build_path);
 
