@@ -1,0 +1,6 @@
+#!/bin/sh
+
+script_directory=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+jk_build_source_path=$script_directory/../jk_src/jk_build/jk_build.c
+
+gcc -std=c99 -pedantic -g -pipe -Wall -Wextra -fstack-protector -Werror=vla -Wno-pointer-arith -o "$script_directory/jk_build" "$jk_build_source_path"
