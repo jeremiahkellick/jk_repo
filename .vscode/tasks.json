@@ -4,16 +4,13 @@
         {
             "type": "shell",
             "label": "jk_repo C build",
-            "command": "${workspaceFolder}\\..\\bin\\c ${file}",
+            "command": "${workspaceFolder}/bin/jk_build ${file}",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
             "presentation": {
                 "clear": true,
-            },
-            "windows": {
-                "command": "${workspaceFolder}\\..\\bin\\c.bat ${file}",
             },
         }
     ]
