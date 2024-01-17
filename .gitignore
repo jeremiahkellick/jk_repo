@@ -1,1 +1,3 @@
+bin/*.pdb
+bin/jk_build*
 build/
