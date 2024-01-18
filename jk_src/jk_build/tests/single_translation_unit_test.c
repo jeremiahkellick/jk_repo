@@ -1,11 +1,10 @@
 #include <stdio.h>
 
-#include <jk_src/jk_build/tests/dependencies/big_mode.c>
-#include <jk_src/jk_build/tests/dependencies/pop_off.c>
+#include <jk_src/jk_build/tests/dependencies/stu_dep1.c>
+#include <jk_src/jk_build/tests/dependencies/stu_dep2.c>
 
 int main(void)
 {
-    printf("Hello, world!\n");
-    pop_off();
+    dep2();
     return 0;
 }
