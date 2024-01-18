@@ -28,7 +28,7 @@
 #endif
 
 #define BUF_SIZE 4096
-#define MAX_ARGS 63
+#define ARRAY_MAX 255
 
 /** argv[0] */
 static char *program_name = NULL;
@@ -63,45 +63,45 @@ static void windows_print_last_error_and_exit(void)
 }
 #endif
 
-typedef struct Command {
-    int args_count;
-    char *args[MAX_ARGS + 1];
-} Command;
+typedef struct StringArray {
+    int count;
+    char *items[ARRAY_MAX + 1];
+} StringArray;
 
-static void command_append_array(Command *c, int args_count, char **args)
+static void array_concat(StringArray *array, int count, char **items)
 {
-    if (c->args_count + args_count > MAX_ARGS) {
-        fprintf(stderr, "%s: MAX_ARGS (%d) exceeded\n", program_name, MAX_ARGS);
+    if (array->count + count > ARRAY_MAX) {
+        fprintf(stderr, "%s: ARRAY_MAX (%d) exceeded\n", program_name, ARRAY_MAX);
         exit(1);
     }
-    for (int i = 0; i < args_count; i++) {
-        c->args[c->args_count++] = args[i];
+    for (int i = 0; i < count; i++) {
+        array->items[array->count++] = items[i];
     }
 }
 
 /**
- * Append arguments onto a command
+ * Append strings onto a StringArray
  *
- * @param c Command to append arguments onto
- * @param ... Arguments to append, any number of char * null terminated strings
+ * @param array Array to append onto
+ * @param ... Any number of 'char *'s to append
  */
-#define command_append(c, ...) \
-    command_append_array(      \
-            c, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
+#define array_append(array, ...) \
+    array_concat(                \
+            array, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
 
-static int command_run(Command *c)
+static int command_run(StringArray *command)
 {
 #ifdef _WIN32
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
     char command_string[BUF_SIZE];
     int string_i = 0;
-    for (int args_i = 0; args_i < c->args_count; args_i++) {
+    for (int args_i = 0; args_i < command->count; args_i++) {
         string_i += snprintf(&command_string[string_i],
                 BUF_SIZE - string_i,
                 "%s%s",
                 args_i == 0 ? "" : " ",
-                c->args[args_i]);
+                command->items[args_i]);
         if (string_i >= BUF_SIZE) {
             fprintf(stderr, "%s: Insufficient BUF_SIZE\n", program_name);
             exit(1);
@@ -123,11 +123,11 @@ static int command_run(Command *c)
     return (int)exit_status;
 #else
     // Print command
-    for (int i = 0; i < c->args_count; i++) {
+    for (int i = 0; i < command->count; i++) {
         if (i != 0) {
             printf(" ");
         }
-        printf("%s", c->args[i]);
+        printf("%s", command->items[i]);
     }
     printf("\n");
 
@@ -147,7 +147,7 @@ static int command_run(Command *c)
             exit(1);
         }
     } else {
-        execvp(c->args[0], c->args);
+        execvp(command->items[0], command->items);
         perror(program_name);
         exit(1);
     }
@@ -221,37 +221,36 @@ int main(int argc, char **argv)
 
     chdir(build_path);
 
-    Command c = {0};
+    StringArray command = {0};
 
 #ifdef _WIN32
     // MSVC compiler options
-    command_append(&c, "cl");
-    command_append(&c, "/W4");
-    command_append(&c, "/D");
-    command_append(&c, "_CRT_SECURE_NO_WARNINGS");
-    command_append(&c, "/Zi");
-    command_append(&c, "/std:c++20");
-    command_append(&c, "/EHsc");
-    command_append(&c, "/I", root_path);
+    array_append(&command, "cl");
+    array_append(&command, "/W4");
+    array_append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
+    array_append(&command, "/Zi");
+    array_append(&command, "/std:c++20");
+    array_append(&command, "/EHsc");
+    array_append(&command, "/I", root_path);
 #else
     // GCC compiler options
-    command_append(&c, "gcc");
-    command_append(&c, "-o", basename);
-    command_append(&c, "-std=c99");
-    command_append(&c, "-pedantic");
-    command_append(&c, "-g");
-    command_append(&c, "-pipe");
-    command_append(&c, "-Wall");
-    command_append(&c, "-Wextra");
-    command_append(&c, "-fstack-protector");
-    command_append(&c, "-Werror=vla");
-    command_append(&c, "-Wno-pointer-arith");
-    command_append(&c, "-I", root_path);
+    array_append(&command, "gcc");
+    array_append(&command, "-o", basename);
+    array_append(&command, "-std=c99");
+    array_append(&command, "-pedantic");
+    array_append(&command, "-g");
+    array_append(&command, "-pipe");
+    array_append(&command, "-Wall");
+    array_append(&command, "-Wextra");
+    array_append(&command, "-fstack-protector");
+    array_append(&command, "-Werror=vla");
+    array_append(&command, "-Wno-pointer-arith");
+    array_append(&command, "-I", root_path);
     // GCC linker options
-    command_append(&c, "-lm");
+    array_append(&command, "-lm");
 #endif
 
-    command_append(&c, source_file_path);
+    array_append(&command, source_file_path);
 
-    return command_run(&c);
+    return command_run(&command);
 }
