@@ -332,7 +332,6 @@ void find_dependencies(StringArray *source_file_paths)
                         exit(1);
                     }
                     dependencies_adjacent = true;
-                    printf("dependencies_adjacent\n");
                 } else if (strcmp(buf, "end") == 0) {
                     if (dependencies_adjacent) {
                         dependencies_adjacent = false;
@@ -399,7 +398,6 @@ void find_dependencies(StringArray *source_file_paths)
                 memcpy(dependency_path, root_path, root_path_length);
                 memcpy(dependency_path + root_path_length, buf, path_length);
                 dependency_path[root_path_length + path_length] = '\0';
-                printf("Found dependency: %s\n", dependency_path);
 
                 array_append(source_file_paths, dependency_path);
             }
