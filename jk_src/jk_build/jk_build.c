@@ -156,17 +156,13 @@ static int command_run(StringArray *command)
 #endif
 }
 
-/** Converts backslashes to slashes and removes trailing slash */
-void normalize_path(char *path)
+/** Replace all instances of \ with / in the given null terminated string */
+static void path_to_forward_slashes(char *path)
 {
-    int i;
-    for (i = 0; path[i] != '\0'; i++) {
+    for (int i = 0; path[i] != '\0'; i++) {
         if (path[i] == '\\') {
             path[i] = '/';
         }
-    }
-    if (path[i - 1] == '/') {
-        path[i - 1] = '\0';
     }
 }
 
@@ -229,6 +225,10 @@ static void populate_globals(int argc, char **argv)
     }
     strcpy(build_path, root_path);
     strcat(build_path, "build/");
+
+    path_to_forward_slashes(source_file_path);
+    path_to_forward_slashes(root_path);
+    path_to_forward_slashes(build_path);
 }
 
 bool is_space_exclude_newlines(int c)
@@ -256,6 +256,7 @@ int next_nonspace(FILE *file)
 }
 
 char const *const jk_build_string = "jk_build";
+char const *const jk_src_string = "jk_src/";
 
 void find_dependencies(StringArray *source_file_paths)
 {
@@ -374,14 +375,25 @@ void find_dependencies(StringArray *source_file_paths)
                 if (buf[path_length - 2] != '.' || buf[path_length - 1] != 'h') {
                     fprintf(stderr,
                             "%s: Warning: Tried to use dependencies_adjacent on an include path "
-                            "that did not end in .h, ignoring <%s>\n",
+                            "that did not end in '.h', ignoring <%s>\n",
                             program_name,
                             buf);
-                    exit(1);
+                    goto reset_parse;
                 }
                 buf[path_length - 1] = 'c';
 
-                normalize_path(buf);
+                size_t jk_src_string_length = strlen(jk_src_string);
+                if (path_length < jk_src_string_length
+                        || !(memcmp(buf, jk_src_string, jk_src_string_length) == 0)) {
+                    fprintf(stderr,
+                            "%s: Warning: Tried to use dependencies_adjacent on an include path "
+                            "that did not start with 'jk_src/', ignoring <%s>\n",
+                            program_name,
+                            buf);
+                    goto reset_parse;
+                }
+
+                path_to_forward_slashes(buf);
                 // Check if already in source_file_paths
                 for (int i = 0; i < source_file_paths->count; i++) {
                     if (strcmp(buf, source_file_paths->items[i] + root_path_length) == 0) {
@@ -426,7 +438,6 @@ int main(int argc, char **argv)
     chdir(build_path);
 
     StringArray source_file_paths = {0};
-    normalize_path(source_file_path);
     array_append(&source_file_paths, source_file_path);
     find_dependencies(&source_file_paths);
 
@@ -440,6 +451,7 @@ int main(int argc, char **argv)
     array_append(&command, "/Zi");
     array_append(&command, "/std:c++20");
     array_append(&command, "/EHsc");
+    array_append(&command, "/O2");
     array_append(&command, "/I", root_path);
 #else
     // GCC compiler options

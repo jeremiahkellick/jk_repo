@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "file_get_word_count.h"
+#include <jk_src/learning_c/word_count/file_get_word_count.c>
 
 int main(void)
 {

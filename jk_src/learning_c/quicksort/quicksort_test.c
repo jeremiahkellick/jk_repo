@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "quicksort.h"
+#include <jk_src/learning_c/quicksort/quicksort.c>
 
 #define LENGTH 10
 
@@ -53,8 +53,7 @@ static void print_int_array(int array[])
     }
 }
 
-static void print_string_arrays_side_by_side(
-        char **a, char **b, int length, int indent, int width)
+static void print_string_arrays_side_by_side(char **a, char **b, int length, int indent, int width)
 {
     for (int i = 0; i < length; i++) {
         // Indent
@@ -77,8 +76,8 @@ static void print_string_arrays_side_by_side(
 int main(void)
 {
     // Test int sorting
-    printf("quicksort_ints()\n    ");
-    quicksort_ints(numbers, LENGTH);
+    printf("jk_quicksort_ints()\n    ");
+    jk_quicksort_ints(numbers, LENGTH);
     if (memcmp(numbers, sorted_numbers, LENGTH) == 0) {
         printf("SUCCESS\n");
     } else {
@@ -90,14 +89,13 @@ int main(void)
     }
 
     // Test string sorting
-    printf("\nquicksort_strings()\n");
-    quicksort_strings(strings, LENGTH);
+    printf("\njk_quicksort_strings()\n");
+    jk_quicksort_strings(strings, LENGTH);
     if (string_arrays_are_equal(strings, sorted_strings, LENGTH)) {
         printf("    SUCCESS\n");
     } else {
         printf("    FAIL:\n        expected    actual\n\n");
-        print_string_arrays_side_by_side(
-                sorted_strings, strings, LENGTH, 8, 12);
+        print_string_arrays_side_by_side(sorted_strings, strings, LENGTH, 8, 12);
     }
 
     return 0;

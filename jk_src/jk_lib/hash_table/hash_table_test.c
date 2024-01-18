@@ -1,5 +1,6 @@
-#include "hash_table.h"
 #include <assert.h>
+
+#include <jk_src/jk_lib/hash_table/hash_table.c>
 
 #define SMALL_CAPACITY 4
 #define SMALL_CAPACITY_LIMIT (SMALL_CAPACITY * JK_HASH_TABLE_LOAD_FACTOR / 10)
@@ -19,15 +20,15 @@ static void basic(void)
     jk_hash_table_put(t, 6, 12);
     jk_hash_table_put(t, 12, 24);
 
-    assert(value = jk_hash_table_get(t, 50));
+    assert((value = jk_hash_table_get(t, 50)) != NULL);
     assert(*value == 100);
-    assert(value = jk_hash_table_get(t, 1));
+    assert((value = jk_hash_table_get(t, 1)) != NULL);
     assert(*value == 2);
-    assert(value = jk_hash_table_get(t, 365796));
+    assert((value = jk_hash_table_get(t, 365796)) != NULL);
     assert(*value == 731592);
-    assert(value = jk_hash_table_get(t, 6));
+    assert((value = jk_hash_table_get(t, 6)) != NULL);
     assert(*value == 12);
-    assert(value = jk_hash_table_get(t, 12));
+    assert((value = jk_hash_table_get(t, 12)) != NULL);
     assert(*value == 24);
 
     assert(jk_hash_table_remove(t, 365796));
@@ -40,24 +41,24 @@ static void basic(void)
     assert(!jk_hash_table_get(t, 365796));
     assert(!jk_hash_table_get(t, 6));
 
-    assert(value = jk_hash_table_get(t, 1));
+    assert((value = jk_hash_table_get(t, 1)) != NULL);
     assert(*value == 2);
-    assert(value = jk_hash_table_get(t, 12));
+    assert((value = jk_hash_table_get(t, 12)) != NULL);
     assert(*value == 24);
 
     jk_hash_table_put(t, 6, 123);
-    assert(value = jk_hash_table_get(t, 6));
+    assert((value = jk_hash_table_get(t, 6)) != NULL);
     assert(*value == 123);
 
     value = jk_hash_table_get_with_default(t, 9, 11);
     *value += 11;
-    assert(value = jk_hash_table_get(t, 9));
+    assert((value = jk_hash_table_get(t, 9)) != NULL);
     assert(*value == 22);
 
     assert(jk_hash_table_remove(t, 9));
     value = jk_hash_table_get_with_default(t, 9, 44);
     *value += 44;
-    assert(value = jk_hash_table_get(t, 9));
+    assert((value = jk_hash_table_get(t, 9)) != NULL);
     assert(*value == 88);
 
     jk_hash_table_destroy(t);
@@ -75,7 +76,7 @@ static void resize(void)
     }
 
     for (int i = 0; i < 1000; i++) {
-        assert(value = jk_hash_table_get(t, i));
+        assert((value = jk_hash_table_get(t, i)) != NULL);
         assert(*value == (uint32_t)i);
     }
 
@@ -119,7 +120,7 @@ static void tombstone_cleanup(void)
     }
 
     assert(t->capacity == MEDIUM_CAPACITY);
-    assert(value = jk_hash_table_get(t, 0));
+    assert((value = jk_hash_table_get(t, 0)) != NULL);
     assert(*value == 123);
 
     jk_hash_table_destroy(t);

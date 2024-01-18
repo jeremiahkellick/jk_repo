@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "file_get_word_count.h"
+#include <jk_src/learning_c/word_count/file_get_word_count.c>
 
 #define TMP_FILE_NAME "tmp_file_get_word_count_test.txt"
 #define EXPECTED_COUNT 69

@@ -1,7 +1,8 @@
-#include "hash_table.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#include <jk_src/jk_lib/hash_table/hash_table.c>
 
 #define CAPACITY (1 << 26)
 #define NUM_ELEMENTS (CAPACITY * JK_HASH_TABLE_LOAD_FACTOR / 10)

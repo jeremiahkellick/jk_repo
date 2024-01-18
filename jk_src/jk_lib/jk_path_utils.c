@@ -4,7 +4,7 @@
 
 #include "jk_path_utils.h"
 
-void delete_first(char *path)
+static void jk_path_delete_first(char *path)
 {
     int length = (int)strlen(path);
     int i;
@@ -16,7 +16,7 @@ void delete_first(char *path)
     memcpy(path, path + i + 1, length - i);
 }
 
-bool is_last_up_dir(char *path)
+static bool jk_path_is_last_up_dir(char *path)
 {
     size_t length = strlen(path);
     return length >= 2 && path[length - 2] == '.' && path[length - 1] == '.';
@@ -66,7 +66,7 @@ int jk_combine_paths(char *path, char *relative_to, char *buffer, size_t size)
     size_t cursor = segment_start;
 
     if (size < path_length + relative_to_length + 2) {
-        return ERROR_BUFFER_TOO_SMALL;
+        return JK_COMBINE_PATHS_ERROR_BUFFER_TOO_SMALL;
     }
 
     memcpy(buffer, relative_to, relative_to_length + 1);
@@ -74,8 +74,8 @@ int jk_combine_paths(char *path, char *relative_to, char *buffer, size_t size)
     for (size_t i = 0; i <= path_length; i++) {
         if (path[i] == '/' || i == path_length) {
             buffer[cursor] = '\0';
-            if (is_last_up_dir(buffer + segment_start) && buffer[0] != '\0' &&
-                    !is_last_up_dir(buffer)) {
+            if (jk_path_is_last_up_dir(buffer + segment_start) && buffer[0] != '\0'
+                    && !jk_path_is_last_up_dir(buffer)) {
                 jk_delete_last(buffer);
                 cursor = strlen(buffer) + 1;
             } else {

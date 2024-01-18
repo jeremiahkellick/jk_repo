@@ -1,9 +1,9 @@
+#ifndef JK_HASH_TABLE_H
+#define JK_HASH_TABLE_H
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-#ifndef _JK_HASH_TABLE_H_
-#define _JK_HASH_TABLE_H_
 
 // Hash table load factor expressed in tenths (e.g. 7 is 7/10 or 70%)
 #define JK_HASH_TABLE_LOAD_FACTOR 7
