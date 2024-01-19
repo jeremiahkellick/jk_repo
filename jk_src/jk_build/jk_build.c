@@ -473,11 +473,19 @@ int main(int argc, char **argv)
     // MSVC compiler options
     array_append(&command, "cl");
     array_append(&command, "/W4");
+    array_append(&command, "/nologo");
+    array_append(&command, "/Gm-");
+    array_append(&command, "/GR-");
     array_append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
     array_append(&command, "/Zi");
     array_append(&command, "/std:c++20");
-    array_append(&command, "/EHsc");
-    array_append(&command, "/Od");
+    array_append(&command, "/EHa-");
+    if (optimize) {
+        array_append(&command, "/O2");
+        array_append(&command, "/GL");
+    } else {
+        array_append(&command, "/Od");
+    }
     array_append(&command, "/I", root_path);
 #else
     // GCC compiler options
@@ -500,11 +508,18 @@ int main(int argc, char **argv)
         array_append(&command, "-Og");
     }
     array_append(&command, "-I", root_path);
+
     // GCC linker options
     array_append(&command, "-lm");
 #endif
 
     array_concat(&command, source_file_paths.count, source_file_paths.items);
+
+#ifdef _WIN32
+    // MSVC linker options
+    array_append(&command, "/link");
+    array_append(&command, "/INCREMENTAL:NO");
+#endif
 
     return command_run(&command);
 }
