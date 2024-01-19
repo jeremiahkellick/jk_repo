@@ -93,6 +93,9 @@ Unlike invoking a compiler directly, with `jk_build` you only ever need to pass 
 
 ### Configuring jk_build
 
+`jk_build` supports one flag, `-O`, to enable optimizations. Other changes to compilation options
+should be accomplished by editing the jk_build source and rebuilding.
+
 If you'd like to use a different compiler or change the compilation options, edit the main function
 at the bottom of `jk_src/jk_build/jk_build.c`. It simply builds up a list of command line arguments,
 so if you know how you'd run the compiler from the command line, it should be straightfoward to

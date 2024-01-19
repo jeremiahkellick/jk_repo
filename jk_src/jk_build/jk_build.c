@@ -166,18 +166,11 @@ static void path_to_forward_slashes(char *path)
     }
 }
 
-/** Populates globals program_name, source_file_path, basename, root_path, and build_path */
-static void populate_globals(int argc, char **argv)
+/** Populates globals source_file_path, basename, root_path, and build_path */
+static void populate_paths(char *source_file_arg)
 {
-    program_name = argv[0];
-
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s [program main source file]\n", program_name);
-        exit(1);
-    }
-
     // Get absolute path of the source file
-    char *realpath_result = realpath(argv[1], source_file_path);
+    char *realpath_result = realpath(source_file_arg, source_file_path);
     if (realpath_result == NULL) {
         fprintf(stderr, "%s: Invalid source file path\n", program_name);
         exit(1);
@@ -431,9 +424,42 @@ void find_dependencies(StringArray *source_file_paths)
 
 #undef MATCH
 
+void usage_error(void)
+{
+    fprintf(stderr, "Usage: %s [-O] main_source_file\n", program_name);
+    exit(1);
+}
+
 int main(int argc, char **argv)
 {
-    populate_globals(argc, argv);
+    program_name = argv[0];
+
+    if (argc < 2 || argc > 3) {
+        usage_error();
+    }
+
+    bool optimize = false;
+    char *source_file_arg = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] == 'O') {
+            if (optimize) {
+                usage_error();
+            }
+            optimize = true;
+        } else {
+            if (source_file_arg) {
+                usage_error();
+            }
+            source_file_arg = argv[i];
+        }
+    }
+
+    if (source_file_arg == NULL) {
+        usage_error();
+    }
+
+    populate_paths(source_file_arg);
 
     chdir(build_path);
 
@@ -466,7 +492,13 @@ int main(int argc, char **argv)
     array_append(&command, "-fstack-protector");
     array_append(&command, "-Werror=vla");
     array_append(&command, "-Wno-pointer-arith");
-    array_append(&command, "-Og");
+    if (optimize) {
+        array_append(&command, "-O3");
+        array_append(&command, "-flto");
+        array_append(&command, "-fuse-linker-plugin");
+    } else {
+        array_append(&command, "-Og");
+    }
     array_append(&command, "-I", root_path);
     // GCC linker options
     array_append(&command, "-lm");
