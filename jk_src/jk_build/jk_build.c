@@ -451,7 +451,7 @@ int main(int argc, char **argv)
     array_append(&command, "/Zi");
     array_append(&command, "/std:c++20");
     array_append(&command, "/EHsc");
-    array_append(&command, "/O2");
+    array_append(&command, "/Od");
     array_append(&command, "/I", root_path);
 #else
     // GCC compiler options
@@ -466,6 +466,7 @@ int main(int argc, char **argv)
     array_append(&command, "-fstack-protector");
     array_append(&command, "-Werror=vla");
     array_append(&command, "-Wno-pointer-arith");
+    array_append(&command, "-Og");
     array_append(&command, "-I", root_path);
     // GCC linker options
     array_append(&command, "-lm");
