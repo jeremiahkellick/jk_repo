@@ -6,6 +6,7 @@ AlignOperands: DontAlign
 AllowShortFunctionsOnASingleLine: Empty
 BinPackArguments: false
 BinPackParameters: false
+BracedInitializerIndentWidth: 4
 BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeBraces: Linux
 ColumnLimit: 100

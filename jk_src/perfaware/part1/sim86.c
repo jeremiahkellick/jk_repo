@@ -36,74 +36,163 @@
 #define MOD_MEMORY_16_BIT_DISP 0x2
 #define MOD_REGISTER 0x3
 
-char *program_name = NULL;
+static char *program_name = NULL;
 
-// Usage: register_names[reg][w]
-char *register_names[8][2] = {
-        {"al", "ax"},
-        {"cl", "cx"},
-        {"dl", "dx"},
-        {"bl", "bx"},
-        {"ah", "sp"},
-        {"ch", "bp"},
-        {"dh", "si"},
-        {"bh", "di"},
+#define REG_VALUE_COUNT 8
+
+// clang-format off
+typedef enum Reg {
+    REG_NONE = -1,
+
+//  wide == 0   wide == 1
+    REG_AL = 0, REG_AX = 0,
+    REG_CL = 1, REG_CX = 1,
+    REG_DL = 2, REG_DX = 2,
+    REG_BL = 3, REG_BX = 3,
+    REG_AH = 4, REG_SP = 4,
+    REG_CH = 5, REG_BP = 5,
+    REG_DH = 6, REG_SI = 6,
+    REG_BH = 7, REG_DI = 7,
+} Reg;
+// clang-format on
+
+static uint8_t register_file[16] = {0};
+
+// Usage: reg_w_to_register_file_index[reg][w]
+static uint8_t reg_w_to_register_file_index[REG_VALUE_COUNT][2] = {
+    {0x0, 0x0}, // al, ax
+    {0x2, 0x2}, // cl, cx
+    {0x4, 0x4}, // dl, dx
+    {0x6, 0x6}, // bl, bx
+    {0x1, 0x8}, // ah, sp
+    {0x3, 0xa}, // ch, bp
+    {0x5, 0xc}, // dh, si
+    {0x7, 0xe}, // bh, di
 };
 
-char *effective_address_base[8] = {
-        "bx + si",
-        "bx + di",
-        "bp + si",
-        "bp + di",
-        "si",
-        "di",
-        "bp",
-        "bx",
+// Usage: reg_w_to_string[reg][w]
+static char *reg_w_to_string[REG_VALUE_COUNT][2] = {
+    {"al", "ax"},
+    {"cl", "cx"},
+    {"dl", "dx"},
+    {"bl", "bx"},
+    {"ah", "sp"},
+    {"ch", "bp"},
+    {"dh", "si"},
+    {"bh", "di"},
 };
 
-char *octal_code_names[8] = {
-        "add",
-        "not_supported",
-        "not_supported",
-        "not_supported",
-        "not_supported",
-        "sub",
-        "not_supported",
-        "cmp",
+#define RM_VALUE_COUNT 8
+#define OPERAND_MEMORY_REG_COUNT 2
+
+// Usage: rm_to_memory_operand_regs[rm][register_index]
+static Reg rm_to_memory_operand_regs[RM_VALUE_COUNT][OPERAND_MEMORY_REG_COUNT] = {
+    {REG_BX, REG_SI},
+    {REG_BX, REG_DI},
+    {REG_BP, REG_SI},
+    {REG_BP, REG_DI},
+    {REG_SI, REG_NONE},
+    {REG_DI, REG_NONE},
+    {REG_BP, REG_NONE},
+    {REG_BX, REG_NONE},
 };
 
-char *conditional_jump_names[16] = {
-        "jo",
-        "jno",
-        "jb",
-        "jae",
-        "je",
-        "jne",
-        "jbe",
-        "ja",
-        "js",
-        "jns",
-        "jpe",
-        "jpo",
-        "jl",
-        "jge",
-        "jle",
-        "jg",
+typedef enum InstructionType {
+    INST_NONE,
+    INST_MOV,
+    INST_ADD,
+    INST_SUB,
+    INST_CMP,
+    INST_CONDITIONAL_JUMP,
+    INST_LOOP,
+    INST_TYPE_COUNT,
+} InstructionType;
+
+static InstructionType octal_code_instruction_types[8] = {
+    INST_ADD,
+    INST_NONE,
+    INST_NONE,
+    INST_NONE,
+    INST_NONE,
+    INST_SUB,
+    INST_NONE,
+    INST_CMP,
 };
 
-char *loop_names[4] = {
-        "loopne",
-        "loope",
-        "loop",
-        "jcxz",
+static char *instruction_type_names[INST_TYPE_COUNT] = {
+    "UNKNOWN",
+    "mov",
+    "add",
+    "sub",
+    "cmp",
+    "UNPRINTABLE",
+    "UNPRINTABLE",
 };
+
+static char *conditional_jump_names[16] = {
+    "jo",
+    "jno",
+    "jb",
+    "jae",
+    "je",
+    "jne",
+    "jbe",
+    "ja",
+    "js",
+    "jns",
+    "jpe",
+    "jpo",
+    "jl",
+    "jge",
+    "jle",
+    "jg",
+};
+
+static char *loop_names[4] = {
+    "loopne",
+    "loope",
+    "loop",
+    "jcxz",
+};
+
+typedef struct OperandMemory {
+    int16_t disp;
+    Reg regs[OPERAND_MEMORY_REG_COUNT];
+} OperandMemory;
+
+typedef enum OperandType {
+    OPERAND_REG,
+    OPERAND_MEMORY,
+    OPERAND_IMMEDIATE,
+} OperandType;
+
+typedef struct Operand {
+    OperandType type;
+    union {
+        Reg reg;
+        OperandMemory memory;
+        int16_t immediate;
+    };
+} Operand;
+
+#define OPERAND_COUNT 2
+#define DEST 0
+#define SRC 1
+
+typedef struct Instruction {
+    Operand operands[OPERAND_COUNT];
+    InstructionType type;
+    uint8_t subtype;
+    int8_t jump_offset;
+    bool wide;
+} Instruction;
 
 /**
  * Read n bytes from file and write them to dest. If the file ends before we can read n bytes, print
  * an error informing the user that their file ended in the middle of an instruction and exit the
  * program with code 1.
  */
-void read_instruction_bytes(FILE *file, int n, uint8_t *dest)
+static void read_instruction_bytes(FILE *file, int n, uint8_t *dest)
 {
     if (fread(dest, 1, n, file) != n) {
         fprintf(stderr, "%s: File ended in the middle of an instruction\n", program_name);
@@ -111,117 +200,218 @@ void read_instruction_bytes(FILE *file, int n, uint8_t *dest)
     }
 }
 
-#define RM_STRING_BUF_SIZE 32
+/**
+ * Read an int16_t value from the given file. If read_both_bytes is true, read two bytes and return
+ * them directly. Otherwise, only read one byte and sign-extend it to two.
+ */
+static int16_t read_int16(FILE *file, bool read_both_bytes)
+{
+    if (read_both_bytes) {
+        int16_t data_full;
+        read_instruction_bytes(file, 2, (uint8_t *)&data_full);
+        return data_full;
+    } else {
+        int8_t data_low;
+        read_instruction_bytes(file, 1, (uint8_t *)&data_low);
+        return (int16_t)data_low;
+    }
+}
 
-typedef struct RmByteInfo {
-    uint8_t mod;
-    uint8_t x;
-    uint8_t rm;
-    uint16_t disp;
-    char rm_string[RM_STRING_BUF_SIZE];
-} RmByteInfo;
+/**
+ * Read 2 bytes from the file. Interpret them as a direct address, writing it to the given operand.
+ */
+static void read_direct_address(FILE *file, Operand *operand)
+{
+    operand->type = OPERAND_MEMORY;
+    operand->memory.regs[0] = REG_NONE;
+    operand->memory.regs[1] = REG_NONE;
+    read_instruction_bytes(file, 2, (uint8_t *)&operand->memory.disp);
+}
 
 /**
  * Read a byte following the "mod x r/m" pattern. Also read the displacement bytes if any. Write
- * those values to the info struct, plus a disassembled string in info->rm_string.
+ * those values to the given operand struct.
  *
- * x is an octal value, the middle 3 bits of the byte. What it means depends on the calling context.
+ * @param file the file to read the byte from
+ * @return The middle 3 bits of the byte. What they mean depends on the calling context.
  */
-void read_rm_byte(FILE *file, bool w, RmByteInfo *info)
+static uint8_t decode_rm_byte(FILE *file, Operand *operand)
 {
     uint8_t byte;
     read_instruction_bytes(file, 1, &byte);
-    info->mod = byte >> 6;
-    info->x = (byte >> 3) & 0x7;
-    info->rm = byte & 0x7;
-    if (info->rm == 0x6 && info->mod == MOD_MEMORY_NO_DISP) { // Direct address
-        uint16_t disp;
-        read_instruction_bytes(file, 2, (uint8_t *)&disp);
-        sprintf(info->rm_string, "[%hu]", disp);
-    } else if (info->mod == MOD_REGISTER) {
-        strncpy(info->rm_string, register_names[info->rm][w], RM_STRING_BUF_SIZE);
+    uint8_t mod = byte >> 6;
+    uint8_t rm = byte & 0x7;
+    if (rm == 0x6 && mod == MOD_MEMORY_NO_DISP) { // Direct address
+        read_direct_address(file, operand);
+    } else if (mod == MOD_REGISTER) {
+        operand->type = OPERAND_REG;
+        operand->reg = rm;
     } else {
-        int rm_string_index = 0;
-        rm_string_index +=
-                sprintf(&info->rm_string[rm_string_index], "[%s", effective_address_base[info->rm]);
-        if (info->mod == MOD_MEMORY_8_BIT_DISP) {
-            uint8_t disp;
-            read_instruction_bytes(file, 1, &disp);
-            if (disp != 0) {
-                rm_string_index += sprintf(&info->rm_string[rm_string_index], " + %hhd", disp);
-            }
+        operand->type = OPERAND_MEMORY;
+        for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
+            operand->memory.regs[i] = rm_to_memory_operand_regs[rm][i];
         }
-        if (info->mod == MOD_MEMORY_16_BIT_DISP) {
-            uint16_t disp;
-            read_instruction_bytes(file, 2, (uint8_t *)&disp);
-            if (disp != 0) {
-                rm_string_index += sprintf(&info->rm_string[rm_string_index], " + %hd", disp);
-            }
+        if (mod == MOD_MEMORY_8_BIT_DISP || mod == MOD_MEMORY_16_BIT_DISP) {
+            operand->memory.disp = read_int16(file, mod == MOD_MEMORY_16_BIT_DISP);
         }
-        rm_string_index += sprintf(&info->rm_string[rm_string_index], "]");
     }
+    return (byte >> 3) & 0x7;
+}
+
+static void decode_reg_rm(FILE *file, uint8_t byte, Instruction *inst)
+{
+    inst->wide = byte & 0x1;
+    int rm_operand = (byte >> 1) & 0x1;
+    int reg_operand = !rm_operand;
+    uint8_t reg = decode_rm_byte(file, &inst->operands[rm_operand]);
+    inst->operands[reg_operand].type = OPERAND_REG;
+    inst->operands[reg_operand].reg = reg;
 }
 
 /**
- * Read bytes for an immediate value and write the value to a string, formatted as a signed integer
+ * Decode rm byte (with optional displacement) followed by an immediate
  *
- * @param immediate_string Buffer to write the result to. Must be large enough for any signed
- *     integer of the size indicated by is_16_bit.
- * @param is_16_bit true if the immediate is a 16 bit values, false if it's 8 bit
+ * @return The middle 3 bits of the rm byte. What they mean depends on the calling context.
  */
-void read_immediate(FILE *file, bool is_16_bit, char *immediate_string)
+static uint8_t decode_immediate_rm(FILE *file, uint8_t byte, bool sign_extend, Instruction *inst)
 {
-    if (is_16_bit) {
-        uint16_t data;
-        read_instruction_bytes(file, 2, (uint8_t *)&data);
-        sprintf(immediate_string, "%hd", data);
-    } else {
-        uint8_t data;
-        read_instruction_bytes(file, 1, &data);
-        sprintf(immediate_string, "%hhd", data);
+    inst->wide = byte & 0x1;
+    uint8_t middle_bits = decode_rm_byte(file, &inst->operands[DEST]);
+    inst->operands[SRC].type = OPERAND_IMMEDIATE;
+    inst->operands[SRC].immediate = read_int16(file, !sign_extend && inst->wide);
+    return middle_bits;
+}
+
+static bool decode_instruction(FILE *file, Instruction *inst)
+{
+    memset(inst, 0, sizeof(*inst));
+
+    uint8_t byte;
+    if (fread(&byte, 1, 1, file) != 1) {
+        return false;
     }
+
+    if ((byte & OPCODE_MOV_REG_RM_MASK) == OPCODE_MOV_REG_RM) {
+        inst->type = INST_MOV;
+        decode_reg_rm(file, byte, inst);
+    } else if ((byte & OPCODE_MOV_IMMEDIATE_RM_MASK) == OPCODE_MOV_IMMEDIATE_RM) {
+        inst->type = INST_MOV;
+        decode_immediate_rm(file, byte, false, inst);
+    } else if ((byte & OPCODE_MOV_IMMEDIATE_REG_MASK) == OPCODE_MOV_IMMEDIATE_REG) {
+        inst->type = INST_MOV;
+        inst->wide = (byte >> 3) & 0x1;
+        inst->operands[DEST].type = OPERAND_REG;
+        inst->operands[DEST].reg = byte & 0x7;
+        inst->operands[SRC].type = OPERAND_IMMEDIATE;
+        inst->operands[SRC].immediate = read_int16(file, inst->wide);
+    } else if ((byte & OPCODE_MOV_MEMORY_ACCUMULATOR_MASK) == OPCODE_MOV_MEMORY_ACCUMULATOR) {
+        inst->type = INST_MOV;
+        inst->wide = byte & 0x1;
+        int accumulator_operand = (byte >> 1) & 0x1;
+        int memory_operand = !accumulator_operand;
+
+        inst->operands[accumulator_operand].type = OPERAND_REG;
+        inst->operands[accumulator_operand].reg = REG_AX;
+
+        read_direct_address(file, &inst->operands[memory_operand]);
+    } else if ((byte & OPCODE_OCTAL_REG_RM_MASK) == OPCODE_OCTAL_REG_RM) {
+        inst->type = octal_code_instruction_types[(byte >> 3) & 0x7];
+        decode_reg_rm(file, byte, inst);
+    } else if ((byte & OPCODE_OCTAL_IMMEDIATE_RM_MASK) == OPCODE_OCTAL_IMMEDIATE_RM) {
+        uint8_t octal_code = decode_immediate_rm(file, byte, (byte >> 1) & 0x1, inst);
+        inst->type = octal_code_instruction_types[octal_code];
+    } else if ((byte & OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR_MASK)
+            == OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR) {
+        inst->type = octal_code_instruction_types[(byte >> 3) & 0x7];
+        inst->wide = byte & 0x1;
+        inst->operands[SRC].type = OPERAND_IMMEDIATE;
+        inst->operands[SRC].immediate = read_int16(file, inst->wide);
+    } else if ((byte & OPCODE_CONDITIONAL_JUMP_MASK) == OPCODE_CONDITIONAL_JUMP) {
+        inst->type = INST_CONDITIONAL_JUMP;
+        inst->subtype = byte & 0xf;
+        read_instruction_bytes(file, 1, (uint8_t *)&inst->jump_offset);
+    } else if ((byte & OPCODE_LOOP_MASK) == OPCODE_LOOP) {
+        inst->type = INST_LOOP;
+        inst->subtype = byte & 0x3;
+        read_instruction_bytes(file, 1, (uint8_t *)&inst->jump_offset);
+    } else {
+        fprintf(stderr, "%s: Unknown byte pattern '0x%x'\n", program_name, byte);
+        exit(1);
+    }
+
+    return true;
 }
 
-void disassemble_reg_rm(FILE *file, uint8_t byte, char *name)
+static void print_instruction(Instruction *inst)
 {
-    bool d = (byte >> 1) & 0x1;
-    bool w = byte & 0x1;
-    RmByteInfo rm_byte_info;
-    read_rm_byte(file, w, &rm_byte_info);
-    char *reg_name = register_names[rm_byte_info.x][w];
-    printf("%s %s, %s\n",
-            name,
-            d ? reg_name : rm_byte_info.rm_string,
-            d ? rm_byte_info.rm_string : reg_name);
-}
+    switch (inst->type) {
+    case INST_CONDITIONAL_JUMP:
+    case INST_LOOP: {
+        char **names = inst->type == INST_CONDITIONAL_JUMP ? conditional_jump_names : loop_names;
+        printf("%s ", names[inst->subtype]);
+        printf("$%+hhd\n", inst->jump_offset + 2);
+    } break;
+    default:
+        // Print mnemonic
+        printf("%s ", instruction_type_names[inst->type]);
 
-void disassemble_immediate_rm(FILE *file, uint8_t byte, char *name_override, bool force_8_bit)
-{
-    bool w = byte & 0x1;
-    char *w_string = w ? "word " : "byte ";
-    RmByteInfo rm_byte_info;
-    read_rm_byte(file, w, &rm_byte_info);
-    char *name = name_override ? name_override : octal_code_names[rm_byte_info.x];
-    char immediate_string[8];
-    read_immediate(file, !force_8_bit && w, immediate_string);
-    printf("%s %s%s, %s\n",
-            name,
-            rm_byte_info.mod != MOD_REGISTER ? w_string : "",
-            rm_byte_info.rm_string,
-            immediate_string);
+        // Print a data size specifier if it would otherwise be ambiguous,
+        if (inst->operands[0].type != OPERAND_REG && inst->operands[1].type != OPERAND_REG) {
+            printf(inst->wide ? "word " : "byte ");
+        }
+
+        // Print the operands
+        for (int operand_index = 0; operand_index < OPERAND_COUNT; operand_index++) {
+            if (operand_index != 0) {
+                printf(", ");
+            }
+            Operand *const op = &inst->operands[operand_index];
+            switch (op->type) {
+            case OPERAND_REG:
+                printf("%s", reg_w_to_string[op->reg][inst->wide]);
+                break;
+            case OPERAND_MEMORY: {
+                printf("[");
+                int num_regs = 0;
+                for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
+                    if (op->memory.regs[i] != REG_NONE) {
+                        num_regs++;
+                        if (num_regs == 2) {
+                            printf(" + ");
+                        }
+                        printf("%s", reg_w_to_string[op->memory.regs[i]][true]);
+                    }
+                }
+                if (op->memory.disp != 0) {
+                    if (num_regs > 0) {
+                        printf(" + %hd", op->memory.disp);
+                    } else {
+                        printf("%hu", op->memory.disp);
+                    }
+                }
+                printf("]");
+            } break;
+            case OPERAND_IMMEDIATE:
+                printf("%hd", op->immediate);
+                break;
+            }
+        }
+        printf("\n");
+        break;
+    }
 }
 
 int main(int argc, char **argv)
 {
+    program_name = argv[0];
+
     if (argc != 2) {
         fprintf(stderr,
                 "%s: Incorrect number of arguments, usage: %s FILE_TO_DECODE\n",
                 program_name,
-                argv[1]);
+                program_name);
         exit(1);
     }
-
-    program_name = argv[0];
 
     FILE *file = fopen(argv[1], "r");
     if (file == NULL) {
@@ -231,52 +421,9 @@ int main(int argc, char **argv)
 
     printf("; %s disassembly:\nbits 16\n", argv[1]);
 
-    char immediate_string[8];
-
-    uint8_t byte;
-    while (fread(&byte, 1, 1, file) == 1) {
-        if ((byte & OPCODE_MOV_REG_RM_MASK) == OPCODE_MOV_REG_RM) {
-            disassemble_reg_rm(file, byte, "mov");
-        } else if ((byte & OPCODE_MOV_IMMEDIATE_RM_MASK) == OPCODE_MOV_IMMEDIATE_RM) {
-            disassemble_immediate_rm(file, byte, "mov", false);
-        } else if ((byte & OPCODE_MOV_IMMEDIATE_REG_MASK) == OPCODE_MOV_IMMEDIATE_REG) {
-            bool w = (byte >> 3) & 0x1;
-            uint8_t reg = byte & 0x7;
-            read_immediate(file, w, immediate_string);
-            printf("mov %s, %s\n", register_names[reg][w], immediate_string);
-        } else if ((byte & OPCODE_MOV_MEMORY_ACCUMULATOR_MASK) == OPCODE_MOV_MEMORY_ACCUMULATOR) {
-            bool mem_is_dest = (byte >> 1) & 0x1;
-            bool w = byte & 0x1;
-            char *reg_name = w ? "ax" : "al";
-            read_immediate(file, w, immediate_string);
-            if (mem_is_dest) {
-                printf("mov [%s], %s\n", immediate_string, reg_name);
-            } else {
-                printf("mov %s, [%s]\n", reg_name, immediate_string);
-            }
-        } else if ((byte & OPCODE_OCTAL_REG_RM_MASK) == OPCODE_OCTAL_REG_RM) {
-            disassemble_reg_rm(file, byte, octal_code_names[(byte >> 3) & 0x7]);
-        } else if ((byte & OPCODE_OCTAL_IMMEDIATE_RM_MASK) == OPCODE_OCTAL_IMMEDIATE_RM) {
-            bool s = (byte >> 1) & 0x1;
-            disassemble_immediate_rm(file, byte, NULL, s);
-        } else if ((byte & OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR_MASK)
-                == OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR) {
-            bool w = byte & 0x1;
-            read_immediate(file, w, immediate_string);
-            printf("%s %s, %s\n",
-                    octal_code_names[(byte >> 3) & 0x7],
-                    w ? "ax" : "al",
-                    immediate_string);
-        } else if ((byte & OPCODE_CONDITIONAL_JUMP_MASK) == OPCODE_CONDITIONAL_JUMP) {
-            read_immediate(file, false, immediate_string);
-            printf("%s $+2+%s\n", conditional_jump_names[byte & 0xf], immediate_string);
-        } else if ((byte & OPCODE_LOOP_MASK) == OPCODE_LOOP) {
-            read_immediate(file, false, immediate_string);
-            printf("%s $+2+%s\n", loop_names[byte & 0x3], immediate_string);
-        } else {
-            fprintf(stderr, "%s: Unknown byte pattern '0x%x'\n", program_name, byte);
-            exit(1);
-        }
+    Instruction inst;
+    while (decode_instruction(file, &inst)) {
+        print_instruction(&inst);
     }
 
     fclose(file);

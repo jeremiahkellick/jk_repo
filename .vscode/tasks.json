@@ -12,6 +12,9 @@
             "presentation": {
                 "clear": true,
             },
+            "windows": {
+              "command": "${workspaceFolder}/bin/jk_msvc_shell.bat && ${workspaceFolder}/bin/jk_build ${file}"
+            }
         }
     ]
 }
