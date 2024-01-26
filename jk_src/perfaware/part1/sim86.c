@@ -401,27 +401,52 @@ static void print_instruction(Instruction *inst)
     }
 }
 
+void usage_error(void)
+{
+    fprintf(stderr, "Usage: %s [-d] binary_file\n", program_name);
+    exit(1);
+}
+
 int main(int argc, char **argv)
 {
     program_name = argv[0];
 
-    if (argc != 2) {
-        fprintf(stderr,
-                "%s: Incorrect number of arguments, usage: %s FILE_TO_DECODE\n",
-                program_name,
-                program_name);
-        exit(1);
+    if (argc < 2 || argc > 3) {
+        usage_error();
     }
 
-    FILE *file = fopen(argv[1], "r");
+    // Parse arguments
+    bool disassemble = false;
+    char *file_path = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] == 'd' && argv[i][2] == '\0') {
+            if (disassemble) {
+                usage_error();
+            }
+            disassemble = true;
+        } else {
+            if (file_path != NULL) {
+                usage_error();
+            }
+            file_path = argv[i];
+        }
+    }
+    if (file_path == NULL) {
+        usage_error();
+    }
+
+    FILE *file = fopen(file_path, "r");
     if (file == NULL) {
         perror(program_name);
         exit(1);
     }
 
-    printf("; %s disassembly:\nbits 16\n", argv[1]);
-
     Instruction inst;
+    if (disassemble) {
+        printf("; %s disassembly:\nbits 16\n", file_path);
+    } else {
+        printf("--- %s execution ---\n", file_path);
+    }
     while (decode_instruction(file, &inst)) {
         print_instruction(&inst);
     }
