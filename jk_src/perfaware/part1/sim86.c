@@ -73,6 +73,23 @@ static Reg register_print_order[REG_VALUE_COUNT] = {
 static uint8_t register_file[REGISTER_FILE_NUM_BYTES] = {0};
 static uint8_t prev_register_file[REGISTER_FILE_NUM_BYTES] = {0};
 
+typedef enum Flag {
+    FLAG_ZERO,
+    FLAG_SIGN,
+    FLAG_COUNT,
+} Flag;
+
+#define FLAG_ZERO_BIT (1 << FLAG_ZERO)
+#define FLAG_SIGN_BIT (1 << FLAG_SIGN)
+
+static char *flag_strings[FLAG_COUNT] = {
+    "Z",
+    "S",
+};
+
+static uint8_t flags = 0;
+static uint8_t prev_flags = 0;
+
 // Usage: reg_w_to_register_file_index[reg][w]
 static uint8_t reg_w_to_register_file_index[REG_VALUE_COUNT][2] = {
     {0x0, 0x0}, // al, ax
@@ -407,7 +424,7 @@ static void print_instruction(Instruction *inst)
                 printf("]");
             } break;
             case OPERAND_IMMEDIATE:
-                printf("%hd", op->immediate);
+                printf("%hu", op->immediate);
                 break;
             }
         }
@@ -415,7 +432,16 @@ static void print_instruction(Instruction *inst)
     }
 }
 
-void print_registers_diff(void)
+static void print_flags(uint8_t flags_value)
+{
+    for (int i = 0; i < FLAG_COUNT; i++) {
+        if ((flags_value >> i) & 0x1) {
+            printf("%s", flag_strings[i]);
+        }
+    }
+}
+
+static void print_diff(void)
 {
     for (int i = 0; i < REG_VALUE_COUNT; i++) {
         Reg reg = register_print_order[i];
@@ -426,53 +452,105 @@ void print_registers_diff(void)
             printf("%s:0x%hx->0x%hx ", reg_w_to_string[reg][true], prev, current);
         }
     }
+    if (prev_flags != flags) {
+        printf("flags:");
+        print_flags(prev_flags);
+        printf("->");
+        print_flags(flags);
+    }
 }
 
 void simulate_instruction(Instruction *inst)
 {
     memcpy(prev_register_file, register_file, sizeof(register_file));
+    prev_flags = flags;
+
+    void *dest_address = NULL;
+    int16_t value = 0;
 
     switch (inst->type) {
-    case INST_MOV: {
-        void *dest_address = NULL;
-        {
-            Operand *dest = &inst->operands[DEST];
-            switch (dest->type) {
-            case OPERAND_REG:
-                dest_address = &register_file[reg_w_to_register_file_index[dest->reg][inst->wide]];
-                break;
-            case OPERAND_MEMORY:
-                goto not_implemented;
-            case OPERAND_IMMEDIATE:
-                assert(0 && "Destination was an immediate");
-            default:
-                assert(0 && "Bad operand type");
-            }
+    case INST_MOV:
+    case INST_ADD:
+    case INST_SUB:
+    case INST_CMP: {
+        Operand *dest = &inst->operands[DEST];
+        switch (dest->type) {
+        case OPERAND_REG:
+            dest_address = &register_file[reg_w_to_register_file_index[dest->reg][inst->wide]];
+            break;
+        case OPERAND_MEMORY:
+            goto not_implemented;
+        case OPERAND_IMMEDIATE:
+            assert(0 && "Destination was an immediate");
+        default:
+            assert(0 && "Bad operand type");
         }
+        Operand *src = &inst->operands[SRC];
         void *src_address = NULL;
-        {
-            Operand *src = &inst->operands[SRC];
-            switch (src->type) {
-            case OPERAND_REG:
-                src_address = &register_file[reg_w_to_register_file_index[src->reg][inst->wide]];
-                break;
-            case OPERAND_MEMORY:
-                goto not_implemented;
-            case OPERAND_IMMEDIATE:
-                src_address = &src->immediate;
-                break;
-            default:
-                assert(0 && "Bad operand type");
-            }
+        switch (src->type) {
+        case OPERAND_REG:
+            src_address = &register_file[reg_w_to_register_file_index[src->reg][inst->wide]];
+            break;
+        case OPERAND_MEMORY:
+            goto not_implemented;
+        case OPERAND_IMMEDIATE:
+            src_address = &src->immediate;
+            break;
+        default:
+            assert(0 && "Bad operand type");
         }
-        assert(dest_address && src_address);
-        memcpy(dest_address, src_address, inst->wide ? 2 : 1);
+        assert(dest_address);
+        assert(src_address);
+        value = *(int16_t *)src_address;
     } break;
+    default:
+        break;
+    }
+
+    switch (inst->type) {
+    case INST_ADD:
+        value += *(int16_t *)dest_address;
+        break;
+    case INST_SUB:
+    case INST_CMP:
+        value = *(int16_t *)dest_address - value;
+        break;
+    default:
+        break;
+    }
+
+    switch (inst->type) {
+    case INST_ADD:
+    case INST_SUB:
+    case INST_CMP:
+        if (value == 0) {
+            flags |= FLAG_ZERO_BIT;
+        } else {
+            flags &= ~FLAG_ZERO_BIT;
+        }
+        if (value < 0) {
+            flags |= FLAG_SIGN_BIT;
+        } else {
+            flags &= ~FLAG_SIGN_BIT;
+        }
+        break;
+    default:
+        break;
+    }
+
+    switch (inst->type) {
+    case INST_MOV:
+    case INST_ADD:
+    case INST_SUB:
+        memcpy(dest_address, &value, inst->wide ? 2 : 1);
+        break;
+    case INST_CMP:
+        break;
     default:
         goto not_implemented;
     }
 
-    print_registers_diff();
+    print_diff();
 
     return;
 
@@ -541,9 +619,13 @@ int main(int argc, char **argv)
         for (int i = 0; i < REG_VALUE_COUNT; i++) {
             Reg reg = register_print_order[i];
             uint16_t value = *(uint16_t *)&register_file[reg_w_to_register_file_index[reg][true]];
-            printf("      %s: 0x%04hx (%hd)\n", reg_w_to_string[reg][true], value, value);
+            if (value != 0) {
+                printf("      %s: 0x%04hx (%hu)\n", reg_w_to_string[reg][true], value, value);
+            }
         }
-        printf("\n");
+        printf("   flags: ");
+        print_flags(flags);
+        printf("\n\n");
     }
 
     fclose(file);
