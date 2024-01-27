@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -56,7 +57,21 @@ typedef enum Reg {
 } Reg;
 // clang-format on
 
-static uint8_t register_file[16] = {0};
+static Reg register_print_order[REG_VALUE_COUNT] = {
+    REG_AX,
+    REG_BX,
+    REG_CX,
+    REG_DX,
+    REG_SP,
+    REG_BP,
+    REG_SI,
+    REG_DI,
+};
+
+#define REGISTER_FILE_NUM_BYTES 16
+
+static uint8_t register_file[REGISTER_FILE_NUM_BYTES] = {0};
+static uint8_t prev_register_file[REGISTER_FILE_NUM_BYTES] = {0};
 
 // Usage: reg_w_to_register_file_index[reg][w]
 static uint8_t reg_w_to_register_file_index[REG_VALUE_COUNT][2] = {
@@ -349,7 +364,7 @@ static void print_instruction(Instruction *inst)
     case INST_LOOP: {
         char **names = inst->type == INST_CONDITIONAL_JUMP ? conditional_jump_names : loop_names;
         printf("%s ", names[inst->subtype]);
-        printf("$%+hhd\n", inst->jump_offset + 2);
+        printf("$%+hhd", inst->jump_offset + 2);
     } break;
     default:
         // Print mnemonic
@@ -396,9 +411,75 @@ static void print_instruction(Instruction *inst)
                 break;
             }
         }
-        printf("\n");
         break;
     }
+}
+
+void print_registers_diff(void)
+{
+    for (int i = 0; i < REG_VALUE_COUNT; i++) {
+        Reg reg = register_print_order[i];
+        int register_file_index = reg_w_to_register_file_index[reg][true];
+        uint16_t prev = *(uint16_t *)&prev_register_file[register_file_index];
+        uint16_t current = *(uint16_t *)&register_file[register_file_index];
+        if (prev != current) {
+            printf("%s:0x%hx->0x%hx ", reg_w_to_string[reg][true], prev, current);
+        }
+    }
+}
+
+void simulate_instruction(Instruction *inst)
+{
+    memcpy(prev_register_file, register_file, sizeof(register_file));
+
+    switch (inst->type) {
+    case INST_MOV: {
+        void *dest_address = NULL;
+        {
+            Operand *dest = &inst->operands[DEST];
+            switch (dest->type) {
+            case OPERAND_REG:
+                dest_address = &register_file[reg_w_to_register_file_index[dest->reg][inst->wide]];
+                break;
+            case OPERAND_MEMORY:
+                goto not_implemented;
+            case OPERAND_IMMEDIATE:
+                assert(0 && "Destination was an immediate");
+            default:
+                assert(0 && "Bad operand type");
+            }
+        }
+        void *src_address = NULL;
+        {
+            Operand *src = &inst->operands[SRC];
+            switch (src->type) {
+            case OPERAND_REG:
+                src_address = &register_file[reg_w_to_register_file_index[src->reg][inst->wide]];
+                break;
+            case OPERAND_MEMORY:
+                goto not_implemented;
+            case OPERAND_IMMEDIATE:
+                src_address = &src->immediate;
+                break;
+            default:
+                assert(0 && "Bad operand type");
+            }
+        }
+        assert(dest_address && src_address);
+        memcpy(dest_address, src_address, inst->wide ? 2 : 1);
+    } break;
+    default:
+        goto not_implemented;
+    }
+
+    print_registers_diff();
+
+    return;
+
+not_implemented:
+    printf("\n");
+    fprintf(stderr, "%s: Instruction not implemented\n", program_name);
+    exit(1);
 }
 
 void usage_error(void)
@@ -449,6 +530,20 @@ int main(int argc, char **argv)
     }
     while (decode_instruction(file, &inst)) {
         print_instruction(&inst);
+        if (!disassemble) {
+            printf(" ; ");
+            simulate_instruction(&inst);
+        }
+        printf("\n");
+    }
+    if (!disassemble) {
+        printf("\nFinal registers:\n");
+        for (int i = 0; i < REG_VALUE_COUNT; i++) {
+            Reg reg = register_print_order[i];
+            uint16_t value = *(uint16_t *)&register_file[reg_w_to_register_file_index[reg][true]];
+            printf("      %s: 0x%04hx (%hd)\n", reg_w_to_string[reg][true], value, value);
+        }
+        printf("\n");
     }
 
     fclose(file);
