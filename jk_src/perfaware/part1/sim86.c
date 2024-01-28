@@ -130,35 +130,37 @@ static Reg rm_to_memory_operand_regs[RM_VALUE_COUNT][OPERAND_MEMORY_REG_COUNT] =
 };
 
 typedef enum InstructionType {
-    INST_NONE,
-    INST_MOV,
-    INST_ADD,
-    INST_SUB,
-    INST_CMP,
+    INST_BINOP,
     INST_CONDITIONAL_JUMP,
     INST_LOOP,
-    INST_TYPE_COUNT,
 } InstructionType;
 
-static InstructionType octal_code_instruction_types[8] = {
-    INST_ADD,
-    INST_NONE,
-    INST_NONE,
-    INST_NONE,
-    INST_NONE,
-    INST_SUB,
-    INST_NONE,
-    INST_CMP,
+typedef enum Binop {
+    BINOP_UNKNOWN,
+    BINOP_MOV,
+    BINOP_ADD,
+    BINOP_SUB,
+    BINOP_CMP,
+    BINOP_COUNT,
+} Binop;
+
+static Binop octal_code_to_binop[8] = {
+    BINOP_ADD,
+    BINOP_UNKNOWN,
+    BINOP_UNKNOWN,
+    BINOP_UNKNOWN,
+    BINOP_UNKNOWN,
+    BINOP_SUB,
+    BINOP_UNKNOWN,
+    BINOP_CMP,
 };
 
-static char *instruction_type_names[INST_TYPE_COUNT] = {
-    "UNKNOWN",
+static char *binop_names[BINOP_COUNT] = {
+    "unknown_binop",
     "mov",
     "add",
     "sub",
     "cmp",
-    "UNPRINTABLE",
-    "UNPRINTABLE",
 };
 
 static char *conditional_jump_names[16] = {
@@ -324,20 +326,24 @@ static bool decode_instruction(FILE *file, Instruction *inst)
     }
 
     if ((byte & OPCODE_MOV_REG_RM_MASK) == OPCODE_MOV_REG_RM) {
-        inst->type = INST_MOV;
+        inst->type = INST_BINOP;
+        inst->subtype = BINOP_MOV;
         decode_reg_rm(file, byte, inst);
     } else if ((byte & OPCODE_MOV_IMMEDIATE_RM_MASK) == OPCODE_MOV_IMMEDIATE_RM) {
-        inst->type = INST_MOV;
+        inst->type = INST_BINOP;
+        inst->subtype = BINOP_MOV;
         decode_immediate_rm(file, byte, false, inst);
     } else if ((byte & OPCODE_MOV_IMMEDIATE_REG_MASK) == OPCODE_MOV_IMMEDIATE_REG) {
-        inst->type = INST_MOV;
+        inst->type = INST_BINOP;
+        inst->subtype = BINOP_MOV;
         inst->wide = (byte >> 3) & 0x1;
         inst->operands[DEST].type = OPERAND_REG;
         inst->operands[DEST].reg = byte & 0x7;
         inst->operands[SRC].type = OPERAND_IMMEDIATE;
         inst->operands[SRC].immediate = read_int16(file, inst->wide);
     } else if ((byte & OPCODE_MOV_MEMORY_ACCUMULATOR_MASK) == OPCODE_MOV_MEMORY_ACCUMULATOR) {
-        inst->type = INST_MOV;
+        inst->type = INST_BINOP;
+        inst->subtype = BINOP_MOV;
         inst->wide = byte & 0x1;
         int accumulator_operand = (byte >> 1) & 0x1;
         int memory_operand = !accumulator_operand;
@@ -347,14 +353,17 @@ static bool decode_instruction(FILE *file, Instruction *inst)
 
         read_direct_address(file, &inst->operands[memory_operand]);
     } else if ((byte & OPCODE_OCTAL_REG_RM_MASK) == OPCODE_OCTAL_REG_RM) {
-        inst->type = octal_code_instruction_types[(byte >> 3) & 0x7];
+        inst->type = INST_BINOP;
+        inst->subtype = octal_code_to_binop[(byte >> 3) & 0x7];
         decode_reg_rm(file, byte, inst);
     } else if ((byte & OPCODE_OCTAL_IMMEDIATE_RM_MASK) == OPCODE_OCTAL_IMMEDIATE_RM) {
         uint8_t octal_code = decode_immediate_rm(file, byte, (byte >> 1) & 0x1, inst);
-        inst->type = octal_code_instruction_types[octal_code];
+        inst->type = INST_BINOP;
+        inst->subtype = octal_code_to_binop[octal_code];
     } else if ((byte & OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR_MASK)
             == OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR) {
-        inst->type = octal_code_instruction_types[(byte >> 3) & 0x7];
+        inst->type = INST_BINOP;
+        inst->subtype = octal_code_to_binop[(byte >> 3) & 0x7];
         inst->wide = byte & 0x1;
         inst->operands[SRC].type = OPERAND_IMMEDIATE;
         inst->operands[SRC].immediate = read_int16(file, inst->wide);
@@ -383,9 +392,9 @@ static void print_instruction(Instruction *inst)
         printf("%s ", names[inst->subtype]);
         printf("$%+hhd", inst->jump_offset + 2);
     } break;
-    default:
+    case INST_BINOP:
         // Print mnemonic
-        printf("%s ", instruction_type_names[inst->type]);
+        printf("%s ", binop_names[inst->subtype]);
 
         // Print a data size specifier if it would otherwise be ambiguous,
         if (inst->operands[0].type != OPERAND_REG && inst->operands[1].type != OPERAND_REG) {
@@ -429,6 +438,9 @@ static void print_instruction(Instruction *inst)
             }
         }
         break;
+    default:
+        fprintf(stderr, "%s: Unknown instruction\n", program_name);
+        exit(1);
     }
 }
 
@@ -465,87 +477,73 @@ void simulate_instruction(Instruction *inst)
     memcpy(prev_register_file, register_file, sizeof(register_file));
     prev_flags = flags;
 
-    void *dest_address = NULL;
-    int16_t value = 0;
-
     switch (inst->type) {
-    case INST_MOV:
-    case INST_ADD:
-    case INST_SUB:
-    case INST_CMP: {
-        Operand *dest = &inst->operands[DEST];
-        switch (dest->type) {
-        case OPERAND_REG:
-            dest_address = &register_file[reg_w_to_register_file_index[dest->reg][inst->wide]];
-            break;
-        case OPERAND_MEMORY:
-            goto not_implemented;
-        case OPERAND_IMMEDIATE:
-            assert(0 && "Destination was an immediate");
-        default:
-            assert(0 && "Bad operand type");
+    case INST_BINOP: {
+        // Get dest_address and set value to the value of the source operand
+        void *dest_address = NULL;
+        int16_t value = 0;
+        {
+            Operand *dest = &inst->operands[DEST];
+            switch (dest->type) {
+            case OPERAND_REG:
+                dest_address = &register_file[reg_w_to_register_file_index[dest->reg][inst->wide]];
+                break;
+            case OPERAND_MEMORY:
+                goto not_implemented;
+            case OPERAND_IMMEDIATE:
+                assert(0 && "Destination was an immediate");
+            }
+            Operand *src = &inst->operands[SRC];
+            void *src_address = NULL;
+            switch (src->type) {
+            case OPERAND_REG:
+                src_address = &register_file[reg_w_to_register_file_index[src->reg][inst->wide]];
+                break;
+            case OPERAND_MEMORY:
+                goto not_implemented;
+            case OPERAND_IMMEDIATE:
+                src_address = &src->immediate;
+                break;
+            }
+            assert(dest_address);
+            assert(src_address);
+            value = *(int16_t *)src_address;
         }
-        Operand *src = &inst->operands[SRC];
-        void *src_address = NULL;
-        switch (src->type) {
-        case OPERAND_REG:
-            src_address = &register_file[reg_w_to_register_file_index[src->reg][inst->wide]];
+
+        // Perform operation on value
+        switch (inst->subtype) {
+        case BINOP_MOV:
             break;
-        case OPERAND_MEMORY:
+        case BINOP_ADD:
+            value += *(int16_t *)dest_address;
+            break;
+        case BINOP_SUB:
+        case BINOP_CMP:
+            value = *(int16_t *)dest_address - value;
+            break;
+        case BINOP_UNKNOWN:
             goto not_implemented;
-        case OPERAND_IMMEDIATE:
-            src_address = &src->immediate;
-            break;
-        default:
-            assert(0 && "Bad operand type");
         }
-        assert(dest_address);
-        assert(src_address);
-        value = *(int16_t *)src_address;
+
+        // If not a mov, update flags based on value
+        if (inst->subtype != BINOP_MOV) {
+            if (value == 0) {
+                flags |= FLAG_ZERO_BIT;
+            } else {
+                flags &= ~FLAG_ZERO_BIT;
+            }
+            if (value < 0) {
+                flags |= FLAG_SIGN_BIT;
+            } else {
+                flags &= ~FLAG_SIGN_BIT;
+            }
+        }
+
+        // If not a cmp, write value to dest
+        if (inst->subtype != BINOP_CMP) {
+            memcpy(dest_address, &value, inst->wide ? 2 : 1);
+        }
     } break;
-    default:
-        break;
-    }
-
-    switch (inst->type) {
-    case INST_ADD:
-        value += *(int16_t *)dest_address;
-        break;
-    case INST_SUB:
-    case INST_CMP:
-        value = *(int16_t *)dest_address - value;
-        break;
-    default:
-        break;
-    }
-
-    switch (inst->type) {
-    case INST_ADD:
-    case INST_SUB:
-    case INST_CMP:
-        if (value == 0) {
-            flags |= FLAG_ZERO_BIT;
-        } else {
-            flags &= ~FLAG_ZERO_BIT;
-        }
-        if (value < 0) {
-            flags |= FLAG_SIGN_BIT;
-        } else {
-            flags &= ~FLAG_SIGN_BIT;
-        }
-        break;
-    default:
-        break;
-    }
-
-    switch (inst->type) {
-    case INST_MOV:
-    case INST_ADD:
-    case INST_SUB:
-        memcpy(dest_address, &value, inst->wide ? 2 : 1);
-        break;
-    case INST_CMP:
-        break;
     default:
         goto not_implemented;
     }
