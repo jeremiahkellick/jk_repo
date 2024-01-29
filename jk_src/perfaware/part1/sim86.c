@@ -470,9 +470,6 @@ static void print_instruction(Instruction *inst)
             }
         }
     } break;
-    default:
-        fprintf(stderr, "%s: Unknown instruction\n", program_name);
-        exit(1);
     }
 }
 
@@ -555,6 +552,9 @@ void simulate_instruction(Instruction *inst)
         case BINOP_CMP:
             value = *(int16_t *)dest_address - value;
             break;
+        case BINOP_UNKNOWN:
+        case BINOP_TYPE_COUNT:
+            assert(0 && "Invalid binop");
         }
 
         // If not a mov, update flags based on value
@@ -576,8 +576,9 @@ void simulate_instruction(Instruction *inst)
             memcpy(dest_address, &value, binop->wide ? 2 : 1);
         }
     } break;
-    default:
-        goto not_implemented;
+    case INST_JUMP:
+        fprintf(stderr, "%s: Not implemented\n", program_name);
+        exit(1);
     }
 
     print_diff();
