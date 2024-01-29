@@ -82,7 +82,7 @@ typedef enum Flag {
 #define FLAG_ZERO_BIT (1 << FLAG_ZERO)
 #define FLAG_SIGN_BIT (1 << FLAG_SIGN)
 
-static char *flag_strings[FLAG_COUNT] = {
+static char const *flag_strings[FLAG_COUNT] = {
     "Z",
     "S",
 };
@@ -103,7 +103,7 @@ static uint8_t reg_w_to_register_file_index[REG_VALUE_COUNT][2] = {
 };
 
 // Usage: reg_w_to_string[reg][w]
-static char *reg_w_to_string[REG_VALUE_COUNT][2] = {
+static char const *reg_w_to_string[REG_VALUE_COUNT][2] = {
     {"al", "ax"},
     {"cl", "cx"},
     {"dl", "dx"},
@@ -146,7 +146,7 @@ typedef struct Operand {
         Reg reg;
         OperandMemory memory;
         int16_t immediate;
-    };
+    } u;
 } Operand;
 
 typedef enum BinopType {
@@ -169,7 +169,7 @@ static BinopType octal_code_to_binop[8] = {
     BINOP_CMP,
 };
 
-static char *binop_names[BINOP_TYPE_COUNT] = {
+static char const *binop_names[BINOP_TYPE_COUNT] = {
     "unknown_binop",
     "mov",
     "add",
@@ -210,7 +210,7 @@ typedef enum JumpType {
     JUMP_TYPE_COUNT,
 } JumpType;
 
-static char *jump_names[JUMP_TYPE_COUNT] = {
+static char const *jump_names[JUMP_TYPE_COUNT] = {
     "jo",
     "jno",
     "jb",
@@ -248,7 +248,7 @@ typedef struct Instruction {
     union {
         Binop binop;
         Jump jump;
-    };
+    } u;
 } Instruction;
 
 /**
@@ -256,7 +256,7 @@ typedef struct Instruction {
  * an error informing the user that their file ended in the middle of an instruction and exit the
  * program with code 1.
  */
-static void read_instruction_bytes(FILE *file, int n, uint8_t *dest)
+static void read_instruction_bytes(FILE *file, size_t n, uint8_t *dest)
 {
     if (fread(dest, 1, n, file) != n) {
         fprintf(stderr, "%s: File ended in the middle of an instruction\n", program_name);
@@ -287,9 +287,9 @@ static int16_t read_int16(FILE *file, bool read_both_bytes)
 static void read_direct_address(FILE *file, Operand *operand)
 {
     operand->type = OPERAND_MEMORY;
-    operand->memory.regs[0] = REG_NONE;
-    operand->memory.regs[1] = REG_NONE;
-    read_instruction_bytes(file, 2, (uint8_t *)&operand->memory.disp);
+    operand->u.memory.regs[0] = REG_NONE;
+    operand->u.memory.regs[1] = REG_NONE;
+    read_instruction_bytes(file, 2, (uint8_t *)&operand->u.memory.disp);
 }
 
 /**
@@ -309,14 +309,14 @@ static uint8_t decode_rm_byte(FILE *file, Operand *operand)
         read_direct_address(file, operand);
     } else if (mod == MOD_REGISTER) {
         operand->type = OPERAND_REG;
-        operand->reg = rm;
+        operand->u.reg = (Reg)rm;
     } else {
         operand->type = OPERAND_MEMORY;
         for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
-            operand->memory.regs[i] = rm_to_memory_operand_regs[rm][i];
+            operand->u.memory.regs[i] = rm_to_memory_operand_regs[rm][i];
         }
         if (mod == MOD_MEMORY_8_BIT_DISP || mod == MOD_MEMORY_16_BIT_DISP) {
-            operand->memory.disp = read_int16(file, mod == MOD_MEMORY_16_BIT_DISP);
+            operand->u.memory.disp = read_int16(file, mod == MOD_MEMORY_16_BIT_DISP);
         }
     }
     return (byte >> 3) & 0x7;
@@ -329,7 +329,7 @@ static void decode_reg_rm(FILE *file, uint8_t byte, Binop *binop)
     int reg_operand = !rm_operand;
     uint8_t reg = decode_rm_byte(file, &binop->operands[rm_operand]);
     binop->operands[reg_operand].type = OPERAND_REG;
-    binop->operands[reg_operand].reg = reg;
+    binop->operands[reg_operand].u.reg = (Reg)reg;
 }
 
 /**
@@ -342,7 +342,7 @@ static uint8_t decode_immediate_rm(FILE *file, uint8_t byte, bool sign_extend, B
     binop->wide = byte & 0x1;
     uint8_t middle_bits = decode_rm_byte(file, &binop->operands[DEST]);
     binop->operands[SRC].type = OPERAND_IMMEDIATE;
-    binop->operands[SRC].immediate = read_int16(file, !sign_extend && binop->wide);
+    binop->operands[SRC].u.immediate = read_int16(file, !sign_extend && binop->wide);
     return middle_bits;
 }
 
@@ -357,57 +357,57 @@ static bool decode_instruction(FILE *file, Instruction *inst)
 
     if ((byte & OPCODE_MOV_REG_RM_MASK) == OPCODE_MOV_REG_RM) {
         inst->type = INST_BINOP;
-        inst->binop.type = BINOP_MOV;
-        decode_reg_rm(file, byte, &inst->binop);
+        inst->u.binop.type = BINOP_MOV;
+        decode_reg_rm(file, byte, &inst->u.binop);
     } else if ((byte & OPCODE_MOV_IMMEDIATE_RM_MASK) == OPCODE_MOV_IMMEDIATE_RM) {
         inst->type = INST_BINOP;
-        inst->binop.type = BINOP_MOV;
-        decode_immediate_rm(file, byte, false, &inst->binop);
+        inst->u.binop.type = BINOP_MOV;
+        decode_immediate_rm(file, byte, false, &inst->u.binop);
     } else if ((byte & OPCODE_MOV_IMMEDIATE_REG_MASK) == OPCODE_MOV_IMMEDIATE_REG) {
         inst->type = INST_BINOP;
-        Binop *binop = &inst->binop;
+        Binop *binop = &inst->u.binop;
         binop->type = BINOP_MOV;
         binop->wide = (byte >> 3) & 0x1;
         binop->operands[DEST].type = OPERAND_REG;
-        binop->operands[DEST].reg = byte & 0x7;
+        binop->operands[DEST].u.reg = (Reg)(byte & 0x7);
         binop->operands[SRC].type = OPERAND_IMMEDIATE;
-        binop->operands[SRC].immediate = read_int16(file, binop->wide);
+        binop->operands[SRC].u.immediate = read_int16(file, binop->wide);
     } else if ((byte & OPCODE_MOV_MEMORY_ACCUMULATOR_MASK) == OPCODE_MOV_MEMORY_ACCUMULATOR) {
         inst->type = INST_BINOP;
-        Binop *binop = &inst->binop;
+        Binop *binop = &inst->u.binop;
         binop->type = BINOP_MOV;
         binop->wide = byte & 0x1;
         int accumulator_operand = (byte >> 1) & 0x1;
         int memory_operand = !accumulator_operand;
 
         binop->operands[accumulator_operand].type = OPERAND_REG;
-        binop->operands[accumulator_operand].reg = REG_AX;
+        binop->operands[accumulator_operand].u.reg = REG_AX;
 
         read_direct_address(file, &binop->operands[memory_operand]);
     } else if ((byte & OPCODE_OCTAL_REG_RM_MASK) == OPCODE_OCTAL_REG_RM) {
         inst->type = INST_BINOP;
-        inst->binop.type = octal_code_to_binop[(byte >> 3) & 0x7];
-        decode_reg_rm(file, byte, &inst->binop);
+        inst->u.binop.type = octal_code_to_binop[(byte >> 3) & 0x7];
+        decode_reg_rm(file, byte, &inst->u.binop);
     } else if ((byte & OPCODE_OCTAL_IMMEDIATE_RM_MASK) == OPCODE_OCTAL_IMMEDIATE_RM) {
-        uint8_t octal_code = decode_immediate_rm(file, byte, (byte >> 1) & 0x1, &inst->binop);
+        uint8_t octal_code = decode_immediate_rm(file, byte, (byte >> 1) & 0x1, &inst->u.binop);
         inst->type = INST_BINOP;
-        inst->binop.type = octal_code_to_binop[octal_code];
+        inst->u.binop.type = octal_code_to_binop[octal_code];
     } else if ((byte & OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR_MASK)
             == OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR) {
         inst->type = INST_BINOP;
-        Binop *binop = &inst->binop;
+        Binop *binop = &inst->u.binop;
         binop->type = octal_code_to_binop[(byte >> 3) & 0x7];
         binop->wide = byte & 0x1;
         binop->operands[SRC].type = OPERAND_IMMEDIATE;
-        binop->operands[SRC].immediate = read_int16(file, binop->wide);
+        binop->operands[SRC].u.immediate = read_int16(file, binop->wide);
     } else if ((byte & OPCODE_CONDITIONAL_JUMP_MASK) == OPCODE_CONDITIONAL_JUMP) {
         inst->type = INST_JUMP;
-        inst->jump.type = byte & 0xf;
-        read_instruction_bytes(file, 1, (uint8_t *)&inst->jump.offset);
+        inst->u.jump.type = (JumpType)(byte & 0xf);
+        read_instruction_bytes(file, 1, (uint8_t *)&inst->u.jump.offset);
     } else if ((byte & OPCODE_LOOP_MASK) == OPCODE_LOOP) {
         inst->type = INST_JUMP;
-        inst->jump.type = (byte & 0x3) + 0x10;
-        read_instruction_bytes(file, 1, (uint8_t *)&inst->jump.offset);
+        inst->u.jump.type = (JumpType)((byte & 0x3) + 0x10);
+        read_instruction_bytes(file, 1, (uint8_t *)&inst->u.jump.offset);
     } else {
         fprintf(stderr, "%s: Unknown byte pattern '0x%x'\n", program_name, byte);
         exit(1);
@@ -420,11 +420,11 @@ static void print_instruction(Instruction *inst)
 {
     switch (inst->type) {
     case INST_JUMP: {
-        printf("%s ", jump_names[inst->jump.type]);
-        printf("$%+hhd", inst->jump.offset + 2);
+        printf("%s ", jump_names[inst->u.jump.type]);
+        printf("$%+hhd", inst->u.jump.offset + 2);
     } break;
     case INST_BINOP: {
-        Binop *binop = &inst->binop;
+        Binop *binop = &inst->u.binop;
         // Print mnemonic
         printf("%s ", binop_names[binop->type]);
 
@@ -438,34 +438,34 @@ static void print_instruction(Instruction *inst)
             if (operand_index != 0) {
                 printf(", ");
             }
-            Operand *const op = &binop->operands[operand_index];
+            Operand *op = &binop->operands[operand_index];
             switch (op->type) {
             case OPERAND_REG:
-                printf("%s", reg_w_to_string[op->reg][binop->wide]);
+                printf("%s", reg_w_to_string[op->u.reg][binop->wide]);
                 break;
             case OPERAND_MEMORY: {
                 printf("[");
                 int num_regs = 0;
                 for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
-                    if (op->memory.regs[i] != REG_NONE) {
+                    if (op->u.memory.regs[i] != REG_NONE) {
                         num_regs++;
                         if (num_regs == 2) {
                             printf(" + ");
                         }
-                        printf("%s", reg_w_to_string[op->memory.regs[i]][true]);
+                        printf("%s", reg_w_to_string[op->u.memory.regs[i]][true]);
                     }
                 }
-                if (op->memory.disp != 0) {
+                if (op->u.memory.disp != 0) {
                     if (num_regs > 0) {
-                        printf(" + %hd", op->memory.disp);
+                        printf(" + %hd", op->u.memory.disp);
                     } else {
-                        printf("%hu", op->memory.disp);
+                        printf("%hu", op->u.memory.disp);
                     }
                 }
                 printf("]");
             } break;
             case OPERAND_IMMEDIATE:
-                printf("%hd", op->immediate);
+                printf("%hd", op->u.immediate);
                 break;
             }
         }
@@ -508,7 +508,7 @@ void simulate_instruction(Instruction *inst)
 
     switch (inst->type) {
     case INST_BINOP: {
-        Binop *binop = &inst->binop;
+        Binop *binop = &inst->u.binop;
 
         // Get dest_address and set value to the value of the source operand
         void *dest_address = NULL;
@@ -517,7 +517,7 @@ void simulate_instruction(Instruction *inst)
             Operand *dest = &binop->operands[DEST];
             switch (dest->type) {
             case OPERAND_REG:
-                dest_address = &register_file[reg_w_to_register_file_index[dest->reg][binop->wide]];
+                dest_address = &register_file[reg_w_to_register_file_index[dest->u.reg][binop->wide]];
                 break;
             case OPERAND_MEMORY:
                 goto not_implemented;
@@ -528,12 +528,12 @@ void simulate_instruction(Instruction *inst)
             void *src_address = NULL;
             switch (src->type) {
             case OPERAND_REG:
-                src_address = &register_file[reg_w_to_register_file_index[src->reg][binop->wide]];
+                src_address = &register_file[reg_w_to_register_file_index[src->u.reg][binop->wide]];
                 break;
             case OPERAND_MEMORY:
                 goto not_implemented;
             case OPERAND_IMMEDIATE:
-                src_address = &src->immediate;
+                src_address = &src->u.immediate;
                 break;
             }
             assert(dest_address);
