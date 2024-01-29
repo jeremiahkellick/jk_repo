@@ -604,9 +604,31 @@ void simulate_instruction(Instruction *inst)
             memcpy(dest_address, &value, binop->wide ? 2 : 1);
         }
     } break;
-    case INST_JUMP:
-        fprintf(stderr, "%s: Not implemented\n", program_name);
-        exit(1);
+    case INST_JUMP: {
+        Jump *jump = &inst->u.jump;
+        bool condition;
+        switch (jump->type) {
+        case JUMP_JE:
+            condition = (flags >> FLAG_ZERO) & 0x1;
+            break;
+        case JUMP_JNE:
+            condition = !((flags >> FLAG_ZERO) & 0x1);
+            break;
+        case JUMP_JS:
+            condition = (flags >> FLAG_SIGN) & 0x1;
+            break;
+        case JUMP_JNS:
+            condition = !((flags >> FLAG_SIGN) & 0x1);
+            break;
+        default:
+            fprintf(stderr, "%s: Not implemented\n", program_name);
+            exit(1);
+        }
+        if (condition) {
+            uint16_t *ip = (uint16_t *)&register_file[reg_w_to_register_file_index[REG_IP][true]];
+            *ip += jump->offset;
+        }
+    } break;
     }
     return;
 
