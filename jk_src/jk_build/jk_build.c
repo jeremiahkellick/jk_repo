@@ -103,7 +103,7 @@ static int command_run(StringArray *command)
     for (int args_i = 0; args_i < command->count; args_i++) {
         string_i += snprintf(&command_string[string_i],
                 BUF_SIZE - string_i,
-                "%s%s",
+                "%s\"%s\"",
                 args_i == 0 ? "" : " ",
                 command->items[args_i]);
         if (string_i >= BUF_SIZE) {

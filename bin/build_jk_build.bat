@@ -6,7 +6,7 @@ set jk_build_source_path=%script_directory%\..\jk_src\jk_build\jk_build.c
 if not defined DevEnvDir call "%script_directory%\jk_msvc_shell.bat"
 
 pushd "%script_directory%\..\bin"
-cl /W4 /nologo /Gm- /GR- /D _CRT_SECURE_NO_WARNINGS /Zi /std:c++20 /EHa- /Od %jk_build_source_path% /link /INCREMENTAL:NO
+cl /W4 /nologo /Gm- /GR- /D _CRT_SECURE_NO_WARNINGS /Zi /std:c++20 /EHa- /Od "%jk_build_source_path%" /link /INCREMENTAL:NO
 popd
 
 exit /b %ERRORLEVEL%
