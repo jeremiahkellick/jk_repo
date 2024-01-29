@@ -1,6 +1,7 @@
 #define _DEFAULT_SOURCE
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,7 +20,8 @@
 #endif
 
 #define chdir _chdir
-#define realpath(N, R) _fullpath((R), (N), PATH_MAX)
+#define mkdir(path, mode) _mkdir(path)
+#define realpath(N, R) _fullpath(R, N, PATH_MAX)
 
 #else // If not Windows, assume Unix
 
@@ -217,7 +219,7 @@ static void populate_paths(char *source_file_arg)
         exit(1);
     }
     strcpy(build_path, root_path);
-    strcat(build_path, "build/");
+    strcat(build_path, "build");
 
     path_to_forward_slashes(source_file_path);
     path_to_forward_slashes(root_path);
@@ -461,7 +463,22 @@ int main(int argc, char **argv)
 
     populate_paths(source_file_arg);
 
-    chdir(build_path);
+    if (mkdir(build_path, 0775) == -1 && errno != EEXIST) {
+        fprintf(stderr,
+                "%s: Failed to create \"%s\": %s\n",
+                program_name,
+                build_path,
+                strerror(errno));
+        exit(1);
+    }
+    if (chdir(build_path) == -1) {
+        fprintf(stderr,
+                "%s: Failed to change working directory to \"%s\": %s\n",
+                program_name,
+                build_path,
+                strerror(errno));
+        exit(1);
+    }
 
     StringArray source_file_paths = {0};
     array_append(&source_file_paths, source_file_path);
