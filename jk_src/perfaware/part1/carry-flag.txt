@@ -1,0 +1,95 @@
+CARRY FLAG
+
+Consider bits in order from the most significant bit to the least significant bit
+
+BORROW (SUBTRACTION):
+
+0
+0 consider next pair (false if last)
+
+0
+1 true
+
+1
+0 false
+
+1
+1 consider next pair (false if last)
+
+If the most significant bits were different, the most significant bit of the subtraction result will
+be CF
+
+CARRY (ADDITION):
+
+normal  1st-operand-bit-flipped (could it be that 'carry(a + b) = borrow(~a - b)'?)
+
+0       1
+0	      0   false
+
+0       1
+1	      1   consider next pair (false if last)
+
+1       0
+0       0   consider next pair (false if last)
+
+1       0
+1	      1   true
+
+If the most significant bits were different, the most significant bit of the addition result will be
+!CF
+
+We can compute borrow and carry as follows. The result will be in the most significant bit of the
+value returned by the expression. All other bits of the resulting value should be ignored.
+
+borrow(a, b)  = ((a ^ b) & b) | (~(a ^ b) & (a - b))
+carry(a, b)   = (~(a ^ b) & b) | ((a ^ b) & ~(a + b))
+
+To reduce code duplication, can we make the borrow and carry expressions almost identical, where the
+only difference is that borrow uses ~a in place of a?
+
+a = ~c
+~a = c
+
+carry(a, b) = (~(~c ^ b) & b) | ((~c ^ b) & ~(~c + b))
+
+~x ^ y = ~(x ^ y)
+
+carry(a, b) = (~~(c ^ b) & b) | (~(c ^ b) & ~(~c + b))
+            = ((c ^ b) & b) | (~(c ^ b) & ~(~c + b))
+
+Now compare the expressions:
+
+borrow(a, b)  = ((a ^ b) & b) | (~(a ^ b) & (a - b))
+carry(a, b)   = ((c ^ b) & b) | (~(c ^ b) & ~(~c + b))
+
+The only difference (besides a -> c subtituions), is (a - b) and ~(~c + b), if we can substitute
+~(~c + b) with (c - b), we can get the expression we want. Luckily, we can prove those are equal.
+
+c - b = ~(~c + b)
+
+Substitute using two's complement rule
+~x + 1 = -x
+~x = -x - 1
+
+c - b = ~(~c + b)
+c - b = ~(-c - 1 + b)
+c - b = -(-c - 1 + b) - 1
+c - b = c + 1 - b - 1
+c - b = c - b
+
+So we can substitute that in to get the expressions we want:
+
+borrow(a, b)  = ((a ^ b) & b) | (~(a ^ b) & (a - b))
+carry(a, b)   = ((c ^ b) & b) | (~(c ^ b) & (c - b))
+
+Substituting ~a back in for c we get
+
+borrow(a, b)  = ((a ^ b) & b) | (~(a ^ b) & (a - b))
+carry(a, b)   = ((~a ^ b) & b) | (~(~a ^ b) & (~a - b))
+
+Which shows that each of these functions is equivalent to the other with ~ applied to the first
+parameter
+
+  borrow(a, b)  = ((a ^ b) & b) | (~(a ^ b) & (a - b))
+= carry(~a, b)  = ((~~a ^ b) & b) | (~(~~a ^ b) & (~~a - b))
+                = ((a ^ b) & b) | (~(a ^ b) & (a - b))

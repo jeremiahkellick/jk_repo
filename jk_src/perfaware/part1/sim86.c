@@ -85,15 +85,14 @@ static size_t code_byte_count;
 typedef enum Flag {
     FLAG_ZERO,
     FLAG_SIGN,
+    FLAG_CARRY,
     FLAG_COUNT,
 } Flag;
-
-#define FLAG_ZERO_BIT (1 << FLAG_ZERO)
-#define FLAG_SIGN_BIT (1 << FLAG_SIGN)
 
 static char const *flag_strings[FLAG_COUNT] = {
     "Z",
     "S",
+    "C",
 };
 
 static uint8_t flags = 0;
@@ -262,9 +261,14 @@ typedef struct Instruction {
     } u;
 } Instruction;
 
+static void *register_address(Reg reg, bool wide)
+{
+    return &register_file[reg_w_to_register_file_index[reg][wide]];
+}
+
 static bool next_byte(uint8_t *dest)
 {
-    uint16_t *ip = (uint16_t *)&register_file[reg_w_to_register_file_index[REG_IP][true]];
+    uint16_t *ip = register_address(REG_IP, true);
     if (*ip < code_byte_count) {
         *dest = memory[(*ip)++];
         return true;
@@ -288,21 +292,25 @@ static void read_instruction_bytes(size_t n, uint8_t *dest)
     }
 }
 
+static int16_t get_int16(void *address, bool sign_extend)
+{
+    if (sign_extend) {
+        return (int16_t)(*(int8_t *)address);
+    } else {
+        return *(int16_t *)address;
+    }
+}
+
 /**
  * Read an int16_t value from the given file. If read_both_bytes is true, read two bytes and return
  * them directly. Otherwise, only read one byte and sign-extend it to two.
  */
-static int16_t read_int16(bool read_both_bytes)
+static int16_t read_int16(bool sign_extend)
 {
-    if (read_both_bytes) {
-        int16_t data_full;
-        read_instruction_bytes(2, (uint8_t *)&data_full);
-        return data_full;
-    } else {
-        int8_t data_low;
-        read_instruction_bytes(1, (uint8_t *)&data_low);
-        return (int16_t)data_low;
-    }
+    uint16_t *ip = register_address(REG_IP, true);
+    int16_t value = get_int16(&memory[*ip], sign_extend);
+    *ip += sign_extend ? 1 : 2;
+    return value;
 }
 
 /**
@@ -340,7 +348,7 @@ static uint8_t decode_rm_byte(Operand *operand)
             operand->u.memory.regs[i] = rm_to_memory_operand_regs[rm][i];
         }
         if (mod == MOD_MEMORY_8_BIT_DISP || mod == MOD_MEMORY_16_BIT_DISP) {
-            operand->u.memory.disp = read_int16(mod == MOD_MEMORY_16_BIT_DISP);
+            operand->u.memory.disp = read_int16(mod != MOD_MEMORY_16_BIT_DISP);
         }
     }
     return (byte >> 3) & 0x7;
@@ -366,7 +374,7 @@ static uint8_t decode_immediate_rm(uint8_t byte, bool sign_extend, Binop *binop)
     binop->wide = byte & 0x1;
     uint8_t middle_bits = decode_rm_byte(&binop->operands[DEST]);
     binop->operands[SRC].type = OPERAND_IMMEDIATE;
-    binop->operands[SRC].u.immediate = read_int16(!sign_extend && binop->wide);
+    binop->operands[SRC].u.immediate = read_int16(sign_extend || !binop->wide);
     return middle_bits;
 }
 
@@ -395,7 +403,7 @@ static bool decode_instruction(Instruction *inst)
         binop->operands[DEST].type = OPERAND_REG;
         binop->operands[DEST].u.reg = (Reg)(byte & 0x7);
         binop->operands[SRC].type = OPERAND_IMMEDIATE;
-        binop->operands[SRC].u.immediate = read_int16(binop->wide);
+        binop->operands[SRC].u.immediate = read_int16(!binop->wide);
     } else if ((byte & OPCODE_MOV_MEMORY_ACCUMULATOR_MASK) == OPCODE_MOV_MEMORY_ACCUMULATOR) {
         inst->type = INST_BINOP;
         Binop *binop = &inst->u.binop;
@@ -423,7 +431,7 @@ static bool decode_instruction(Instruction *inst)
         binop->type = octal_code_to_binop[(byte >> 3) & 0x7];
         binop->wide = byte & 0x1;
         binop->operands[SRC].type = OPERAND_IMMEDIATE;
-        binop->operands[SRC].u.immediate = read_int16(binop->wide);
+        binop->operands[SRC].u.immediate = read_int16(!binop->wide);
     } else if ((byte & OPCODE_CONDITIONAL_JUMP_MASK) == OPCODE_CONDITIONAL_JUMP) {
         inst->type = INST_JUMP;
         inst->u.jump.type = (JumpType)(byte & 0xf);
@@ -499,7 +507,7 @@ static void print_instruction(Instruction *inst)
 
 static void print_flags(uint8_t flags_value)
 {
-    for (int i = 0; i < FLAG_COUNT; i++) {
+    for (int i = FLAG_COUNT - 1; i >= 0; i--) {
         if ((flags_value >> i) & 0x1) {
             printf("%s", flag_strings[i]);
         }
@@ -531,6 +539,15 @@ static void print_diff(void)
     }
 }
 
+void set_flag(Flag flag, bool value)
+{
+    if (value) {
+        flags |= 1 << flag;
+    } else {
+        flags &= ~(1 << flag);
+    }
+}
+
 void simulate_instruction(Instruction *inst)
 {
     switch (inst->type) {
@@ -539,13 +556,13 @@ void simulate_instruction(Instruction *inst)
 
         // Get dest_address and set value to the value of the source operand
         void *dest_address = NULL;
-        int16_t value = 0;
+        int16_t dest_value = 0;
+        int16_t src_value = 0;
         {
             Operand *dest = &binop->operands[DEST];
             switch (dest->type) {
             case OPERAND_REG:
-                dest_address =
-                        &register_file[reg_w_to_register_file_index[dest->u.reg][binop->wide]];
+                dest_address = register_address(dest->u.reg, binop->wide);
                 break;
             case OPERAND_MEMORY:
                 goto not_implemented;
@@ -556,7 +573,7 @@ void simulate_instruction(Instruction *inst)
             void *src_address = NULL;
             switch (src->type) {
             case OPERAND_REG:
-                src_address = &register_file[reg_w_to_register_file_index[src->u.reg][binop->wide]];
+                src_address = register_address(src->u.reg, binop->wide);
                 break;
             case OPERAND_MEMORY:
                 goto not_implemented;
@@ -566,42 +583,37 @@ void simulate_instruction(Instruction *inst)
             }
             assert(dest_address);
             assert(src_address);
-            value = *(int16_t *)src_address;
+            dest_value = get_int16(dest_address, !binop->wide);
+            src_value = get_int16(src_address, !binop->wide);
         }
 
-        // Perform operation on value
-        switch (binop->type) {
-        case BINOP_MOV:
-            break;
-        case BINOP_ADD:
-            value += *(int16_t *)dest_address;
-            break;
-        case BINOP_SUB:
-        case BINOP_CMP:
-            value = *(int16_t *)dest_address - value;
-            break;
-        case BINOP_UNKNOWN:
-        case BINOP_TYPE_COUNT:
-            assert(0 && "Invalid binop");
-        }
+        // Perform operation  to get result
+        int16_t result;
+        if (binop->type == BINOP_MOV) {
+            result = src_value;
+        } else {
+            int16_t dest_carry_value = dest_value;
+            if (binop->type == BINOP_ADD) {
+                result = dest_value + src_value;
+                // Because CF for a + b is the same as CF for ~a - b, we can invert this and use the
+                // same code as sub and cmp to compute the carry flag
+                dest_carry_value = ~dest_carry_value;
+            } else {
+                result = dest_value - src_value;
+            }
 
-        // If not a mov, update flags based on value
-        if (binop->type != BINOP_MOV) {
-            if (value == 0) {
-                flags |= FLAG_ZERO_BIT;
-            } else {
-                flags &= ~FLAG_ZERO_BIT;
-            }
-            if (value < 0) {
-                flags |= FLAG_SIGN_BIT;
-            } else {
-                flags &= ~FLAG_SIGN_BIT;
-            }
+            // Update flags
+            set_flag(FLAG_ZERO, result == 0);
+            set_flag(FLAG_SIGN, result < 0);
+            int16_t diff = dest_carry_value ^ src_value;
+            set_flag(FLAG_CARRY,
+                    // See carry-flag.txt for an explanation of the following expression
+                    (((diff & src_value) | (~diff & (dest_carry_value - src_value))) >> 15) & 0x1);
         }
 
         // If not a cmp, write value to dest
         if (binop->type != BINOP_CMP) {
-            memcpy(dest_address, &value, binop->wide ? 2 : 1);
+            memcpy(dest_address, &result, binop->wide ? 2 : 1);
         }
     } break;
     case INST_JUMP: {
@@ -625,7 +637,7 @@ void simulate_instruction(Instruction *inst)
             exit(1);
         }
         if (condition) {
-            uint16_t *ip = (uint16_t *)&register_file[reg_w_to_register_file_index[REG_IP][true]];
+            uint16_t *ip = register_address(REG_IP, true);
             *ip += jump->offset;
         }
     } break;
@@ -701,7 +713,7 @@ int main(int argc, char **argv)
         printf("\nFinal registers:\n");
         for (int i = 0; i < REG_VALUE_COUNT; i++) {
             Reg reg = register_print_order[i];
-            uint16_t value = *(uint16_t *)&register_file[reg_w_to_register_file_index[reg][true]];
+            uint16_t value = *(uint16_t *)register_address(reg, true);
             if (value != 0) {
                 printf("      %s: 0x%04hx (%hu)\n", reg_w_to_string[reg][true], value, value);
             }
