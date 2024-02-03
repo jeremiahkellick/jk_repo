@@ -87,6 +87,7 @@ typedef enum Flag {
     FLAG_PARITY,
     FLAG_ZERO,
     FLAG_SIGN,
+    FLAG_OVERFLOW,
     FLAG_COUNT,
 } Flag;
 
@@ -95,6 +96,7 @@ static char const *flag_strings[FLAG_COUNT] = {
     "P",
     "Z",
     "S",
+    "O",
 };
 
 static uint8_t flags = 0;
@@ -608,23 +610,27 @@ static void simulate_instruction(Instruction *inst)
             result = src_value;
         } else {
             int16_t dest_carry_value = dest_value;
+            int16_t sum_with;
             if (binop->type == BINOP_ADD) {
-                result = dest_value + src_value;
+                sum_with = src_value;
                 // Because CF for a + b is the same as CF for ~a - b, we can invert this and use the
                 // same code as sub and cmp to compute the carry flag
                 dest_carry_value = ~dest_carry_value;
             } else {
-                result = dest_value - src_value;
+                sum_with = -src_value;
             }
+            result = dest_value + sum_with;
 
             // Update flags
-            set_flag(FLAG_ZERO, result == 0);
-            set_flag(FLAG_SIGN, result < 0);
-            set_flag(FLAG_PARITY, get_parity(result));
             int16_t diff = dest_carry_value ^ src_value;
             set_flag(FLAG_CARRY,
                     // See carry-flag.txt for an explanation of the following expression
                     (((diff & src_value) | (~diff & (dest_carry_value - src_value))) >> 15) & 0x1);
+            set_flag(FLAG_PARITY, get_parity(result));
+            set_flag(FLAG_ZERO, result == 0);
+            set_flag(FLAG_SIGN, result < 0);
+            set_flag(FLAG_OVERFLOW,
+                    ((~(dest_value ^ sum_with) & (dest_value ^ result)) >> 15) & 0x1);
         }
 
         // If not a cmp, write value to dest
