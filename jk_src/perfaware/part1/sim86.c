@@ -83,16 +83,18 @@ static uint8_t memory[MEMORY_BYTE_COUNT];
 static size_t code_byte_count;
 
 typedef enum Flag {
+    FLAG_CARRY,
+    FLAG_PARITY,
     FLAG_ZERO,
     FLAG_SIGN,
-    FLAG_CARRY,
     FLAG_COUNT,
 } Flag;
 
 static char const *flag_strings[FLAG_COUNT] = {
+    "C",
+    "P",
     "Z",
     "S",
-    "C",
 };
 
 static uint8_t flags = 0;
@@ -507,7 +509,7 @@ static void print_instruction(Instruction *inst)
 
 static void print_flags(uint8_t flags_value)
 {
-    for (int i = FLAG_COUNT - 1; i >= 0; i--) {
+    for (int i = 0; i < FLAG_COUNT; i++) {
         if ((flags_value >> i) & 0x1) {
             printf("%s", flag_strings[i]);
         }
@@ -539,16 +541,29 @@ static void print_diff(void)
     }
 }
 
-void set_flag(Flag flag, bool value)
+static bool get_flag(Flag flag)
+{
+    return (flags >> flag) & 0x1;
+}
+
+static void set_flag(Flag flag, bool value)
 {
     if (value) {
-        flags |= 1 << flag;
+        flags |= 0x1 << flag;
     } else {
-        flags &= ~(1 << flag);
+        flags &= ~(0x1 << flag);
     }
 }
 
-void simulate_instruction(Instruction *inst)
+static bool get_parity(int16_t value)
+{
+    uint8_t least_significant_byte = *(uint8_t *)&value;
+    int t0 = least_significant_byte ^ (least_significant_byte >> 4);
+    int t1 = t0 ^ (t0 >> 2);
+    return !((t1 ^ (t1 >> 1)) & 0x1);
+}
+
+static void simulate_instruction(Instruction *inst)
 {
     switch (inst->type) {
     case INST_BINOP: {
@@ -605,6 +620,7 @@ void simulate_instruction(Instruction *inst)
             // Update flags
             set_flag(FLAG_ZERO, result == 0);
             set_flag(FLAG_SIGN, result < 0);
+            set_flag(FLAG_PARITY, get_parity(result));
             int16_t diff = dest_carry_value ^ src_value;
             set_flag(FLAG_CARRY,
                     // See carry-flag.txt for an explanation of the following expression
@@ -621,16 +637,16 @@ void simulate_instruction(Instruction *inst)
         bool condition;
         switch (jump->type) {
         case JUMP_JE:
-            condition = (flags >> FLAG_ZERO) & 0x1;
+            condition = get_flag(FLAG_ZERO);
             break;
         case JUMP_JNE:
-            condition = !((flags >> FLAG_ZERO) & 0x1);
+            condition = !get_flag(FLAG_ZERO);
             break;
         case JUMP_JS:
-            condition = (flags >> FLAG_SIGN) & 0x1;
+            condition = get_flag(FLAG_SIGN);
             break;
         case JUMP_JNS:
-            condition = !((flags >> FLAG_SIGN) & 0x1);
+            condition = !get_flag(FLAG_SIGN);
             break;
         default:
             fprintf(stderr, "%s: Not implemented\n", program_name);
@@ -650,7 +666,7 @@ not_implemented:
     exit(1);
 }
 
-void usage_error(void)
+static void usage_error(void)
 {
     fprintf(stderr, "Usage: %s [-d] binary_file\n", program_name);
     exit(1);
