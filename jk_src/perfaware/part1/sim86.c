@@ -633,29 +633,79 @@ static void simulate_instruction(Instruction *inst)
                     ((~(dest_value ^ sum_with) & (dest_value ^ result)) >> 15) & 0x1);
         }
 
-        // If not a cmp, write value to dest
+        // If not a cmp, write result to dest
         if (binop->type != BINOP_CMP) {
             memcpy(dest_address, &result, binop->wide ? 2 : 1);
         }
     } break;
     case INST_JUMP: {
         Jump *jump = &inst->u.jump;
-        bool condition;
+        uint16_t *cx = register_address(REG_CX, true);
+        bool condition = false;
         switch (jump->type) {
+        case JUMP_JA:
+            condition = !(get_flag(FLAG_CARRY) || get_flag(FLAG_ZERO));
+            break;
+        case JUMP_JAE:
+            condition = !get_flag(FLAG_CARRY);
+            break;
+        case JUMP_JB:
+            condition = get_flag(FLAG_CARRY);
+            break;
+        case JUMP_JBE:
+            condition = get_flag(FLAG_CARRY) || get_flag(FLAG_ZERO);
+            break;
         case JUMP_JE:
             condition = get_flag(FLAG_ZERO);
+            break;
+        case JUMP_JG:
+            condition = !((get_flag(FLAG_SIGN) ^ get_flag(FLAG_OVERFLOW)) || get_flag(FLAG_ZERO));
+            break;
+        case JUMP_JGE:
+            condition = !(get_flag(FLAG_SIGN) ^ get_flag(FLAG_OVERFLOW));
+            break;
+        case JUMP_JL:
+            condition = get_flag(FLAG_SIGN) ^ get_flag(FLAG_OVERFLOW);
+            break;
+        case JUMP_JLE:
+            condition = (get_flag(FLAG_SIGN) ^ get_flag(FLAG_OVERFLOW)) || get_flag(FLAG_ZERO);
             break;
         case JUMP_JNE:
             condition = !get_flag(FLAG_ZERO);
             break;
-        case JUMP_JS:
-            condition = get_flag(FLAG_SIGN);
+        case JUMP_JNO:
+            condition = !get_flag(FLAG_OVERFLOW);
+            break;
+        case JUMP_JPO:
+            condition = !get_flag(FLAG_PARITY);
             break;
         case JUMP_JNS:
             condition = !get_flag(FLAG_SIGN);
             break;
-        default:
-            fprintf(stderr, "%s: Not implemented\n", program_name);
+        case JUMP_JO:
+            condition = get_flag(FLAG_OVERFLOW);
+            break;
+        case JUMP_JPE:
+            condition = get_flag(FLAG_PARITY);
+            break;
+        case JUMP_JS:
+            condition = get_flag(FLAG_SIGN);
+            break;
+        case JUMP_LOOPNE:
+            condition = --(*cx) != 0 && !get_flag(FLAG_ZERO);
+            break;
+        case JUMP_LOOPE:
+            condition = --(*cx) != 0 && get_flag(FLAG_ZERO);
+            break;
+        case JUMP_LOOP:
+            condition = --(*cx) != 0;
+            break;
+        case JUMP_JCXZ:
+            condition = *cx == 0;
+            break;
+        case JUMP_TYPE_COUNT:
+            printf("\n");
+            fprintf(stderr, "%s: Invalid jump type\n", program_name);
             exit(1);
         }
         if (condition) {
