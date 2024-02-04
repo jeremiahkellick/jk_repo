@@ -486,14 +486,14 @@ static void print_instruction(Instruction *inst)
                     if (op->u.memory.regs[i] != REG_NONE) {
                         num_regs++;
                         if (num_regs == 2) {
-                            printf(" + ");
+                            printf("+");
                         }
                         printf("%s", reg_w_to_string[op->u.memory.regs[i]][true]);
                     }
                 }
                 if (op->u.memory.disp != 0) {
                     if (num_regs > 0) {
-                        printf(" + %hd", op->u.memory.disp);
+                        printf("+%hd", op->u.memory.disp);
                     } else {
                         printf("%hu", op->u.memory.disp);
                     }
@@ -571,38 +571,31 @@ static void simulate_instruction(Instruction *inst)
     case INST_BINOP: {
         Binop *binop = &inst->u.binop;
 
-        // Get dest_address and set value to the value of the source operand
-        void *dest_address = NULL;
-        int16_t dest_value = 0;
-        int16_t src_value = 0;
-        {
-            Operand *dest = &binop->operands[DEST];
-            switch (dest->type) {
+        // Get addresses and values of operands
+        void *operand_addresses[2] = {0};
+        for (int i = 0; i < 2; i++) {
+            Operand *operand = &binop->operands[i];
+            switch (operand->type) {
             case OPERAND_REG:
-                dest_address = register_address(dest->u.reg, binop->wide);
+                operand_addresses[i] = register_address(operand->u.reg, binop->wide);
                 break;
-            case OPERAND_MEMORY:
-                goto not_implemented;
+            case OPERAND_MEMORY: {
+                uint16_t mem_address = 0;
+                for (int j = 0; j < OPERAND_MEMORY_REG_COUNT; j++) {
+                    mem_address += *(uint16_t *)register_address(operand->u.memory.regs[j], true);
+                }
+                mem_address += operand->u.memory.disp;
+                operand_addresses[i] = &memory[mem_address];
+            } break;
             case OPERAND_IMMEDIATE:
-                assert(0 && "Destination was an immediate");
-            }
-            Operand *src = &binop->operands[SRC];
-            void *src_address = NULL;
-            switch (src->type) {
-            case OPERAND_REG:
-                src_address = register_address(src->u.reg, binop->wide);
-                break;
-            case OPERAND_MEMORY:
-                goto not_implemented;
-            case OPERAND_IMMEDIATE:
-                src_address = &src->u.immediate;
+                assert(i != DEST && "Destination was an immediate");
+                operand_addresses[i] = &operand->u.immediate;
                 break;
             }
-            assert(dest_address);
-            assert(src_address);
-            dest_value = get_int16(dest_address, !binop->wide);
-            src_value = get_int16(src_address, !binop->wide);
+            assert(operand_addresses[i]);
         }
+        int16_t dest_value = get_int16(operand_addresses[DEST], !binop->wide);
+        int16_t src_value = get_int16(operand_addresses[SRC], !binop->wide);
 
         // Perform operation  to get result
         int16_t result;
@@ -635,7 +628,7 @@ static void simulate_instruction(Instruction *inst)
 
         // If not a cmp, write result to dest
         if (binop->type != BINOP_CMP) {
-            memcpy(dest_address, &result, binop->wide ? 2 : 1);
+            memcpy(operand_addresses[DEST], &result, binop->wide ? 2 : 1);
         }
     } break;
     case INST_JUMP: {
@@ -715,11 +708,6 @@ static void simulate_instruction(Instruction *inst)
     } break;
     }
     return;
-
-not_implemented:
-    printf("\n");
-    fprintf(stderr, "%s: Instruction not implemented\n", program_name);
-    exit(1);
 }
 
 static void usage_error(void)
@@ -757,7 +745,7 @@ int main(int argc, char **argv)
     }
 
     { // Load file into memory
-        FILE *file = fopen(file_path, "r");
+        FILE *file = fopen(file_path, "rb");
         if (file == NULL) {
             perror(program_name);
             exit(1);
@@ -790,9 +778,12 @@ int main(int argc, char **argv)
                 printf("      %s: 0x%04hx (%hu)\n", reg_w_to_string[reg][true], value, value);
             }
         }
-        printf("   flags: ");
-        print_flags(flags);
-        printf("\n\n");
+        if (flags != 0) {
+            printf("   flags: ");
+            print_flags(flags);
+            printf("\n");
+        }
+        printf("\n");
     }
 
     return 0;
