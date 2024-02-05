@@ -3,6 +3,7 @@ BasedOnStyle: LLVM
 AlignAfterOpenBracket: DontAlign
 AlignEscapedNewlines: Left
 AlignOperands: DontAlign
+AlignTrailingComments: Never
 AllowShortFunctionsOnASingleLine: Empty
 BinPackArguments: false
 BinPackParameters: false

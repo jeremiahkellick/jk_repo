@@ -76,7 +76,7 @@ static Reg register_print_order[REG_VALUE_COUNT] = {
 static uint8_t register_file[REGISTER_FILE_BYTE_COUNT] = {0};
 static uint8_t prev_register_file[REGISTER_FILE_BYTE_COUNT] = {0};
 
-#define MEMORY_BYTE_COUNT (1 << 20)
+#define MEMORY_BYTE_COUNT (1 << 16)
 static uint8_t memory[MEMORY_BYTE_COUNT];
 
 // Number of bytes read from the binary file
@@ -104,14 +104,14 @@ static uint8_t prev_flags = 0;
 
 // Usage: reg_w_to_register_file_index[reg][w]
 static uint8_t reg_w_to_register_file_index[REG_VALUE_COUNT][2] = {
-    {0x0, 0x0},   // al, ax
-    {0x2, 0x2},   // cl, cx
-    {0x4, 0x4},   // dl, dx
-    {0x6, 0x6},   // bl, bx
-    {0x1, 0x8},   // ah, sp
-    {0x3, 0xa},   // ch, bp
-    {0x5, 0xc},   // dh, si
-    {0x7, 0xe},   // bh, di
+    {0x0, 0x0}, // al, ax
+    {0x2, 0x2}, // cl, cx
+    {0x4, 0x4}, // dl, dx
+    {0x6, 0x6}, // bl, bx
+    {0x1, 0x8}, // ah, sp
+    {0x3, 0xa}, // ch, bp
+    {0x5, 0xc}, // dh, si
+    {0x7, 0xe}, // bh, di
     {0x10, 0x10}, // ip, ip
 };
 
@@ -710,44 +710,105 @@ static void simulate_instruction(Instruction *inst)
     return;
 }
 
-static void usage_error(void)
-{
-    fprintf(stderr, "Usage: %s [-d] binary_file\n", program_name);
-    exit(1);
-}
-
 int main(int argc, char **argv)
 {
     program_name = argv[0];
 
-    if (argc < 2 || argc > 3) {
-        usage_error();
-    }
-
     // Parse arguments
-    bool disassemble = false;
     char *file_path = NULL;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'd' && argv[i][2] == '\0') {
-            if (disassemble) {
-                usage_error();
+    bool execute = false;
+    bool dump = false;
+    {
+        bool help = false;
+        bool usage_error = false;
+        bool options_ended = false;
+        int non_option_arguments = 0;
+        for (int i = 1; i < argc; i++) {
+            if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
+                if (argv[i][1] == '-') {
+                    if (argv[i][2] == '\0') { // -- encountered
+                        options_ended = true;
+                    } else { // Double hyphen option
+                        if (strcmp(argv[i], "--execute") == 0) {
+                            execute = true;
+                        } else if (strcmp(argv[i], "--dump") == 0) {
+                            dump = true;
+                        } else if (strcmp(argv[i], "--help") == 0) {
+                            help = true;
+                        } else {
+                            fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
+                            usage_error = true;
+                        }
+                    }
+                } else { // Single-hypen option(s)
+                    for (char *c = &argv[i][1]; *c != '\0'; c++) {
+                        switch (*c) {
+                        case 'e':
+                            execute = true;
+                            break;
+                        case 'd':
+                            dump = true;
+                            break;
+                        default:
+                            fprintf(stderr,
+                                    "%s: Invalid option '%c' in '%s'\n",
+                                    program_name,
+                                    *c,
+                                    argv[i]);
+                            usage_error = true;
+                            break;
+                        }
+                    }
+                }
+            } else { // Regular argument
+                non_option_arguments++;
+                file_path = argv[i];
             }
-            disassemble = true;
-        } else {
-            if (file_path != NULL) {
-                usage_error();
-            }
-            file_path = argv[i];
         }
-    }
-    if (file_path == NULL) {
-        usage_error();
+        if (dump && !execute) {
+            fprintf(stderr, "%s: -d (--dump) requires -e (--execute)\n", program_name);
+            usage_error = true;
+        }
+        if (!help && non_option_arguments != 1) {
+            fprintf(stderr,
+                    "%s: Expected 1 non-option argument, got %d\n",
+                    program_name,
+                    non_option_arguments);
+            usage_error = true;
+        }
+        if (help || usage_error) {
+            printf("NAME\n"
+                   "\tsim86 - decodes and simulates a subset of 8086 machine code\n\n"
+                   "SYNOPSIS\n"
+                   "\tsim86 file\n"
+                   "\tsim86 -e[-d] file\n\n"
+                   "DESCRIPTION\n"
+                   "\tsim86 decodes and simulates a subset of 8086 machine code. By default,\n"
+                   "\tit prints a disassembly of FILE to stdout. -e (--execute) tells it to\n"
+                   "\texecute the instructions. Instructions are loaded from FILE into the\n"
+                   "\tsimulator's memory at address 0, which is also where the instruction\n"
+                   "\tpointer (ip register) starts. Execution ends when the instruction\n"
+                   "\tpointer leaves the region of memory that was loaded from FILE.\n\n"
+                   "OPTIONS\n"
+                   "\t-d, --dump\n"
+                   "\t\tDump the simulator's memory to ./dump.data when execution ends.\n"
+                   "\t\tOnly valid if the -e option is also specified.\n\n"
+                   "\t-e, --execute\n"
+                   "\t\tEnables instruction execution. If not specified, sim86 only\n"
+                   "\t\tperforms disassembly.\n\n"
+                   "\t--help\tDisplay this help text and exit.\n");
+            exit(usage_error);
+        }
     }
 
     { // Load file into memory
         FILE *file = fopen(file_path, "rb");
         if (file == NULL) {
-            perror(program_name);
+            fprintf(stderr,
+                    "%s: Could not open '%s': %s\n",
+                    program_name,
+                    file_path,
+                    strerror(errno));
             exit(1);
         }
         code_byte_count = fread(memory, 1, MEMORY_BYTE_COUNT, file);
@@ -755,13 +816,7 @@ int main(int argc, char **argv)
     }
 
     Instruction inst;
-    if (disassemble) {
-        printf("; %s disassembly:\nbits 16\n", file_path);
-        while (decode_instruction(&inst)) {
-            print_instruction(&inst);
-            printf("\n");
-        }
-    } else {
+    if (execute) {
         printf("--- %s execution ---\n", file_path);
         while (save_state(), decode_instruction(&inst)) {
             print_instruction(&inst);
@@ -784,6 +839,26 @@ int main(int argc, char **argv)
             printf("\n");
         }
         printf("\n");
+        if (dump) {
+            char const *dump_file_path = "dump.data";
+            FILE *dump_file = fopen(dump_file_path, "wb");
+            if (dump_file == NULL) {
+                fprintf(stderr,
+                        "%s: Could not open '%s': %s\n",
+                        program_name,
+                        dump_file_path,
+                        strerror(errno));
+                exit(1);
+            }
+            fwrite(memory, 1, MEMORY_BYTE_COUNT, dump_file);
+            fclose(dump_file);
+        }
+    } else {
+        printf("; %s disassembly:\nbits 16\n", file_path);
+        while (decode_instruction(&inst)) {
+            print_instruction(&inst);
+            printf("\n");
+        }
     }
 
     return 0;
