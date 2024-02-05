@@ -61,8 +61,10 @@ you might want to add the `bin/` directory to your `PATH`.
 
 ### Building other programs
 
-A program in this repo is simply any `.c` file that contains a `main` function. To build any of
-these programs, all you need to do is pass that file as an argument to `jk_build`.
+A program in this repo is simply any `.c` or `.cpp` file that defines an entry point function. To
+build any of these programs, all you need to do is pass that file as an argument to `jk_build`. You
+don't need to pass in dependencies as arguments because `jk_build` will find them for you and
+include them when it invokes a compiler.
 
 #### Build
 Windows
@@ -86,10 +88,6 @@ macOS/Linux
 ```
 ./build/hello_world
 ```
-
-Unlike invoking a compiler directly, with `jk_build` you only ever need to pass in _one_ file, the
-`.c` file that defines `main`. You don't need to pass in dependencies as arguments because,
-`jk_build` will find them for you.
 
 ### Configuring jk_build
 

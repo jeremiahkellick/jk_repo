@@ -424,41 +424,79 @@ void find_dependencies(StringArray *source_file_paths)
     }
 }
 
-#undef MATCH
-
-void usage_error(void)
-{
-    fprintf(stderr, "Usage: %s [-O] main_source_file\n", program_name);
-    exit(1);
-}
-
 int main(int argc, char **argv)
 {
     program_name = argv[0];
 
-    if (argc < 2 || argc > 3) {
-        usage_error();
-    }
-
-    bool optimize = false;
+    // Parse arguments
     char *source_file_arg = NULL;
-
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] == 'O') {
-            if (optimize) {
-                usage_error();
+    bool optimize = false;
+    {
+        bool help = false;
+        bool usage_error = false;
+        bool options_ended = false;
+        int non_option_arguments = 0;
+        for (int i = 1; i < argc; i++) {
+            if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
+                if (argv[i][1] == '-') {
+                    if (argv[i][2] == '\0') { // -- encountered
+                        options_ended = true;
+                    } else { // Double hyphen option
+                        if (strcmp(argv[i], "--optimize") == 0) {
+                            optimize = true;
+                        } else if (strcmp(argv[i], "--help") == 0) {
+                            help = true;
+                        } else {
+                            fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
+                            usage_error = true;
+                        }
+                    }
+                } else { // Single-hypen option(s)
+                    for (char *c = &argv[i][1]; *c != '\0'; c++) {
+                        switch (*c) {
+                        case 'O':
+                            optimize = true;
+                            break;
+                        default:
+                            fprintf(stderr,
+                                    "%s: Invalid option '%c' in '%s'\n",
+                                    program_name,
+                                    *c,
+                                    argv[i]);
+                            usage_error = true;
+                            break;
+                        }
+                    }
+                }
+            } else { // Regular argument
+                non_option_arguments++;
+                source_file_arg = argv[i];
             }
-            optimize = true;
-        } else {
-            if (source_file_arg) {
-                usage_error();
-            }
-            source_file_arg = argv[i];
         }
-    }
-
-    if (source_file_arg == NULL) {
-        usage_error();
+        if (!help && non_option_arguments != 1) {
+            fprintf(stderr,
+                    "%s: Expected 1 non-option argument, got %d\n",
+                    program_name,
+                    non_option_arguments);
+            usage_error = true;
+        }
+        if (help || usage_error) {
+            printf("NAME\n"
+                   "\tjk_build - builds programs in jk_repo\n\n"
+                   "SYNOPSIS\n"
+                   "\tjk_build [-O] file\n\n"
+                   "DESCRIPTION\n"
+                   "\tjk_build can be used to compile any program in jk_repo. file can be any\n"
+                   "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
+                   "\tif any, do not need to be included in the command line arguments. They\n"
+                   "\twill be found by jk_build and included when it invokes a compiler.\n\n"
+                   "OPTIONS\n"
+                   "\t--help\tDisplay this help text and exit.\n\n"
+                   "\t-O, --optimize\n"
+                   "\t\tPrioritize the speed of the resulting executable over its\n"
+                   "\t\tdebuggability and compilation speed.\n");
+            exit(usage_error);
+        }
     }
 
     populate_paths(source_file_arg);
