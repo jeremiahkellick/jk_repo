@@ -48,7 +48,6 @@ static char build_path[PATH_MAX] = {0};
 #ifdef _WIN32
 static void windows_print_last_error_and_exit(void)
 {
-    fprintf(stderr, "%s: ", program_name);
     DWORD error_code = GetLastError();
     if (error_code == 0) {
         fprintf(stderr, "Unknown error\n");
@@ -93,6 +92,16 @@ static void array_concat(StringArray *array, int count, char **items)
     array_concat(                \
             array, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
 
+static bool contains_whitespace(char *string)
+{
+    for (char *c = string; *c != '\0'; c++) {
+        if (isspace(*c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int command_run(StringArray *command)
 {
 #ifdef _WIN32
@@ -103,7 +112,7 @@ static int command_run(StringArray *command)
     for (int args_i = 0; args_i < command->count; args_i++) {
         string_i += snprintf(&command_string[string_i],
                 BUF_SIZE - string_i,
-                "%s\"%s\"",
+                contains_whitespace(command->items[args_i]) ? "%s\"%s\"" : "%s%s",
                 args_i == 0 ? "" : " ",
                 command->items[args_i]);
         if (string_i >= BUF_SIZE) {
@@ -115,12 +124,14 @@ static int command_run(StringArray *command)
     printf("%s\n", command_string);
 
     if (!CreateProcessA(NULL, command_string, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "%s: Could not run '%s': ", program_name, command->items[0]);
         windows_print_last_error_and_exit();
     }
     CloseHandle(pi.hThread);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD exit_status;
     if (!GetExitCodeProcess(pi.hProcess, &exit_status)) {
+        fprintf(stderr, "%s: Could not get exit status of '%s': ", program_name, command->items[0]);
         windows_print_last_error_and_exit();
     }
     CloseHandle(pi.hProcess);
@@ -139,7 +150,7 @@ static int command_run(StringArray *command)
     int command_pid;
     if ((command_pid = fork())) {
         if (command_pid == -1) {
-            perror(program_name);
+            fprintf(stderr, "%s: Could not fork: %s\n", program_name, strerror(errno));
             exit(1);
         }
         int wstatus;
@@ -151,8 +162,11 @@ static int command_run(StringArray *command)
             exit(1);
         }
     } else {
-        execvp(command->items[0], command->items);
-        perror(program_name);
+        fprintf(stderr,
+                "%s: Could not run '%s': %s\n",
+                program_name,
+                command->items[0],
+                strerror(errno));
         exit(1);
     }
 #endif
@@ -174,7 +188,7 @@ static void populate_paths(char *source_file_arg)
     // Get absolute path of the source file
     char *realpath_result = realpath(source_file_arg, source_file_path);
     if (realpath_result == NULL) {
-        fprintf(stderr, "%s: Invalid source file path\n", program_name);
+        fprintf(stderr, "%s: Invalid source file path '%s'\n", program_name, source_file_arg);
         exit(1);
     }
 
@@ -196,7 +210,7 @@ static void populate_paths(char *source_file_arg)
         }
     }
     if (last_component == length) {
-        fprintf(stderr, "%s: Invalid source file path\n", program_name);
+        fprintf(stderr, "%s: Invalid source file path '%s'\n", program_name, source_file_arg);
         exit(1);
     }
     if (last_dot == 0 || last_dot <= last_component) {
@@ -207,7 +221,10 @@ static void populate_paths(char *source_file_arg)
     // Find repository root path
     char *jk_src = strstr(source_file_path, "jk_src");
     if (jk_src == NULL) {
-        fprintf(stderr, "%s: File not located under the jk_src directory\n", program_name);
+        fprintf(stderr,
+                "%s: File '%s' not located under the jk_src directory\n",
+                program_name,
+                source_file_arg);
         exit(1);
     }
     root_path_length = jk_src - source_file_path;
@@ -263,8 +280,7 @@ void find_dependencies(StringArray *source_file_paths)
         char *path = source_file_paths->items[path_index];
         FILE *file = fopen(path, "r");
         if (file == NULL) {
-            fprintf(stderr, "%s: Failed to open \"%s\"\n", program_name, path);
-            perror(program_name);
+            fprintf(stderr, "%s: Failed to open '%s': %s\n", program_name, path, strerror(errno));
             exit(1);
         }
 
