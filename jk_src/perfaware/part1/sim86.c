@@ -183,6 +183,72 @@ static BinopType octal_code_to_binop[8] = {
     BINOP_CMP,
 };
 
+typedef enum BinopCategory {
+    BC_MEMORY_ACCUMULATOR,
+    BC_ACCUMULATOR_MEMORY,
+    BC_REGISTER_REGISTER,
+    BC_REGISTER_MEMORY,
+    BC_MEMORY_REGISTER,
+    BC_REGISTER_IMMEDIATE,
+    BC_MEMORY_IMMEDIATE,
+    BC_ACCUMULATOR_IMMEDIATE,
+    BINOP_CATEGORY_COUNT,
+} BinopCategory;
+
+typedef enum ClocksColumn {
+    COLUMN_CLOCKS,
+    COLUMN_TRANSFERS,
+    CLOCKS_COLUMN_COUNT,
+} ClocksColumn;
+
+static int binop_clocks[BINOP_TYPE_COUNT][BINOP_CATEGORY_COUNT][CLOCKS_COLUMN_COUNT] = {
+    {0}, // BINOP_UNKNOWN
+    {
+        // BINOP_MOV
+        {10, 1}, // BC_MEMORY_ACCUMULATOR
+        {10, 1}, // BC_ACCUMULATOR_MEMORY
+        {2, 0}, // BC_REGISTER_REGISTER
+        {8, 1}, // BC_REGISTER_MEMORY
+        {9, 1}, // BC_MEMORY_REGISTER
+        {4, 0}, // BC_REGISTER_IMMEDIATE
+        {10, 1}, // BC_MEMORY_IMMEDIATE
+        {0, 0}, // BC_ACCUMULATOR_IMMEDIATE
+    },
+    {
+        // BINOP_ADD
+        {0, 0}, // BC_MEMORY_ACCUMULATOR
+        {0, 0}, // BC_ACCUMULATOR_MEMORY
+        {3, 0}, // BC_REGISTER_REGISTER
+        {9, 1}, // BC_REGISTER_MEMORY
+        {16, 2}, // BC_MEMORY_REGISTER
+        {4, 0}, // BC_REGISTER_IMMEDIATE
+        {17, 2}, // BC_MEMORY_IMMEDIATE
+        {4, 0}, // BC_ACCUMULATOR_IMMEDIATE
+    },
+    {
+        // BINOP_SUB
+        {0, 0}, // BC_MEMORY_ACCUMULATOR
+        {0, 0}, // BC_ACCUMULATOR_MEMORY
+        {3, 0}, // BC_REGISTER_REGISTER
+        {9, 1}, // BC_REGISTER_MEMORY
+        {16, 2}, // BC_MEMORY_REGISTER
+        {4, 0}, // BC_REGISTER_IMMEDIATE
+        {17, 2}, // BC_MEMORY_IMMEDIATE
+        {4, 0}, // BC_ACCUMULATOR_IMMEDIATE
+    },
+    {
+        // BINOP_CMP
+        {0, 0}, // BC_MEMORY_ACCUMULATOR
+        {0, 0}, // BC_ACCUMULATOR_MEMORY
+        {3, 0}, // BC_REGISTER_REGISTER
+        {9, 1}, // BC_REGISTER_MEMORY
+        {9, 1}, // BC_MEMORY_REGISTER
+        {4, 0}, // BC_REGISTER_IMMEDIATE
+        {10, 1}, // BC_MEMORY_IMMEDIATE
+        {4, 0}, // BC_ACCUMULATOR_IMMEDIATE
+    },
+};
+
 static char const *binop_names[BINOP_TYPE_COUNT] = {
     "unknown_binop",
     "mov",
@@ -196,6 +262,7 @@ static char const *binop_names[BINOP_TYPE_COUNT] = {
 
 typedef struct Binop {
     BinopType type;
+    BinopCategory category;
     Operand operands[2];
     bool wide;
 } Binop;
@@ -264,6 +331,49 @@ typedef struct Instruction {
         Jump jump;
     } u;
 } Instruction;
+
+static int effective_address_clocks(Binop *binop)
+{
+    OperandMemory *memop = NULL;
+    for (int i = 0; i < 2; i++) {
+        if (binop->operands[i].type == OPERAND_MEMORY) {
+            memop = &binop->operands[i].u.memory;
+        }
+    }
+    if (memop == NULL) {
+        return 0;
+    }
+
+    int num_regs = 0;
+    for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
+        if (memop->regs[i] != REG_NONE) {
+            num_regs++;
+        }
+    }
+
+    switch (num_regs) {
+    case 0: // Displacement only
+        return 6;
+    case 1: {
+        if (memop->disp == 0) { // Base or index only
+            return 5;
+        } else { // Displacement + base or index
+            return 9;
+        }
+    } break;
+    case 2: {
+        bool fast = (memop->regs[0] == REG_BP && memop->regs[1] == REG_DI)
+                || (memop->regs[0] == REG_BX && memop->regs[1] == REG_SI);
+        if (memop->disp == 0) { // Base + index
+            return fast ? 7 : 8;
+        } else { // Displacement + base + index
+            return fast ? 11 : 12;
+        }
+    } break;
+    default:
+        return 0;
+    }
+}
 
 static void *register_address(Reg reg, bool wide)
 {
@@ -366,6 +476,23 @@ static void decode_reg_rm(uint8_t byte, Binop *binop)
     uint8_t reg = decode_rm_byte(&binop->operands[rm_operand]);
     binop->operands[reg_operand].type = OPERAND_REG;
     binop->operands[reg_operand].u.reg = (Reg)reg;
+
+    if (binop->operands[DEST].type == OPERAND_REG) {
+        switch (binop->operands[SRC].type) {
+        case OPERAND_REG:
+            binop->category = BC_REGISTER_REGISTER;
+            break;
+        case OPERAND_MEMORY:
+            binop->category = BC_REGISTER_MEMORY;
+            break;
+        case OPERAND_IMMEDIATE:
+            binop->category = BC_REGISTER_IMMEDIATE;
+            break;
+        }
+    } else { // dest is memory operand
+        binop->category =
+                binop->operands[SRC].type == OPERAND_REG ? BC_MEMORY_REGISTER : BC_MEMORY_IMMEDIATE;
+    }
 }
 
 /**
@@ -377,6 +504,8 @@ static uint8_t decode_immediate_rm(uint8_t byte, bool sign_extend, Binop *binop)
 {
     binop->wide = byte & 0x1;
     uint8_t middle_bits = decode_rm_byte(&binop->operands[DEST]);
+    binop->category =
+            binop->operands[DEST].type == OPERAND_REG ? BC_REGISTER_IMMEDIATE : BC_MEMORY_IMMEDIATE;
     binop->operands[SRC].type = OPERAND_IMMEDIATE;
     binop->operands[SRC].u.immediate = read_int16(sign_extend || !binop->wide);
     return middle_bits;
@@ -394,7 +523,14 @@ static bool decode_instruction(Instruction *inst)
     if ((byte & OPCODE_MOV_REG_RM_MASK) == OPCODE_MOV_REG_RM) {
         inst->type = INST_BINOP;
         inst->u.binop.type = BINOP_MOV;
-        decode_reg_rm(byte, &inst->u.binop);
+        Binop *binop = &inst->u.binop;
+        decode_reg_rm(byte, binop);
+        for (int i = 0; i < 2; i++) {
+            if (binop->operands[i].type == OPERAND_REG && binop->operands[i].u.reg == REG_AL
+                    && binop->operands[!i].type == OPERAND_MEMORY) {
+                binop->category = i ? BC_MEMORY_ACCUMULATOR : BC_ACCUMULATOR_MEMORY;
+            }
+        }
     } else if ((byte & OPCODE_MOV_IMMEDIATE_RM_MASK) == OPCODE_MOV_IMMEDIATE_RM) {
         inst->type = INST_BINOP;
         inst->u.binop.type = BINOP_MOV;
@@ -403,6 +539,7 @@ static bool decode_instruction(Instruction *inst)
         inst->type = INST_BINOP;
         Binop *binop = &inst->u.binop;
         binop->type = BINOP_MOV;
+        binop->category = BC_REGISTER_IMMEDIATE;
         binop->wide = (byte >> 3) & 0x1;
         binop->operands[DEST].type = OPERAND_REG;
         binop->operands[DEST].u.reg = (Reg)(byte & 0x7);
@@ -419,20 +556,33 @@ static bool decode_instruction(Instruction *inst)
         binop->operands[accumulator_operand].type = OPERAND_REG;
         binop->operands[accumulator_operand].u.reg = REG_AX;
 
+        binop->category = accumulator_operand ? BC_MEMORY_ACCUMULATOR : BC_ACCUMULATOR_MEMORY;
+
         read_direct_address(&binop->operands[memory_operand]);
     } else if ((byte & OPCODE_OCTAL_REG_RM_MASK) == OPCODE_OCTAL_REG_RM) {
         inst->type = INST_BINOP;
         inst->u.binop.type = octal_code_to_binop[(byte >> 3) & 0x7];
-        decode_reg_rm(byte, &inst->u.binop);
+        Binop *binop = &inst->u.binop;
+        decode_reg_rm(byte, binop);
+        if (binop->operands[DEST].type == OPERAND_REG && binop->operands[DEST].u.reg == REG_AX
+                && binop->operands[SRC].type == OPERAND_IMMEDIATE) {
+            binop->category = BC_ACCUMULATOR_IMMEDIATE;
+        }
     } else if ((byte & OPCODE_OCTAL_IMMEDIATE_RM_MASK) == OPCODE_OCTAL_IMMEDIATE_RM) {
-        uint8_t octal_code = decode_immediate_rm(byte, (byte >> 1) & 0x1, &inst->u.binop);
         inst->type = INST_BINOP;
-        inst->u.binop.type = octal_code_to_binop[octal_code];
+        Binop *binop = &inst->u.binop;
+        uint8_t octal_code = decode_immediate_rm(byte, (byte >> 1) & 0x1, binop);
+        binop->type = octal_code_to_binop[octal_code];
+        if (binop->operands[DEST].type == OPERAND_REG && binop->operands[DEST].u.reg == REG_AX
+                && binop->operands[SRC].type == OPERAND_IMMEDIATE) {
+            binop->category = BC_ACCUMULATOR_IMMEDIATE;
+        }
     } else if ((byte & OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR_MASK)
             == OPCODE_OCTAL_IMMEDIATE_ACCUMULATOR) {
         inst->type = INST_BINOP;
         Binop *binop = &inst->u.binop;
         binop->type = octal_code_to_binop[(byte >> 3) & 0x7];
+        binop->category = BC_ACCUMULATOR_IMMEDIATE;
         binop->wide = byte & 0x1;
         binop->operands[SRC].type = OPERAND_IMMEDIATE;
         binop->operands[SRC].u.immediate = read_int16(!binop->wide);
@@ -565,8 +715,9 @@ static bool get_parity(int16_t value)
     return !((t1 ^ (t1 >> 1)) & 0x1);
 }
 
-static void simulate_instruction(Instruction *inst)
+static uint16_t simulate_instruction(Instruction *inst)
 {
+    uint16_t mem_address = 0;
     switch (inst->type) {
     case INST_BINOP: {
         Binop *binop = &inst->u.binop;
@@ -580,7 +731,6 @@ static void simulate_instruction(Instruction *inst)
                 operand_addresses[i] = register_address(operand->u.reg, binop->wide);
                 break;
             case OPERAND_MEMORY: {
-                uint16_t mem_address = 0;
                 for (int j = 0; j < OPERAND_MEMORY_REG_COUNT; j++) {
                     mem_address += *(uint16_t *)register_address(operand->u.memory.regs[j], true);
                 }
@@ -707,7 +857,8 @@ static void simulate_instruction(Instruction *inst)
         }
     } break;
     }
-    return;
+
+    return mem_address;
 }
 
 int main(int argc, char **argv)
@@ -817,11 +968,39 @@ int main(int argc, char **argv)
 
     Instruction inst;
     if (execute) {
+        int clocks = 0;
         printf("--- %s execution ---\n", file_path);
         while (save_state(), decode_instruction(&inst)) {
             print_instruction(&inst);
             printf(" ; ");
-            simulate_instruction(&inst);
+            uint16_t mem_address = simulate_instruction(&inst);
+
+            // Compute and print clock count change
+            if (inst.type == INST_BINOP) {
+                Binop *binop = &inst.u.binop;
+                int inst_clocks = binop_clocks[binop->type][binop->category][COLUMN_CLOCKS];
+                int ea_clocks = effective_address_clocks(binop);
+                int transfers = binop_clocks[binop->type][binop->category][COLUMN_TRANSFERS];
+                int p_clocks = 0;
+                if (mem_address % 2 != 0) {
+                    p_clocks += transfers * 4;
+                }
+                int incr = inst_clocks + ea_clocks + p_clocks;
+                clocks += incr;
+                printf("Clocks: +%d = %d ", incr, clocks);
+                if (ea_clocks != 0 || p_clocks != 0) {
+                    printf("(%d", inst_clocks);
+                    if (ea_clocks != 0) {
+                        printf(" + %dea", ea_clocks);
+                    }
+                    if (p_clocks != 0) {
+                        printf(" + %dp", p_clocks);
+                    }
+                    printf(") ");
+                }
+                printf("| ");
+            }
+
             print_diff();
             printf("\n");
         }
