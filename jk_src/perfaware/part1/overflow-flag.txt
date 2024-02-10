@@ -1,0 +1,71 @@
+Casey's sub/cmp
+(a ^ b) & (a ^ (a - b))
+
+Mine (same as add but substitute -b for b)
+~(a ^ -b) & (a ^ (a - b))
+
+(a ^ b) & (a ^ (a - b)) = ~(a ^ -b) & (a ^ (a - b))
+a ^ b = ~(a ^ -b)
+a ^ b = ~(a ^ (~b + 1))
+~(a ^ ~b) = ~(a ^ (~b + 1))
+~b = ~b + 1 // Uh oh
+
+Testing the edge case where ~b has a different sign bit than ~b + 1:
+
+3 bit two's complement
+0 - -4 = -4 // OF = 1
+
+a = 000
+b = 100
+
+ 000
+-100
+=100
+
+a - b = 100
+
+ 000
+^100
+=100
+
+(a ^ (a - b)) = 100
+
+Casey's
+(a ^ b) & (a ^ (a - b))
+(000 ^ 100) & 100
+100 & 100
+100 // Sign bit indicates there was overflow, correct
+
+Mine
+~(a ^ -b) & (a ^ (a - b))
+~(a ^ (~b + 1)) & (a ^ (a - b))
+~(000 ^ (~100 + 1)) & 100
+~(000 ^ (011 + 1)) & 100
+~(000 ^ 100) & 100
+~100 & 100
+011 & 100
+000 // Sign bit indicates there was no overflow, incorrect
+
+Fixed formula
+
+I already compute these values (r for result of op, n is used to compute carry flag)
+r =
+  add:      a + b
+  sub/cmp:  a - b
+n =
+  add:      ~a
+  sub/cmp:   a
+
+So I can use this formula for both add and sub/cmp
+(n ^ b) & (a ^ r)
+
+Comparison with Casey's
+
+Add
+(n ^ b) & (a ^ r) = ~(a ^ b) & (a ^ (a + b))
+(~a ^ b) & (a ^ (a + b)) = ~(a ^ b) & (a ^ (a + b))
+~(a ^ b) & (a ^ (a + b)) = ~(a ^ b) & (a ^ (a + b))
+
+Sub/cmp
+(n ^ b) & (a ^ r) = (a ^ b) & (a ^ (a - b))
+(a ^ b) & (a ^ (a - b)) = (a ^ b) & (a ^ (a - b))

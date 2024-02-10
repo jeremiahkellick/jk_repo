@@ -752,28 +752,27 @@ static uint16_t simulate_instruction(Instruction *inst)
         if (binop->type == BINOP_MOV) {
             result = src_value;
         } else {
-            int16_t dest_carry_value = dest_value;
-            int16_t sum_with;
+            int16_t dest_invert_add = dest_value;
             if (binop->type == BINOP_ADD) {
-                sum_with = src_value;
+                result = dest_value + src_value;
                 // Because CF for a + b is the same as CF for ~a - b, we can invert this and use the
                 // same code as sub and cmp to compute the carry flag
-                dest_carry_value = ~dest_carry_value;
+                // Also used for OF flag to invert the comparison of dest's and src's sign bits,
+                // such that for add, same sign = 1, and for sub/cmp, same sign = 0.
+                dest_invert_add = ~dest_invert_add;
             } else {
-                sum_with = -src_value;
+                result = dest_value - src_value;
             }
-            result = dest_value + sum_with;
 
             // Update flags
-            int16_t diff = dest_carry_value ^ src_value;
+            int16_t diff = dest_invert_add ^ src_value;
             set_flag(FLAG_CARRY,
                     // See carry-flag.txt for an explanation of the following expression
-                    (((diff & src_value) | (~diff & (dest_carry_value - src_value))) >> 15) & 0x1);
+                    (((diff & src_value) | (~diff & (dest_invert_add - src_value))) >> 15) & 0x1);
             set_flag(FLAG_PARITY, get_parity(result));
             set_flag(FLAG_ZERO, result == 0);
             set_flag(FLAG_SIGN, result < 0);
-            set_flag(FLAG_OVERFLOW,
-                    ((~(dest_value ^ sum_with) & (dest_value ^ result)) >> 15) & 0x1);
+            set_flag(FLAG_OVERFLOW, ((diff & (dest_value ^ result)) >> 15) & 0x1);
         }
 
         // If not a cmp, write result to dest
