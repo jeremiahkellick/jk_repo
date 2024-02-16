@@ -3,27 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <jk_src/jk_lib/hash.c>
+
 #include "hash_table.h"
 
 #define JK_HASH_TABLE_DEFAULT_CAPACITY 16
 
 #define JK_HASH_TABLE_FLAG_FILLED (1 << 0)
 #define JK_HASH_TABLE_FLAG_TOMBSTONE (1 << 1)
-
-/**
- * @brief Returns a hash for the given 32 bit value
- *
- * From https://github.com/skeeto/hash-prospector
- */
-static uint32_t jk_hash_uint32(uint32_t x)
-{
-    x ^= x >> 16;
-    x *= 0x21f0aaad;
-    x ^= x >> 15;
-    x *= 0xd35a2d97;
-    x ^= x >> 15;
-    return x;
-}
 
 static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
 {
