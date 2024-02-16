@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 
+#include <jk_src/jk_lib/command_line/options.c>
 #include <jk_src/jk_lib/hash.c>
 
 #define DEFAULT_FILE_PATH "./coords.json"
@@ -34,6 +35,45 @@ static unsigned hash_string(char *string)
     return hash;
 }
 
+typedef enum Opt {
+    OPT_HELP,
+    OPT_PAIR_COUNT,
+    OPT_SEED,
+    OPT_COUNT,
+} Opt;
+
+JkOption opts[OPT_COUNT] = {
+    {
+        .flag = '\0',
+        .long_name = "help",
+        .arg_name = NULL,
+        .description = "\tDisplay this help text and exit.\n",
+    },
+    {
+        .flag = 'n',
+        .long_name = "pair-count",
+        .arg_name = "PAIR_COUNT",
+        .description =
+                "\n"
+                "\t\tGenerate PAIR_COUNT coordinate pairs. Must be a positive integer\n"
+                "\t\tless than " MAX_PAIR_COUNT_STRING ". Permits commas, single quotes, or\n"
+                "\t\tunderscores as digit separators which are ignored. Defaults to\n"
+                "\t\t" DEFAULT_PAIR_COUNT_STRING ".\n",
+    },
+    {
+        .flag = 's',
+        .long_name = "seed",
+        .arg_name = "SEED",
+        .description = "\n"
+                       "\t\tUsed to seed the random number generator. Defaults to the\n"
+                       "\t\tcurrent time\n",
+    },
+};
+
+JkOptionResult opt_results[OPT_COUNT] = {0};
+
+JkOptionsParseResult opts_parse = {0};
+
 int main(int argc, char **argv)
 {
     program_name = argv[0];
@@ -43,92 +83,19 @@ int main(int argc, char **argv)
     unsigned seed = jk_hash_uint32((uint32_t)time(NULL));
     char *file_path = DEFAULT_FILE_PATH;
     {
-        char *pair_count_string = NULL;
-        char *seed_string = NULL;
-        bool help = false;
-        bool usage_error = false;
-        bool options_ended = false;
-        unsigned non_option_arguments = 0;
-        for (int i = 1; i < argc; i++) {
-            if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
-                if (argv[i][1] == '-') {
-                    if (argv[i][2] == '\0') { // -- encountered
-                        options_ended = true;
-                    } else { // Double hyphen option
-                        char *name = &argv[i][2];
-                        int end = 0;
-                        while (name[end] != '=' && name[end] != '\0') {
-                            end++;
-                        }
-                        if (strncmp(name, "help", end) == 0) {
-                            help = true;
-                        } else if (strncmp(name, "pair-count", end) == 0) {
-                            if (name[end] == '=' && name[end + 1] != '\0') {
-                                pair_count_string = &name[end + 1];
-                            } else {
-                                pair_count_string = argv[++i];
-                            }
-                        } else if (strncmp(name, "seed", end) == 0) {
-                            if (name[end] == '=' && name[end + 1] != '\0') {
-                                seed_string = &name[end + 1];
-                            } else {
-                                seed_string = argv[++i];
-                            }
-                        } else {
-                            fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
-                            usage_error = true;
-                        }
-                    }
-                } else { // Single-hypen option(s)
-                    bool has_argument = false;
-                    for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
-                        switch (*c) {
-                        case 'n':
-                            has_argument = true;
-                            pair_count_string = ++c;
-                            if (*pair_count_string == '\0') {
-                                pair_count_string = argv[++i];
-                            }
-                            break;
-                        case 's':
-                            has_argument = true;
-                            seed_string = ++c;
-                            if (*seed_string == '\0') {
-                                seed_string = argv[++i];
-                            }
-                            break;
-                        default:
-                            fprintf(stderr,
-                                    "%s: Invalid option '%c' in '%s'\n",
-                                    program_name,
-                                    *c,
-                                    argv[i]);
-                            usage_error = true;
-                            break;
-                        }
-                    }
-                }
-                if (i >= argc) {
-                    fprintf(stderr,
-                            "%s: Option '%s' missing required argument\n",
-                            program_name,
-                            argv[i - 1]);
-                    usage_error = true;
-                }
-            } else { // Regular argument
-                non_option_arguments++;
-                file_path = argv[i];
-            }
-        }
-        if (!help && non_option_arguments > 1) {
+        jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
+        if (opts_parse.operand_count == 1) {
+            file_path = opts_parse.operands[0];
+        } else if (opts_parse.operand_count > 1 && !opt_results[OPT_HELP].present) {
             fprintf(stderr,
-                    "%s: Expected 0-1 non-option arguments, got %u\n",
+                    "%s: Expected 0-1 operands, got %zu\n",
                     program_name,
-                    non_option_arguments);
-            usage_error = true;
+                    opts_parse.operand_count);
+            opts_parse.usage_error = true;
         }
         // Convert pair_count_string to integer
-        if (pair_count_string) {
+        if (opt_results[OPT_PAIR_COUNT].present) {
+            char *pair_count_string = opt_results[OPT_PAIR_COUNT].arg;
             int multiplier = 1;
             pair_count = 0;
             for (int i = (int)strlen(pair_count_string) - 1; i >= 0; i--) {
@@ -143,16 +110,16 @@ int main(int argc, char **argv)
                             "integer, got '%s'\n",
                             program_name,
                             pair_count_string);
-                    usage_error = true;
+                    opts_parse.usage_error = true;
                     break;
                 }
             }
         }
         // Convert seed string to seed
-        if (seed_string) {
-            seed = hash_string(seed_string);
+        if (opt_results[OPT_SEED].present) {
+            seed = hash_string(opt_results[OPT_SEED].arg);
         }
-        if (help || usage_error) {
+        if (opt_results[OPT_HELP].present || opts_parse.usage_error) {
             printf("NAME\n"
                    "\thaversine_generator - generates JSON for haversine coordinate pairs\n\n"
                    "SYNOPSIS\n"
@@ -160,18 +127,9 @@ int main(int argc, char **argv)
                    "DESCRIPTION\n"
                    "\thaversine_generator generates JSON for randomly-selected haversine\n"
                    "\tcoordinate pairs, then writes it to FILE. FILE defaults to " DEFAULT_FILE_PATH
-                   "\n\n"
-                   "OPTIONS\n"
-                   "\t--help\tDisplay this help text and exit.\n\n"
-                   "\t-n PAIR_COUNT, --pair-count=PAIR_COUNT\n"
-                   "\t\tGenerate PAIR_COUNT coordinate pairs. Must be a positive integer\n"
-                   "\t\tless than " MAX_PAIR_COUNT_STRING ". Permits commas, single quotes, or\n"
-                   "\t\tunderscores as digit separators which are ignored. Defaults to\n"
-                   "\t\t" DEFAULT_PAIR_COUNT_STRING ".\n\n"
-                   "\t-s SEED, --seed=SEED\n"
-                   "\t\tUsed to seed the random number generator. Defaults to the\n"
-                   "\t\tcurrent time\n\n");
-            exit(usage_error);
+                   "\n\n");
+            jk_options_print_help(stdout, opts, OPT_COUNT);
+            exit(opts_parse.usage_error);
         }
     }
 

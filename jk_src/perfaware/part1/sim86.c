@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <jk_src/jk_lib/command_line/options.c>
+
 #define OPCODE_MOV_REG_RM_MASK 0xfc
 #define OPCODE_MOV_REG_RM 0x88
 
@@ -860,73 +862,64 @@ static uint16_t simulate_instruction(Instruction *inst)
     return mem_address;
 }
 
+typedef enum Opt {
+    OPT_DUMP,
+    OPT_EXECUTE,
+    OPT_HELP,
+    OPT_COUNT,
+} Opt;
+
+JkOption opts[OPT_COUNT] = {
+    {
+        .flag = 'd',
+        .long_name = "dump",
+        .arg_name = NULL,
+        .description = "\n"
+                       "\t\tDump the simulator's memory to ./dump.data when execution ends.\n"
+                       "\t\tOnly valid if the -e option is also specified.\n",
+    },
+    {
+        .flag = 'e',
+        .long_name = "execute",
+        .arg_name = NULL,
+        .description = "\n"
+                       "\t\tEnables instruction execution. If not specified, sim86 only\n"
+                       "\t\tperforms disassembly.\n",
+    },
+    {
+        .flag = '\0',
+        .long_name = "help",
+        .arg_name = NULL,
+        .description = "\tDisplay this help text and exit.\n",
+    },
+};
+
+JkOptionResult opt_results[OPT_COUNT] = {0};
+
+JkOptionsParseResult opts_parse = {0};
+
 int main(int argc, char **argv)
 {
     program_name = argv[0];
 
     // Parse arguments
     char *file_path = NULL;
-    bool execute = false;
-    bool dump = false;
     {
-        bool help = false;
-        bool usage_error = false;
-        bool options_ended = false;
-        int non_option_arguments = 0;
-        for (int i = 1; i < argc; i++) {
-            if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
-                if (argv[i][1] == '-') {
-                    if (argv[i][2] == '\0') { // -- encountered
-                        options_ended = true;
-                    } else { // Double hyphen option
-                        if (strcmp(argv[i], "--execute") == 0) {
-                            execute = true;
-                        } else if (strcmp(argv[i], "--dump") == 0) {
-                            dump = true;
-                        } else if (strcmp(argv[i], "--help") == 0) {
-                            help = true;
-                        } else {
-                            fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
-                            usage_error = true;
-                        }
-                    }
-                } else { // Single-hypen option(s)
-                    for (char *c = &argv[i][1]; *c != '\0'; c++) {
-                        switch (*c) {
-                        case 'e':
-                            execute = true;
-                            break;
-                        case 'd':
-                            dump = true;
-                            break;
-                        default:
-                            fprintf(stderr,
-                                    "%s: Invalid option '%c' in '%s'\n",
-                                    program_name,
-                                    *c,
-                                    argv[i]);
-                            usage_error = true;
-                            break;
-                        }
-                    }
-                }
-            } else { // Regular argument
-                non_option_arguments++;
-                file_path = argv[i];
-            }
-        }
-        if (dump && !execute) {
+        jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
+        if (opt_results[OPT_DUMP].present && !opt_results[OPT_EXECUTE].present) {
             fprintf(stderr, "%s: -d (--dump) requires -e (--execute)\n", program_name);
-            usage_error = true;
+            opts_parse.usage_error = true;
         }
-        if (!help && non_option_arguments != 1) {
+        if (opts_parse.operand_count == 1) {
+            file_path = opts_parse.operands[0];
+        } else if (!opt_results[OPT_HELP].present) {
             fprintf(stderr,
-                    "%s: Expected 1 non-option argument, got %d\n",
+                    "%s: Expected 1 non-option argument, got %zu\n",
                     program_name,
-                    non_option_arguments);
-            usage_error = true;
+                    opts_parse.operand_count);
+            opts_parse.usage_error = true;
         }
-        if (help || usage_error) {
+        if (opt_results[OPT_HELP].present || opts_parse.usage_error) {
             printf("NAME\n"
                    "\tsim86 - decodes and simulates a subset of 8086 machine code\n\n"
                    "SYNOPSIS\n"
@@ -938,16 +931,9 @@ int main(int argc, char **argv)
                    "\texecute the instructions. Instructions are loaded from FILE into the\n"
                    "\tsimulator's memory at address 0, which is also where the instruction\n"
                    "\tpointer (ip register) starts. Execution ends when the instruction\n"
-                   "\tpointer leaves the region of memory that was loaded from FILE.\n\n"
-                   "OPTIONS\n"
-                   "\t-d, --dump\n"
-                   "\t\tDump the simulator's memory to ./dump.data when execution ends.\n"
-                   "\t\tOnly valid if the -e option is also specified.\n\n"
-                   "\t-e, --execute\n"
-                   "\t\tEnables instruction execution. If not specified, sim86 only\n"
-                   "\t\tperforms disassembly.\n\n"
-                   "\t--help\tDisplay this help text and exit.\n");
-            exit(usage_error);
+                   "\tpointer leaves the region of memory that was loaded from FILE.\n\n");
+            jk_options_print_help(stdout, opts, OPT_COUNT);
+            exit(opts_parse.usage_error);
         }
     }
 
@@ -966,7 +952,7 @@ int main(int argc, char **argv)
     }
 
     Instruction inst;
-    if (execute) {
+    if (opt_results[OPT_EXECUTE].present) {
         int clocks = 0;
         printf("--- %s execution ---\n", file_path);
         while (save_state(), decode_instruction(&inst)) {
@@ -1017,7 +1003,7 @@ int main(int argc, char **argv)
             printf("\n");
         }
         printf("\n");
-        if (dump) {
+        if (opt_results[OPT_DUMP].present) {
             char const *dump_file_path = "dump.data";
             FILE *dump_file = fopen(dump_file_path, "wb");
             if (dump_file == NULL) {
