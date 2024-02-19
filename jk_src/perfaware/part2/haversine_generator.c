@@ -17,6 +17,11 @@
 #define MAX_PAIR_COUNT 1000000000
 #define MAX_PAIR_COUNT_STRING "1,000,000,000"
 
+#define MIN_CLUSTER_COUNT 1
+#define MIN_CLUSTER_COUNT_STRING "1"
+#define MAX_CLUSTER_COUNT 1000000000
+#define MAX_CLUSTER_COUNT_STRING "1,000,000,000"
+
 #define EARTH_RADIUS 6372.8
 #define PI 3.14159265358979323846264338327950288
 #define DEGREES_TO_RADIANS (PI / 180.0)
@@ -27,6 +32,11 @@ typedef union Bits32 {
     unsigned u;
     char c[4];
 } Bits32;
+
+typedef struct Cluster {
+    double x_min;
+    double y_min;
+} Cluster;
 
 static unsigned hash_string(char *string)
 {
@@ -41,9 +51,9 @@ static unsigned hash_string(char *string)
     return hash;
 }
 
-static double random_between(double min, double max)
+static double random_within(double min, double radius)
 {
-    return min + ((double)rand() / (double)RAND_MAX) * (max - min);
+    return min + ((double)rand() / (double)RAND_MAX) * radius;
 }
 
 static double square(double A)
@@ -84,7 +94,40 @@ static double reference_haversine(double X0, double Y0, double X1, double Y1, do
     return Result;
 }
 
+int parse_positive_integer(char *string, char *option_name, bool *usage_error)
+{
+    int multiplier = 1;
+    int result = 0;
+    for (int i = (int)strlen(string) - 1; i >= 0; i--) {
+        if (isdigit(string[i])) {
+            result += (string[i] - '0') * multiplier;
+            multiplier *= 10;
+        } else if (!(string[i] == ',' || string[i] == '\'' || string[i] == '_')) {
+            // Error if character is not a digit or one of the permitted separators
+            fprintf(stderr,
+                    "%s: Invalid argument for option %s: expected a positive "
+                    "integer, got '%s'\n",
+                    program_name,
+                    option_name,
+                    string);
+            *usage_error = true;
+            break;
+        }
+    }
+    return result;
+}
+
+Cluster random_cluster()
+{
+    Cluster cluster = {
+        .x_min = random_within(0.0, 360.0 - 45.0),
+        .y_min = random_within(0.0, 180.0 - 45.0),
+    };
+    return cluster;
+}
+
 typedef enum Opt {
+    OPT_CLUSTER_COUNT,
     OPT_HELP,
     OPT_PAIR_COUNT,
     OPT_SEED,
@@ -92,6 +135,21 @@ typedef enum Opt {
 } Opt;
 
 JkOption opts[OPT_COUNT] = {
+    {
+        .flag = 'c',
+        .long_name = "clusters",
+        .arg_name = "CLUSTER_COUNT",
+        .description = "\n"
+                       "\t\tAs PAIR_COUNT gets large, the expected sums for even very\n"
+                       "\t\tdifferent data converge to similar values. This option helps to\n"
+                       "\t\tcounteract that effect by dividing the randomly selected points\n"
+                       "\t\tinto CLUSTER_COUNT different areas and placing x0,y0 and x1,y1\n"
+                       "\t\tof each pair in different clusters. Each area limits the x and y\n"
+                       "\t\tcoordinates to two randomly-selected 45-degree arcs.\n"
+                       "\t\tCLUSTER_COUNT must be a positive integer greater "
+                       "than " MIN_CLUSTER_COUNT_STRING " and less\n"
+                       "\t\tthan " MAX_CLUSTER_COUNT_STRING ".\n",
+    },
     {
         .flag = '\0',
         .long_name = "help",
@@ -128,6 +186,7 @@ int main(int argc, char **argv)
     program_name = argv[0];
 
     // Parse arguments
+    int cluster_count = -1;
     int pair_count = DEFAULT_PAIR_COUNT;
     unsigned seed = jk_hash_uint32((uint32_t)time(NULL));
     char *json_file_path = DEFAULT_JSON_FILE_PATH;
@@ -143,26 +202,29 @@ int main(int argc, char **argv)
                     opts_parse.operand_count);
             opts_parse.usage_error = true;
         }
-        // Convert pair_count_string to integer
+        if (opt_results[OPT_CLUSTER_COUNT].present) {
+            cluster_count = parse_positive_integer(
+                    opt_results[OPT_CLUSTER_COUNT].arg, "-c (--clusters)", &opts_parse.usage_error);
+            if (cluster_count <= MIN_CLUSTER_COUNT || cluster_count >= MAX_CLUSTER_COUNT) {
+                fprintf(stderr,
+                        "%s: Invalid argument for option -c (--clusters): Expected integer greater "
+                        "than %s and less than %s\n",
+                        program_name,
+                        MIN_CLUSTER_COUNT_STRING,
+                        MAX_CLUSTER_COUNT_STRING);
+                opts_parse.usage_error = true;
+            }
+        }
         if (opt_results[OPT_PAIR_COUNT].present) {
-            char *pair_count_string = opt_results[OPT_PAIR_COUNT].arg;
-            int multiplier = 1;
-            pair_count = 0;
-            for (int i = (int)strlen(pair_count_string) - 1; i >= 0; i--) {
-                if (isdigit(pair_count_string[i])) {
-                    pair_count += (pair_count_string[i] - '0') * multiplier;
-                    multiplier *= 10;
-                } else if (!(pair_count_string[i] == ',' || pair_count_string[i] == '\''
-                                   || pair_count_string[i] == '_')) {
-                    // Error if character is not a digit or one of the permitted separators
-                    fprintf(stderr,
-                            "%s: Invalid value for option -n (--pair-count): expected a positive "
-                            "integer, got '%s'\n",
-                            program_name,
-                            pair_count_string);
-                    opts_parse.usage_error = true;
-                    break;
-                }
+            pair_count = parse_positive_integer(
+                    opt_results[OPT_PAIR_COUNT].arg, "-n (--pair-count)", &opts_parse.usage_error);
+            if (pair_count >= MAX_PAIR_COUNT) {
+                fprintf(stderr,
+                        "%s: Invalid argument for option -n (--pair-count): Expected integer less "
+                        "than %s\n",
+                        program_name,
+                        MAX_PAIR_COUNT_STRING);
+                opts_parse.usage_error = true;
             }
         }
         // Convert seed string to seed
@@ -173,7 +235,8 @@ int main(int argc, char **argv)
             printf("NAME\n"
                    "\thaversine_generator - generates JSON for haversine coordinate pairs\n\n"
                    "SYNOPSIS\n"
-                   "\thaversine_generator [-n PAIR_COUNT] [-s SEED] [JSON_FILE] [ANSWER_FILE]\n\n"
+                   "\thaversine_generator [-c CLUSTER_COUNT] [-n PAIR_COUNT] [-s SEED]\n"
+                   "\t\t[JSON_FILE] [ANSWER_FILE]\n\n"
                    "DESCRIPTION\n"
                    "\thaversine_generator generates JSON for randomly-selected haversine\n"
                    "\tcoordinate pairs, then writes the JSON to JSON_FILE. It also writes the\n"
@@ -209,12 +272,38 @@ int main(int argc, char **argv)
     }
 
     fprintf(json_file, "{\"pairs\": [\n");
+
+    double x_radius;
+    double y_radius;
+    int points_per_cluster;
+    Cluster cluster0 = {0};
+    Cluster cluster1 = {0};
+
+    if (cluster_count == -1) {
+        x_radius = 360.0;
+        y_radius = 180.0;
+        points_per_cluster = INT_MAX;
+    } else {
+        x_radius = 45.0;
+        y_radius = 45.0;
+        points_per_cluster = pair_count * 2 / cluster_count;
+        if (points_per_cluster < 1) {
+            points_per_cluster = 1;
+        }
+
+        cluster0 = random_cluster();
+        cluster1 = random_cluster();
+    }
+
+    int remaining_in_cluster = points_per_cluster;
+
     double sum = 0.0;
     for (int i = 0; i < pair_count; i++) {
-        double x0 = random_between(-180.0, 180.0);
-        double y0 = random_between(-90.0, 90.0);
-        double x1 = random_between(-180.0, 180.0);
-        double y1 = random_between(-90.0, 90.0);
+        double x0 = random_within(cluster0.x_min, x_radius);
+        double y0 = random_within(cluster0.y_min, y_radius);
+        double x1 = random_within(cluster1.x_min, x_radius);
+        double y1 = random_within(cluster1.y_min, y_radius);
+
         fprintf(json_file,
                 "%s    {\"x0\": %.16f, \"y0\": %.16f, \"x1\": %.16f, \"y1\": %.16f}",
                 i == 0 ? "" : ",\n",
@@ -222,9 +311,17 @@ int main(int argc, char **argv)
                 y0,
                 x1,
                 y1);
+
         double distance = reference_haversine(x0, y0, x1, y1, EARTH_RADIUS);
         sum += distance;
         fwrite(&distance, sizeof(double), 1, answers_file);
+
+        remaining_in_cluster -= 2;
+        if (remaining_in_cluster <= 0) {
+            remaining_in_cluster = points_per_cluster;
+            cluster0 = random_cluster();
+            cluster1 = random_cluster();
+        }
     }
     fprintf(json_file, "\n]}\n");
 
