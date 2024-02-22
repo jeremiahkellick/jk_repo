@@ -572,7 +572,6 @@ int main(int argc, char **argv)
     array_append(&command, "-Wextra");
     array_append(&command, "-fstack-protector");
     array_append(&command, "-Werror=vla");
-    array_append(&command, "-Wno-pointer-arith");
     if (optimize) {
         array_append(&command, "-O3");
         array_append(&command, "-flto");
