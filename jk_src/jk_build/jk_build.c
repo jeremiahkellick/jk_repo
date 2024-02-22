@@ -545,7 +545,7 @@ int main(int argc, char **argv)
     array_append(&command, "cl");
     array_append(&command, "/W4");
     array_append(&command, "/w44062");
-    array_append(&command, "/wd4201");
+    array_append(&command, "/wd4100");
     array_append(&command, "/nologo");
     array_append(&command, "/Gm-");
     array_append(&command, "/GR-");
