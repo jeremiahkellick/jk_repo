@@ -19,56 +19,78 @@
 
 char *program_name = "<global program_name should be overwritten with argv[0]>";
 
+typedef enum JkJsonValueType {
+    JK_JSON_VALUE_OBJECT,
+    JK_JSON_VALUE_ARRAY,
+    JK_JSON_VALUE_STRING,
+    JK_JSON_VALUE_NUMBER,
+    JK_JSON_VALUE_TRUE,
+    JK_JSON_VALUE_FALSE,
+    JK_JSON_VALUE_NULL,
+    JK_JSON_VALUE_TYPE_COUNT,
+} JkJsonValueType;
+
+static char *jk_json_value_strings[JK_JSON_VALUE_TYPE_COUNT] = {
+    "OBJECT",
+    "ARRAY",
+    "STRING",
+    "NUMBER",
+    "TRUE",
+    "FALSE",
+    "NULL",
+};
+
+typedef struct JkJsonValue {
+    JkJsonValueType type;
+    union {
+        char *string;
+        double number;
+    } u;
+} JkJsonValue;
+
 typedef enum JkJsonTokenType {
-    JK_JSON_TOKEN_EOF,
-    JK_JSON_TOKEN_STRING,
-    JK_JSON_TOKEN_NUMBER,
-    JK_JSON_TOKEN_TRUE,
-    JK_JSON_TOKEN_FALSE,
-    JK_JSON_TOKEN_NULL,
+    JK_JSON_TOKEN_VALUE,
     JK_JSON_TOKEN_COMMA,
     JK_JSON_TOKEN_COLON,
     JK_JSON_TOKEN_OPEN_BRACE,
     JK_JSON_TOKEN_CLOSE_BRACE,
     JK_JSON_TOKEN_OPEN_BRACKET,
     JK_JSON_TOKEN_CLOSE_BRACKET,
+    JK_JSON_TOKEN_EOF,
     JK_JSON_TOKEN_TYPE_COUNT,
 } JkJsonTokenType;
 
+typedef struct JkJsonToken {
+    JkJsonTokenType type;
+    JkJsonValue value;
+} JkJsonToken;
+
 static char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
-    "EOF",
-    "STRING",
-    "NUMBER",
-    "TRUE",
-    "FALSE",
-    "NULL",
+    "VALUE",
     ",",
     ":",
     "{",
     "}",
     "[",
     "]",
+    "EOF",
 };
-
-typedef struct JkJsonToken {
-    JkJsonTokenType type;
-    union {
-        char *string;
-        double number;
-    } value;
-} JkJsonToken;
 
 static void jk_json_print_token(FILE *file, JkJsonToken *token)
 {
-    if (token->type == JK_JSON_TOKEN_STRING) {
-        fprintf(file, "\"%s\"", token->value.string);
-        return;
+    if (token->type == JK_JSON_TOKEN_VALUE) {
+        if (token->value.type == JK_JSON_VALUE_STRING) {
+            fprintf(file, "\"%s\"", token->value.u.string);
+            return;
+        }
+        if (token->value.type == JK_JSON_VALUE_NUMBER) {
+            fprintf(file, "%f", token->value.u.number);
+            return;
+        }
+        fprintf(file, "%s", jk_json_value_strings[token->value.type]);
+    } else {
+        fprintf(file, "%s", jk_json_token_strings[token->type]);
     }
-    if (token->type == JK_JSON_TOKEN_NUMBER) {
-        fprintf(file, "%f", token->value.number);
-        return;
-    }
-    fprintf(file, "%s", jk_json_token_strings[token->type]);
 }
 
 static bool jk_json_is_whitespace(int byte)
@@ -79,24 +101,24 @@ static bool jk_json_is_whitespace(int byte)
 typedef struct JkJsonExactMatch {
     char *string;
     long length;
-    JkJsonTokenType token_type;
+    JkJsonValueType value_type;
 } JkJsonExactMatch;
 
 static JkJsonExactMatch jk_json_exact_matches[] = {
     {
         .string = "true",
         .length = sizeof("true") - 1,
-        .token_type = JK_JSON_TOKEN_TRUE,
+        .value_type = JK_JSON_VALUE_TRUE,
     },
     {
         .string = "false",
         .length = sizeof("false") - 1,
-        .token_type = JK_JSON_TOKEN_FALSE,
+        .value_type = JK_JSON_VALUE_FALSE,
     },
     {
         .string = "null",
         .length = sizeof("null") - 1,
-        .token_type = JK_JSON_TOKEN_NULL,
+        .value_type = JK_JSON_VALUE_NULL,
     },
 };
 
@@ -220,8 +242,9 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
             c = jk_arena_push(arena, 1);
         }
         *c = '\0';
-        token->type = JK_JSON_TOKEN_STRING;
-        token->value.string = string;
+        token->type = JK_JSON_TOKEN_VALUE;
+        token->value.type = JK_JSON_VALUE_STRING;
+        token->value.u.string = string;
     } break;
     case '-':
     case '0':
@@ -238,8 +261,9 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
         double exponent = 0.0;
         double exponent_sign = 1.0;
 
-        token->type = JK_JSON_TOKEN_NUMBER;
-        token->value.number = 0.0;
+        token->type = JK_JSON_TOKEN_VALUE;
+        token->value.type = JK_JSON_VALUE_NUMBER;
+        token->value.u.number = 0.0;
 
         if (r.c == '-') {
             sign = -1.0;
@@ -255,7 +279,7 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
 
         // Parse integer
         do {
-            token->value.number = (token->value.number * 10.0) + (r.c - '0');
+            token->value.u.number = (token->value.u.number * 10.0) + (r.c - '0');
         } while (isdigit((r.c = jk_json_getc(stream_read, stream))));
 
         // Parse fraction if there is one
@@ -270,7 +294,7 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
 
             double multiplier = 0.1;
             do {
-                token->value.number += (r.c - '0') * multiplier;
+                token->value.u.number += (r.c - '0') * multiplier;
                 multiplier /= 10.0;
             } while (isdigit((r.c = jk_json_getc(stream_read, stream))));
         }
@@ -307,7 +331,7 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
         if (r.c != EOF) {
             stream_seek_relative(stream, -1);
         }
-        token->value.number = sign * token->value.number * pow(10.0, exponent_sign * exponent);
+        token->value.u.number = sign * token->value.u.number * pow(10.0, exponent_sign * exponent);
     } break;
     case 't':
     case 'f':
@@ -321,7 +345,8 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
                     && !isalnum(cmp_buffer[match->length])) {
                 stream_seek_relative(
                         stream, -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length, read_count));
-                token->type = match->token_type;
+                token->type = JK_JSON_TOKEN_VALUE;
+                token->value.type = match->value_type;
                 return r;
             }
         }
