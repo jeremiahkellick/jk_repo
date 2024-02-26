@@ -143,7 +143,7 @@ static void jk_json_print_c(FILE *file, int c)
     }
 }
 
-typedef enum JkJsonLexResultType {
+typedef enum JkJsonLexStatus {
     JK_JSON_LEX_SUCCESS,
     JK_JSON_LEX_UNEXPECTED_CHARACTER,
     JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING,
@@ -151,43 +151,42 @@ typedef enum JkJsonLexResultType {
     JK_JSON_LEX_INVALID_UNICODE_ESCAPE,
     JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT,
     JK_JSON_LEX_RESULT_TYPE_COUNT,
-} JkJsonLexResultType;
+} JkJsonLexStatus;
 
-typedef struct JkJsonLexResult {
-    JkJsonLexResultType type;
+typedef struct JkJsonLexErrorData {
     int c;
     int c_to_be_followed_by_digit;
-} JkJsonLexResult;
+} JkJsonLexErrorData;
 
-JkJsonLexResult jk_json_lex(JkArena *arena,
+JkJsonLexStatus jk_json_lex(JkArena *arena,
         size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
-        JkJsonToken *token)
+        JkJsonToken *token,
+        JkJsonLexErrorData *error_data)
 {
-    JkJsonLexResult r = {.type = JK_JSON_LEX_SUCCESS};
+    JkJsonLexErrorData *e = error_data;
     char cmp_buffer[JK_JSON_CMP_STRING_LENGTH + 1] = {'\0'};
 
     do {
-        r.c = jk_json_getc(stream_read, stream);
-    } while (jk_json_is_whitespace(r.c));
+        e->c = jk_json_getc(stream_read, stream);
+    } while (jk_json_is_whitespace(e->c));
 
-    switch (r.c) {
+    switch (e->c) {
     case '"': {
         char *c = jk_arena_push(arena, 1);
         char *string = c;
-        while ((r.c = jk_json_getc(stream_read, stream)) != '"') {
-            if (r.c < 0x20 || r.c == EOF) {
-                r.type = JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING;
-                return r;
+        while ((e->c = jk_json_getc(stream_read, stream)) != '"') {
+            if (e->c < 0x20 || e->c == EOF) {
+                return JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING;
             }
-            if (r.c == '\\') {
-                r.c = jk_json_getc(stream_read, stream);
-                switch (r.c) {
+            if (e->c == '\\') {
+                e->c = jk_json_getc(stream_read, stream);
+                switch (e->c) {
                 case '"':
                 case '\\':
                 case '/': {
-                    *c = (char)r.c;
+                    *c = (char)e->c;
                 } break;
 
                 case 'b': {
@@ -210,15 +209,14 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
                     uint32_t unicode32 = 0;
                     for (int i = 0; i < 4; i++) {
                         int digit_value;
-                        r.c = jk_json_getc(stream_read, stream);
-                        int lowered = tolower(r.c);
+                        e->c = jk_json_getc(stream_read, stream);
+                        int lowered = tolower(e->c);
                         if (lowered >= 'a' && lowered <= 'f') {
                             digit_value = 10 + (lowered - 'a');
-                        } else if (r.c >= '0' && r.c <= '9') {
-                            digit_value = r.c - '0';
+                        } else if (e->c >= '0' && e->c <= '9') {
+                            digit_value = e->c - '0';
                         } else {
-                            r.type = JK_JSON_LEX_INVALID_UNICODE_ESCAPE;
-                            return r;
+                            return JK_JSON_LEX_INVALID_UNICODE_ESCAPE;
                         }
                         unicode32 = unicode32 * 0x10 + digit_value;
                     }
@@ -232,12 +230,11 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
                 } break;
 
                 default: {
-                    r.type = JK_JSON_LEX_INVALID_ESCAPE_CHARACTER;
-                    return r;
+                    return JK_JSON_LEX_INVALID_ESCAPE_CHARACTER;
                 } break;
                 }
             } else {
-                *c = (char)r.c;
+                *c = (char)e->c;
             }
             c = jk_arena_push(arena, 1);
         }
@@ -265,70 +262,66 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
         token->value.type = JK_JSON_VALUE_NUMBER;
         token->value.u.number = 0.0;
 
-        if (r.c == '-') {
+        if (e->c == '-') {
             sign = -1.0;
 
-            r.c_to_be_followed_by_digit = r.c;
-            r.c = jk_json_getc(stream_read, stream);
+            e->c_to_be_followed_by_digit = e->c;
+            e->c = jk_json_getc(stream_read, stream);
 
-            if (!isdigit(r.c)) {
-                r.type = JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
-                return r;
+            if (!isdigit(e->c)) {
+                return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
             }
         }
 
         // Parse integer
         do {
-            token->value.u.number = (token->value.u.number * 10.0) + (r.c - '0');
-        } while (isdigit((r.c = jk_json_getc(stream_read, stream))));
+            token->value.u.number = (token->value.u.number * 10.0) + (e->c - '0');
+        } while (isdigit((e->c = jk_json_getc(stream_read, stream))));
 
         // Parse fraction if there is one
-        if (r.c == '.') {
-            r.c_to_be_followed_by_digit = r.c;
-            r.c = jk_json_getc(stream_read, stream);
+        if (e->c == '.') {
+            e->c_to_be_followed_by_digit = e->c;
+            e->c = jk_json_getc(stream_read, stream);
 
-            if (!isdigit(r.c)) {
-                r.type = JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
-                return r;
+            if (!isdigit(e->c)) {
+                return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
             }
 
             double multiplier = 0.1;
             do {
-                token->value.u.number += (r.c - '0') * multiplier;
+                token->value.u.number += (e->c - '0') * multiplier;
                 multiplier /= 10.0;
-            } while (isdigit((r.c = jk_json_getc(stream_read, stream))));
+            } while (isdigit((e->c = jk_json_getc(stream_read, stream))));
         }
 
         // Parse exponent if there is one
-        if (r.c == 'e' || r.c == 'E') {
-            r.c_to_be_followed_by_digit = r.c;
-            r.c = jk_json_getc(stream_read, stream);
+        if (e->c == 'e' || e->c == 'E') {
+            e->c_to_be_followed_by_digit = e->c;
+            e->c = jk_json_getc(stream_read, stream);
 
-            if ((r.c == '-' || r.c == '+')) {
-                if (r.c == '-') {
+            if ((e->c == '-' || e->c == '+')) {
+                if (e->c == '-') {
                     exponent_sign = -1.0;
                 }
-                r.c_to_be_followed_by_digit = r.c;
-                r.c = jk_json_getc(stream_read, stream);
+                e->c_to_be_followed_by_digit = e->c;
+                e->c = jk_json_getc(stream_read, stream);
             }
 
-            if (!isdigit(r.c)) {
-                r.type = JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
-                return r;
+            if (!isdigit(e->c)) {
+                return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
             }
 
             do {
-                exponent = (exponent * 10.0) + (r.c - '0');
-            } while (isdigit((r.c = jk_json_getc(stream_read, stream))));
+                exponent = (exponent * 10.0) + (e->c - '0');
+            } while (isdigit((e->c = jk_json_getc(stream_read, stream))));
         }
 
         // Number should not be directly followed by more alphanumeric characters
-        if (isalnum(r.c)) {
-            r.type = JK_JSON_LEX_UNEXPECTED_CHARACTER;
-            return r;
+        if (isalnum(e->c)) {
+            return JK_JSON_LEX_UNEXPECTED_CHARACTER;
         }
 
-        if (r.c != EOF) {
+        if (e->c != EOF) {
             stream_seek_relative(stream, -1);
         }
         token->value.u.number = sign * token->value.u.number * pow(10.0, exponent_sign * exponent);
@@ -337,7 +330,7 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
     case 'f':
     case 'n': {
         memset(cmp_buffer, 0, sizeof(cmp_buffer));
-        cmp_buffer[0] = (char)r.c;
+        cmp_buffer[0] = (char)e->c;
         long read_count = (long)stream_read(stream, JK_JSON_CMP_STRING_LENGTH - 1, cmp_buffer + 1);
         for (int i = 0; i < ARRAY_COUNT(jk_json_exact_matches); i++) {
             JkJsonExactMatch *match = &jk_json_exact_matches[i];
@@ -347,12 +340,11 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
                         stream, -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length, read_count));
                 token->type = JK_JSON_TOKEN_VALUE;
                 token->value.type = match->value_type;
-                return r;
+                return JK_JSON_LEX_SUCCESS;
             }
         }
         stream_seek_relative(stream, -read_count);
-        r.type = JK_JSON_LEX_UNEXPECTED_CHARACTER;
-        return r;
+        return JK_JSON_LEX_UNEXPECTED_CHARACTER;
     } break;
     case ',': {
         token->type = JK_JSON_TOKEN_COMMA;
@@ -376,11 +368,11 @@ JkJsonLexResult jk_json_lex(JkArena *arena,
         token->type = JK_JSON_TOKEN_EOF;
     } break;
     default: {
-        r.type = JK_JSON_LEX_UNEXPECTED_CHARACTER;
+        return JK_JSON_LEX_UNEXPECTED_CHARACTER;
     } break;
     }
 
-    return r;
+    return JK_JSON_LEX_SUCCESS;
 }
 
 size_t stream_read_file(FILE *file, size_t byte_count, void *buffer)
@@ -408,27 +400,28 @@ int main(int argc, char **argv)
 
     JkJsonToken token;
     do {
-        JkJsonLexResult result =
-                jk_json_lex(&arena, stream_read_file, stream_seek_relative_file, file, &token);
-        if (result.type == JK_JSON_LEX_SUCCESS) {
+        JkJsonLexErrorData error_data;
+        JkJsonLexStatus lex_status = jk_json_lex(
+                &arena, stream_read_file, stream_seek_relative_file, file, &token, &error_data);
+        if (lex_status == JK_JSON_LEX_SUCCESS) {
             jk_json_print_token(stdout, &token);
             printf(" ");
         } else {
             printf("\n");
             fprintf(stderr, "%s: Unexpected ", program_name);
-            jk_json_print_c(stderr, result.c);
-            if (result.type == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
+            jk_json_print_c(stderr, error_data.c);
+            if (lex_status == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
                 fprintf(stderr,
                         ": Invalid character in string. You may have missed a closing double "
                         "quote.");
-            } else if (result.type == JK_JSON_LEX_INVALID_ESCAPE_CHARACTER) {
+            } else if (lex_status == JK_JSON_LEX_INVALID_ESCAPE_CHARACTER) {
                 fprintf(stderr, ": '\\' must be followed by a valid escape character\n");
-            } else if (result.type == JK_JSON_LEX_INVALID_UNICODE_ESCAPE) {
+            } else if (lex_status == JK_JSON_LEX_INVALID_UNICODE_ESCAPE) {
                 fprintf(stderr, ": '\\u' escape must be followed by 4 hexadecimal digits\n");
-            } else if (result.type == JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT) {
+            } else if (lex_status == JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT) {
                 fprintf(stderr,
                         ": Expected '%c' to be followed by a digit",
-                        result.c_to_be_followed_by_digit);
+                        error_data.c_to_be_followed_by_digit);
             }
             fprintf(stderr, "\n");
             exit(1);
