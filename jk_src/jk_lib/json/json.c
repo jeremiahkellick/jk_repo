@@ -6,8 +6,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define UTF_8_CONT_PREFIX_MASK 0xf000
-#define UTF_8_CONT_PREFIX_VALUE 0x8000
+#include <jk_src/jk_lib/arena/arena.c>
+#include <jk_src/jk_lib/string/utf8.c>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#define JK_JSON_CMP_STRING_LENGTH 6
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
@@ -54,6 +60,10 @@ typedef struct JkJsonToken {
 
 static void jk_json_print_token(FILE *file, JkJsonToken *token)
 {
+    if (token->type == JK_JSON_TOKEN_STRING) {
+        fprintf(file, "\"%s\"", token->value.string);
+        return;
+    }
     if (token->type == JK_JSON_TOKEN_NUMBER) {
         fprintf(file, "%f", token->value.number);
         return;
@@ -65,13 +75,6 @@ static bool jk_json_is_whitespace(int byte)
 {
     return byte == ' ' || byte == '\n' || byte == '\r' || byte == '\t';
 }
-
-static bool jk_utf8_is_cont(int byte)
-{
-    return (byte & UTF_8_CONT_PREFIX_MASK) == UTF_8_CONT_PREFIX_VALUE;
-}
-
-#define JK_JSON_CMP_STRING_LENGTH 6
 
 typedef struct JkJsonExactMatch {
     char *string;
@@ -121,6 +124,9 @@ static void jk_json_print_c(FILE *file, int c)
 typedef enum JkJsonLexResultType {
     JK_JSON_LEX_SUCCESS,
     JK_JSON_LEX_UNEXPECTED_CHARACTER,
+    JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING,
+    JK_JSON_LEX_INVALID_ESCAPE_CHARACTER,
+    JK_JSON_LEX_INVALID_UNICODE_ESCAPE,
     JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT,
     JK_JSON_LEX_RESULT_TYPE_COUNT,
 } JkJsonLexResultType;
@@ -131,7 +137,8 @@ typedef struct JkJsonLexResult {
     int c_to_be_followed_by_digit;
 } JkJsonLexResult;
 
-JkJsonLexResult jk_json_lex(size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
+JkJsonLexResult jk_json_lex(JkArena *arena,
+        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
         JkJsonToken *token)
@@ -145,9 +152,76 @@ JkJsonLexResult jk_json_lex(size_t (*stream_read)(void *stream, size_t byte_coun
 
     switch (r.c) {
     case '"': {
-        printf("\n");
-        fprintf(stderr, "%s: string not implemented\n", program_name);
-        exit(1);
+        char *c = jk_arena_push(arena, 1);
+        char *string = c;
+        while ((r.c = jk_json_getc(stream_read, stream)) != '"') {
+            if (r.c < 0x20 || r.c == EOF) {
+                r.type = JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING;
+                return r;
+            }
+            if (r.c == '\\') {
+                r.c = jk_json_getc(stream_read, stream);
+                switch (r.c) {
+                case '"':
+                case '\\':
+                case '/': {
+                    *c = (char)r.c;
+                } break;
+
+                case 'b': {
+                    *c = '\b';
+                } break;
+                case 'f': {
+                    *c = '\f';
+                } break;
+                case 'n': {
+                    *c = '\n';
+                } break;
+                case 'r': {
+                    *c = '\r';
+                } break;
+                case 't': {
+                    *c = '\t';
+                } break;
+
+                case 'u': {
+                    uint32_t unicode32 = 0;
+                    for (int i = 0; i < 4; i++) {
+                        int digit_value;
+                        r.c = jk_json_getc(stream_read, stream);
+                        int lowered = tolower(r.c);
+                        if (lowered >= 'a' && lowered <= 'f') {
+                            digit_value = 10 + (lowered - 'a');
+                        } else if (r.c >= '0' && r.c <= '9') {
+                            digit_value = r.c - '0';
+                        } else {
+                            r.type = JK_JSON_LEX_INVALID_UNICODE_ESCAPE;
+                            return r;
+                        }
+                        unicode32 = unicode32 * 0x10 + digit_value;
+                    }
+                    JkUtf8Codepoint utf8;
+                    jk_utf8_codepoint_encode(unicode32, &utf8);
+                    *c = utf8.b[0];
+                    for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
+                        c = jk_arena_push(arena, 1);
+                        *c = utf8.b[i];
+                    }
+                } break;
+
+                default: {
+                    r.type = JK_JSON_LEX_INVALID_ESCAPE_CHARACTER;
+                    return r;
+                } break;
+                }
+            } else {
+                *c = (char)r.c;
+            }
+            c = jk_arena_push(arena, 1);
+        }
+        *c = '\0';
+        token->type = JK_JSON_TOKEN_STRING;
+        token->value.string = string;
     } break;
     case '-':
     case '0':
@@ -243,17 +317,8 @@ JkJsonLexResult jk_json_lex(size_t (*stream_read)(void *stream, size_t byte_coun
         long read_count = (long)stream_read(stream, JK_JSON_CMP_STRING_LENGTH - 1, cmp_buffer + 1);
         for (int i = 0; i < ARRAY_COUNT(jk_json_exact_matches); i++) {
             JkJsonExactMatch *match = &jk_json_exact_matches[i];
-            if (strncmp(cmp_buffer, match->string, match->length) == 0) {
-                // If the next character is still a word character, the word we're matching with is
-                // longer than the keyword, so not actually a match.
-                if (isalnum(cmp_buffer[match->length])) {
-                    stream_seek_relative(stream,
-                            -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length - 1, read_count));
-                    r.type = JK_JSON_LEX_UNEXPECTED_CHARACTER;
-                    r.c = cmp_buffer[match->length];
-                    return r;
-                }
-
+            if (strncmp(cmp_buffer, match->string, match->length) == 0
+                    && !isalnum(cmp_buffer[match->length])) {
                 stream_seek_relative(
                         stream, -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length, read_count));
                 token->type = match->token_type;
@@ -307,12 +372,19 @@ int main(int argc, char **argv)
 {
     program_name = argv[0];
 
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+
     FILE *file = fopen("./json.json", "rb");
+
+    JkArena arena;
+    jk_arena_init(&arena, (size_t)1 << 36);
 
     JkJsonToken token;
     do {
         JkJsonLexResult result =
-                jk_json_lex(stream_read_file, stream_seek_relative_file, file, &token);
+                jk_json_lex(&arena, stream_read_file, stream_seek_relative_file, file, &token);
         if (result.type == JK_JSON_LEX_SUCCESS) {
             jk_json_print_token(stdout, &token);
             printf(" ");
@@ -320,7 +392,15 @@ int main(int argc, char **argv)
             printf("\n");
             fprintf(stderr, "%s: Unexpected ", program_name);
             jk_json_print_c(stderr, result.c);
-            if (result.type == JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT) {
+            if (result.type == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
+                fprintf(stderr,
+                        ": Invalid character in string. You may have missed a closing double "
+                        "quote.");
+            } else if (result.type == JK_JSON_LEX_INVALID_ESCAPE_CHARACTER) {
+                fprintf(stderr, ": '\\' must be followed by a valid escape character\n");
+            } else if (result.type == JK_JSON_LEX_INVALID_UNICODE_ESCAPE) {
+                fprintf(stderr, ": '\\u' escape must be followed by 4 hexadecimal digits\n");
+            } else if (result.type == JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT) {
                 fprintf(stderr,
                         ": Expected '%c' to be followed by a digit",
                         result.c_to_be_followed_by_digit);
