@@ -1,36 +1,21 @@
 #include <ctype.h>
 #include <math.h>
-#include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <jk_src/jk_lib/arena/arena.c>
 #include <jk_src/jk_lib/string/utf8.c>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+#include "json.h"
 
 #define JK_JSON_CMP_STRING_LENGTH 6
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
-char *program_name = "<global program_name should be overwritten with argv[0]>";
+char *jk_json_name = "<global program_name should be overwritten with argv[0]>";
 
-typedef enum JkJsonValueType {
-    JK_JSON_VALUE_OBJECT,
-    JK_JSON_VALUE_ARRAY,
-    JK_JSON_VALUE_STRING,
-    JK_JSON_VALUE_NUMBER,
-    JK_JSON_VALUE_TRUE,
-    JK_JSON_VALUE_FALSE,
-    JK_JSON_VALUE_NULL,
-    JK_JSON_VALUE_TYPE_COUNT,
-} JkJsonValueType;
-
-static char *jk_json_value_strings[JK_JSON_VALUE_TYPE_COUNT] = {
+char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
     "OBJECT",
     "ARRAY",
     "STRING",
@@ -40,32 +25,7 @@ static char *jk_json_value_strings[JK_JSON_VALUE_TYPE_COUNT] = {
     "NULL",
 };
 
-typedef struct JkJsonValue {
-    JkJsonValueType type;
-    union {
-        char *string;
-        double number;
-    } u;
-} JkJsonValue;
-
-typedef enum JkJsonTokenType {
-    JK_JSON_TOKEN_VALUE,
-    JK_JSON_TOKEN_COMMA,
-    JK_JSON_TOKEN_COLON,
-    JK_JSON_TOKEN_OPEN_BRACE,
-    JK_JSON_TOKEN_CLOSE_BRACE,
-    JK_JSON_TOKEN_OPEN_BRACKET,
-    JK_JSON_TOKEN_CLOSE_BRACKET,
-    JK_JSON_TOKEN_EOF,
-    JK_JSON_TOKEN_TYPE_COUNT,
-} JkJsonTokenType;
-
-typedef struct JkJsonToken {
-    JkJsonTokenType type;
-    JkJsonValue *value;
-} JkJsonToken;
-
-static char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
+char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
     "VALUE",
     ",",
     ":",
@@ -76,24 +36,7 @@ static char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
     "EOF",
 };
 
-static void jk_json_print_token(FILE *file, JkJsonToken *token)
-{
-    if (token->type == JK_JSON_TOKEN_VALUE) {
-        if (token->value->type == JK_JSON_VALUE_STRING) {
-            fprintf(file, "\"%s\"", token->value->u.string);
-            return;
-        }
-        if (token->value->type == JK_JSON_VALUE_NUMBER) {
-            fprintf(file, "%f", token->value->u.number);
-            return;
-        }
-        fprintf(file, "%s", jk_json_value_strings[token->value->type]);
-    } else {
-        fprintf(file, "%s", jk_json_token_strings[token->type]);
-    }
-}
-
-static bool jk_json_is_whitespace(int byte)
+bool jk_json_is_whitespace(int byte)
 {
     return byte == ' ' || byte == '\n' || byte == '\r' || byte == '\t';
 }
@@ -101,24 +44,24 @@ static bool jk_json_is_whitespace(int byte)
 typedef struct JkJsonExactMatch {
     char *string;
     long length;
-    JkJsonValueType value_type;
+    JkJsonType type;
 } JkJsonExactMatch;
 
 static JkJsonExactMatch jk_json_exact_matches[] = {
     {
         .string = "true",
         .length = sizeof("true") - 1,
-        .value_type = JK_JSON_VALUE_TRUE,
+        .type = JK_JSON_TRUE,
     },
     {
         .string = "false",
         .length = sizeof("false") - 1,
-        .value_type = JK_JSON_VALUE_FALSE,
+        .type = JK_JSON_FALSE,
     },
     {
         .string = "null",
         .length = sizeof("null") - 1,
-        .value_type = JK_JSON_VALUE_NULL,
+        .type = JK_JSON_NULL,
     },
 };
 
@@ -134,29 +77,27 @@ static int jk_json_getc(
     return stream_read(stream, 1, &c) ? (int)c : EOF;
 }
 
-static void jk_json_print_c(FILE *file, int c)
+void jk_json_print_token(FILE *file, JkJsonToken *token)
 {
-    if (c == EOF) {
-        fprintf(file, "end of file");
+    if (token->type == JK_JSON_TOKEN_VALUE) {
+        jk_json_print(file, token->value);
     } else {
-        fprintf(file, "character '%c'", c);
+        fprintf(file, "%s", jk_json_token_strings[token->type]);
     }
 }
 
-typedef enum JkJsonLexStatus {
-    JK_JSON_LEX_SUCCESS,
-    JK_JSON_LEX_UNEXPECTED_CHARACTER,
-    JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING,
-    JK_JSON_LEX_INVALID_ESCAPE_CHARACTER,
-    JK_JSON_LEX_INVALID_UNICODE_ESCAPE,
-    JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT,
-    JK_JSON_LEX_RESULT_TYPE_COUNT,
-} JkJsonLexStatus;
-
-typedef struct JkJsonLexErrorData {
-    int c;
-    int c_to_be_followed_by_digit;
-} JkJsonLexErrorData;
+void jk_json_print(FILE *file, JkJson *json)
+{
+    if (json->type == JK_JSON_STRING) {
+        fprintf(file, "\"%s\"", json->u.string);
+        return;
+    }
+    if (json->type == JK_JSON_NUMBER) {
+        fprintf(file, "%f", json->u.number);
+        return;
+    }
+    fprintf(file, "%s", jk_json_type_strings[json->type]);
+}
 
 JkJsonLexStatus jk_json_lex(JkArena *arena,
         size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
@@ -241,7 +182,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
         *c = '\0';
         token->type = JK_JSON_TOKEN_VALUE;
         token->value = jk_arena_push(arena, sizeof(*token->value));
-        token->value->type = JK_JSON_VALUE_STRING;
+        token->value->type = JK_JSON_STRING;
         token->value->u.string = string;
     } break;
     case '-':
@@ -261,7 +202,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
 
         token->type = JK_JSON_TOKEN_VALUE;
         token->value = jk_arena_push(arena, sizeof(*token->value));
-        token->value->type = JK_JSON_VALUE_NUMBER;
+        token->value->type = JK_JSON_NUMBER;
         token->value->u.number = 0.0;
 
         if (e->c == '-') {
@@ -343,7 +284,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
                         stream, -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length, read_count));
                 token->type = JK_JSON_TOKEN_VALUE;
                 token->value = jk_arena_push(arena, sizeof(*token->value));
-                token->value->type = match->value_type;
+                token->value->type = match->type;
                 return JK_JSON_LEX_SUCCESS;
             }
         }
@@ -379,58 +320,29 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
     return JK_JSON_LEX_SUCCESS;
 }
 
-size_t stream_read_file(FILE *file, size_t byte_count, void *buffer)
+JkJson *jk_json_parse(JkArena *arena,
+        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
+        int (*stream_seek_relative)(void *stream, long offset),
+        void *stream,
+        JkJsonParseError *error)
 {
-    return fread(buffer, 1, byte_count, file);
-}
-
-int stream_seek_relative_file(FILE *file, long offset)
-{
-    return fseek(file, offset, SEEK_CUR);
-}
-
-int main(int argc, char **argv)
-{
-    program_name = argv[0];
-
-#ifdef _WIN32
-    SetConsoleOutputCP(CP_UTF8);
-#endif
-
-    FILE *file = fopen("./json.json", "rb");
-
-    JkArena arena;
-    jk_arena_init(&arena, (size_t)1 << 36);
-
-    JkJsonToken token;
-    do {
-        JkJsonLexErrorData error_data;
-        JkJsonLexStatus lex_status = jk_json_lex(
-                &arena, stream_read_file, stream_seek_relative_file, file, &token, &error_data);
-        if (lex_status == JK_JSON_LEX_SUCCESS) {
-            jk_json_print_token(stdout, &token);
-            printf(" ");
-        } else {
-            printf("\n");
-            fprintf(stderr, "%s: Unexpected ", program_name);
-            jk_json_print_c(stderr, error_data.c);
-            if (lex_status == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
-                fprintf(stderr,
-                        ": Invalid character in string. You may have missed a closing double "
-                        "quote.");
-            } else if (lex_status == JK_JSON_LEX_INVALID_ESCAPE_CHARACTER) {
-                fprintf(stderr, ": '\\' must be followed by a valid escape character\n");
-            } else if (lex_status == JK_JSON_LEX_INVALID_UNICODE_ESCAPE) {
-                fprintf(stderr, ": '\\u' escape must be followed by 4 hexadecimal digits\n");
-            } else if (lex_status == JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT) {
-                fprintf(stderr,
-                        ": Expected '%c' to be followed by a digit",
-                        error_data.c_to_be_followed_by_digit);
-            }
-            fprintf(stderr, "\n");
-            exit(1);
-        }
-    } while (token.type != JK_JSON_TOKEN_EOF);
-
-    return 0;
+    JkJsonParseError *e = error;
+    e->lex_status = jk_json_lex(
+            arena, stream_read, stream_seek_relative, stream, &e->token, &e->lex_error_data);
+    if (e->lex_status != JK_JSON_LEX_SUCCESS) {
+        e->type = JK_JSON_PARSE_LEX_ERROR;
+        return NULL;
+    }
+    if (e->token.type == JK_JSON_TOKEN_VALUE) {
+        return e->token.value;
+    } else if (e->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
+        fprintf(stderr, "%s: Arrays not implemented\n", jk_json_name);
+        exit(1);
+    } else if (e->token.type == JK_JSON_TOKEN_OPEN_BRACE) {
+        fprintf(stderr, "%s: Objects not implemented\n", jk_json_name);
+        exit(1);
+    } else {
+        e->type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+        return NULL;
+    }
 }
