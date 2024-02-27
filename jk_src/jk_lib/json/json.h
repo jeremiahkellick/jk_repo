@@ -15,13 +15,21 @@ typedef enum JkJsonType {
     JK_JSON_TYPE_COUNT,
 } JkJsonType;
 
-typedef struct JkJson {
+typedef struct JkJson JkJson;
+
+typedef struct JkJsonArray {
+    size_t length;
+    JkJson **elements;
+} JkJsonArray;
+
+struct JkJson {
     JkJsonType type;
     union {
+        JkJsonArray array;
         char *string;
         double number;
     } u;
-} JkJson;
+};
 
 extern char *jk_json_value_strings[JK_JSON_TYPE_COUNT];
 
@@ -63,9 +71,9 @@ typedef struct JkJsonLexErrorData {
 
 void jk_json_print_token(FILE *file, JkJsonToken *token);
 
-void jk_json_print(FILE *file, JkJson *json);
+void jk_json_print(FILE *file, JkJson *json, int indent_level);
 
-JkJsonLexStatus jk_json_lex(JkArena *arena,
+JkJsonLexStatus jk_json_lex(JkArena *storage,
         size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
@@ -78,15 +86,16 @@ typedef enum JkJsonParseErrorType {
     JK_JSON_PARSE_ERROR_TYPE_COUNT,
 } JkJsonParseErrorType;
 
-typedef struct JkJsonParseError {
-    JkJsonParseErrorType type;
+typedef struct JkJsonParseData {
+    JkJsonParseErrorType error_type;
     JkJsonToken token;
     JkJsonLexStatus lex_status;
     JkJsonLexErrorData lex_error_data;
-} JkJsonParseError;
+} JkJsonParseData;
 
-JkJson *jk_json_parse(JkArena *arena,
+JkJson *jk_json_parse(JkArena *storage,
+        JkArena *tmp_storage,
         size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
-        JkJsonParseError *error);
+        JkJsonParseData *data);

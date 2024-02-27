@@ -28,7 +28,7 @@ static void jk_json_print_c(FILE *file, int c)
 
 int main(int argc, char **argv)
 {
-    char *program_name = argv[0];
+    jk_json_name = argv[0];
 
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
@@ -49,7 +49,7 @@ int main(int argc, char **argv)
             printf(" ");
         } else {
             printf("\n");
-            fprintf(stderr, "%s: Unexpected ", program_name);
+            fprintf(stderr, "%s: Unexpected ", jk_json_name);
             jk_json_print_c(stderr, error_data.c);
             if (lex_status == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
                 fprintf(stderr,

@@ -13,7 +13,7 @@
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
-char *jk_json_name = "<global program_name should be overwritten with argv[0]>";
+char *jk_json_name = "<global jk_json_name should be overwritten with argv[0]>";
 
 char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
     "OBJECT",
@@ -80,14 +80,30 @@ static int jk_json_getc(
 void jk_json_print_token(FILE *file, JkJsonToken *token)
 {
     if (token->type == JK_JSON_TOKEN_VALUE) {
-        jk_json_print(file, token->value);
+        jk_json_print(file, token->value, 0);
     } else {
         fprintf(file, "%s", jk_json_token_strings[token->type]);
     }
 }
 
-void jk_json_print(FILE *file, JkJson *json)
+void jk_json_print(FILE *file, JkJson *json, int indent_level)
 {
+    if (json->type == JK_JSON_ARRAY) {
+        JkJsonArray *array = &json->u.array;
+        fprintf(file, "[\n");
+        for (int i = 0; i < array->length; i++) {
+            for (int j = 0; j < indent_level + 1; j++) {
+                fprintf(file, "\t");
+            }
+            jk_json_print(file, array->elements[i], indent_level + 1);
+            fprintf(file, "%s", i != array->length - 1 ? ",\n" : "\n");
+        }
+        for (int i = 0; i < indent_level; i++) {
+            fprintf(file, "\t");
+        }
+        fprintf(file, "]");
+        return;
+    }
     if (json->type == JK_JSON_STRING) {
         fprintf(file, "\"%s\"", json->u.string);
         return;
@@ -99,7 +115,7 @@ void jk_json_print(FILE *file, JkJson *json)
     fprintf(file, "%s", jk_json_type_strings[json->type]);
 }
 
-JkJsonLexStatus jk_json_lex(JkArena *arena,
+JkJsonLexStatus jk_json_lex(JkArena *storage,
         size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
@@ -115,7 +131,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
 
     switch (e->c) {
     case '"': {
-        char *c = jk_arena_push(arena, 1);
+        char *c = jk_arena_push(storage, 1);
         char *string = c;
         while ((e->c = jk_json_getc(stream_read, stream)) != '"') {
             if (e->c < 0x20 || e->c == EOF) {
@@ -165,7 +181,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
                     jk_utf8_codepoint_encode(unicode32, &utf8);
                     *c = utf8.b[0];
                     for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
-                        c = jk_arena_push(arena, 1);
+                        c = jk_arena_push(storage, 1);
                         *c = utf8.b[i];
                     }
                 } break;
@@ -177,11 +193,11 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
             } else {
                 *c = (char)e->c;
             }
-            c = jk_arena_push(arena, 1);
+            c = jk_arena_push(storage, 1);
         }
         *c = '\0';
         token->type = JK_JSON_TOKEN_VALUE;
-        token->value = jk_arena_push(arena, sizeof(*token->value));
+        token->value = jk_arena_push(storage, sizeof(*token->value));
         token->value->type = JK_JSON_STRING;
         token->value->u.string = string;
     } break;
@@ -201,7 +217,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
         double exponent_sign = 1.0;
 
         token->type = JK_JSON_TOKEN_VALUE;
-        token->value = jk_arena_push(arena, sizeof(*token->value));
+        token->value = jk_arena_push(storage, sizeof(*token->value));
         token->value->type = JK_JSON_NUMBER;
         token->value->u.number = 0.0;
 
@@ -283,7 +299,7 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
                 stream_seek_relative(
                         stream, -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length, read_count));
                 token->type = JK_JSON_TOKEN_VALUE;
-                token->value = jk_arena_push(arena, sizeof(*token->value));
+                token->value = jk_arena_push(storage, sizeof(*token->value));
                 token->value->type = match->type;
                 return JK_JSON_LEX_SUCCESS;
             }
@@ -320,29 +336,88 @@ JkJsonLexStatus jk_json_lex(JkArena *arena,
     return JK_JSON_LEX_SUCCESS;
 }
 
-JkJson *jk_json_parse(JkArena *arena,
+#define JK_NOTHING
+
+#define JK_JSON_LEX_NEXT_TOKEN(cleanup)                 \
+    do {                                                \
+        data->lex_status = jk_json_lex(storage,         \
+                stream_read,                            \
+                stream_seek_relative,                   \
+                stream,                                 \
+                &data->token,                           \
+                &data->lex_error_data);                 \
+        if (data->lex_status != JK_JSON_LEX_SUCCESS) {  \
+            cleanup;                                    \
+            data->error_type = JK_JSON_PARSE_LEX_ERROR; \
+            return NULL;                                \
+        }                                               \
+    } while (0)
+
+static JkJson *jk_json_parse_with_token(JkArena *storage,
+        JkArena *tmp_storage,
         size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
-        JkJsonParseError *error)
+        JkJsonParseData *data)
 {
-    JkJsonParseError *e = error;
-    e->lex_status = jk_json_lex(
-            arena, stream_read, stream_seek_relative, stream, &e->token, &e->lex_error_data);
-    if (e->lex_status != JK_JSON_LEX_SUCCESS) {
-        e->type = JK_JSON_PARSE_LEX_ERROR;
-        return NULL;
-    }
-    if (e->token.type == JK_JSON_TOKEN_VALUE) {
-        return e->token.value;
-    } else if (e->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
-        fprintf(stderr, "%s: Arrays not implemented\n", jk_json_name);
-        exit(1);
-    } else if (e->token.type == JK_JSON_TOKEN_OPEN_BRACE) {
+    JkJsonParseData *d = data;
+    if (d->token.type == JK_JSON_TOKEN_VALUE) {
+        return d->token.value;
+    } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
+        JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
+
+        JkJson *json = jk_arena_push(storage, sizeof(*json));
+        json->type = JK_JSON_ARRAY;
+        JkJsonArray *array = &json->u.array;
+        array->length = 0;
+
+        if (d->token.type == JK_JSON_TOKEN_CLOSE_BRACKET) {
+            array->elements = NULL;
+        } else {
+            size_t base_pos = tmp_storage->pos;
+            JkJson **tmp_elements = (JkJson **)&tmp_storage->address[base_pos];
+            do {
+                if (array->length > 0) {
+                    JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+                }
+                jk_arena_push(tmp_storage, sizeof(*tmp_elements));
+                tmp_elements[array->length++] = jk_json_parse_with_token(
+                        storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
+                JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+            } while (d->token.type == JK_JSON_TOKEN_COMMA);
+
+            if (d->token.type != JK_JSON_TOKEN_CLOSE_BRACKET) {
+                data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                return NULL;
+            }
+
+            array->elements = jk_arena_push(storage, sizeof(JkJson *) * array->length);
+            memcpy(array->elements, tmp_elements, sizeof(JkJson *) * array->length);
+            tmp_storage->pos = base_pos;
+        }
+
+        return json;
+    } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACE) {
         fprintf(stderr, "%s: Objects not implemented\n", jk_json_name);
         exit(1);
     } else {
-        e->type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+        d->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
         return NULL;
     }
 }
+
+JkJson *jk_json_parse(JkArena *storage,
+        JkArena *tmp_storage,
+        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
+        int (*stream_seek_relative)(void *stream, long offset),
+        void *stream,
+        JkJsonParseData *data)
+{
+    JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
+    return jk_json_parse_with_token(
+            storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
+}
+
+#undef JK_JSON_LEX_NEXT_TOKEN
+
+#undef JK_NOTHING
