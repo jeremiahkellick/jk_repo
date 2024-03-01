@@ -17,6 +17,16 @@ typedef enum JkJsonType {
 
 typedef struct JkJson JkJson;
 
+typedef struct JkJsonMember {
+    char *name;
+    JkJson *value;
+} JkJsonMember;
+
+typedef struct JkJsonObject {
+    size_t member_count;
+    JkJsonMember *members;
+} JkJsonObject;
+
 typedef struct JkJsonArray {
     size_t length;
     JkJson **elements;
@@ -26,6 +36,7 @@ struct JkJson {
     JkJsonType type;
     union {
         JkJsonArray array;
+        JkJsonObject object;
         char *string;
         double number;
     } u;

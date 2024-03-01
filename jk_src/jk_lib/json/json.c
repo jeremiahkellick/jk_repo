@@ -88,8 +88,32 @@ void jk_json_print_token(FILE *file, JkJsonToken *token)
 
 void jk_json_print(FILE *file, JkJson *json, int indent_level)
 {
-    if (json->type == JK_JSON_ARRAY) {
+    if (json->type == JK_JSON_OBJECT) {
+        JkJsonObject *object = &json->u.object;
+        if (object->member_count == 0) {
+            fprintf(file, "{}");
+            return;
+        }
+        fprintf(file, "{\n");
+        for (int i = 0; i < object->member_count; i++) {
+            for (int j = 0; j < indent_level + 1; j++) {
+                fprintf(file, "\t");
+            }
+            fprintf(file, "\"%s\": ", object->members[i].name);
+            jk_json_print(file, object->members[i].value, indent_level + 1);
+            fprintf(file, "%s", i != object->member_count - 1 ? ",\n" : "\n");
+        }
+        for (int i = 0; i < indent_level; i++) {
+            fprintf(file, "\t");
+        }
+        fprintf(file, "}");
+        return;
+    } else if (json->type == JK_JSON_ARRAY) {
         JkJsonArray *array = &json->u.array;
+        if (array->length == 0) {
+            fprintf(file, "[]");
+            return;
+        }
         fprintf(file, "[\n");
         for (int i = 0; i < array->length; i++) {
             for (int j = 0; j < indent_level + 1; j++) {
@@ -103,12 +127,10 @@ void jk_json_print(FILE *file, JkJson *json, int indent_level)
         }
         fprintf(file, "]");
         return;
-    }
-    if (json->type == JK_JSON_STRING) {
+    } else if (json->type == JK_JSON_STRING) {
         fprintf(file, "\"%s\"", json->u.string);
         return;
-    }
-    if (json->type == JK_JSON_NUMBER) {
+    } else if (json->type == JK_JSON_NUMBER) {
         fprintf(file, "%f", json->u.number);
         return;
     }
@@ -363,6 +385,60 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
     JkJsonParseData *d = data;
     if (d->token.type == JK_JSON_TOKEN_VALUE) {
         return d->token.value;
+    } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACE) {
+        JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
+
+        JkJson *json = jk_arena_push(storage, sizeof(*json));
+        json->type = JK_JSON_OBJECT;
+        JkJsonObject *object = &json->u.object;
+        object->member_count = 0;
+
+        if (d->token.type == JK_JSON_TOKEN_CLOSE_BRACE) {
+            object->members = NULL;
+        } else {
+            size_t base_pos = tmp_storage->pos;
+            JkJsonMember *tmp_members = (JkJsonMember *)&tmp_storage->address[base_pos];
+            do {
+                if (object->member_count > 0) {
+                    JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+                }
+                if (!(d->token.type == JK_JSON_TOKEN_VALUE
+                            && d->token.value->type == JK_JSON_STRING)) {
+                    data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                    return NULL;
+                }
+
+                jk_arena_push(tmp_storage, sizeof(*tmp_members));
+                tmp_members[object->member_count].name = d->token.value->u.string;
+
+                JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+                if (d->token.type != JK_JSON_TOKEN_COLON) {
+                    data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                    return NULL;
+                }
+
+                tmp_members[object->member_count].value = jk_json_parse(
+                        storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
+                if (tmp_members[object->member_count].value == NULL) {
+                    return NULL;
+                }
+
+                object->member_count++;
+                JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+            } while (d->token.type == JK_JSON_TOKEN_COMMA);
+
+            if (d->token.type != JK_JSON_TOKEN_CLOSE_BRACE) {
+                data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                return NULL;
+            }
+
+            object->members =
+                    jk_arena_push(storage, sizeof(object->members[0]) * object->member_count);
+            memcpy(object->members, tmp_members, sizeof(object->members[0]) * object->member_count);
+            tmp_storage->pos = base_pos;
+        }
+
+        return json;
     } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
         JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
 
@@ -380,9 +456,16 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                 if (array->length > 0) {
                     JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
                 }
+
                 jk_arena_push(tmp_storage, sizeof(*tmp_elements));
-                tmp_elements[array->length++] = jk_json_parse_with_token(
+
+                tmp_elements[array->length] = jk_json_parse_with_token(
                         storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
+                if (tmp_elements[array->length] == NULL) {
+                    return NULL;
+                }
+
+                array->length++;
                 JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
             } while (d->token.type == JK_JSON_TOKEN_COMMA);
 
@@ -391,15 +474,12 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                 return NULL;
             }
 
-            array->elements = jk_arena_push(storage, sizeof(JkJson *) * array->length);
-            memcpy(array->elements, tmp_elements, sizeof(JkJson *) * array->length);
+            array->elements = jk_arena_push(storage, sizeof(array->elements[0]) * array->length);
+            memcpy(array->elements, tmp_elements, sizeof(array->elements[0]) * array->length);
             tmp_storage->pos = base_pos;
         }
 
         return json;
-    } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACE) {
-        fprintf(stderr, "%s: Objects not implemented\n", jk_json_name);
-        exit(1);
     } else {
         d->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
         return NULL;
