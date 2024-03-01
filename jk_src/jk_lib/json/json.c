@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include <jk_src/jk_lib/arena/arena.c>
+#include <jk_src/jk_lib/quicksort/quicksort.c>
 #include <jk_src/jk_lib/string/utf8.c>
 
 #include "json.h"
@@ -23,9 +24,9 @@ char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
     "ARRAY",
     "STRING",
     "NUMBER",
-    "TRUE",
-    "FALSE",
-    "NULL",
+    "true",
+    "false",
+    "null",
 };
 
 char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
@@ -78,6 +79,33 @@ static int jk_json_getc(
 {
     char c;
     return stream_read(stream, 1, &c) ? (int)c : EOF;
+}
+
+static int jk_json_member_compare(JkJsonMember *a, JkJsonMember *b)
+{
+    return strcmp(a->name, b->name);
+}
+
+static void jk_json_member_quicksort(JkJsonMember *array, size_t length)
+{
+    JkJsonMember tmp;
+    jk_quicksort(array, length, sizeof(tmp), &tmp, jk_json_member_compare);
+}
+
+static JkJson *jk_json_member_search(JkJsonMember *members, size_t count, char *target)
+{
+    if (count <= 0) {
+        return NULL;
+    }
+    size_t i = count / 2;
+    int comparison = strcmp(target, members[i].name);
+    if (comparison < 0) {
+        return jk_json_member_search(members, i, target);
+    } else if (comparison > 0) {
+        return jk_json_member_search(&members[i + 1], count - (i + 1), target);
+    } else {
+        return members[i].value;
+    }
 }
 
 void jk_json_print_token(FILE *file, JkJsonToken *token)
@@ -435,6 +463,8 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                 return NULL;
             }
 
+            jk_json_member_quicksort(tmp_members, object->member_count);
+
             object->members =
                     jk_arena_push(storage, sizeof(object->members[0]) * object->member_count);
             memcpy(object->members, tmp_members, sizeof(object->members[0]) * object->member_count);
@@ -504,5 +534,10 @@ JkJson *jk_json_parse(JkArena *storage,
 #undef JK_JSON_LEX_NEXT_TOKEN
 
 #undef JK_NOTHING
+
+JkJson *jk_json_member_get(JkJsonObject *object, char *member_name)
+{
+    return jk_json_member_search(object->members, object->member_count, member_name);
+}
 
 #endif

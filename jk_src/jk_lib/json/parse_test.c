@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -37,6 +38,11 @@ int main(int argc, char **argv)
             &storage, &tmp_storage, stream_read_file, stream_seek_relative_file, file, &error);
     if (json) {
         jk_json_print(stdout, json, 0);
+        printf("\n");
+        assert(json->type == JK_JSON_OBJECT);
+        JkJson *smokes = jk_json_member_get(&json->u.object, "smokes");
+        assert(smokes && smokes->type == JK_JSON_FALSE);
+        assert(jk_json_member_get(&json->u.object, "this_member_does_not_exist") == NULL);
     } else {
         switch (error.error_type) {
         case JK_JSON_PARSE_UNEXPECTED_TOKEN: {

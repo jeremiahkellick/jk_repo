@@ -114,4 +114,6 @@ JkJson *jk_json_parse(JkArena *storage,
         void *stream,
         JkJsonParseData *data);
 
+JkJson *jk_json_member_get(JkJsonObject *object, char *member_name);
+
 #endif
