@@ -1,5 +1,4 @@
 #include <ctype.h>
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +7,8 @@
 
 #include <jk_src/jk_lib/command_line/options.c>
 #include <jk_src/jk_lib/hash.c>
+
+#include "haversine_reference.c"
 
 #define DEFAULT_JSON_FILE_PATH "./coords.json"
 #define DEFAULT_ANSWER_FILE_PATH "./answers.f64"
@@ -21,10 +22,6 @@
 #define MIN_CLUSTER_COUNT_STRING "1"
 #define MAX_CLUSTER_COUNT 1000000000
 #define MAX_CLUSTER_COUNT_STRING "1,000,000,000"
-
-#define EARTH_RADIUS 6372.8
-#define PI 3.14159265358979323846264338327950288
-#define DEGREES_TO_RADIANS (PI / 180.0)
 
 char *program_name = "<program_name global should be overwritten with argv[0]>";
 
@@ -54,44 +51,6 @@ static unsigned hash_string(char *string)
 static double random_within(double min, double radius)
 {
     return min + ((double)rand() / (double)RAND_MAX) * radius;
-}
-
-static double square(double A)
-{
-    double Result = (A * A);
-    return Result;
-}
-
-static double radians_from_degrees(double Degrees)
-{
-    double Result = 0.01745329251994329577 * Degrees;
-    return Result;
-}
-
-// NOTE(casey): EarthRadius is generally expected to be 6372.8
-static double reference_haversine(double X0, double Y0, double X1, double Y1, double EarthRadius)
-{
-    /* NOTE(casey): This is not meant to be a "good" way to calculate the Haversine distance.
-       Instead, it attempts to follow, as closely as possible, the formula used in the real-world
-       question on which these homework exercises are loosely based.
-    */
-
-    double lat1 = Y0;
-    double lat2 = Y1;
-    double lon1 = X0;
-    double lon2 = X1;
-
-    double dLat = radians_from_degrees(lat2 - lat1);
-    double dLon = radians_from_degrees(lon2 - lon1);
-    lat1 = radians_from_degrees(lat1);
-    lat2 = radians_from_degrees(lat2);
-
-    double a = square(sin(dLat / 2.0)) + cos(lat1) * cos(lat2) * square(sin(dLon / 2));
-    double c = 2.0 * asin(sqrt(a));
-
-    double Result = EarthRadius * c;
-
-    return Result;
 }
 
 int parse_positive_integer(char *string, char *option_name, bool *usage_error)
@@ -312,7 +271,7 @@ int main(int argc, char **argv)
                 x1,
                 y1);
 
-        double distance = reference_haversine(x0, y0, x1, y1, EARTH_RADIUS);
+        double distance = haversine_reference(x0, y0, x1, y1, EARTH_RADIUS);
         sum += distance;
         fwrite(&distance, sizeof(double), 1, answers_file);
 
@@ -323,6 +282,8 @@ int main(int argc, char **argv)
             cluster1 = random_cluster();
         }
     }
+    fwrite(&sum, sizeof(double), 1, answers_file);
+
     fprintf(json_file, "\n]}\n");
 
     if (opt_results[OPT_SEED].present) {
