@@ -6,7 +6,7 @@
 
 #include "quicksort.h"
 
-static void jk_bytes_swap(void *a, void *b, int element_size, void *tmp)
+static void jk_bytes_swap(void *a, void *b, size_t element_size, void *tmp)
 {
     memcpy(tmp, a, element_size);
     memcpy(a, b, element_size);
@@ -27,8 +27,8 @@ static void jk_bytes_swap(void *a, void *b, int element_size, void *tmp)
  *     should come after b, and zero if they are equal.
  */
 void jk_quicksort(void *array_void,
-        int element_count,
-        int element_size,
+        size_t element_count,
+        size_t element_size,
         void *tmp,
         int (*compare)(void *a, void *b))
 {
@@ -61,8 +61,8 @@ void jk_quicksort(void *array_void,
         }
     }
 
-    int left_count = (int)(low - array) / element_size;
-    int right_count = element_count - (int)(mid - array) / element_size;
+    size_t left_count = (size_t)(low - array) / element_size;
+    size_t right_count = element_count - (size_t)(mid - array) / element_size;
     jk_quicksort(array, left_count, element_size, tmp, compare);
     jk_quicksort(mid, right_count, element_size, tmp, compare);
 }
