@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <jk_src/learning_c/quicksort/quicksort.c>
+#include <jk_src/jk_lib/quicksort/quicksort.c>
 
 #define LENGTH 10
 
@@ -10,29 +10,29 @@ static int numbers[LENGTH] = {40, 34, 49, 28, 4, 42, 30, 27, 23, 12};
 static int sorted_numbers[LENGTH] = {4, 12, 23, 27, 28, 30, 34, 40, 42, 49};
 
 static char *strings[LENGTH] = {
-        "Pear",
-        "Mango",
-        "Strawberry",
-        "Watermelon",
-        "Orange",
-        "Pineapple",
-        "Banana",
-        "Blueberry",
-        "Kiwi",
-        "Apple",
+    "Pear",
+    "Mango",
+    "Strawberry",
+    "Watermelon",
+    "Orange",
+    "Pineapple",
+    "Banana",
+    "Blueberry",
+    "Kiwi",
+    "Apple",
 };
 
 static char *sorted_strings[LENGTH] = {
-        "Apple",
-        "Banana",
-        "Blueberry",
-        "Kiwi",
-        "Mango",
-        "Orange",
-        "Pear",
-        "Pineapple",
-        "Strawberry",
-        "Watermelon",
+    "Apple",
+    "Banana",
+    "Blueberry",
+    "Kiwi",
+    "Mango",
+    "Orange",
+    "Pear",
+    "Pineapple",
+    "Strawberry",
+    "Watermelon",
 };
 
 static bool string_arrays_are_equal(char **a, char **b, int length)

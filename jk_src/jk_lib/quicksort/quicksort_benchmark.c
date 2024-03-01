@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include <jk_src/learning_c/quicksort/quicksort.c>
+#include <jk_src/jk_lib/quicksort/quicksort.c>
 
 #define ARRAY_LENGTH 20000000
 int array[ARRAY_LENGTH];
