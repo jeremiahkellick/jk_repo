@@ -1,3 +1,6 @@
+#ifndef JK_JSON_H
+#define JK_JSON_H
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -110,3 +113,5 @@ JkJson *jk_json_parse(JkArena *storage,
         int (*stream_seek_relative)(void *stream, long offset),
         void *stream,
         JkJsonParseData *data);
+
+#endif

@@ -1,3 +1,6 @@
+#ifndef MTU_DEP1_C
+#define MTU_DEP1_C
+
 #include <stdio.h>
 
 #include "mtu_dep1.h"
@@ -11,3 +14,5 @@ void dep1(void)
     printf("Successfully called dependency 1/2\n");
     dep2();
 }
+
+#endif

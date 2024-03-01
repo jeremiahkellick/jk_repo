@@ -1,3 +1,6 @@
+#ifndef JK_HASH_TABLE_C
+#define JK_HASH_TABLE_C
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -195,3 +198,5 @@ void jk_hash_table_destroy(JkHashTable *t)
     free(t->buf);
     free(t);
 }
+
+#endif

@@ -1,3 +1,6 @@
+#ifndef JK_JSON_C
+#define JK_JSON_C
+
 #include <ctype.h>
 #include <math.h>
 #include <stdint.h>
@@ -501,3 +504,5 @@ JkJson *jk_json_parse(JkArena *storage,
 #undef JK_JSON_LEX_NEXT_TOKEN
 
 #undef JK_NOTHING
+
+#endif

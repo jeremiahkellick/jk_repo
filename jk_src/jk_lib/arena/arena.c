@@ -1,3 +1,6 @@
+#ifndef JK_ARENA_C
+#define JK_ARENA_C
+
 #include "arena.h"
 
 #ifdef _WIN32
@@ -69,3 +72,5 @@ void jk_arena_clear(JkArena *arena)
 {
     arena->pos = 0;
 }
+
+#endif

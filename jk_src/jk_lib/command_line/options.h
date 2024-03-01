@@ -1,3 +1,6 @@
+#ifndef JK_COMMAND_LINE_OPTIONS_H
+#define JK_COMMAND_LINE_OPTIONS_H
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -42,3 +45,5 @@ void jk_options_parse(int argc,
         JkOptionsParseResult *result);
 
 void jk_options_print_help(FILE *file, JkOption *options, int option_count);
+
+#endif

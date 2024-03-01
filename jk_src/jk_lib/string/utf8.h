@@ -1,3 +1,6 @@
+#ifndef JK_UTF8_H
+#define JK_UTF8_H
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -20,3 +23,5 @@ JkUtf8CodepointGetStatus jk_utf8_codepoint_get(
         int (*stream_seek_relative)(long byte_offset, void *stream),
         void *stream,
         JkUtf8Codepoint *codepoint);
+
+#endif
