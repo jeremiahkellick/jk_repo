@@ -257,6 +257,7 @@ int main(int argc, char **argv)
     int remaining_in_cluster = points_per_cluster;
 
     double sum = 0.0;
+    double sum_coefficient = 1.0 / (double)pair_count;
     for (int i = 0; i < pair_count; i++) {
         double x0 = random_within(cluster0.x_min, x_radius);
         double y0 = random_within(cluster0.y_min, y_radius);
@@ -272,7 +273,7 @@ int main(int argc, char **argv)
                 y1);
 
         double distance = haversine_reference(x0, y0, x1, y1, EARTH_RADIUS);
-        sum += distance;
+        sum += distance * sum_coefficient;
         fwrite(&distance, sizeof(double), 1, answers_file);
 
         remaining_in_cluster -= 2;

@@ -150,6 +150,7 @@ int main(int argc, char **argv)
     size_t pair_count = pairs_json->u.array.length;
 
     double sum = 0.0;
+    double sum_coefficient = 1.0 / (double)pair_count;
     double coords[COORDINATE_COUNT];
     for (int i = 0; i < pair_count; i++) {
         if (pairs[i]->type != JK_JSON_OBJECT) {
@@ -187,7 +188,7 @@ int main(int argc, char **argv)
             assert(approximately_equal(distance, answer));
         }
 
-        sum += distance;
+        sum += distance * sum_coefficient;
     }
 
     printf("Pair count: %zu\n", pair_count);
