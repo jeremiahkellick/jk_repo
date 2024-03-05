@@ -13,7 +13,7 @@
 char string1[] = "memcpy_test1\n";
 char string2[] = "memcpy_test2\n";
 
-int main(int argc, char **argv)
+int main(void)
 {
     JkArena arena;
     jk_arena_init(&arena, JK_PAGE_SIZE * 3);

@@ -1,4 +1,6 @@
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,7 +45,7 @@ static unsigned hash_string(char *string)
     unsigned hash = 0;
     while (*string != '\0') {
         Bits32 bits = {0};
-        for (int i = 0; i < sizeof(bits.c) && *string != '\0'; i++, string++) {
+        for (size_t i = 0; i < sizeof(bits.c) && *string != '\0'; i++, string++) {
             bits.c[i] = *string;
         }
         hash = jk_hash_uint32(hash ^ bits.u);

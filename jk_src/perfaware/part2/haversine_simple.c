@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -25,14 +26,16 @@ char *coordinate_names[COORDINATE_COUNT] = {
     "y1",
 };
 
-static size_t stream_read_file(FILE *file, size_t byte_count, void *buffer)
+static size_t stream_read_file(void *file, size_t byte_count, void *buffer)
 {
-    return fread(buffer, 1, byte_count, file);
+    FILE *file_internal = file;
+    return fread(buffer, 1, byte_count, file_internal);
 }
 
-static int stream_seek_relative_file(FILE *file, long offset)
+static int stream_seek_relative_file(void *file, long offset)
 {
-    return fseek(file, offset, SEEK_CUR);
+    FILE *file_internal = file;
+    return fseek(file_internal, offset, SEEK_CUR);
 }
 
 static bool approximately_equal(double a, double b)
@@ -156,7 +159,7 @@ int main(int argc, char **argv)
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
     double coords[COORDINATE_COUNT];
-    for (int i = 0; i < pair_count; i++) {
+    for (size_t i = 0; i < pair_count; i++) {
         if (pairs[i]->type != JK_JSON_OBJECT) {
             fprintf(stderr,
                     "%s: An element of the \"pairs\" array was not an object\n",

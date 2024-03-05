@@ -2,6 +2,7 @@
 #define JK_UTF8_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct JkUtf8Codepoint {

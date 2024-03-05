@@ -2,6 +2,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <sys/mman.h>
 #endif
 
 #define JK_PAGE_ROUND_UP(size) (((size) + JK_PAGE_SIZE - 1) & ~(JK_PAGE_SIZE - 1))
@@ -17,8 +19,15 @@ JkArenaInitResult jk_arena_init(JkArena *arena, size_t virtual_size)
     if (!arena->address) {
         return JK_ARENA_INIT_FAILURE;
     }
-    void *first_page = VirtualAlloc(arena->address, JK_PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE);
-    if (!first_page) {
+    if (!VirtualAlloc(arena->address, JK_PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE)) {
+        return JK_ARENA_INIT_FAILURE;
+    }
+#else
+    arena->address = mmap(NULL, virtual_size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (arena->address == MAP_FAILED) {
+        return JK_ARENA_INIT_FAILURE;
+    }
+    if (mprotect(arena->address, JK_PAGE_SIZE, PROT_READ | PROT_WRITE) == -1) {
         return JK_ARENA_INIT_FAILURE;
     }
 #endif
@@ -30,6 +39,8 @@ void jk_arena_terminate(JkArena *arena)
 {
 #ifdef _WIN32
     VirtualFree(arena->address, 0, MEM_RELEASE);
+#else
+    munmap(arena->address, arena->virtual_size);
 #endif
 }
 
@@ -45,6 +56,10 @@ void *jk_arena_push(JkArena *arena, size_t size)
 #ifdef _WIN32
         if (!VirtualAlloc(
                     arena->address + arena->size, expansion_size, MEM_COMMIT, PAGE_READWRITE)) {
+            return NULL;
+        }
+#else
+        if (mprotect(arena->address + arena->size, expansion_size, PROT_READ | PROT_WRITE) == -1) {
             return NULL;
         }
 #endif

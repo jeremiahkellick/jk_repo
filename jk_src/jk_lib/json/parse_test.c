@@ -12,18 +12,22 @@
 #include <windows.h>
 #endif
 
-static size_t stream_read_file(FILE *file, size_t byte_count, void *buffer)
+static size_t stream_read_file(void *file, size_t byte_count, void *buffer)
 {
-    return fread(buffer, 1, byte_count, file);
+    FILE *file_internal = file;
+    return fread(buffer, 1, byte_count, file_internal);
 }
 
-static int stream_seek_relative_file(FILE *file, long offset)
+static int stream_seek_relative_file(void *file, long offset)
 {
-    return fseek(file, offset, SEEK_CUR);
+    FILE *file_internal = file;
+    return fseek(file_internal, offset, SEEK_CUR);
 }
 
 int main(int argc, char **argv)
 {
+    (void)argc;
+
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
 #endif

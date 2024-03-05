@@ -609,6 +609,7 @@ int main(int argc, char **argv)
     array_append(&command, "-Wextra");
     array_append(&command, "-fstack-protector");
     array_append(&command, "-Werror=vla");
+    array_append(&command, "-Wno-missing-braces");
     if (optimize) {
         array_append(&command, "-O3");
         array_append(&command, "-flto");
@@ -619,10 +620,8 @@ int main(int argc, char **argv)
     if (!single_translation_unit) {
         array_append(&command, "-D", "JK_PUBLIC=");
     }
+    array_append(&command, "-D", "_DEFAULT_SOURCE=");
     array_append(&command, "-I", root_path);
-
-    // GCC linker options
-    array_append(&command, "-lm");
 #endif
 
     array_append(&command, source_file_path);
@@ -654,6 +653,9 @@ int main(int argc, char **argv)
     // MSVC linker options
     array_append(&command, "/link");
     array_append(&command, "/INCREMENTAL:NO");
+#else
+    // GCC linker options
+    array_append(&command, "-lm");
 #endif
 
     return command_run(&command);

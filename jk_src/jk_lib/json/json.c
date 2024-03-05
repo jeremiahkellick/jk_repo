@@ -80,9 +80,11 @@ static int jk_json_getc(
     return stream_read(stream, 1, &c) ? (int)c : EOF;
 }
 
-static int jk_json_member_compare(JkJsonMember *a, JkJsonMember *b)
+static int jk_json_member_compare(void *a, void *b)
 {
-    return strcmp(a->name, b->name);
+    JkJsonMember *a_mem = a;
+    JkJsonMember *b_mem = b;
+    return strcmp(a_mem->name, b_mem->name);
 }
 
 static void jk_json_member_quicksort(JkJsonMember *array, size_t length)
@@ -125,7 +127,7 @@ void jk_json_print(FILE *file, JkJson *json, int indent_level)
             return;
         }
         fprintf(file, "{\n");
-        for (int i = 0; i < object->member_count; i++) {
+        for (size_t i = 0; i < object->member_count; i++) {
             for (int j = 0; j < indent_level + 1; j++) {
                 fprintf(file, "\t");
             }
@@ -145,7 +147,7 @@ void jk_json_print(FILE *file, JkJson *json, int indent_level)
             return;
         }
         fprintf(file, "[\n");
-        for (int i = 0; i < array->length; i++) {
+        for (size_t i = 0; i < array->length; i++) {
             for (int j = 0; j < indent_level + 1; j++) {
                 fprintf(file, "\t");
             }
@@ -344,7 +346,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
         memset(cmp_buffer, 0, sizeof(cmp_buffer));
         cmp_buffer[0] = (char)e->c;
         long read_count = (long)stream_read(stream, JK_JSON_CMP_STRING_LENGTH - 1, cmp_buffer + 1);
-        for (int i = 0; i < ARRAY_COUNT(jk_json_exact_matches); i++) {
+        for (size_t i = 0; i < ARRAY_COUNT(jk_json_exact_matches); i++) {
             JkJsonExactMatch *match = &jk_json_exact_matches[i];
             if (strncmp(cmp_buffer, match->string, match->length) == 0
                     && !isalnum(cmp_buffer[match->length])) {

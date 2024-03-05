@@ -10,7 +10,7 @@ typedef struct JkBuffer {
 } JkBuffer;
 
 #define JK_STRING(string_literal) \
-    ((JkBuffer){sizeof(string_literal - 1), (uint8_t *)string_literal})
+    ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
 
 #define JKS JK_STRING
 

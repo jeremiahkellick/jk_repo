@@ -35,7 +35,7 @@ void jk_options_parse(int argc,
                         end++;
                     }
                     bool matched = false;
-                    for (int j = 0; !matched && j < option_count; j++) {
+                    for (size_t j = 0; !matched && j < option_count; j++) {
                         if (options_in[j].long_name
                                 && strncmp(name, options_in[j].long_name, end) == 0) {
                             matched = true;
@@ -71,7 +71,7 @@ void jk_options_parse(int argc,
                 bool has_argument = false;
                 for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
                     bool matched = false;
-                    for (int j = 0; !matched && j < option_count; j++) {
+                    for (size_t j = 0; !matched && j < option_count; j++) {
                         if (*c == options_in[j].flag) {
                             matched = true;
                             options_out[j].present = true;
