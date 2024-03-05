@@ -92,6 +92,7 @@ static void array_concat(StringArray *array, int count, char **items)
     array_concat(                \
             array, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
 
+#ifdef _WIN32
 static bool contains_whitespace(char *string)
 {
     for (char *c = string; *c != '\0'; c++) {
@@ -101,6 +102,7 @@ static bool contains_whitespace(char *string)
     }
     return false;
 }
+#endif
 
 static int command_run(StringArray *command)
 {
@@ -162,6 +164,7 @@ static int command_run(StringArray *command)
             exit(1);
         }
     } else {
+        execvp(command->items[0], command->items);
         fprintf(stderr,
                 "%s: Could not run '%s': %s\n",
                 program_name,
@@ -337,7 +340,7 @@ static bool find_dependencies(char *root_file_path, StringArray *dependencies)
                 c0 = getc(file);
             }
 
-            if (char1 == '/' && strcmp(buf, "jk_build") == 0) {
+            if (char1 == '/' && strcmp(buf, jk_build_string) == 0) {
                 if (c0 == EOF || c0 == '\r' || c0 == '\n') {
                     fprintf(stderr,
                             "%s: Found #jk_build control comment with no command\n",
