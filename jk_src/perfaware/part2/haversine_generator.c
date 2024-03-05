@@ -81,7 +81,7 @@ int parse_positive_integer(char *string, char *option_name, bool *usage_error)
     return result;
 }
 
-Cluster random_cluster()
+Cluster random_cluster(void)
 {
     Cluster cluster = {
         .x_min = random_within(0.0, 360.0 - 45.0),

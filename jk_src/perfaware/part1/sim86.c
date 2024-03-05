@@ -614,7 +614,7 @@ static void print_instruction(Instruction *inst)
     switch (inst->type) {
     case INST_JUMP: {
         printf("%s ", jump_names[inst->u.jump.type]);
-        printf("$%+hhd", inst->u.jump.offset + 2);
+        printf("$%+d", (int)inst->u.jump.offset + 2);
     } break;
     case INST_BINOP: {
         Binop *binop = &inst->u.binop;
