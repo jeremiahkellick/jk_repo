@@ -1,6 +1,10 @@
 #include <assert.h>
 
-#include <jk_src/jk_lib/hash_table/hash_table.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/hash_table/hash_table.h>
+// #jk_build dependencies_end
 
 #define SMALL_CAPACITY 4
 #define SMALL_CAPACITY_LIMIT (SMALL_CAPACITY * JK_HASH_TABLE_LOAD_FACTOR / 10)

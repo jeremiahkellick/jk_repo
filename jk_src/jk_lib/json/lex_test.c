@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_src/jk_lib/json/json.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/json/json.h>
+// #jk_build dependencies_end
 
 #ifdef _WIN32
 #include <windows.h>
@@ -28,8 +32,6 @@ static void jk_json_print_c(FILE *file, int c)
 
 int main(int argc, char **argv)
 {
-    jk_json_name = argv[0];
-
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
 #endif
@@ -49,7 +51,7 @@ int main(int argc, char **argv)
             printf(" ");
         } else {
             printf("\n");
-            fprintf(stderr, "%s: Unexpected ", jk_json_name);
+            fprintf(stderr, "%s: Unexpected ", argv[0]);
             jk_json_print_c(stderr, error_data.c);
             if (lex_status == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
                 fprintf(stderr,

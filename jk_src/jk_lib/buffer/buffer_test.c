@@ -1,6 +1,10 @@
 #include <stdio.h>
 
-#include "buffer.c"
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/buffer/buffer.h>
+// #jk_build dependencies_end
 
 void print_buffer(JkBuffer buffer)
 {

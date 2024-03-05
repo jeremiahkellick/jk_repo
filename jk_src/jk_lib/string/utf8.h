@@ -10,7 +10,7 @@ typedef struct JkUtf8Codepoint {
 
 void jk_utf8_codepoint_encode(uint32_t codepoint32, JkUtf8Codepoint *codepoint);
 
-bool jk_utf8_is_continuation(char byte);
+bool jk_utf8_byte_is_continuation(char byte);
 
 typedef enum JkUtf8CodepointGetStatus {
     JK_UTF8_CODEPOINT_GET_SUCCESS,

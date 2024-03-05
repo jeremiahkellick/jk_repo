@@ -1,6 +1,3 @@
-#ifndef JK_UTF8_C
-#define JK_UTF8_C
-
 #include "utf8.h"
 
 void jk_utf8_codepoint_encode(uint32_t codepoint32, JkUtf8Codepoint *codepoint)
@@ -50,5 +47,3 @@ JkUtf8CodepointGetStatus jk_utf8_codepoint_get(
     stream_seek_relative(-read_count + num_bytes, stream);
     return JK_UTF8_CODEPOINT_GET_SUCCESS;
 }
-
-#endif

@@ -1,10 +1,14 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
-#include <jk_src/jk_lib/command_line/options.c>
-#include <jk_src/jk_lib/json/json.c>
+#include <jk_gen/single_translation_unit.h>
 
-#include "haversine_reference.c"
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/command_line/options.h>
+#include <jk_src/jk_lib/json/json.h>
+#include <jk_src/perfaware/part2/haversine_reference.h>
+// #jk_build dependencies_end
 
 typedef enum Coordinate {
     X0,

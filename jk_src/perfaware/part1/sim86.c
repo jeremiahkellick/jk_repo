@@ -5,7 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <jk_src/jk_lib/command_line/options.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/command_line/options.h>
+// #jk_build dependencies_end
 
 #define OPCODE_MOV_REG_RM_MASK 0xfc
 #define OPCODE_MOV_REG_RM 0x88

@@ -1,6 +1,6 @@
 #include <math.h>
 
-#define EARTH_RADIUS 6372.8
+#include "haversine_reference.h"
 
 static double square(double A)
 {
@@ -15,7 +15,7 @@ static double radians_from_degrees(double Degrees)
 }
 
 // NOTE(casey): EarthRadius is generally expected to be 6372.8
-static double haversine_reference(double X0, double Y0, double X1, double Y1, double EarthRadius)
+JK_PUBLIC double haversine_reference(double X0, double Y0, double X1, double Y1, double EarthRadius)
 {
     /* NOTE(casey): This is not meant to be a "good" way to calculate the Haversine distance.
        Instead, it attempts to follow, as closely as possible, the formula used in the real-world

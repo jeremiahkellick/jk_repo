@@ -1,6 +1,3 @@
-#ifndef JK_BUFFER_C
-#define JK_BUFFER_C
-
 #include <stdio.h>
 #include <string.h>
 
@@ -16,5 +13,3 @@ int jk_buffer_character_get(JkBuffer buffer, size_t position)
 {
     return position < buffer.size ? buffer.data[position] : EOF;
 }
-
-#endif

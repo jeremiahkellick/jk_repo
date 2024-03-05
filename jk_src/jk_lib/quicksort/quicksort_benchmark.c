@@ -3,7 +3,11 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include <jk_src/jk_lib/quicksort/quicksort.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/quicksort/quicksort.h>
+// #jk_build dependencies_end
 
 #define ARRAY_LENGTH 20000000
 int array[ARRAY_LENGTH];

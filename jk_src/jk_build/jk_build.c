@@ -231,8 +231,8 @@ static void populate_paths(char *source_file_arg)
     strncpy(root_path, source_file_path, root_path_length);
 
     // Append "build" to the repository root path to make the build path
-    if (root_path_length > PATH_MAX - 7) {
-        fprintf(stderr, "%s: PATH_MAX exceeded\n", program_name);
+    if (root_path_length > PATH_MAX - 32) {
+        fprintf(stderr, "%s: Maximum repository root path length exceeded\n", program_name);
         exit(1);
     }
     strcpy(build_path, root_path);
@@ -243,7 +243,7 @@ static void populate_paths(char *source_file_arg)
     path_to_forward_slashes(build_path);
 }
 
-bool is_space_exclude_newlines(int c)
+static bool is_space_exclude_newlines(int c)
 {
     // We don't consider carraige returns and newlines because none of the things we're parsing are
     // allowed to span multiple lines.
@@ -258,7 +258,7 @@ bool is_space_exclude_newlines(int c)
     }
 }
 
-int next_nonspace(FILE *file)
+static int next_nonspace(FILE *file)
 {
     int c;
     do {
@@ -267,25 +267,53 @@ int next_nonspace(FILE *file)
     return c;
 }
 
-char const *const jk_build_string = "jk_build";
-char const *const jk_src_string = "jk_src/";
+static void ensure_directory_exists(char *directory_path)
+{
+    if (mkdir(directory_path, 0775) == -1 && errno != EEXIST) {
+        fprintf(stderr,
+                "%s: Failed to create \"%s\": %s\n",
+                program_name,
+                directory_path,
+                strerror(errno));
+        exit(1);
+    }
+}
 
-void find_dependencies(StringArray *source_file_paths)
+#define JK_GEN_STRING_LITERAL "jk_gen/"
+
+static char const jk_build_string[] = "jk_build";
+static char const jk_src_string[] = "jk_src/";
+static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
+static char const jk_gen_stu_string[] = JK_GEN_STRING_LITERAL "single_translation_unit.h";
+
+static bool find_dependencies(char *root_file_path, StringArray *dependencies)
 {
     static char buf[BUF_SIZE] = {'\0'};
 
-    bool dependencies_adjacent = false;
+    bool dependencies_open = false;
+    bool single_translation_unit = false;
 
-    for (int path_index = 0; path_index < source_file_paths->count; path_index++) {
-        char *path = source_file_paths->items[path_index];
+    int path_index = 0;
+    char *path = root_file_path;
+    do {
         FILE *file = fopen(path, "r");
         if (file == NULL) {
             fprintf(stderr, "%s: Failed to open '%s': %s\n", program_name, path, strerror(errno));
             exit(1);
         }
 
-        int pound;
-        while ((pound = getc(file)) != EOF) {
+        int char1;
+        while ((char1 = getc(file)) != EOF) {
+            int pound;
+            if (char1 == '/') { // Parse control comment
+                if (getc(file) != '/') {
+                    goto reset_parse;
+                }
+                pound = next_nonspace(file);
+            } else {
+                pound = char1;
+            }
+
             if (pound != '#') {
                 goto reset_parse;
             }
@@ -309,12 +337,12 @@ void find_dependencies(StringArray *source_file_paths)
                 c0 = getc(file);
             }
 
-            if (strcmp(buf, "jk_build") == 0) {
+            if (char1 == '/' && strcmp(buf, "jk_build") == 0) {
                 if (c0 == EOF || c0 == '\r' || c0 == '\n') {
                     fprintf(stderr,
                             "%s: Found #jk_build control comment with no command\n",
                             program_name);
-                    fprintf(stderr, "%s: Usage: // #jk_build [command]\n", program_name);
+                    fprintf(stderr, "%s: Usage: // %s\n", "#jk_build [command]", program_name);
                     exit(1);
                 }
 
@@ -334,23 +362,22 @@ void find_dependencies(StringArray *source_file_paths)
                 }
                 buf[command_length] = '\0';
 
-                if (strcmp(buf, "dependencies_adjacent") == 0) {
-                    if (dependencies_adjacent) {
+                if (strcmp(buf, "dependencies_begin") == 0) {
+                    if (dependencies_open) {
                         fprintf(stderr,
-                                "%s: Double '#jk_build dependencies_adjacent' control comments "
-                                "with no "
-                                "'#jk_build end' in between\n",
+                                "%s: Double '#jk_build dependencies_begin' control comments with "
+                                "no '#jk_build dependencies_end' in between\n",
                                 program_name);
                         exit(1);
                     }
-                    dependencies_adjacent = true;
-                } else if (strcmp(buf, "end") == 0) {
-                    if (dependencies_adjacent) {
-                        dependencies_adjacent = false;
+                    dependencies_open = true;
+                } else if (strcmp(buf, "dependencies_end") == 0) {
+                    if (dependencies_open) {
+                        dependencies_open = false;
                     } else {
                         fprintf(stderr,
-                                "%s: Encountered '#jk_build end' control comment when there was no "
-                                "condition to end\n",
+                                "%s: Encountered '#jk_build dependencies_end' control comment when "
+                                "there was no condition to end\n",
                                 program_name);
                         exit(1);
                     }
@@ -361,7 +388,7 @@ void find_dependencies(StringArray *source_file_paths)
                             buf);
                     exit(1);
                 }
-            } else if (dependencies_adjacent && strcmp(buf, "include") == 0) {
+            } else if (char1 != '/' && strcmp(buf, "include") == 0) {
                 if (c0 == EOF) {
                     goto end_of_file;
                 } else if (c0 != '<') {
@@ -381,33 +408,40 @@ void find_dependencies(StringArray *source_file_paths)
                         exit(1);
                     }
                 }
-
                 buf[path_length] = '\0';
+                path_to_forward_slashes(buf);
+
+                if (dependencies_open) {
+                    if (path_length < sizeof(jk_src_string) - 1
+                            || !(memcmp(buf, jk_src_string, sizeof(jk_src_string) - 1) == 0)) {
+                        fprintf(stderr,
+                                "%s: Warning: Tried to use dependencies_begin on an include path "
+                                "that did not start with 'jk_src/', ignoring <%s>\n",
+                                program_name,
+                                buf);
+                        goto reset_parse;
+                    }
+                } else {
+                    if (path_length == sizeof(jk_gen_stu_string) - 1
+                            && memcmp(buf, jk_gen_stu_string, sizeof(jk_gen_stu_string) - 1) == 0) {
+                        single_translation_unit = true;
+                    }
+                    goto reset_parse;
+                }
+
                 if (buf[path_length - 2] != '.' || buf[path_length - 1] != 'h') {
                     fprintf(stderr,
-                            "%s: Warning: Tried to use dependencies_adjacent on an include path "
-                            "that did not end in '.h', ignoring <%s>\n",
+                            "%s: Warning: Tried to use dependencies_begin on an include path that "
+                            "did not end in '.h', ignoring <%s>\n",
                             program_name,
                             buf);
                     goto reset_parse;
                 }
                 buf[path_length - 1] = 'c';
 
-                size_t jk_src_string_length = strlen(jk_src_string);
-                if (path_length < jk_src_string_length
-                        || !(memcmp(buf, jk_src_string, jk_src_string_length) == 0)) {
-                    fprintf(stderr,
-                            "%s: Warning: Tried to use dependencies_adjacent on an include path "
-                            "that did not start with 'jk_src/', ignoring <%s>\n",
-                            program_name,
-                            buf);
-                    goto reset_parse;
-                }
-
-                path_to_forward_slashes(buf);
-                // Check if already in source_file_paths
-                for (int i = 0; i < source_file_paths->count; i++) {
-                    if (strcmp(buf, source_file_paths->items[i] + root_path_length) == 0) {
+                // Check if already in dependencies
+                for (int i = 0; i < dependencies->count; i++) {
+                    if (strcmp(buf, dependencies->items[i] + root_path_length) == 0) {
                         goto reset_parse;
                     }
                 }
@@ -422,22 +456,27 @@ void find_dependencies(StringArray *source_file_paths)
                 memcpy(dependency_path + root_path_length, buf, path_length);
                 dependency_path[root_path_length + path_length] = '\0';
 
-                array_append(source_file_paths, dependency_path);
+                array_append(dependencies, dependency_path);
             }
+
         reset_parse:
             continue;
         }
 
     end_of_file:
         fclose(file);
-        if (dependencies_adjacent) {
+        if (dependencies_open) {
             fprintf(stderr,
-                    "%s: '#jk_build dependencies_adjacent' condition started but never ended. Use "
-                    "'#jk_build end' to mark where to stop.\n",
+                    "%s: '#jk_build dependencies_begin' condition started but never ended. Use "
+                    "'#jk_build dependencies_end' to mark where to stop.\n",
                     program_name);
             exit(1);
         }
-    }
+
+        path = dependencies->items[path_index++];
+    } while (path_index <= dependencies->count);
+
+    return single_translation_unit;
 }
 
 int main(int argc, char **argv)
@@ -517,14 +556,7 @@ int main(int argc, char **argv)
 
     populate_paths(source_file_arg);
 
-    if (mkdir(build_path, 0775) == -1 && errno != EEXIST) {
-        fprintf(stderr,
-                "%s: Failed to create \"%s\": %s\n",
-                program_name,
-                build_path,
-                strerror(errno));
-        exit(1);
-    }
+    ensure_directory_exists(build_path);
     if (chdir(build_path) == -1) {
         fprintf(stderr,
                 "%s: Failed to change working directory to \"%s\": %s\n",
@@ -534,9 +566,8 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    StringArray source_file_paths = {0};
-    array_append(&source_file_paths, source_file_path);
-    find_dependencies(&source_file_paths);
+    StringArray dependencies = {0};
+    bool single_translation_unit = find_dependencies(source_file_path, &dependencies);
 
     StringArray command = {0};
 
@@ -559,6 +590,9 @@ int main(int argc, char **argv)
     } else {
         array_append(&command, "/Od");
     }
+    if (!single_translation_unit) {
+        array_append(&command, "/DJK_PUBLIC=");
+    }
     array_append(&command, "/I", root_path);
 #else
     // GCC compiler options
@@ -579,13 +613,39 @@ int main(int argc, char **argv)
     } else {
         array_append(&command, "-Og");
     }
+    if (!single_translation_unit) {
+        array_append(&command, "-D", "JK_PUBLIC=");
+    }
     array_append(&command, "-I", root_path);
 
     // GCC linker options
     array_append(&command, "-lm");
 #endif
 
-    array_concat(&command, source_file_paths.count, source_file_paths.items);
+    array_append(&command, source_file_path);
+
+    if (single_translation_unit) {
+        char buffer[PATH_MAX];
+        strcpy(buffer, root_path);
+        strcat(buffer, jk_gen_string);
+        ensure_directory_exists(buffer);
+        strcat(buffer, &jk_gen_stu_string[sizeof(jk_gen_string) - 1]);
+
+        FILE *stu_file = fopen(buffer, "wb");
+        if (stu_file == NULL) {
+            fprintf(stderr, "%s: Failed to open '%s': %s\n", program_name, buffer, strerror(errno));
+            exit(1);
+        }
+
+        fprintf(stu_file, "#define JK_PUBLIC static\n");
+        for (int i = 0; i < dependencies.count; i++) {
+            fprintf(stu_file, "#include <%s>\n", dependencies.items[i]);
+        }
+
+        fclose(stu_file);
+    } else {
+        array_concat(&command, dependencies.count, dependencies.items);
+    }
 
 #ifdef _WIN32
     // MSVC linker options

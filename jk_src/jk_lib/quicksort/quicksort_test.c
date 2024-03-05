@@ -2,7 +2,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <jk_src/jk_lib/quicksort/quicksort.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/quicksort/quicksort.h>
+// #jk_build dependencies_end
 
 #define LENGTH 10
 

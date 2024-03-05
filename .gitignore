@@ -1,3 +1,4 @@
 bin/*.pdb
 bin/jk_build*
 build/
+jk_gen/

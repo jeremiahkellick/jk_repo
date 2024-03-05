@@ -1,6 +1,10 @@
 #include <stdio.h>
 
-#include <jk_src/jk_lib/string/utf8.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/string/utf8.h>
+// #jk_build dependencies_end
 
 #include <windows.h>
 

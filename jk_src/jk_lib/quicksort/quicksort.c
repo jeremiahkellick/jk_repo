@@ -1,6 +1,3 @@
-#ifndef JK_QUICKSORT_C
-#define JK_QUICKSORT_C
-
 #include <stdlib.h>
 #include <string.h>
 
@@ -88,5 +85,3 @@ void jk_quicksort_strings(char **array, int length)
     char *tmp;
     jk_quicksort(array, length, sizeof(char *), &tmp, jk_string_compare);
 }
-
-#endif

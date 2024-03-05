@@ -1,4 +1,5 @@
 {
   "C_Cpp.autoAddFileAssociations": false,
+  "C_Cpp.default.defines": ["JK_PUBLIC="],
   "C_Cpp.default.includePath": ["${workspaceFolder}"]
 }

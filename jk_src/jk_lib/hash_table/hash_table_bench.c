@@ -2,7 +2,11 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include <jk_src/jk_lib/hash_table/hash_table.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/hash_table/hash_table.h>
+// #jk_build dependencies_end
 
 #define CAPACITY (1 << 26)
 #define NUM_ELEMENTS (CAPACITY * JK_HASH_TABLE_LOAD_FACTOR / 10)

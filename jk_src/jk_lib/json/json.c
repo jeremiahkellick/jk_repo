@@ -1,15 +1,14 @@
-#ifndef JK_JSON_C
-#define JK_JSON_C
-
 #include <ctype.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <jk_src/jk_lib/arena/arena.c>
-#include <jk_src/jk_lib/quicksort/quicksort.c>
-#include <jk_src/jk_lib/string/utf8.c>
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/arena/arena.h>
+#include <jk_src/jk_lib/quicksort/quicksort.h>
+#include <jk_src/jk_lib/string/utf8.h>
+// #jk_build dependencies_end
 
 #include "json.h"
 
@@ -539,5 +538,3 @@ JkJson *jk_json_member_get(JkJsonObject *object, char *member_name)
 {
     return jk_json_member_search(object->members, object->member_count, member_name);
 }
-
-#endif

@@ -5,10 +5,13 @@
 #include <string.h>
 #include <time.h>
 
-#include <jk_src/jk_lib/command_line/options.c>
-#include <jk_src/jk_lib/hash.c>
+#include <jk_gen/single_translation_unit.h>
 
-#include "haversine_reference.c"
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/command_line/options.h>
+#include <jk_src/jk_lib/hash.h>
+#include <jk_src/perfaware/part2/haversine_reference.h>
+// #jk_build dependencies_end
 
 #define DEFAULT_JSON_FILE_PATH "./coords.json"
 #define DEFAULT_ANSWER_FILE_PATH "./answers.f64"

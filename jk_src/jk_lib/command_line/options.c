@@ -1,6 +1,3 @@
-#ifndef JK_COMMAND_LINE_OPTIONS_C
-#define JK_COMMAND_LINE_OPTIONS_C
-
 #include <stdio.h>
 #include <string.h>
 
@@ -150,5 +147,3 @@ void jk_options_print_help(FILE *file, JkOption *options, int option_count)
         fprintf(file, "%s", options[i].description);
     }
 }
-
-#endif

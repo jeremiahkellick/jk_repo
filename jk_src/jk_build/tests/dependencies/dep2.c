@@ -1,13 +1,13 @@
-#ifndef MTU_DEP2_C
-#define MTU_DEP2_C
-
 #include <stdio.h>
 
-#include "mtu_dep2.h"
+#include "dep2.h"
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_build/tests/dependencies/dep_nested.h>
+// #jk_build dependencies_end
 
 void dep2(void)
 {
-    printf("Successfully called dependency 2/2\n");
+    printf("Successfully called dependency 2/3\n");
+    dep_nested();
 }
-
-#endif

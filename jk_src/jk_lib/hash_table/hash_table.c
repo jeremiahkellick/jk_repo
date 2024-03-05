@@ -1,12 +1,11 @@
-#ifndef JK_HASH_TABLE_C
-#define JK_HASH_TABLE_C
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_src/jk_lib/hash.c>
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/hash.h>
+// #jk_build dependencies_end
 
 #include "hash_table.h"
 
@@ -198,5 +197,3 @@ void jk_hash_table_destroy(JkHashTable *t)
     free(t->buf);
     free(t);
 }
-
-#endif

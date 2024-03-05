@@ -2,7 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_src/jk_lib/json/json.c>
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/json/json.h>
+// #jk_build dependencies_end
 
 #ifdef _WIN32
 #include <windows.h>
@@ -20,8 +24,6 @@ static int stream_seek_relative_file(FILE *file, long offset)
 
 int main(int argc, char **argv)
 {
-    jk_json_name = argv[0];
-
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
 #endif
@@ -46,17 +48,17 @@ int main(int argc, char **argv)
     } else {
         switch (error.error_type) {
         case JK_JSON_PARSE_UNEXPECTED_TOKEN: {
-            fprintf(stderr, "%s: Unexpected token '", jk_json_name);
+            fprintf(stderr, "%s: Unexpected token '", argv[0]);
             jk_json_print_token(stderr, &error.token);
             fprintf(stderr, "'\n");
             exit(1);
         } break;
         case JK_JSON_PARSE_LEX_ERROR: {
-            fprintf(stderr, "%s: Lex error\n", jk_json_name);
+            fprintf(stderr, "%s: Lex error\n", argv[0]);
             exit(1);
         } break;
         case JK_JSON_PARSE_ERROR_TYPE_COUNT: {
-            fprintf(stderr, "%s: Invalid parse error type\n", jk_json_name);
+            fprintf(stderr, "%s: Invalid parse error type\n", argv[0]);
             exit(1);
         } break;
         }
