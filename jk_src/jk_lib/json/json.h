@@ -8,8 +8,7 @@
 #include <jk_src/jk_lib/arena/arena.h>
 
 typedef enum JkJsonType {
-    JK_JSON_OBJECT,
-    JK_JSON_ARRAY,
+    JK_JSON_COLLECTION,
     JK_JSON_STRING,
     JK_JSON_NUMBER,
     JK_JSON_TRUE,
@@ -20,26 +19,23 @@ typedef enum JkJsonType {
 
 typedef struct JkJson JkJson;
 
-typedef struct JkJsonMember {
-    char *name;
-    JkJson *value;
-} JkJsonMember;
+typedef enum JkJsonCollectionType {
+    JK_JSON_COLLECTION_OBJECT,
+    JK_JSON_COLLECTION_ARRAY,
+    JK_JSON_COLLECTION_TYPE_COUNT,
+} JkJsonCollectionType;
 
-typedef struct JkJsonObject {
-    size_t member_count;
-    JkJsonMember *members;
-} JkJsonObject;
-
-typedef struct JkJsonArray {
-    size_t length;
+typedef struct JkJsonCollection {
+    JkJsonCollectionType type;
+    size_t count;
     JkJson **elements;
-} JkJsonArray;
+} JkJsonCollection;
 
 struct JkJson {
     JkJsonType type;
+    char *label;
     union {
-        JkJsonArray array;
-        JkJsonObject object;
+        JkJsonCollection collection;
         char *string;
         double number;
     } u;
@@ -114,6 +110,6 @@ JkJson *jk_json_parse(JkArena *storage,
         void *stream,
         JkJsonParseData *data);
 
-JkJson *jk_json_member_get(JkJsonObject *object, char *member_name);
+JkJson *jk_json_member_get(JkJsonCollection *object, char *member_name);
 
 #endif

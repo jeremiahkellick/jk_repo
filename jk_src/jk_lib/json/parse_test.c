@@ -45,10 +45,10 @@ int main(int argc, char **argv)
     if (json) {
         jk_json_print(stdout, json, 0);
         printf("\n");
-        assert(json->type == JK_JSON_OBJECT);
-        JkJson *smokes = jk_json_member_get(&json->u.object, "smokes");
+        assert(json->type == JK_JSON_COLLECTION);
+        JkJson *smokes = jk_json_member_get(&json->u.collection, "smokes");
         assert(smokes && smokes->type == JK_JSON_FALSE);
-        assert(jk_json_member_get(&json->u.object, "this_member_does_not_exist") == NULL);
+        assert(jk_json_member_get(&json->u.collection, "this_member_does_not_exist") == NULL);
     } else {
         switch (error.error_type) {
         case JK_JSON_PARSE_UNEXPECTED_TOKEN: {
