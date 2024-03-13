@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,6 +9,7 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/command_line/options.h>
 #include <jk_src/jk_lib/json/json.h>
+#include <jk_src/jk_lib/metrics/metrics.h>
 #include <jk_src/perfaware/part2/haversine_reference.h>
 // #jk_build dependencies_end
 
@@ -66,6 +68,8 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 int main(int argc, char **argv)
 {
+    uint64_t time_start = jk_cpu_timer_get();
+
     program_name = argv[0];
 
     // Parse command line arguments
@@ -128,6 +132,8 @@ int main(int argc, char **argv)
     jk_arena_init(&storage, (size_t)1 << 35);
     jk_arena_init(&tmp_storage, (size_t)1 << 35);
 
+    uint64_t time_setup = jk_cpu_timer_get();
+
     JkJsonParseData json_parse_data;
     JkJson *json = jk_json_parse(&storage,
             &tmp_storage,
@@ -157,6 +163,8 @@ int main(int argc, char **argv)
     }
     JkJson **pairs = pairs_json->u.collection.elements;
     size_t pair_count = pairs_json->u.collection.count;
+
+    uint64_t time_json_parsed = jk_cpu_timer_get();
 
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
@@ -201,6 +209,8 @@ int main(int argc, char **argv)
         sum += distance * sum_coefficient;
     }
 
+    uint64_t time_summed = jk_cpu_timer_get();
+
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);
 
@@ -212,8 +222,35 @@ int main(int argc, char **argv)
         }
 
         printf("\nReference sum: %.16f\n", ref_sum);
-        printf("Difference: %.16f\n", sum - ref_sum);
+        printf("Difference: %.16f\n\n", sum - ref_sum);
     }
+
+    uint64_t time_misc_output_done = jk_cpu_timer_get();
+
+    uint64_t timer_frequency = jk_cpu_timer_frequency_estimate(100);
+
+    uint64_t elapsed_total = time_misc_output_done - time_start;
+
+    uint64_t elapsed_setup = time_setup - time_start;
+    uint64_t elapsed_json_parse = time_json_parsed - time_setup;
+    uint64_t elapsed_sum = time_summed - time_json_parsed;
+    uint64_t elapsed_mixed_output = time_misc_output_done - time_summed;
+
+    printf("Total time: %.4fms (CPU frequency %llu)\n",
+            (double)elapsed_total * 1000.0 / (double)timer_frequency,
+            timer_frequency);
+    printf("\tSetup: %llu (%f%%)\n",
+            elapsed_setup,
+            (double)elapsed_setup / (double)elapsed_total * 100.0);
+    printf("\tParse JSON: %llu (%f%%)\n",
+            elapsed_json_parse,
+            (double)elapsed_json_parse / (double)elapsed_total * 100.0);
+    printf("\tSum: %llu (%f%%)\n",
+            elapsed_sum,
+            (double)elapsed_sum / (double)elapsed_total * 100.0);
+    printf("\tMisc output: %llu (%f%%)\n",
+            elapsed_mixed_output,
+            (double)elapsed_mixed_output / (double)elapsed_total * 100.0);
 
     return 0;
 }
