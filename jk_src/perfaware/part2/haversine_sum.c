@@ -81,11 +81,11 @@ int main(int argc, char **argv)
         }
         if (opt_results[OPT_HELP].present || opts_parse.usage_error) {
             printf("NAME\n"
-                   "\thaversine_simple - computes sum of haversine distances from a JSON file\n\n"
+                   "\thaversine_sum - computes sum of haversine distances from a JSON file\n\n"
                    "SYNOPSIS\n"
-                   "\thaversine_simple JSON_FILE [ANSWER_FILE]\n\n"
+                   "\thaversine_sum JSON_FILE [ANSWER_FILE]\n\n"
                    "DESCRIPTION\n"
-                   "\thaversine_simple computes a sum of haversine distances based on the\n"
+                   "\thaversine_sum computes a sum of haversine distances based on the\n"
                    "\tcoordinate pairs in JSON_FILE. If ANSWER_FILE was provided, it also\n"
                    "\tvalidates the computation against ANSWER_FILE, a binary file which\n"
                    "\tshould contain one 64-bit floating point value for each coordinate pair\n"
@@ -140,34 +140,37 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s: Failed to parse JSON\n", program_name);
         exit(1);
     }
-    if (json->type != JK_JSON_OBJECT) {
+    if (!(json->type == JK_JSON_COLLECTION
+                && json->u.collection.type == JK_JSON_COLLECTION_OBJECT)) {
         fprintf(stderr, "%s: JSON was not an object\n", program_name);
         exit(1);
     }
-    JkJson *pairs_json = jk_json_member_get(&json->u.object, "pairs");
+    JkJson *pairs_json = jk_json_member_get(&json->u.collection, "pairs");
     if (pairs_json == NULL) {
         fprintf(stderr, "%s: JSON object did not have a \"pairs\" member\n", program_name);
         exit(1);
     }
-    if (pairs_json->type != JK_JSON_ARRAY) {
+    if (!(pairs_json->type == JK_JSON_COLLECTION
+                && pairs_json->u.collection.type == JK_JSON_COLLECTION_ARRAY)) {
         fprintf(stderr, "%s: JSON object \"pairs\" member was not an array\n", program_name);
         exit(1);
     }
-    JkJson **pairs = pairs_json->u.array.elements;
-    size_t pair_count = pairs_json->u.array.length;
+    JkJson **pairs = pairs_json->u.collection.elements;
+    size_t pair_count = pairs_json->u.collection.count;
 
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
     double coords[COORDINATE_COUNT];
     for (size_t i = 0; i < pair_count; i++) {
-        if (pairs[i]->type != JK_JSON_OBJECT) {
+        if (!(pairs[i]->type == JK_JSON_COLLECTION
+                    && pairs[i]->u.collection.type == JK_JSON_COLLECTION_OBJECT)) {
             fprintf(stderr,
                     "%s: An element of the \"pairs\" array was not an object\n",
                     program_name);
             exit(1);
         }
         for (int j = 0; j < COORDINATE_COUNT; j++) {
-            JkJson *value = jk_json_member_get(&pairs[i]->u.object, coordinate_names[j]);
+            JkJson *value = jk_json_member_get(&pairs[i]->u.collection, coordinate_names[j]);
             if (value == NULL) {
                 fprintf(stderr,
                         "%s: An object in the \"pairs\" array did not have an \"%s\" member\n",
