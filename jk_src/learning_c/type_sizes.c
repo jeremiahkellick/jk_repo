@@ -7,12 +7,15 @@ typedef struct Struct {
     void *buf;
 } Struct;
 
+typedef long long llong;
+
 int main(void)
 {
     print_size_in_bits(char);
     print_size_in_bits(short);
     print_size_in_bits(int);
     print_size_in_bits(long);
+    print_size_in_bits(llong);
     print_size_in_bits(float);
     print_size_in_bits(double);
     print_size_in_bits(char *);

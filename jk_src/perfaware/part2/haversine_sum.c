@@ -238,18 +238,18 @@ int main(int argc, char **argv)
 
     printf("Total time: %.4fms (CPU frequency %llu)\n",
             (double)elapsed_total * 1000.0 / (double)timer_frequency,
-            timer_frequency);
+            (long long)timer_frequency);
     printf("\tSetup: %llu (%f%%)\n",
-            elapsed_setup,
+            (long long)elapsed_setup,
             (double)elapsed_setup / (double)elapsed_total * 100.0);
     printf("\tParse JSON: %llu (%f%%)\n",
-            elapsed_json_parse,
+            (long long)elapsed_json_parse,
             (double)elapsed_json_parse / (double)elapsed_total * 100.0);
     printf("\tSum: %llu (%f%%)\n",
-            elapsed_sum,
+            (long long)elapsed_sum,
             (double)elapsed_sum / (double)elapsed_total * 100.0);
     printf("\tMisc output: %llu (%f%%)\n",
-            elapsed_mixed_output,
+            (long long)elapsed_mixed_output,
             (double)elapsed_mixed_output / (double)elapsed_total * 100.0);
 
     return 0;

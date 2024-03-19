@@ -218,7 +218,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
                         }
                         unicode32 = unicode32 * 0x10 + digit_value;
                     }
-                    JkUtf8Codepoint utf8;
+                    JkUtf8Codepoint utf8 = {0};
                     jk_utf8_codepoint_encode(unicode32, &utf8);
                     *c = utf8.b[0];
                     for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {

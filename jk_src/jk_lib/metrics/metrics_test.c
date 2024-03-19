@@ -16,7 +16,7 @@ int main(int argc, char **argv)
     }
 
     uint64_t os_freq = jk_os_timer_frequency_get();
-    printf("OS frequency: %llu\n", os_freq);
+    printf("OS frequency: %llu\n", (long long)os_freq);
 
     uint64_t cpu_start = jk_cpu_timer_get();
 
@@ -33,15 +33,21 @@ int main(int argc, char **argv)
     uint64_t cpu_elapsed = cpu_end - cpu_start;
     uint64_t cpu_freq = os_freq * cpu_elapsed / os_elapsed;
 
-    printf("OS timer: %llu -> %llu = %llu elapsed\n", os_start, os_end, os_elapsed);
+    printf("OS timer: %llu -> %llu = %llu elapsed\n",
+            (long long)os_start,
+            (long long)os_end,
+            (long long)os_elapsed);
     printf("OS seconds: %.4f\n", (double)os_elapsed / (double)os_freq);
 
-    printf("CPU timer: %llu -> %llu = %llu elapsed\n", cpu_start, cpu_end, cpu_elapsed);
-    printf("CPU freq: %llu (estimated)\n", cpu_freq);
+    printf("CPU timer: %llu -> %llu = %llu elapsed\n",
+            (long long)cpu_start,
+            (long long)cpu_end,
+            (long long)cpu_elapsed);
+    printf("CPU freq: %llu (estimated)\n", (long long)cpu_freq);
 
     printf("jk_cpu_timer_frequency_estimate(%llu): %llu\n",
-            milliseconds_to_wait,
-            jk_cpu_timer_frequency_estimate(milliseconds_to_wait));
+            (long long)milliseconds_to_wait,
+            (long long)jk_cpu_timer_frequency_estimate(milliseconds_to_wait));
 
     return 0;
 }
