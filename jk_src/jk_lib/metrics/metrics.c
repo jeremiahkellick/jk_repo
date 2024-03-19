@@ -56,7 +56,14 @@ JK_PUBLIC uint64_t jk_cpu_timer_get(void)
     return __rdtsc();
 }
 
-#elif __arm__
+#elif __arm64__
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    uint64_t timebase;
+    __asm__ volatile("mrs %0, CNTPCT_EL0" : "=r"(timebase));
+    return timebase;
+}
 
 #endif
 
