@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <jk_gen/single_translation_unit.h>
@@ -68,7 +69,8 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 int main(int argc, char **argv)
 {
-    uint64_t time_start = jk_cpu_timer_get();
+    JkProfileEntry *profile_total = jk_profile_begin("Total");
+    JkProfileEntry *profile_setup = jk_profile_begin("Setup");
 
     program_name = argv[0];
 
@@ -132,7 +134,8 @@ int main(int argc, char **argv)
     jk_arena_init(&storage, (size_t)1 << 35);
     jk_arena_init(&tmp_storage, (size_t)1 << 35);
 
-    uint64_t time_setup = jk_cpu_timer_get();
+    jk_profile_end(profile_setup);
+    JkProfileEntry *profile_json = jk_profile_begin("Parse JSON");
 
     JkJsonParseData json_parse_data;
     JkJson *json = jk_json_parse(&storage,
@@ -164,7 +167,8 @@ int main(int argc, char **argv)
     JkJson **pairs = pairs_json->u.collection.elements;
     size_t pair_count = pairs_json->u.collection.count;
 
-    uint64_t time_json_parsed = jk_cpu_timer_get();
+    jk_profile_end(profile_json);
+    JkProfileEntry *profile_sum = jk_profile_begin("Sum");
 
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
@@ -209,7 +213,8 @@ int main(int argc, char **argv)
         sum += distance * sum_coefficient;
     }
 
-    uint64_t time_summed = jk_cpu_timer_get();
+    jk_profile_end(profile_sum);
+    JkProfileEntry *profile_output = jk_profile_begin("Misc output");
 
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);
@@ -226,32 +231,9 @@ int main(int argc, char **argv)
         printf("Difference: %.16f\n\n", sum - ref_sum);
     }
 
-    uint64_t time_misc_output_done = jk_cpu_timer_get();
-
-    uint64_t timer_frequency = jk_cpu_timer_frequency_estimate(100);
-
-    uint64_t elapsed_total = time_misc_output_done - time_start;
-
-    uint64_t elapsed_setup = time_setup - time_start;
-    uint64_t elapsed_json_parse = time_json_parsed - time_setup;
-    uint64_t elapsed_sum = time_summed - time_json_parsed;
-    uint64_t elapsed_mixed_output = time_misc_output_done - time_summed;
-
-    printf("Total time: %.4fms (CPU frequency %llu)\n",
-            (double)elapsed_total * 1000.0 / (double)timer_frequency,
-            (long long)timer_frequency);
-    printf("\tSetup: %llu (%.2f%%)\n",
-            (long long)elapsed_setup,
-            (double)elapsed_setup / (double)elapsed_total * 100.0);
-    printf("\tParse JSON: %llu (%.2f%%)\n",
-            (long long)elapsed_json_parse,
-            (double)elapsed_json_parse / (double)elapsed_total * 100.0);
-    printf("\tSum: %llu (%.2f%%)\n",
-            (long long)elapsed_sum,
-            (double)elapsed_sum / (double)elapsed_total * 100.0);
-    printf("\tMisc output: %llu (%.2f%%)\n",
-            (long long)elapsed_mixed_output,
-            (double)elapsed_mixed_output / (double)elapsed_total * 100.0);
+    jk_profile_end(profile_output);
+    jk_profile_end(profile_total);
+    jk_profile_print();
 
     return 0;
 }
