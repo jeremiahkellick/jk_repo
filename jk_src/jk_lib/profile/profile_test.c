@@ -1,7 +1,7 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/metrics/metrics.h>
+#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 #include <stdint.h>

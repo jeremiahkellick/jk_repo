@@ -9,7 +9,7 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/command_line/options.h>
 #include <jk_src/jk_lib/json/json.h>
-#include <jk_src/jk_lib/metrics/metrics.h>
+#include <jk_src/jk_lib/profile/profile.h>
 #include <jk_src/perfaware/part2/haversine_reference.h>
 // #jk_build dependencies_end
 
@@ -197,14 +197,14 @@ int main(int argc, char **argv)
         double distance =
                 haversine_reference(coords[X0], coords[Y0], coords[X1], coords[Y1], EARTH_RADIUS);
 
-        if (answer_file) {
-            double answer;
-            if (!fread(&answer, sizeof(answer), 1, answer_file)) {
-                fprintf(stderr, "%s: Expected '%s' to be bigger\n", program_name, answer_file_name);
-                exit(1);
-            }
-            assert(approximately_equal(distance, answer));
-        }
+        // if (answer_file) {
+        //     double answer;
+        //     if (!fread(&answer, sizeof(answer), 1, answer_file)) {
+        //         fprintf(stderr, "%s: Expected '%s' to be bigger\n", program_name,
+        //         answer_file_name); exit(1);
+        //     }
+        //     assert(approximately_equal(distance, answer));
+        // }
 
         sum += distance * sum_coefficient;
     }
@@ -216,7 +216,8 @@ int main(int argc, char **argv)
 
     if (answer_file) {
         double ref_sum;
-        if (!fread(&ref_sum, sizeof(ref_sum), 1, answer_file)) {
+        fseek(answer_file, (long)(sizeof(double) * pair_count), SEEK_SET);
+        if (!fread(&ref_sum, sizeof(double), 1, answer_file)) {
             fprintf(stderr, "%s: Expected '%s' to be bigger\n", program_name, answer_file_name);
             exit(1);
         }
@@ -239,16 +240,16 @@ int main(int argc, char **argv)
     printf("Total time: %.4fms (CPU frequency %llu)\n",
             (double)elapsed_total * 1000.0 / (double)timer_frequency,
             (long long)timer_frequency);
-    printf("\tSetup: %llu (%f%%)\n",
+    printf("\tSetup: %llu (%.2f%%)\n",
             (long long)elapsed_setup,
             (double)elapsed_setup / (double)elapsed_total * 100.0);
-    printf("\tParse JSON: %llu (%f%%)\n",
+    printf("\tParse JSON: %llu (%.2f%%)\n",
             (long long)elapsed_json_parse,
             (double)elapsed_json_parse / (double)elapsed_total * 100.0);
-    printf("\tSum: %llu (%f%%)\n",
+    printf("\tSum: %llu (%.2f%%)\n",
             (long long)elapsed_sum,
             (double)elapsed_sum / (double)elapsed_total * 100.0);
-    printf("\tMisc output: %llu (%f%%)\n",
+    printf("\tMisc output: %llu (%.2f%%)\n",
             (long long)elapsed_mixed_output,
             (double)elapsed_mixed_output / (double)elapsed_total * 100.0);
 

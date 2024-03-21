@@ -1,5 +1,5 @@
-#ifndef JK_METRICS_H
-#define JK_METRICS_H
+#ifndef JK_PROFILE_H
+#define JK_PROFILE_H
 
 #include <stdint.h>
 
