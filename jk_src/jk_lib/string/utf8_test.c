@@ -7,6 +7,10 @@
 #include <jk_src/jk_lib/string/utf8.h>
 // #jk_build dependencies_end
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #define BUFFER_SIZE 256
 
 static void print_unicode(uint32_t codepoint32)
@@ -22,6 +26,10 @@ static void print_unicode(uint32_t codepoint32)
 
 int main(void)
 {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+
     print_unicode(0x0024);
     print_unicode(0x00A3);
     print_unicode(0x0418);

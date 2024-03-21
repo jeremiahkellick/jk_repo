@@ -123,13 +123,16 @@ JK_PUBLIC JkProfileEntry *jk_profile_begin(char *name)
 
 JK_PUBLIC void jk_profile_end(JkProfileEntry *entry)
 {
-    assert(!entry->end);
+    assert(jk_profile.current == entry
+            && "jk_profile_end: Must end all child profiles before ending their parent");
+    assert(!entry->end && "jk_profile_end called twice on the same pointer");
     entry->end = jk_cpu_timer_get();
     jk_profile.current = entry->parent;
 }
 
 static void jk_profile_print_rec(JkProfileEntry *entry, int depth, uint64_t total)
 {
+    assert(entry->end && "jk_profile_start called without matching jk_profile_end");
     for (int i = 0; i < depth; i++) {
         printf("\t");
     }
@@ -148,6 +151,7 @@ static void jk_profile_print_rec(JkProfileEntry *entry, int depth, uint64_t tota
 JK_PUBLIC void jk_profile_print(void)
 {
     JkProfileEntry *root = &jk_profile.entries[0];
+    assert(root->end && "jk_profile_start called without matching jk_profile_end");
     uint64_t elapsed_total = root->end - root->start;
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
     printf("%s: %.4fms (CPU freq %llu)\n",
