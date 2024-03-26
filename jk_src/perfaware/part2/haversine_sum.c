@@ -69,8 +69,8 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 int main(int argc, char **argv)
 {
-    JkProfileEntry *profile_total = jk_profile_begin("Total");
-    JkProfileEntry *profile_setup = jk_profile_begin("Setup");
+    jk_profile_begin();
+    size_t profile_setup = JK_PROFILE_TIME_BEGIN("Setup");
 
     program_name = argv[0];
 
@@ -106,6 +106,8 @@ int main(int argc, char **argv)
         answer_file_name = opts_parse.operands[1];
     }
 
+    size_t profile_open_files = JK_PROFILE_TIME_BEGIN("Open files");
+
     FILE *json_file = fopen(json_file_name, "rb");
     if (json_file == NULL) {
         fprintf(stderr,
@@ -129,13 +131,14 @@ int main(int argc, char **argv)
         }
     }
 
+    JK_PROFILE_TIME_END(profile_open_files);
+
     JkArena storage;
     JkArena tmp_storage;
     jk_arena_init(&storage, (size_t)1 << 35);
     jk_arena_init(&tmp_storage, (size_t)1 << 35);
 
-    jk_profile_end(profile_setup);
-    JkProfileEntry *profile_json = jk_profile_begin("Parse JSON");
+    JK_PROFILE_TIME_END(profile_setup);
 
     JkJsonParseData json_parse_data;
     JkJson *json = jk_json_parse(&storage,
@@ -167,8 +170,7 @@ int main(int argc, char **argv)
     JkJson **pairs = pairs_json->u.collection.elements;
     size_t pair_count = pairs_json->u.collection.count;
 
-    jk_profile_end(profile_json);
-    JkProfileEntry *profile_sum = jk_profile_begin("Sum");
+    size_t profile_sum = JK_PROFILE_TIME_BEGIN("Sum");
 
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
@@ -213,8 +215,8 @@ int main(int argc, char **argv)
         sum += distance * sum_coefficient;
     }
 
-    jk_profile_end(profile_sum);
-    JkProfileEntry *profile_output = jk_profile_begin("Misc output");
+    JK_PROFILE_TIME_END(profile_sum);
+    size_t profile_output = JK_PROFILE_TIME_BEGIN("Misc output");
 
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);
@@ -231,9 +233,8 @@ int main(int argc, char **argv)
         printf("Difference: %.16f\n\n", sum - ref_sum);
     }
 
-    jk_profile_end(profile_output);
-    jk_profile_end(profile_total);
-    jk_profile_print();
+    JK_PROFILE_TIME_END(profile_output);
+    jk_profile_end_and_print();
 
     return 0;
 }

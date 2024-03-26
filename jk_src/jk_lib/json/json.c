@@ -7,15 +7,15 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/arena/arena.h>
+#include <jk_src/jk_lib/profile/profile.h>
 #include <jk_src/jk_lib/quicksort/quicksort.h>
 #include <jk_src/jk_lib/string/utf8.h>
+#include <jk_src/jk_lib/utils.h>
 // #jk_build dependencies_end
 
 #include "json.h"
 
 #define JK_JSON_CMP_STRING_LENGTH 6
-
-#define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 char *jk_json_name = "<global jk_json_name should be overwritten with argv[0]>";
 
@@ -336,7 +336,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
         memset(cmp_buffer, 0, sizeof(cmp_buffer));
         cmp_buffer[0] = (char)e->c;
         long read_count = (long)stream_read(stream, JK_JSON_CMP_STRING_LENGTH - 1, cmp_buffer + 1);
-        for (size_t i = 0; i < ARRAY_COUNT(jk_json_exact_matches); i++) {
+        for (size_t i = 0; i < JK_ARRAY_COUNT(jk_json_exact_matches); i++) {
             JkJsonExactMatch *match = &jk_json_exact_matches[i];
             if (strncmp(cmp_buffer, match->string, match->length) == 0
                     && !isalnum(cmp_buffer[match->length])) {
@@ -405,9 +405,13 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
         void *stream,
         JkJsonParseData *data)
 {
+    JkJson *result;
+    size_t profile_json = JK_PROFILE_TIME_BEGIN("Parse JSON");
+
     JkJsonParseData *d = data;
     if (d->token.type == JK_JSON_TOKEN_VALUE) {
-        return d->token.value;
+        result = d->token.value;
+        goto cleanup;
     } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACE
             || d->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
         bool is_object = d->token.type == JK_JSON_TOKEN_OPEN_BRACE;
@@ -437,7 +441,8 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                     if (!(d->token.type == JK_JSON_TOKEN_VALUE
                                 && d->token.value->type == JK_JSON_STRING)) {
                         data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-                        return NULL;
+                        result = NULL;
+                        goto cleanup;
                     }
 
                     label = d->token.value->u.string;
@@ -445,7 +450,8 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                     JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
                     if (d->token.type != JK_JSON_TOKEN_COLON) {
                         data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-                        return NULL;
+                        result = NULL;
+                        goto cleanup;
                     }
 
                     JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
@@ -456,7 +462,8 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                 tmp_elements[collection->count] = jk_json_parse_with_token(
                         storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
                 if (tmp_elements[collection->count] == NULL) {
-                    return NULL;
+                    result = NULL;
+                    goto cleanup;
                 }
                 tmp_elements[collection->count]->label = label;
 
@@ -467,7 +474,8 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
             if ((is_object && d->token.type != JK_JSON_TOKEN_CLOSE_BRACE)
                     || (!is_object && d->token.type != JK_JSON_TOKEN_CLOSE_BRACKET)) {
                 data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-                return NULL;
+                result = NULL;
+                goto cleanup;
             }
 
             collection->elements =
@@ -482,11 +490,17 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
             tmp_storage->pos = base_pos;
         }
 
-        return json;
+        result = json;
+        goto cleanup;
     } else {
         d->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-        return NULL;
+        result = NULL;
+        goto cleanup;
     }
+
+cleanup:
+    JK_PROFILE_TIME_END(profile_json);
+    return result;
 }
 
 JkJson *jk_json_parse(JkArena *storage,

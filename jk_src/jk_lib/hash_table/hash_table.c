@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/hash.h>
+#include <jk_src/jk_lib/utils.h>
 // #jk_build dependencies_end
 
 #include "hash_table.h"

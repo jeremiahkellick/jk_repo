@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/utils.h>
+// #jk_build dependencies_end
+
 #include "profile.h"
 
 #if _WIN32
@@ -94,74 +98,63 @@ JK_PUBLIC uint64_t jk_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait
 
 static JkProfile jk_profile;
 
-JK_PUBLIC JkProfileEntry *jk_profile_begin(char *name)
+JK_PUBLIC void jk_profile_begin(void)
 {
-    if (jk_profile.count >= JK_PROFILE_MAX_ENTRIES) {
-        fprintf(stderr,
-                "jk_profile_begin: JK_PROFILE_MAX_ENTRIES (%d) exceeded\n",
-                JK_PROFILE_MAX_ENTRIES);
-        exit(1);
-    }
-    JkProfileEntry *entry = &jk_profile.entries[jk_profile.count++];
-    if (jk_profile.current == NULL) {
-        jk_profile.current = entry;
-    } else if (jk_profile.current->first_child == NULL) {
-        jk_profile.current->first_child = entry;
-    } else {
-        JkProfileEntry *prev_sibling = jk_profile.current->first_child;
-        while (prev_sibling->next_sibling != NULL) {
-            prev_sibling = prev_sibling->next_sibling;
-        }
-        prev_sibling->next_sibling = entry;
-    }
-    entry->name = name;
-    entry->start = jk_cpu_timer_get();
-    entry->parent = jk_profile.current;
-    jk_profile.current = entry;
-    return entry;
+    jk_profile.start = jk_cpu_timer_get();
 }
 
-JK_PUBLIC void jk_profile_end(JkProfileEntry *entry)
+JK_PUBLIC void jk_profile_end_and_print(void)
 {
-    assert(jk_profile.current == entry
-            && "jk_profile_end: Must end all child profiles before ending their parent");
-    assert(!entry->end && "jk_profile_end called twice on the same pointer");
-    entry->end = jk_cpu_timer_get();
-    jk_profile.current = entry->parent;
-}
-
-static void jk_profile_print_rec(JkProfileEntry *entry, int depth, uint64_t total)
-{
-    assert(entry->end && "jk_profile_start called without matching jk_profile_end");
-    for (int i = 0; i < depth; i++) {
-        printf("\t");
-    }
-    uint64_t elapsed = entry->end - entry->start;
-    printf("%s: %llu (%.2f%%)\n",
-            entry->name,
-            (long long)elapsed,
-            (double)elapsed / (double)total * 100.0);
-    JkProfileEntry *child = entry->first_child;
-    while (child) {
-        jk_profile_print_rec(child, depth + 1, elapsed);
-        child = child->next_sibling;
-    }
-}
-
-JK_PUBLIC void jk_profile_print(void)
-{
-    JkProfileEntry *root = &jk_profile.entries[0];
-    assert(root->end && "jk_profile_start called without matching jk_profile_end");
-    uint64_t elapsed_total = root->end - root->start;
+    uint64_t total = jk_cpu_timer_get() - jk_profile.start;
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
-    printf("%s: %.4fms (CPU freq %llu)\n",
-            root->name,
-            (double)elapsed_total / (double)frequency,
+    printf("Total time: %.4fms (CPU freq %llu)\n",
+            (double)total / (double)frequency,
             (long long)frequency);
 
-    JkProfileEntry *child = root->first_child;
-    while (child) {
-        jk_profile_print_rec(child, 1, elapsed_total);
-        child = child->next_sibling;
+    for (size_t i = 0; i < JK_ARRAY_COUNT(jk_profile.entries); i++) {
+        JkProfileEntry *entry = &jk_profile.entries[i];
+        if (entry->elapsed == 0) {
+            continue;
+        }
+
+        uint64_t elapsed_exclude_children = entry->elapsed - entry->elapsed_children;
+        printf("\t%s: %llu (%.2f%%",
+                entry->name,
+                (long long)elapsed_exclude_children,
+                (double)elapsed_exclude_children / (double)total * 100.0);
+        if (elapsed_exclude_children != entry->elapsed) {
+            printf(", %.2f%% w/ children", (double)entry->elapsed / (double)total * 100.0);
+        }
+        printf(")\n");
     }
+}
+
+JK_PUBLIC size_t jk_profile_time_begin(char *name, size_t entry_index)
+{
+    JkProfileEntry *entry = &jk_profile.entries[entry_index];
+    if (entry->recursive_calls++) {
+        return entry_index;
+    }
+
+    entry->parent_index = jk_profile.parent_index;
+    jk_profile.parent_index = entry_index;
+
+    entry->name = name;
+    entry->start = jk_cpu_timer_get();
+    return entry_index;
+}
+
+JK_PUBLIC void jk_profile_time_end(size_t entry_index)
+{
+    JkProfileEntry *entry = jk_profile.entries + entry_index;
+    if (--entry->recursive_calls != 0) {
+        return;
+    }
+
+    uint64_t elapsed = jk_cpu_timer_get() - entry->start;
+
+    entry->start = 0;
+    entry->elapsed += elapsed;
+    jk_profile.entries[entry->parent_index].elapsed_children += elapsed;
+    jk_profile.parent_index = entry->parent_index;
 }

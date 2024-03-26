@@ -1,4 +1,4 @@
-#include "hash.h"
+#include "utils.h"
 
 /**
  * @brief Returns a hash for the given 32 bit value
