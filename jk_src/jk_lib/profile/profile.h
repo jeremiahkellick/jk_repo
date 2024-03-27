@@ -17,6 +17,11 @@ typedef struct JkProfileEntry {
     uint64_t elapsed_exclusive;
     uint64_t elapsed_inclusive;
     uint64_t depth;
+
+#ifndef NDEBUG
+    int64_t active_count;
+#endif
+
     bool seen;
 } JkProfileEntry;
 
@@ -24,6 +29,11 @@ typedef struct JkProfileTiming {
     uint64_t saved_elapsed_inclusive;
     JkProfileEntry *parent;
     uint64_t start;
+
+#ifndef NDEBUG
+    JkProfileEntry *entry;
+    bool ended;
+#endif
 } JkProfileTiming;
 
 typedef struct JkProfile {

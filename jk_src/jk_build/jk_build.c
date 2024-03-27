@@ -590,11 +590,12 @@ int main(int argc, char **argv)
     if (optimize) {
         array_append(&command, "/O2");
         array_append(&command, "/GL");
+        array_append(&command, "/D", "NDEBUG");
     } else {
         array_append(&command, "/Od");
     }
     if (!single_translation_unit) {
-        array_append(&command, "/DJK_PUBLIC=");
+        array_append(&command, "/D", "JK_PUBLIC=");
     }
     array_append(&command, "/I", root_path);
 #else

@@ -114,6 +114,9 @@ JK_PUBLIC void jk_profile_end_and_print(void)
     for (size_t i = 0; i < jk_profile.entry_count; i++) {
         JkProfileEntry *entry = jk_profile.entries[i];
 
+        assert(entry->active_count == 0
+                && "jk_profile_time_begin was called without a matching jk_profile_time_end");
+
         for (uint64_t j = 0; j < entry->depth; j++) {
             printf("\t");
         }
@@ -136,6 +139,7 @@ JK_PUBLIC void jk_profile_time_begin(JkProfileTiming *timing, JkProfileEntry *en
         entry->name = name;
         entry->depth = jk_profile.depth;
         jk_profile.entries[jk_profile.entry_count++] = entry;
+        assert(jk_profile.entry_count <= JK_ARRAY_COUNT(jk_profile.entries));
     }
 
     timing->parent = jk_profile.current;
@@ -143,6 +147,13 @@ JK_PUBLIC void jk_profile_time_begin(JkProfileTiming *timing, JkProfileEntry *en
     jk_profile.depth++;
 
     timing->saved_elapsed_inclusive = entry->elapsed_inclusive;
+
+#ifndef NDEBUG
+    entry->active_count++;
+    timing->entry = entry;
+    timing->ended = false;
+#endif
+
     timing->start = jk_cpu_timer_get();
     return;
 }
@@ -150,6 +161,17 @@ JK_PUBLIC void jk_profile_time_begin(JkProfileTiming *timing, JkProfileEntry *en
 JK_PUBLIC void jk_profile_time_end(JkProfileTiming *timing)
 {
     uint64_t elapsed = jk_cpu_timer_get() - timing->start;
+
+#ifndef NDEBUG
+    assert(!timing->ended
+            && "jk_profile_time_end: Called multiple times for a single timing instance");
+    timing->ended = true;
+    timing->entry->active_count--;
+    assert(timing->entry->active_count >= 0
+            && "jk_profile_time_end: Called more times than jk_profile_time_begin for some entry");
+    assert(jk_profile.current == timing->entry
+            && "jk_profile_time_end: Must end all child timings before ending their parent");
+#endif
 
     if (timing->parent) {
         timing->parent->elapsed_exclusive -= elapsed;
