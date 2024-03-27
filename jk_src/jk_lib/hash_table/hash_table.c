@@ -19,13 +19,23 @@ static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
     // Hash and mask off bits to get a result in the range 0..capacity-1. Assumes capacity is a
     // power if 2.
     size_t slot_i = jk_hash_uint32((uint32_t)key) & (t->capacity - 1);
+
+#ifndef NDEBUG
+    size_t iterations = 0;
+#endif
+
     while ((t->buf[slot_i].flags & JK_HASH_TABLE_FLAG_FILLED) && t->buf[slot_i].key != key) {
+        assert(iterations < t->capacity && "hash table probe failed to find free slot");
         // Linearly probe. Causes more collisions than other methods but seems to make up for it in
         // cache locality.
         slot_i++;
         if (slot_i >= t->capacity) {
             slot_i -= t->capacity;
         }
+
+#ifndef NDEBUG
+        iterations++;
+#endif
     }
     return &t->buf[slot_i];
 }
@@ -54,6 +64,7 @@ static bool jk_hash_table_resize(JkHashTable *t)
 
     t->buf = calloc(t->capacity, sizeof(JkHashTableSlot));
     if (t->buf == NULL) {
+        t->capacity = prev_capacity;
         return false;
     }
 
@@ -72,12 +83,12 @@ static bool jk_hash_table_resize(JkHashTable *t)
     return true;
 }
 
-static bool jk_is_power_of_two(size_t x)
+JK_PUBLIC JkHashTable *jk_hash_table_create(void)
 {
-    return (x & (x - 1)) == 0;
+    return jk_hash_table_create_capacity(JK_HASH_TABLE_DEFAULT_CAPACITY);
 }
 
-JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity)
+JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity)
 {
     if (!jk_is_power_of_two(starting_capacity)) {
         fprintf(stderr,
@@ -101,37 +112,40 @@ JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity)
     return t;
 }
 
-JkHashTable *jk_hash_table_create(void)
-{
-    return jk_hash_table_create_capacity(JK_HASH_TABLE_DEFAULT_CAPACITY);
-}
-
-bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value)
+JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value)
 {
     assert(t);
 
     JkHashTableSlot *slot = jk_hash_table_probe(t, key);
 
-    slot->value = value;
-
-    if (slot->flags
-            & JK_HASH_TABLE_FLAG_FILLED) { // If already filled, ensure the tombstone flag is unset
-        slot->flags &= ~JK_HASH_TABLE_FLAG_TOMBSTONE;
-    } else { // Otherwise, write to key, mark as filled, increase the count, and resize if necessary
-        slot->key = key;
-        slot->flags |= JK_HASH_TABLE_FLAG_FILLED;
-        t->count++;
-        if (jk_is_load_factor_exceeded(t->count + t->tombstone_count, t->capacity)) {
+    if (slot->flags & JK_HASH_TABLE_FLAG_FILLED) {
+        // If already filled, ensure the tombstone flag is unset
+        if (slot->flags & JK_HASH_TABLE_FLAG_TOMBSTONE) {
+            slot->flags &= ~JK_HASH_TABLE_FLAG_TOMBSTONE;
+            t->tombstone_count--;
+            t->count++;
+        }
+    } else {
+        // Resize if necessary
+        size_t new_count = t->count + 1;
+        if (jk_is_load_factor_exceeded(new_count + t->tombstone_count, t->capacity)) {
             if (!jk_hash_table_resize(t)) {
                 return false;
             }
+            slot = jk_hash_table_probe(t, key);
         }
+
+        // Write to key, mark as filled, and increase the count
+        slot->key = key;
+        slot->flags |= JK_HASH_TABLE_FLAG_FILLED;
+        t->count = new_count;
     }
+    slot->value = value;
 
     return true;
 }
 
-JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key)
+JK_PUBLIC JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key)
 {
     assert(t);
 
@@ -144,7 +158,7 @@ JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key)
     }
 }
 
-JkHashTableValue *jk_hash_table_get_with_default(
+JK_PUBLIC JkHashTableValue *jk_hash_table_get_with_default(
         JkHashTable *t, JkHashTableKey key, JkHashTableValue _default)
 {
     assert(t);
@@ -152,28 +166,32 @@ JkHashTableValue *jk_hash_table_get_with_default(
     JkHashTableSlot *slot = jk_hash_table_probe(t, key);
 
     if (slot->flags & JK_HASH_TABLE_FLAG_FILLED) {
+        // If already filled, ensure the tombstone flag is unset
         if (slot->flags & JK_HASH_TABLE_FLAG_TOMBSTONE) {
             slot->value = _default;
             slot->flags &= ~JK_HASH_TABLE_FLAG_TOMBSTONE;
+            t->tombstone_count--;
+            t->count++;
         }
     } else {
+        size_t new_count = t->count + 1;
+        if (jk_is_load_factor_exceeded(new_count + t->tombstone_count, t->capacity)) {
+            if (!jk_hash_table_resize(t)) {
+                return NULL;
+            }
+            slot = jk_hash_table_probe(t, key);
+        }
+
         slot->key = key;
         slot->value = _default;
         slot->flags |= JK_HASH_TABLE_FLAG_FILLED;
-        t->count++;
-        if (jk_is_load_factor_exceeded(t->count + t->tombstone_count, t->capacity)) {
-            if (jk_hash_table_resize(t)) {
-                return jk_hash_table_get(t, key);
-            } else {
-                return NULL;
-            }
-        }
+        t->count = new_count;
     }
 
     return &slot->value;
 }
 
-bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key)
+JK_PUBLIC bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key)
 {
     assert(t);
 
@@ -189,7 +207,7 @@ bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key)
     }
 }
 
-void jk_hash_table_destroy(JkHashTable *t)
+JK_PUBLIC void jk_hash_table_destroy(JkHashTable *t)
 {
     assert(t);
     assert(t->buf);

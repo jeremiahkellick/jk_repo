@@ -24,19 +24,19 @@ typedef struct JkHashTable {
     size_t tombstone_count;
 } JkHashTable;
 
-JkHashTable *jk_hash_table_create(void);
+JK_PUBLIC JkHashTable *jk_hash_table_create(void);
 
-JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity);
+JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity);
 
-bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value);
+JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value);
 
-JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key);
+JK_PUBLIC JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key);
 
-JkHashTableValue *jk_hash_table_get_with_default(
+JK_PUBLIC JkHashTableValue *jk_hash_table_get_with_default(
         JkHashTable *t, JkHashTableKey key, JkHashTableValue _default);
 
-bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key);
+JK_PUBLIC bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key);
 
-void jk_hash_table_destroy(JkHashTable *t);
+JK_PUBLIC void jk_hash_table_destroy(JkHashTable *t);
 
 #endif
