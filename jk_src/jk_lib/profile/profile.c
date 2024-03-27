@@ -111,12 +111,15 @@ JK_PUBLIC void jk_profile_end_and_print(void)
             (double)total / (double)frequency,
             (long long)frequency);
 
-    for (size_t i = 0; i < JK_ARRAY_COUNT(jk_profile.entries); i++) {
-        JkProfileEntry *entry = &jk_profile.entries[i];
+    for (size_t i = 0; i < jk_profile.entry_count; i++) {
+        JkProfileEntry *entry = jk_profile.entries[i];
         if (entry->elapsed == 0) {
             continue;
         }
 
+        for (uint64_t j = 0; j < entry->depth; j++) {
+            printf("\t");
+        }
         uint64_t elapsed_exclude_children = entry->elapsed - entry->elapsed_children;
         printf("\t%s: %llu (%.2f%%",
                 entry->name,
@@ -129,32 +132,39 @@ JK_PUBLIC void jk_profile_end_and_print(void)
     }
 }
 
-JK_PUBLIC size_t jk_profile_time_begin(char *name, size_t entry_index)
+JK_PUBLIC void jk_profile_time_begin(JkProfileEntry *entry, char *name)
 {
-    JkProfileEntry *entry = &jk_profile.entries[entry_index];
     if (entry->recursive_calls++) {
-        return entry_index;
-    }
-
-    entry->parent_index = jk_profile.parent_index;
-    jk_profile.parent_index = entry_index;
-
-    entry->name = name;
-    entry->start = jk_cpu_timer_get();
-    return entry_index;
-}
-
-JK_PUBLIC void jk_profile_time_end(size_t entry_index)
-{
-    JkProfileEntry *entry = jk_profile.entries + entry_index;
-    if (--entry->recursive_calls != 0) {
         return;
     }
 
-    uint64_t elapsed = jk_cpu_timer_get() - entry->start;
+    if (!entry->appended_to_global_list) {
+        entry->appended_to_global_list = true;
+        jk_profile.entries[jk_profile.entry_count++] = entry;
+    }
 
-    entry->start = 0;
-    entry->elapsed += elapsed;
-    jk_profile.entries[entry->parent_index].elapsed_children += elapsed;
-    jk_profile.parent_index = entry->parent_index;
+    entry->parent = jk_profile.current;
+    jk_profile.current = entry;
+    jk_profile.depth++;
+
+    entry->name = name;
+    entry->start = jk_cpu_timer_get();
+    return;
+}
+
+JK_PUBLIC void jk_profile_time_end()
+{
+    uint64_t elapsed = jk_cpu_timer_get() - jk_profile.current->start;
+
+    if (--jk_profile.current->recursive_calls != 0) {
+        return;
+    }
+
+    jk_profile.current->start = 0;
+    jk_profile.current->elapsed += elapsed;
+    jk_profile.current->depth = --jk_profile.depth;
+    if (jk_profile.current->parent) {
+        jk_profile.current->parent->elapsed_children += elapsed;
+    }
+    jk_profile.current = jk_profile.current->parent;
 }

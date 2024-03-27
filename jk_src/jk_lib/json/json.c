@@ -406,7 +406,7 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
         JkJsonParseData *data)
 {
     JkJson *result;
-    size_t profile_json = JK_PROFILE_TIME_BEGIN("Parse JSON");
+    JK_PROFILE_TIME_BEGIN("Parse JSON");
 
     JkJsonParseData *d = data;
     if (d->token.type == JK_JSON_TOKEN_VALUE) {
@@ -499,7 +499,7 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
     }
 
 cleanup:
-    JK_PROFILE_TIME_END(profile_json);
+    jk_profile_time_end();
     return result;
 }
 
