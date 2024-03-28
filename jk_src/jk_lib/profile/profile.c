@@ -96,6 +96,17 @@ JK_PUBLIC uint64_t jk_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait
     return os_freq * cpu_elapsed / os_elapsed;
 }
 
+typedef struct JkProfile {
+    uint64_t start;
+
+#if !JK_PROFILE_DISABLE
+    JkProfileEntry *current;
+    uint64_t depth;
+    size_t entry_count;
+    JkProfileEntry *entries[1024];
+#endif
+} JkProfile;
+
 static JkProfile jk_profile;
 
 JK_PUBLIC void jk_profile_begin(void)
@@ -111,6 +122,7 @@ JK_PUBLIC void jk_profile_end_and_print(void)
             (double)total / (double)frequency,
             (long long)frequency);
 
+#if !JK_PROFILE_DISABLE
     for (size_t i = 0; i < jk_profile.entry_count; i++) {
         JkProfileEntry *entry = jk_profile.entries[i];
 
@@ -131,7 +143,10 @@ JK_PUBLIC void jk_profile_end_and_print(void)
         }
         printf(")\n");
     }
+#endif
 }
+
+#if !JK_PROFILE_DISABLE
 
 JK_PUBLIC void jk_profile_time_begin(JkProfileTiming *timing, JkProfileEntry *entry, char *name)
 {
@@ -184,3 +199,5 @@ JK_PUBLIC void jk_profile_time_end(JkProfileTiming *timing)
     jk_profile.current = timing->parent;
     jk_profile.depth--;
 }
+
+#endif

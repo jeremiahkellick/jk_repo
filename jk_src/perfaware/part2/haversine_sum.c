@@ -70,7 +70,6 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 int main(int argc, char **argv)
 {
     jk_profile_begin();
-    JK_PROFILE_TIME_BEGIN(setup);
 
     program_name = argv[0];
 
@@ -106,8 +105,6 @@ int main(int argc, char **argv)
         answer_file_name = opts_parse.operands[1];
     }
 
-    JK_PROFILE_TIME_BEGIN(open_files);
-
     FILE *json_file = fopen(json_file_name, "rb");
     if (json_file == NULL) {
         fprintf(stderr,
@@ -131,14 +128,10 @@ int main(int argc, char **argv)
         }
     }
 
-    JK_PROFILE_TIME_END(open_files);
-
     JkArena storage;
     JkArena tmp_storage;
     jk_arena_init(&storage, (size_t)1 << 35);
     jk_arena_init(&tmp_storage, (size_t)1 << 35);
-
-    JK_PROFILE_TIME_END(setup);
 
     JkJsonParseData json_parse_data;
     JkJson *json = jk_json_parse(&storage,
@@ -147,6 +140,8 @@ int main(int argc, char **argv)
             stream_seek_relative_file,
             json_file,
             &json_parse_data);
+
+    JK_PROFILE_TIME_BEGIN(sum);
 
     if (json == NULL) {
         fprintf(stderr, "%s: Failed to parse JSON\n", program_name);
@@ -169,8 +164,6 @@ int main(int argc, char **argv)
     }
     JkJson **pairs = pairs_json->u.collection.elements;
     size_t pair_count = pairs_json->u.collection.count;
-
-    JK_PROFILE_TIME_BEGIN(sum);
 
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
@@ -216,7 +209,6 @@ int main(int argc, char **argv)
     }
 
     JK_PROFILE_TIME_END(sum);
-    JK_PROFILE_TIME_BEGIN(misc_output);
 
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);
@@ -233,7 +225,6 @@ int main(int argc, char **argv)
         printf("Difference: %.16f\n\n", sum - ref_sum);
     }
 
-    JK_PROFILE_TIME_END(misc_output);
     jk_profile_end_and_print();
 
     return 0;

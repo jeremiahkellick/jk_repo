@@ -173,10 +173,13 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
 
     switch (e->c) {
     case '"': {
+        JK_PROFILE_TIME_BEGIN(parse_string);
+
         char *c = jk_arena_push(storage, 1);
         char *string = c;
         while ((e->c = jk_json_getc(stream_read, stream)) != '"') {
             if (e->c < 0x20 || e->c == EOF) {
+                JK_PROFILE_TIME_END(parse_string);
                 return JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING;
             }
             if (e->c == '\\') {
@@ -215,6 +218,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
                         } else if (e->c >= '0' && e->c <= '9') {
                             digit_value = e->c - '0';
                         } else {
+                            JK_PROFILE_TIME_END(parse_string);
                             return JK_JSON_LEX_INVALID_UNICODE_ESCAPE;
                         }
                         unicode32 = unicode32 * 0x10 + digit_value;
@@ -229,6 +233,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
                 } break;
 
                 default: {
+                    JK_PROFILE_TIME_END(parse_string);
                     return JK_JSON_LEX_INVALID_ESCAPE_CHARACTER;
                 } break;
                 }
@@ -243,6 +248,8 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
         token->value->type = JK_JSON_STRING;
         token->value->label = NULL;
         token->value->u.string = string;
+
+        JK_PROFILE_TIME_END(parse_string);
     } break;
     case '-':
     case '0':
@@ -255,6 +262,8 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
     case '7':
     case '8':
     case '9': {
+        JK_PROFILE_TIME_BEGIN(parse_float);
+
         double sign = 1.0;
         double exponent = 0.0;
         double exponent_sign = 1.0;
@@ -272,6 +281,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
             e->c = jk_json_getc(stream_read, stream);
 
             if (!isdigit(e->c)) {
+                JK_PROFILE_TIME_END(parse_float);
                 return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
             }
         }
@@ -287,6 +297,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
             e->c = jk_json_getc(stream_read, stream);
 
             if (!isdigit(e->c)) {
+                JK_PROFILE_TIME_END(parse_float);
                 return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
             }
 
@@ -311,6 +322,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
             }
 
             if (!isdigit(e->c)) {
+                JK_PROFILE_TIME_END(parse_float);
                 return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
             }
 
@@ -321,6 +333,7 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
 
         // Number should not be directly followed by more alphanumeric characters
         if (isalnum(e->c)) {
+            JK_PROFILE_TIME_END(parse_float);
             return JK_JSON_LEX_UNEXPECTED_CHARACTER;
         }
 
@@ -329,6 +342,8 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
         }
         token->value->u.number =
                 sign * token->value->u.number * pow(10.0, exponent_sign * exponent);
+
+        JK_PROFILE_TIME_END(parse_float);
     } break;
     case 't':
     case 'f':
@@ -405,13 +420,9 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
         void *stream,
         JkJsonParseData *data)
 {
-    JkJson *result;
-    JK_PROFILE_TIME_BEGIN(parse_json);
-
     JkJsonParseData *d = data;
     if (d->token.type == JK_JSON_TOKEN_VALUE) {
-        result = d->token.value;
-        goto cleanup;
+        return d->token.value;
     } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACE
             || d->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
         bool is_object = d->token.type == JK_JSON_TOKEN_OPEN_BRACE;
@@ -441,8 +452,7 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                     if (!(d->token.type == JK_JSON_TOKEN_VALUE
                                 && d->token.value->type == JK_JSON_STRING)) {
                         data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-                        result = NULL;
-                        goto cleanup;
+                        return NULL;
                     }
 
                     label = d->token.value->u.string;
@@ -450,8 +460,7 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                     JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
                     if (d->token.type != JK_JSON_TOKEN_COLON) {
                         data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-                        result = NULL;
-                        goto cleanup;
+                        return NULL;
                     }
 
                     JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
@@ -462,8 +471,7 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
                 tmp_elements[collection->count] = jk_json_parse_with_token(
                         storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
                 if (tmp_elements[collection->count] == NULL) {
-                    result = NULL;
-                    goto cleanup;
+                    return NULL;
                 }
                 tmp_elements[collection->count]->label = label;
 
@@ -474,33 +482,29 @@ static JkJson *jk_json_parse_with_token(JkArena *storage,
             if ((is_object && d->token.type != JK_JSON_TOKEN_CLOSE_BRACE)
                     || (!is_object && d->token.type != JK_JSON_TOKEN_CLOSE_BRACKET)) {
                 data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-                result = NULL;
-                goto cleanup;
+                return NULL;
             }
 
             collection->elements =
                     jk_arena_push(storage, sizeof(collection->elements[0]) * collection->count);
+
+            JK_PROFILE_TIME_BEGIN(copy_and_sort);
             memcpy(collection->elements,
                     tmp_elements,
                     sizeof(collection->elements[0]) * collection->count);
             if (is_object) {
                 jk_json_label_quicksort(collection);
             }
+            JK_PROFILE_TIME_END(copy_and_sort);
 
             tmp_storage->pos = base_pos;
         }
 
-        result = json;
-        goto cleanup;
+        return json;
     } else {
         d->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
-        result = NULL;
-        goto cleanup;
+        return NULL;
     }
-
-cleanup:
-    JK_PROFILE_TIME_END(parse_json);
-    return result;
 }
 
 JkJson *jk_json_parse(JkArena *storage,
@@ -510,9 +514,14 @@ JkJson *jk_json_parse(JkArena *storage,
         void *stream,
         JkJsonParseData *data)
 {
+    JK_PROFILE_TIME_BEGIN(jk_json_parse);
+
     JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
-    return jk_json_parse_with_token(
+    JkJson *return_value = jk_json_parse_with_token(
             storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
+
+    JK_PROFILE_TIME_END(jk_json_parse);
+    return return_value;
 }
 
 #undef JK_JSON_LEX_NEXT_TOKEN
@@ -522,5 +531,8 @@ JkJson *jk_json_parse(JkArena *storage,
 JkJson *jk_json_member_get(JkJsonCollection *object, char *label)
 {
     assert(object->type == JK_JSON_COLLECTION_OBJECT);
-    return jk_json_label_search(object->elements, object->count, label);
+    JK_PROFILE_TIME_BEGIN(jk_json_member_get);
+    JkJson *return_value = jk_json_label_search(object->elements, object->count, label);
+    JK_PROFILE_TIME_END(jk_json_member_get);
+    return return_value;
 }

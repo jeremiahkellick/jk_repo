@@ -489,6 +489,7 @@ int main(int argc, char **argv)
     // Parse arguments
     char *source_file_arg = NULL;
     bool optimize = false;
+    bool no_profile = false;
     {
         bool help = false;
         bool usage_error = false;
@@ -500,10 +501,12 @@ int main(int argc, char **argv)
                     if (argv[i][2] == '\0') { // -- encountered
                         options_ended = true;
                     } else { // Double hyphen option
-                        if (strcmp(argv[i], "--optimize") == 0) {
-                            optimize = true;
-                        } else if (strcmp(argv[i], "--help") == 0) {
+                        if (strcmp(argv[i], "--help") == 0) {
                             help = true;
+                        } else if (strcmp(argv[i], "--optimize") == 0) {
+                            optimize = true;
+                        } else if (strcmp(argv[i], "--no-profile") == 0) {
+                            no_profile = true;
                         } else {
                             fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
                             usage_error = true;
@@ -542,7 +545,7 @@ int main(int argc, char **argv)
             printf("NAME\n"
                    "\tjk_build - builds programs in jk_repo\n\n"
                    "SYNOPSIS\n"
-                   "\tjk_build [-O] FILE\n\n"
+                   "\tjk_build [--no-profile] [-O] FILE\n\n"
                    "DESCRIPTION\n"
                    "\tjk_build can be used to compile any program in jk_repo. FILE can be any\n"
                    "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
@@ -550,6 +553,9 @@ int main(int argc, char **argv)
                    "\twill be found by jk_build and included when it invokes a compiler.\n\n"
                    "OPTIONS\n"
                    "\t--help\tDisplay this help text and exit.\n\n"
+                   "\t--no-profile\n"
+                   "\t\tExclude profiler timings from the compilation, except for the\n"
+                   "\t\ttotal timing. Equivalent to \"#define JK_PROFILE_DISABLE 1\".\n\n"
                    "\t-O, --optimize\n"
                    "\t\tPrioritize the speed of the resulting executable over its\n"
                    "\t\tdebuggability and compilation speed.\n");
@@ -597,6 +603,9 @@ int main(int argc, char **argv)
     if (!single_translation_unit) {
         array_append(&command, "/D", "JK_PUBLIC=");
     }
+    if (no_profile) {
+        array_append(&command, "/D", "JK_PROFILE_DISABLE");
+    }
     array_append(&command, "/I", root_path);
 #else
     // GCC compiler options
@@ -623,6 +632,9 @@ int main(int argc, char **argv)
     } else {
         array_append(&command, "-Og");
         array_append(&command, "-D", "NDEBUG");
+    }
+    if (no_profile) {
+        array_append(&command, "-D", "JK_PROFILE_DISABLE");
     }
     array_append(&command, "-D", "_DEFAULT_SOURCE=");
     array_append(&command, "-I", root_path);
