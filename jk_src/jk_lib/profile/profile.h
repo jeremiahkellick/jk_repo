@@ -16,6 +16,7 @@ typedef struct JkProfileEntry {
     char *name;
     uint64_t elapsed_exclusive;
     uint64_t elapsed_inclusive;
+    uint64_t hit_count;
     uint64_t depth;
 
 #ifndef NDEBUG

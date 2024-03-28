@@ -120,8 +120,9 @@ JK_PUBLIC void jk_profile_end_and_print(void)
         for (uint64_t j = 0; j < entry->depth; j++) {
             printf("\t");
         }
-        printf("\t%s: %llu (%.2f%%",
+        printf("\t%s[%llu]: %llu (%.2f%%",
                 entry->name,
+                (long long)entry->hit_count,
                 (long long)entry->elapsed_exclusive,
                 (double)entry->elapsed_exclusive / (double)total * 100.0);
         if (entry->elapsed_inclusive != entry->elapsed_exclusive) {
@@ -178,6 +179,7 @@ JK_PUBLIC void jk_profile_time_end(JkProfileTiming *timing)
     }
     jk_profile.current->elapsed_exclusive += elapsed;
     jk_profile.current->elapsed_inclusive = timing->saved_elapsed_inclusive + elapsed;
+    jk_profile.current->hit_count++;
 
     jk_profile.current = timing->parent;
     jk_profile.depth--;

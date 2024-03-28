@@ -622,6 +622,7 @@ int main(int argc, char **argv)
         array_append(&command, "-fuse-linker-plugin");
     } else {
         array_append(&command, "-Og");
+        array_append(&command, "-D", "NDEBUG");
     }
     array_append(&command, "-D", "_DEFAULT_SOURCE=");
     array_append(&command, "-I", root_path);
