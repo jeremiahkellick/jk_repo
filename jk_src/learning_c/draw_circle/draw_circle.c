@@ -9,6 +9,10 @@
 #include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #define RADIUS 15
 #define GRID_SIZE (2 * RADIUS + 1)
 #define ITERATION_COUNT 10000000
@@ -64,6 +68,10 @@ static void print_grid(bool (*grid)[GRID_SIZE], int height, int width)
 
 int main(void)
 {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+
     printf("Drawing a circle %d times\n", ITERATION_COUNT);
     jk_profile_begin();
     for (int i = 0; i < ITERATION_COUNT; i++) {
