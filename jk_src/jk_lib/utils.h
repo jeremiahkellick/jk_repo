@@ -2,6 +2,7 @@
 #define JK_UTILS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))

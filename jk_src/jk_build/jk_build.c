@@ -745,7 +745,12 @@ int main(int argc, char **argv)
         }
         array_append(&command, "-D", "_DEFAULT_SOURCE=");
         array_append(&command, "-I", root_path);
-    }
+    } break;
+
+    case COMPILER_NONE: {
+        fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", argv[0]);
+        exit(1);
+    } break;
     }
 
     array_append(&command, source_file_path);
@@ -781,6 +786,15 @@ int main(int argc, char **argv)
 
     case COMPILER_GCC: {
         array_append(&command, "-lm");
+    } break;
+
+    case COMPILER_TCC: {
+        array_append(&command, "-lm");
+    } break;
+
+    case COMPILER_NONE: {
+        fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", argv[0]);
+        exit(1);
     } break;
     }
 
