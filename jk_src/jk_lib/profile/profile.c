@@ -8,13 +8,8 @@
 
 #include "profile.h"
 
+// Define OS-specific functions
 #if _WIN32
-
-#ifdef _MSC_VER
-#include <intrin.h>
-#else
-#include <x86intrin.h>
-#endif
 
 #include <windows.h>
 
@@ -30,11 +25,6 @@ JK_PUBLIC uint64_t jk_os_timer_frequency_get(void)
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
     return freq.QuadPart;
-}
-
-JK_PUBLIC uint64_t jk_cpu_timer_get(void)
-{
-    return __rdtsc();
 }
 
 #else
@@ -53,13 +43,26 @@ JK_PUBLIC uint64_t jk_os_timer_frequency_get(void)
     return 1000000;
 }
 
-#ifdef __x86_64__
+#endif
 
-#include <x86intrin.h>
+// Define compiler-specific function
+#ifdef _MSC_VER
+
+#include <intrin.h>
 
 JK_PUBLIC uint64_t jk_cpu_timer_get(void)
 {
     return __rdtsc();
+}
+
+#elif __TINYC__
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    uint64_t edx;
+    uint64_t eax;
+    __asm__ volatile("rdtsc" : "=d"(edx), "=a"(eax));
+    return (edx << 32) | eax;
 }
 
 #elif __arm64__
@@ -71,20 +74,26 @@ JK_PUBLIC uint64_t jk_cpu_timer_get(void)
     return timebase;
 }
 
-#endif
+#else
+
+#include <x86intrin.h>
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    return __rdtsc();
+}
 
 #endif
 
 JK_PUBLIC uint64_t jk_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait)
 {
     uint64_t os_freq = jk_os_timer_frequency_get();
+    uint64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
 
-    uint64_t cpu_start = jk_cpu_timer_get();
-
-    uint64_t os_start = jk_os_timer_get();
     uint64_t os_end = 0;
     uint64_t os_elapsed = 0;
-    uint64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
+    uint64_t cpu_start = jk_cpu_timer_get();
+    uint64_t os_start = jk_os_timer_get();
     while (os_elapsed < os_wait_time) {
         os_end = jk_os_timer_get();
         os_elapsed = os_end - os_start;

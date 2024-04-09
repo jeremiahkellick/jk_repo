@@ -33,6 +33,13 @@
 #define BUF_SIZE 4096
 #define ARRAY_MAX 255
 
+typedef enum Compiler {
+    COMPILER_NONE,
+    COMPILER_GCC,
+    COMPILER_MSVC,
+    COMPILER_TCC,
+} Compiler;
+
 /** argv[0] */
 static char *program_name = NULL;
 /** Abolsute path of source file passed in as argv[1] */
@@ -270,6 +277,20 @@ static int next_nonspace(FILE *file)
     return c;
 }
 
+static bool compare_case_insensitive(char *a, char *b)
+{
+    if (!(a && b)) {
+        return false;
+    }
+    int i;
+    for (i = 0; a[i] != '\0' && b[i] != '\0'; i++) {
+        if (tolower(a[i]) != tolower(b[i])) {
+            return false;
+        }
+    }
+    return a[i] == '\0' && b[i] == '\0';
+}
+
 static void ensure_directory_exists(char *directory_path)
 {
     if (mkdir(directory_path, 0775) == -1 && errno != EEXIST) {
@@ -487,6 +508,7 @@ int main(int argc, char **argv)
     program_name = argv[0];
 
     // Parse arguments
+    Compiler compiler = COMPILER_NONE;
     char *source_file_arg = NULL;
     bool optimize = false;
     bool no_profile = false;
@@ -496,12 +518,30 @@ int main(int argc, char **argv)
         bool options_ended = false;
         int non_option_arguments = 0;
         for (int i = 1; i < argc; i++) {
+            char *compiler_string = NULL;
+            bool expect_compiler_string = false;
+
             if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
                 if (argv[i][1] == '-') {
                     if (argv[i][2] == '\0') { // -- encountered
                         options_ended = true;
                     } else { // Double hyphen option
-                        if (strcmp(argv[i], "--help") == 0) {
+                        char *name = &argv[i][2];
+                        int end = 0;
+                        while (name[end] != '=' && name[end] != '\0') {
+                            end++;
+                        }
+                        if (strncmp(name, "compiler", end) == 0) {
+                            expect_compiler_string = true;
+
+                            if (name[end] == '=') {
+                                if (name[end + 1] != '\0') {
+                                    compiler_string = &name[end + 1];
+                                }
+                            } else {
+                                compiler_string = argv[++i];
+                            }
+                        } else if (strcmp(argv[i], "--help") == 0) {
                             help = true;
                         } else if (strcmp(argv[i], "--optimize") == 0) {
                             optimize = true;
@@ -513,11 +553,22 @@ int main(int argc, char **argv)
                         }
                     }
                 } else { // Single-hypen option(s)
-                    for (char *c = &argv[i][1]; *c != '\0'; c++) {
+                    bool has_argument = false;
+                    for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
                         switch (*c) {
-                        case 'O':
+                        case 'c': {
+                            has_argument = true;
+                            expect_compiler_string = true;
+                            compiler_string = ++c;
+                            if (compiler_string[0] == '\0') {
+                                compiler_string = argv[++i];
+                            }
+                        } break;
+
+                        case 'O': {
                             optimize = true;
-                            break;
+                        } break;
+
                         default:
                             fprintf(stderr,
                                     "%s: Invalid option '%c' in '%s'\n",
@@ -533,6 +584,29 @@ int main(int argc, char **argv)
                 non_option_arguments++;
                 source_file_arg = argv[i];
             }
+
+            if (expect_compiler_string) {
+                if (compiler_string) {
+                    if (compare_case_insensitive(compiler_string, "gcc")) {
+                        compiler = COMPILER_GCC;
+                    } else if (compare_case_insensitive(compiler_string, "msvc")) {
+                        compiler = COMPILER_MSVC;
+                    } else if (compare_case_insensitive(compiler_string, "tcc")) {
+                        compiler = COMPILER_TCC;
+                    } else {
+                        fprintf(stderr,
+                                "%s: Option '-c, --compiler' given invalid argument '%s'\n",
+                                argv[0],
+                                compiler_string);
+                        usage_error = true;
+                    }
+                } else {
+                    fprintf(stderr,
+                            "%s: Option '-c, --compiler' missing required argument\n",
+                            argv[0]);
+                    usage_error = true;
+                }
+            }
         }
         if (!help && non_option_arguments != 1) {
             fprintf(stderr,
@@ -545,13 +619,15 @@ int main(int argc, char **argv)
             printf("NAME\n"
                    "\tjk_build - builds programs in jk_repo\n\n"
                    "SYNOPSIS\n"
-                   "\tjk_build [--no-profile] [-O] FILE\n\n"
+                   "\tjk_build [-c gcc|msvc|tcc] [--no-profile] [-O] FILE\n\n"
                    "DESCRIPTION\n"
                    "\tjk_build can be used to compile any program in jk_repo. FILE can be any\n"
                    "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
                    "\tif any, do not need to be included in the command line arguments. They\n"
                    "\twill be found by jk_build and included when it invokes a compiler.\n\n"
                    "OPTIONS\n"
+                   "\t-c COMPILER, --compiler=COMPILER\n"
+                   "\t\tChoose which compiler to use. COMPILER can be gcc, msvc, or tcc.\n\n"
                    "\t--help\tDisplay this help text and exit.\n\n"
                    "\t--no-profile\n"
                    "\t\tExclude profiler timings from the compilation, except for the\n"
@@ -560,6 +636,14 @@ int main(int argc, char **argv)
                    "\t\tPrioritize the speed of the resulting executable over its\n"
                    "\t\tdebuggability and compilation speed.\n");
             exit(usage_error);
+        }
+
+        if (compiler == COMPILER_NONE) {
+#ifdef _WIN32
+            compiler = COMPILER_MSVC; // Default to MSVC on Windows
+#else
+            compiler = COMPILER_GCC; // Default to GCC on non-Windows platforms
+#endif
         }
     }
 
@@ -580,65 +664,89 @@ int main(int argc, char **argv)
 
     StringArray command = {0};
 
+    switch (compiler) { // Compiler options
+    case COMPILER_MSVC: {
+        array_append(&command, "cl");
+        array_append(&command, "/W4");
+        array_append(&command, "/w44062");
+        array_append(&command, "/wd4100");
+        array_append(&command, "/nologo");
+        array_append(&command, "/Gm-");
+        array_append(&command, "/GR-");
+        array_append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
+        array_append(&command, "/Zi");
+        array_append(&command, "/std:c++20");
+        array_append(&command, "/EHa-");
+        if (optimize) {
+            array_append(&command, "/O2");
+            array_append(&command, "/GL");
+            array_append(&command, "/D", "NDEBUG");
+        } else {
+            array_append(&command, "/Od");
+        }
+        if (!single_translation_unit) {
+            array_append(&command, "/D", "JK_PUBLIC=");
+        }
+        if (no_profile) {
+            array_append(&command, "/D", "JK_PROFILE_DISABLE");
+        }
+        array_append(&command, "/I", root_path);
+    } break;
+
+    case COMPILER_GCC: {
+        array_append(&command, "gcc");
+        array_append(&command, "-o", basename);
+        array_append(&command, "-std=c99");
+        array_append(&command, "-pedantic");
+        array_append(&command, "-g");
+        array_append(&command, "-pipe");
+        array_append(&command, "-Wall");
+        array_append(&command, "-Wextra");
+        array_append(&command, "-fstack-protector");
+        array_append(&command, "-Werror=vla");
+        array_append(&command, "-Wno-missing-braces");
+        if (single_translation_unit) {
+            array_append(&command, "-Wno-unused-function");
+        } else {
+            array_append(&command, "-D", "JK_PUBLIC=");
+        }
+        if (optimize) {
+            array_append(&command, "-O3");
+            array_append(&command, "-flto");
+            array_append(&command, "-fuse-linker-plugin");
+            array_append(&command, "-D", "NDEBUG");
+        } else {
+            array_append(&command, "-Og");
+        }
+        if (no_profile) {
+            array_append(&command, "-D", "JK_PROFILE_DISABLE");
+        }
+        array_append(&command, "-D", "_DEFAULT_SOURCE=");
+        array_append(&command, "-I", root_path);
+    } break;
+
+    case COMPILER_TCC: {
+        array_append(&command, "tcc");
 #ifdef _WIN32
-    // MSVC compiler options
-    array_append(&command, "cl");
-    array_append(&command, "/W4");
-    array_append(&command, "/w44062");
-    array_append(&command, "/wd4100");
-    array_append(&command, "/nologo");
-    array_append(&command, "/Gm-");
-    array_append(&command, "/GR-");
-    array_append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
-    array_append(&command, "/Zi");
-    array_append(&command, "/std:c++20");
-    array_append(&command, "/EHa-");
-    if (optimize) {
-        array_append(&command, "/O2");
-        array_append(&command, "/GL");
-        array_append(&command, "/D", "NDEBUG");
-    } else {
-        array_append(&command, "/Od");
-    }
-    if (!single_translation_unit) {
-        array_append(&command, "/D", "JK_PUBLIC=");
-    }
-    if (no_profile) {
-        array_append(&command, "/D", "JK_PROFILE_DISABLE");
-    }
-    array_append(&command, "/I", root_path);
-#else
-    // GCC compiler options
-    array_append(&command, "gcc");
-    array_append(&command, "-o", basename);
-    array_append(&command, "-std=c99");
-    array_append(&command, "-pedantic");
-    array_append(&command, "-g");
-    array_append(&command, "-pipe");
-    array_append(&command, "-Wall");
-    array_append(&command, "-Wextra");
-    array_append(&command, "-fstack-protector");
-    array_append(&command, "-Werror=vla");
-    array_append(&command, "-Wno-missing-braces");
-    if (single_translation_unit) {
-        array_append(&command, "-Wno-unused-function");
-    } else {
-        array_append(&command, "-D", "JK_PUBLIC=");
-    }
-    if (optimize) {
-        array_append(&command, "-O3");
-        array_append(&command, "-flto");
-        array_append(&command, "-fuse-linker-plugin");
-    } else {
-        array_append(&command, "-Og");
-        array_append(&command, "-D", "NDEBUG");
-    }
-    if (no_profile) {
-        array_append(&command, "-D", "JK_PROFILE_DISABLE");
-    }
-    array_append(&command, "-D", "_DEFAULT_SOURCE=");
-    array_append(&command, "-I", root_path);
+        strcat(basename, ".exe");
 #endif
+        array_append(&command, "-o", basename);
+        array_append(&command, "-std=c99");
+        array_append(&command, "-Wall");
+        array_append(&command, "-g");
+        if (!single_translation_unit) {
+            array_append(&command, "-D", "JK_PUBLIC=");
+        }
+        if (optimize) {
+            array_append(&command, "-D", "NDEBUG");
+        }
+        if (no_profile) {
+            array_append(&command, "-D", "JK_PROFILE_DISABLE");
+        }
+        array_append(&command, "-D", "_DEFAULT_SOURCE=");
+        array_append(&command, "-I", root_path);
+    }
+    }
 
     array_append(&command, source_file_path);
 
@@ -665,14 +773,16 @@ int main(int argc, char **argv)
         array_concat(&command, dependencies.count, dependencies.items);
     }
 
-#ifdef _WIN32
-    // MSVC linker options
-    array_append(&command, "/link");
-    array_append(&command, "/INCREMENTAL:NO");
-#else
-    // GCC linker options
-    array_append(&command, "-lm");
-#endif
+    switch (compiler) { // Linker options
+    case COMPILER_MSVC: {
+        array_append(&command, "/link");
+        array_append(&command, "/INCREMENTAL:NO");
+    } break;
+
+    case COMPILER_GCC: {
+        array_append(&command, "-lm");
+    } break;
+    }
 
     return command_run(&command);
 }
