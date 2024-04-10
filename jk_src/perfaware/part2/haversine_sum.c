@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include <jk_gen/single_translation_unit.h>
 
@@ -13,6 +14,17 @@
 #include <jk_src/jk_lib/profile/profile.h>
 #include <jk_src/perfaware/part2/haversine_reference.h>
 // #jk_build dependencies_end
+
+#ifdef _WIN32
+
+typedef struct __stat64 StatStruct;
+#define stat _stat64
+
+#else
+
+typedef struct stat StatStruct;
+
+#endif
 
 typedef enum Coordinate {
     X0,
@@ -133,6 +145,11 @@ int main(int argc, char **argv)
     jk_arena_init(&storage, (size_t)1 << 35);
     jk_arena_init(&tmp_storage, (size_t)1 << 35);
 
+    StatStruct stat_struct = {0};
+    stat(json_file_name, &stat_struct);
+
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, stat_struct.st_size);
+
     JkJsonParseData json_parse_data;
     JkJson *json = jk_json_parse(&storage,
             &tmp_storage,
@@ -141,7 +158,7 @@ int main(int argc, char **argv)
             json_file,
             &json_parse_data);
 
-    JK_PROFILE_TIME_BEGIN(sum);
+    JK_PROFILE_ZONE_END(parse_json);
 
     if (json == NULL) {
         fprintf(stderr, "%s: Failed to parse JSON\n", program_name);
@@ -168,6 +185,9 @@ int main(int argc, char **argv)
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
     double coords[COORDINATE_COUNT];
+
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, pair_count * sizeof(coords));
+
     for (size_t i = 0; i < pair_count; i++) {
         if (!(pairs[i]->type == JK_JSON_COLLECTION
                     && pairs[i]->u.collection.type == JK_JSON_COLLECTION_OBJECT)) {
@@ -208,7 +228,7 @@ int main(int argc, char **argv)
         sum += distance * sum_coefficient;
     }
 
-    JK_PROFILE_TIME_END(sum);
+    JK_PROFILE_ZONE_END(sum);
 
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);

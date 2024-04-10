@@ -136,7 +136,7 @@ JK_PUBLIC void jk_profile_end_and_print(void)
         JkProfileEntry *entry = jk_profile.entries[i];
 
         assert(entry->active_count == 0
-                && "jk_profile_time_begin was called without a matching jk_profile_time_end");
+                && "jk_profile_zone_begin was called without a matching jk_profile_zone_end");
 
         for (uint64_t j = 0; j < entry->depth; j++) {
             printf("\t");
@@ -150,18 +150,34 @@ JK_PUBLIC void jk_profile_end_and_print(void)
             printf(", %.2f%% w/ children",
                     (double)entry->elapsed_inclusive / (double)total * 100.0);
         }
-        printf(")\n");
+        printf(")");
+
+        if (entry->byte_count) {
+            double megabyte = 1024.0 * 1024.0;
+            double gigabyte = megabyte * 1024.0;
+
+            double seconds = (double)entry->elapsed_inclusive / (double)frequency;
+            double bytes_per_second = (double)entry->byte_count / seconds;
+            double megabytes = (double)entry->byte_count / megabyte;
+            double gigabytes_per_second = bytes_per_second / gigabyte;
+
+            printf(" %.2f MiB at %.2f GiB/s", megabytes, gigabytes_per_second);
+        }
+
+        printf("\n");
     }
 #endif
 }
 
 #if !JK_PROFILE_DISABLE
 
-JK_PUBLIC void jk_profile_time_begin(JkProfileTiming *timing, JkProfileEntry *entry, char *name)
+JK_PUBLIC void jk_profile_zone_begin(
+        JkProfileTiming *timing, JkProfileEntry *entry, char *name, uint64_t byte_count)
 {
     if (!entry->seen) {
         entry->seen = true;
         entry->name = name;
+        entry->byte_count += byte_count;
         entry->depth = jk_profile.depth;
         jk_profile.entries[jk_profile.entry_count++] = entry;
         assert(jk_profile.entry_count <= JK_ARRAY_COUNT(jk_profile.entries));
@@ -183,19 +199,19 @@ JK_PUBLIC void jk_profile_time_begin(JkProfileTiming *timing, JkProfileEntry *en
     return;
 }
 
-JK_PUBLIC void jk_profile_time_end(JkProfileTiming *timing)
+JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
 {
     uint64_t elapsed = jk_cpu_timer_get() - timing->start;
 
 #ifndef NDEBUG
     assert(!timing->ended
-            && "jk_profile_time_end: Called multiple times for a single timing instance");
+            && "jk_profile_zone_end: Called multiple times for a single timing instance");
     timing->ended = true;
     timing->entry->active_count--;
     assert(timing->entry->active_count >= 0
-            && "jk_profile_time_end: Called more times than jk_profile_time_begin for some entry");
+            && "jk_profile_zone_end: Called more times than jk_profile_zone_begin for some entry");
     assert(jk_profile.current == timing->entry
-            && "jk_profile_time_end: Must end all child timings before ending their parent");
+            && "jk_profile_zone_end: Must end all child timings before ending their parent");
 #endif
 
     if (timing->parent) {
