@@ -27,6 +27,8 @@ JK_PUBLIC void jk_arena_terminate(JkArena *arena);
 
 JK_PUBLIC void *jk_arena_push(JkArena *arena, size_t size);
 
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, size_t size);
+
 typedef enum JkArenaPopResult {
     JK_ARENA_POP_SUCCESS,
     JK_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS,

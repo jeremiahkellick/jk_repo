@@ -9,23 +9,26 @@
 
 static size_t jk_page_size_internal = 0;
 
-JK_PUBLIC size_t jk_page_size(void) {
+JK_PUBLIC size_t jk_page_size(void)
+{
 #ifdef _WIN32
     return 4096;
 #else
-   if (jk_page_size_internal == 0) {
-       jk_page_size_internal = getpagesize();
-   }
-   return jk_page_size_internal;
+    if (jk_page_size_internal == 0) {
+        jk_page_size_internal = getpagesize();
+    }
+    return jk_page_size_internal;
 #endif
 }
 
-JK_PUBLIC size_t jk_page_size_round_up(size_t n) {
+JK_PUBLIC size_t jk_page_size_round_up(size_t n)
+{
     size_t page_size = jk_page_size();
     return (n + page_size - 1) & ~(page_size - 1);
 }
 
-JK_PUBLIC size_t jk_page_size_round_down(size_t n) {
+JK_PUBLIC size_t jk_page_size_round_down(size_t n)
+{
     size_t page_size = jk_page_size();
     return n & ~(page_size - 1);
 }
@@ -93,6 +96,13 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, size_t size)
     void *address = arena->address + arena->pos;
     arena->pos = new_pos;
     return address;
+}
+
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, size_t size)
+{
+    void *pointer = jk_arena_push(arena, size);
+    memset(pointer, 0, size);
+    return pointer;
 }
 
 JK_PUBLIC JkArenaPopResult jk_arena_pop(JkArena *arena, size_t size)

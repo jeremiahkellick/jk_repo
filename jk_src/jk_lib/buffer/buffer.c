@@ -3,13 +3,20 @@
 
 #include "buffer.h"
 
-JkBuffer jk_buffer_from_null_terminated(char *string)
+JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
 {
     JkBuffer buffer = {.size = strlen(string), .data = (uint8_t *)string};
     return buffer;
 }
 
-int jk_buffer_character_get(JkBuffer buffer, size_t position)
+JK_PUBLIC int jk_buffer_character_peek(JkBufferPointer *pointer)
 {
-    return position < buffer.size ? buffer.data[position] : EOF;
+    return pointer->index < pointer->buffer.size ? pointer->buffer.data[pointer->index] : EOF;
+}
+
+JK_PUBLIC int jk_buffer_character_next(JkBufferPointer *pointer)
+{
+    int c = jk_buffer_character_peek(pointer);
+    pointer->index++;
+    return c;
 }

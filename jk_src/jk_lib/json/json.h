@@ -6,9 +6,12 @@
 #include <stdio.h>
 
 #include <jk_src/jk_lib/arena/arena.h>
+#include <jk_src/jk_lib/buffer/buffer.h>
 
 typedef enum JkJsonType {
-    JK_JSON_COLLECTION,
+    JK_JSON_INVALID,
+    JK_JSON_OBJECT,
+    JK_JSON_ARRAY,
     JK_JSON_STRING,
     JK_JSON_NUMBER,
     JK_JSON_TRUE,
@@ -17,33 +20,16 @@ typedef enum JkJsonType {
     JK_JSON_TYPE_COUNT,
 } JkJsonType;
 
-typedef struct JkJson JkJson;
-
-typedef enum JkJsonCollectionType {
-    JK_JSON_COLLECTION_OBJECT,
-    JK_JSON_COLLECTION_ARRAY,
-    JK_JSON_COLLECTION_TYPE_COUNT,
-} JkJsonCollectionType;
-
-typedef struct JkJsonCollection {
-    JkJsonCollectionType type;
-    size_t count;
-    JkJson **elements;
-} JkJsonCollection;
-
-struct JkJson {
+typedef struct JkJson {
     JkJsonType type;
-    char *label;
-    union {
-        JkJsonCollection collection;
-        char *string;
-        double number;
-    } u;
-};
-
-extern char *jk_json_value_strings[JK_JSON_TYPE_COUNT];
+    JkBuffer name;
+    struct JkJson *first_child;
+    struct JkJson *sibling;
+    JkBuffer value;
+} JkJson;
 
 typedef enum JkJsonTokenType {
+    JK_JSON_TOKEN_INVALID,
     JK_JSON_TOKEN_VALUE,
     JK_JSON_TOKEN_COMMA,
     JK_JSON_TOKEN_COLON,
@@ -62,54 +48,20 @@ typedef struct JkJsonToken {
 
 extern char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT];
 
-bool jk_json_is_whitespace(int byte);
+JK_PUBLIC bool jk_json_is_whitespace(int byte);
 
-typedef enum JkJsonLexStatus {
-    JK_JSON_LEX_SUCCESS,
-    JK_JSON_LEX_UNEXPECTED_CHARACTER,
-    JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING,
-    JK_JSON_LEX_INVALID_ESCAPE_CHARACTER,
-    JK_JSON_LEX_INVALID_UNICODE_ESCAPE,
-    JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT,
-    JK_JSON_LEX_RESULT_TYPE_COUNT,
-} JkJsonLexStatus;
+JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *storage);
 
-typedef struct JkJsonLexErrorData {
-    int c;
-    int c_to_be_followed_by_digit;
-} JkJsonLexErrorData;
+JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage);
 
-void jk_json_print_token(FILE *file, JkJsonToken *token);
+JK_PUBLIC JkJsonToken jk_json_lex(JkBufferPointer *text_pointer, JkArena *storage);
 
-void jk_json_print(FILE *file, JkJson *json, int indent_level);
+JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage);
 
-JkJsonLexStatus jk_json_lex(JkArena *storage,
-        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
-        int (*stream_seek_relative)(void *stream, long offset),
-        void *stream,
-        JkJsonToken *token,
-        JkJsonLexErrorData *error_data);
+JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage);
 
-typedef enum JkJsonParseErrorType {
-    JK_JSON_PARSE_UNEXPECTED_TOKEN,
-    JK_JSON_PARSE_LEX_ERROR,
-    JK_JSON_PARSE_ERROR_TYPE_COUNT,
-} JkJsonParseErrorType;
+JK_PUBLIC double jk_json_parse_number(JkBuffer json_number_value);
 
-typedef struct JkJsonParseData {
-    JkJsonParseErrorType error_type;
-    JkJsonToken token;
-    JkJsonLexStatus lex_status;
-    JkJsonLexErrorData lex_error_data;
-} JkJsonParseData;
-
-JkJson *jk_json_parse(JkArena *storage,
-        JkArena *tmp_storage,
-        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
-        int (*stream_seek_relative)(void *stream, long offset),
-        void *stream,
-        JkJsonParseData *data);
-
-JkJson *jk_json_member_get(JkJsonCollection *object, char *member_name);
+JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name);
 
 #endif

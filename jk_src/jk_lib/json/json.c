@@ -7,20 +7,18 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/arena/arena.h>
+#include <jk_src/jk_lib/buffer/buffer.h>
 #include <jk_src/jk_lib/profile/profile.h>
-#include <jk_src/jk_lib/quicksort/quicksort.h>
 #include <jk_src/jk_lib/string/utf8.h>
 #include <jk_src/jk_lib/utils.h>
 // #jk_build dependencies_end
 
 #include "json.h"
 
-#define JK_JSON_CMP_STRING_LENGTH 6
-
-char *jk_json_name = "<global jk_json_name should be overwritten with argv[0]>";
-
-char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
-    "COLLECTION",
+static char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
+    "INVALID",
+    "OBJECT",
+    "ARRAY",
     "STRING",
     "NUMBER",
     "true",
@@ -29,6 +27,7 @@ char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
 };
 
 char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
+    "INVALID",
     "VALUE",
     ",",
     ":",
@@ -39,9 +38,53 @@ char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
     "EOF",
 };
 
-bool jk_json_is_whitespace(int byte)
+JK_PUBLIC bool jk_json_is_whitespace(int byte)
 {
     return byte == ' ' || byte == '\n' || byte == '\r' || byte == '\t';
+}
+
+JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *storage)
+{
+    if (token->type == JK_JSON_TOKEN_VALUE) {
+        jk_json_print(file, token->value, 0, storage);
+    } else {
+        fprintf(file, "%s", jk_json_token_strings[token->type]);
+    }
+}
+
+JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage)
+{
+    if (json->type == JK_JSON_ARRAY || json->type == JK_JSON_OBJECT) {
+        bool is_object = json->type == JK_JSON_OBJECT;
+        if (!json->first_child) {
+            fprintf(file, is_object ? "{}" : "[]");
+            return;
+        }
+        fprintf(file, is_object ? "{\n" : "[\n");
+        for (JkJson *child = json->first_child; child != NULL; child = child->sibling) {
+            for (int i = 0; i < indent_level + 1; i++) {
+                fprintf(file, "\t");
+            }
+            if (is_object) {
+                fprintf(file, "\"%.*s\": ", (int)child->name.size, (char const *)child->name.data);
+            }
+            jk_json_print(file, child, indent_level + 1, storage);
+            fprintf(file, "%s", child->sibling ? ",\n" : "\n");
+        }
+        for (int i = 0; i < indent_level; i++) {
+            fprintf(file, "\t");
+        }
+        fprintf(file, is_object ? "}" : "]");
+        return;
+    } else if (json->type == JK_JSON_STRING) {
+        JkBuffer string = jk_json_parse_string(json->value, storage);
+        fprintf(file, "\"%.*s\"", (int)string.size, (char const *)string.data);
+        return;
+    } else if (json->type == JK_JSON_NUMBER) {
+        fprintf(file, "%f", jk_json_parse_number(json->value));
+        return;
+    }
+    fprintf(file, "%s", jk_json_type_strings[json->type]);
 }
 
 typedef struct JkJsonExactMatch {
@@ -68,188 +111,32 @@ static JkJsonExactMatch jk_json_exact_matches[] = {
     },
 };
 
-static long jk_min(long a, long b)
+JK_PUBLIC JkJsonToken jk_json_lex(JkBufferPointer *text_pointer, JkArena *storage)
 {
-    return a < b ? a : b;
-}
+    JkBufferPointer *t = text_pointer;
+    int c;
+    JkJsonToken token = {0};
 
-static int jk_json_getc(
-        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer), void *stream)
-{
-    char c;
-    return stream_read(stream, 1, &c) ? (int)c : EOF;
-}
-
-static int jk_json_label_compare(void *a, void *b)
-{
-    JkJson *a_json = *(JkJson **)a;
-    JkJson *b_json = *(JkJson **)b;
-    assert(a_json->label);
-    assert(b_json->label);
-    int result = strcmp(a_json->label, b_json->label);
-    return result;
-}
-
-static void jk_json_label_quicksort(JkJsonCollection *collection)
-{
-    JkJson *tmp;
-    jk_quicksort(collection->elements, collection->count, sizeof(tmp), &tmp, jk_json_label_compare);
-}
-
-static JkJson *jk_json_label_search(JkJson **elements, size_t count, char *label)
-{
-    if (count <= 0) {
-        return NULL;
+    while (jk_json_is_whitespace((c = jk_buffer_character_peek(t)))) {
+        t->index++;
     }
-    size_t i = count / 2;
-    assert(elements[i]->label);
-    int comparison = strcmp(label, elements[i]->label);
-    if (comparison < 0) {
-        return jk_json_label_search(elements, i, label);
-    } else if (comparison > 0) {
-        return jk_json_label_search(&elements[i + 1], count - (i + 1), label);
-    } else {
-        return elements[i];
-    }
-}
 
-void jk_json_print_token(FILE *file, JkJsonToken *token)
-{
-    if (token->type == JK_JSON_TOKEN_VALUE) {
-        jk_json_print(file, token->value, 0);
-    } else {
-        fprintf(file, "%s", jk_json_token_strings[token->type]);
-    }
-}
-
-void jk_json_print(FILE *file, JkJson *json, int indent_level)
-{
-    if (json->type == JK_JSON_COLLECTION) {
-        JkJsonCollection *collection = &json->u.collection;
-        bool is_object = collection->type == JK_JSON_COLLECTION_OBJECT;
-        if (collection->count == 0) {
-            fprintf(file, is_object ? "{}" : "[]");
-            return;
-        }
-        fprintf(file, is_object ? "{\n" : "[\n");
-        for (size_t i = 0; i < collection->count; i++) {
-            for (int j = 0; j < indent_level + 1; j++) {
-                fprintf(file, "\t");
-            }
-            if (is_object) {
-                fprintf(file, "\"%s\": ", collection->elements[i]->label);
-            }
-            jk_json_print(file, collection->elements[i], indent_level + 1);
-            fprintf(file, "%s", i != collection->count - 1 ? ",\n" : "\n");
-        }
-        for (int i = 0; i < indent_level; i++) {
-            fprintf(file, "\t");
-        }
-        fprintf(file, is_object ? "}" : "]");
-        return;
-    } else if (json->type == JK_JSON_STRING) {
-        fprintf(file, "\"%s\"", json->u.string);
-        return;
-    } else if (json->type == JK_JSON_NUMBER) {
-        fprintf(file, "%f", json->u.number);
-        return;
-    }
-    fprintf(file, "%s", jk_json_type_strings[json->type]);
-}
-
-JkJsonLexStatus jk_json_lex(JkArena *storage,
-        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
-        int (*stream_seek_relative)(void *stream, long offset),
-        void *stream,
-        JkJsonToken *token,
-        JkJsonLexErrorData *error_data)
-{
-    JkJsonLexErrorData *e = error_data;
-    char cmp_buffer[JK_JSON_CMP_STRING_LENGTH + 1] = {'\0'};
-
-    do {
-        e->c = jk_json_getc(stream_read, stream);
-    } while (jk_json_is_whitespace(e->c));
-
-    switch (e->c) {
+    switch (c) {
     case '"': {
-        JK_PROFILE_ZONE_TIME_BEGIN(parse_string);
+        t->index++;
+        size_t start = t->index;
 
-        char *c = jk_arena_push(storage, 1);
-        char *string = c;
-        while ((e->c = jk_json_getc(stream_read, stream)) != '"') {
-            if (e->c < 0x20 || e->c == EOF) {
-                JK_PROFILE_ZONE_END(parse_string);
-                return JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING;
-            }
-            if (e->c == '\\') {
-                e->c = jk_json_getc(stream_read, stream);
-                switch (e->c) {
-                case '"':
-                case '\\':
-                case '/': {
-                    *c = (char)e->c;
-                } break;
-
-                case 'b': {
-                    *c = '\b';
-                } break;
-                case 'f': {
-                    *c = '\f';
-                } break;
-                case 'n': {
-                    *c = '\n';
-                } break;
-                case 'r': {
-                    *c = '\r';
-                } break;
-                case 't': {
-                    *c = '\t';
-                } break;
-
-                case 'u': {
-                    uint32_t unicode32 = 0;
-                    for (int i = 0; i < 4; i++) {
-                        int digit_value;
-                        e->c = jk_json_getc(stream_read, stream);
-                        int lowered = tolower(e->c);
-                        if (lowered >= 'a' && lowered <= 'f') {
-                            digit_value = 10 + (lowered - 'a');
-                        } else if (e->c >= '0' && e->c <= '9') {
-                            digit_value = e->c - '0';
-                        } else {
-                            JK_PROFILE_ZONE_END(parse_string);
-                            return JK_JSON_LEX_INVALID_UNICODE_ESCAPE;
-                        }
-                        unicode32 = unicode32 * 0x10 + digit_value;
-                    }
-                    JkUtf8Codepoint utf8 = {0};
-                    jk_utf8_codepoint_encode(unicode32, &utf8);
-                    *c = utf8.b[0];
-                    for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
-                        c = jk_arena_push(storage, 1);
-                        *c = utf8.b[i];
-                    }
-                } break;
-
-                default: {
-                    JK_PROFILE_ZONE_END(parse_string);
-                    return JK_JSON_LEX_INVALID_ESCAPE_CHARACTER;
-                } break;
-                }
-            } else {
-                *c = (char)e->c;
-            }
-            c = jk_arena_push(storage, 1);
+        while ((c = jk_buffer_character_peek(t)) != '"') {
+            t->index++;
         }
-        *c = '\0';
-        token->type = JK_JSON_TOKEN_VALUE;
-        token->value = jk_arena_push(storage, sizeof(*token->value));
-        token->value->type = JK_JSON_STRING;
-        token->value->label = NULL;
-        token->value->u.string = string;
 
-        JK_PROFILE_ZONE_END(parse_string);
+        size_t end = t->index;
+        t->index++;
+
+        token.type = JK_JSON_TOKEN_VALUE;
+        token.value = jk_arena_push_zero(storage, sizeof(*token.value));
+        token.value->type = JK_JSON_STRING;
+        token.value->value = (JkBuffer){.size = end - start, .data = t->buffer.data + start};
     } break;
     case '-':
     case '0':
@@ -262,272 +149,333 @@ JkJsonLexStatus jk_json_lex(JkArena *storage,
     case '7':
     case '8':
     case '9': {
-        JK_PROFILE_ZONE_TIME_BEGIN(parse_float);
+        size_t start = t->index;
+        t->index++;
 
-        double sign = 1.0;
-        double exponent = 0.0;
-        double exponent_sign = 1.0;
+        // Advance past integer
+        while (isdigit(jk_buffer_character_peek(t))) {
+            t->index++;
+        }
 
-        token->type = JK_JSON_TOKEN_VALUE;
-        token->value = jk_arena_push(storage, sizeof(*token->value));
-        token->value->type = JK_JSON_NUMBER;
-        token->value->label = NULL;
-        token->value->u.number = 0.0;
-
-        if (e->c == '-') {
-            sign = -1.0;
-
-            e->c_to_be_followed_by_digit = e->c;
-            e->c = jk_json_getc(stream_read, stream);
-
-            if (!isdigit(e->c)) {
-                JK_PROFILE_ZONE_END(parse_float);
-                return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
+        // Advance past fraction if there is one
+        if (jk_buffer_character_peek(t) == '.') {
+            t->index++;
+            while (isdigit(jk_buffer_character_peek(t))) {
+                t->index++;
             }
         }
 
-        // Parse integer
-        do {
-            token->value->u.number = (token->value->u.number * 10.0) + (e->c - '0');
-        } while (isdigit((e->c = jk_json_getc(stream_read, stream))));
-
-        // Parse fraction if there is one
-        if (e->c == '.') {
-            e->c_to_be_followed_by_digit = e->c;
-            e->c = jk_json_getc(stream_read, stream);
-
-            if (!isdigit(e->c)) {
-                JK_PROFILE_ZONE_END(parse_float);
-                return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
-            }
-
-            double multiplier = 0.1;
-            do {
-                token->value->u.number += (e->c - '0') * multiplier;
-                multiplier /= 10.0;
-            } while (isdigit((e->c = jk_json_getc(stream_read, stream))));
-        }
-
-        // Parse exponent if there is one
-        if (e->c == 'e' || e->c == 'E') {
-            e->c_to_be_followed_by_digit = e->c;
-            e->c = jk_json_getc(stream_read, stream);
-
-            if ((e->c == '-' || e->c == '+')) {
-                if (e->c == '-') {
-                    exponent_sign = -1.0;
+        // Advance past exponent if there is one
+        int peek = jk_buffer_character_peek(t);
+        if (peek == 'e' || peek == 'E') {
+            t->index++;
+            peek = jk_buffer_character_peek(t);
+            if (isdigit(peek) || peek == '-' || peek == '+') {
+                t->index++;
+                while (isdigit(jk_buffer_character_peek(t))) {
+                    t->index++;
                 }
-                e->c_to_be_followed_by_digit = e->c;
-                e->c = jk_json_getc(stream_read, stream);
             }
-
-            if (!isdigit(e->c)) {
-                JK_PROFILE_ZONE_END(parse_float);
-                return JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT;
-            }
-
-            do {
-                exponent = (exponent * 10.0) + (e->c - '0');
-            } while (isdigit((e->c = jk_json_getc(stream_read, stream))));
         }
 
-        // Number should not be directly followed by more alphanumeric characters
-        if (isalnum(e->c)) {
-            JK_PROFILE_ZONE_END(parse_float);
-            return JK_JSON_LEX_UNEXPECTED_CHARACTER;
-        }
+        size_t end = t->index;
 
-        if (e->c != EOF) {
-            stream_seek_relative(stream, -1);
-        }
-        token->value->u.number =
-                sign * token->value->u.number * pow(10.0, exponent_sign * exponent);
-
-        JK_PROFILE_ZONE_END(parse_float);
+        token.type = JK_JSON_TOKEN_VALUE;
+        token.value = jk_arena_push_zero(storage, sizeof(*token.value));
+        token.value->type = JK_JSON_NUMBER;
+        token.value->value = (JkBuffer){.size = end - start, .data = t->buffer.data + start};
     } break;
     case 't':
     case 'f':
     case 'n': {
-        memset(cmp_buffer, 0, sizeof(cmp_buffer));
-        cmp_buffer[0] = (char)e->c;
-        long read_count = (long)stream_read(stream, JK_JSON_CMP_STRING_LENGTH - 1, cmp_buffer + 1);
         for (size_t i = 0; i < JK_ARRAY_COUNT(jk_json_exact_matches); i++) {
             JkJsonExactMatch *match = &jk_json_exact_matches[i];
-            if (strncmp(cmp_buffer, match->string, match->length) == 0
-                    && !isalnum(cmp_buffer[match->length])) {
-                stream_seek_relative(
-                        stream, -jk_min(JK_JSON_CMP_STRING_LENGTH - match->length, read_count));
-                token->type = JK_JSON_TOKEN_VALUE;
-                token->value = jk_arena_push(storage, sizeof(*token->value));
-                token->value->label = NULL;
-                token->value->type = match->type;
-                return JK_JSON_LEX_SUCCESS;
+            if (strncmp((char const *)t->buffer.data + t->index, match->string, match->length)
+                    == 0) {
+                t->index += match->length;
+                token.type = JK_JSON_TOKEN_VALUE;
+                token.value = jk_arena_push_zero(storage, sizeof(*token.value));
+                token.value->type = match->type;
             }
         }
-        stream_seek_relative(stream, -read_count);
-        return JK_JSON_LEX_UNEXPECTED_CHARACTER;
     } break;
     case ',': {
-        token->type = JK_JSON_TOKEN_COMMA;
+        t->index++;
+        token.type = JK_JSON_TOKEN_COMMA;
     } break;
     case ':': {
-        token->type = JK_JSON_TOKEN_COLON;
+        t->index++;
+        token.type = JK_JSON_TOKEN_COLON;
     } break;
     case '{': {
-        token->type = JK_JSON_TOKEN_OPEN_BRACE;
+        t->index++;
+        token.type = JK_JSON_TOKEN_OPEN_BRACE;
     } break;
     case '}': {
-        token->type = JK_JSON_TOKEN_CLOSE_BRACE;
+        t->index++;
+        token.type = JK_JSON_TOKEN_CLOSE_BRACE;
     } break;
     case '[': {
-        token->type = JK_JSON_TOKEN_OPEN_BRACKET;
+        t->index++;
+        token.type = JK_JSON_TOKEN_OPEN_BRACKET;
     } break;
     case ']': {
-        token->type = JK_JSON_TOKEN_CLOSE_BRACKET;
+        t->index++;
+        token.type = JK_JSON_TOKEN_CLOSE_BRACKET;
     } break;
     case EOF: {
-        token->type = JK_JSON_TOKEN_EOF;
+        token.type = JK_JSON_TOKEN_EOF;
     } break;
     default: {
-        return JK_JSON_LEX_UNEXPECTED_CHARACTER;
+        token.type = JK_JSON_TOKEN_INVALID;
     } break;
     }
 
-    return JK_JSON_LEX_SUCCESS;
+    return token;
 }
 
-#define JK_NOTHING
-
-#define JK_JSON_LEX_NEXT_TOKEN(cleanup)                 \
-    do {                                                \
-        data->lex_status = jk_json_lex(storage,         \
-                stream_read,                            \
-                stream_seek_relative,                   \
-                stream,                                 \
-                &data->token,                           \
-                &data->lex_error_data);                 \
-        if (data->lex_status != JK_JSON_LEX_SUCCESS) {  \
-            cleanup;                                    \
-            data->error_type = JK_JSON_PARSE_LEX_ERROR; \
-            return NULL;                                \
-        }                                               \
+#define JK_JSON_LEX_NEXT_TOKEN                      \
+    do {                                            \
+        token = jk_json_lex(text_pointer, storage); \
+        if (token.type == JK_JSON_TOKEN_INVALID) {  \
+            return NULL;                            \
+        }                                           \
     } while (0)
 
-static JkJson *jk_json_parse_with_token(JkArena *storage,
-        JkArena *tmp_storage,
-        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
-        int (*stream_seek_relative)(void *stream, long offset),
-        void *stream,
-        JkJsonParseData *data)
+static JkJson *jk_json_parse_with_token(
+        JkBufferPointer *text_pointer, JkJsonToken token, JkArena *storage)
 {
-    JkJsonParseData *d = data;
-    if (d->token.type == JK_JSON_TOKEN_VALUE) {
-        return d->token.value;
-    } else if (d->token.type == JK_JSON_TOKEN_OPEN_BRACE
-            || d->token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
-        bool is_object = d->token.type == JK_JSON_TOKEN_OPEN_BRACE;
+    if (token.type == JK_JSON_TOKEN_VALUE) {
+        return token.value;
+    } else if (token.type == JK_JSON_TOKEN_OPEN_BRACE || token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
+        bool is_object = token.type == JK_JSON_TOKEN_OPEN_BRACE;
+        JkJson *json = jk_arena_push_zero(storage, sizeof(*json));
+        json->type = is_object ? JK_JSON_OBJECT : JK_JSON_ARRAY;
 
-        JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
+        JK_JSON_LEX_NEXT_TOKEN;
 
-        JkJson *json = jk_arena_push(storage, sizeof(*json));
-        json->type = JK_JSON_COLLECTION;
-        json->label = NULL;
-        JkJsonCollection *collection = &json->u.collection;
-        collection->type = is_object ? JK_JSON_COLLECTION_OBJECT : JK_JSON_COLLECTION_ARRAY;
-        collection->count = 0;
-
-        if ((is_object && d->token.type == JK_JSON_TOKEN_CLOSE_BRACE)
-                || (!is_object && d->token.type == JK_JSON_TOKEN_CLOSE_BRACKET)) {
-            collection->elements = NULL;
+        if ((is_object && token.type == JK_JSON_TOKEN_CLOSE_BRACE)
+                || (!is_object && token.type == JK_JSON_TOKEN_CLOSE_BRACKET)) {
+            return json;
         } else {
-            size_t base_pos = tmp_storage->pos;
-            JkJson **tmp_elements = (JkJson **)&tmp_storage->address[base_pos];
+            bool first = true;
+            JkJson *child = NULL;
+            JkJson *prev_child = NULL;
             do {
-                if (collection->count > 0) {
-                    JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+                if (first) {
+                    first = false;
+                } else {
+                    JK_JSON_LEX_NEXT_TOKEN;
                 }
 
-                char *label = NULL;
+                JkBuffer name = {0};
                 if (is_object) {
-                    if (!(d->token.type == JK_JSON_TOKEN_VALUE
-                                && d->token.value->type == JK_JSON_STRING)) {
-                        data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                    if (!(token.type == JK_JSON_TOKEN_VALUE
+                                && token.value->type == JK_JSON_STRING)) {
                         return NULL;
                     }
 
-                    label = d->token.value->u.string;
+                    name = token.value->value;
 
-                    JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
-                    if (d->token.type != JK_JSON_TOKEN_COLON) {
-                        data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                    JK_JSON_LEX_NEXT_TOKEN;
+                    if (token.type != JK_JSON_TOKEN_COLON) {
                         return NULL;
                     }
 
-                    JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
+                    JK_JSON_LEX_NEXT_TOKEN;
                 }
 
-                jk_arena_push(tmp_storage, sizeof(*tmp_elements));
-
-                tmp_elements[collection->count] = jk_json_parse_with_token(
-                        storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
-                if (tmp_elements[collection->count] == NULL) {
+                child = jk_json_parse_with_token(text_pointer, token, storage);
+                if (child == NULL) {
                     return NULL;
                 }
-                tmp_elements[collection->count]->label = label;
+                child->name = name;
 
-                collection->count++;
-                JK_JSON_LEX_NEXT_TOKEN(tmp_storage->pos = base_pos);
-            } while (d->token.type == JK_JSON_TOKEN_COMMA);
+                if (prev_child) {
+                    prev_child->sibling = child;
+                } else {
+                    json->first_child = child;
+                }
+                prev_child = child;
 
-            if ((is_object && d->token.type != JK_JSON_TOKEN_CLOSE_BRACE)
-                    || (!is_object && d->token.type != JK_JSON_TOKEN_CLOSE_BRACKET)) {
-                data->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
+                JK_JSON_LEX_NEXT_TOKEN;
+            } while (token.type == JK_JSON_TOKEN_COMMA);
+
+            if ((is_object && token.type != JK_JSON_TOKEN_CLOSE_BRACE)
+                    || (!is_object && token.type != JK_JSON_TOKEN_CLOSE_BRACKET)) {
                 return NULL;
             }
-
-            collection->elements =
-                    jk_arena_push(storage, sizeof(collection->elements[0]) * collection->count);
-
-            JK_PROFILE_ZONE_TIME_BEGIN(copy_and_sort);
-            memcpy(collection->elements,
-                    tmp_elements,
-                    sizeof(collection->elements[0]) * collection->count);
-            if (is_object) {
-                jk_json_label_quicksort(collection);
-            }
-            JK_PROFILE_ZONE_END(copy_and_sort);
-
-            tmp_storage->pos = base_pos;
         }
 
         return json;
     } else {
-        d->error_type = JK_JSON_PARSE_UNEXPECTED_TOKEN;
         return NULL;
     }
 }
 
-JkJson *jk_json_parse(JkArena *storage,
-        JkArena *tmp_storage,
-        size_t (*stream_read)(void *stream, size_t byte_count, void *buffer),
-        int (*stream_seek_relative)(void *stream, long offset),
-        void *stream,
-        JkJsonParseData *data)
+JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
 {
-    JK_JSON_LEX_NEXT_TOKEN(JK_NOTHING);
-    return jk_json_parse_with_token(
-            storage, tmp_storage, stream_read, stream_seek_relative, stream, data);
+    JkJsonToken token;
+    JkBufferPointer text_pointer_alloc = {.buffer = text, .index = 0};
+    JkBufferPointer *text_pointer = &text_pointer_alloc;
+    JK_JSON_LEX_NEXT_TOKEN;
+    return jk_json_parse_with_token(text_pointer, token, storage);
 }
 
 #undef JK_JSON_LEX_NEXT_TOKEN
 
-#undef JK_NOTHING
-
-JkJson *jk_json_member_get(JkJsonCollection *object, char *label)
+JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage)
 {
-    assert(object->type == JK_JSON_COLLECTION_OBJECT);
+    int c;
+    JkBufferPointer pointer = {.buffer = json_string_value, .index = 0};
+    JkBuffer string = {0};
+    char *storage_pointer = jk_arena_push(storage, 1);
+    char *start = storage_pointer;
+
+    while ((c = jk_buffer_character_next(&pointer)) != EOF) {
+        if (c < 0x20) {
+            return string;
+        }
+        if (c == '\\') {
+            c = jk_buffer_character_next(&pointer);
+            switch (c) {
+            case '"':
+            case '\\':
+            case '/': {
+                *storage_pointer = (char)c;
+            } break;
+
+            case 'b': {
+                *storage_pointer = '\b';
+            } break;
+            case 'f': {
+                *storage_pointer = '\f';
+            } break;
+            case 'n': {
+                *storage_pointer = '\n';
+            } break;
+            case 'r': {
+                *storage_pointer = '\r';
+            } break;
+            case 't': {
+                *storage_pointer = '\t';
+            } break;
+
+            case 'u': {
+                uint32_t unicode32 = 0;
+                for (int i = 0; i < 4; i++) {
+                    int digit_value;
+                    c = jk_buffer_character_next(&pointer);
+                    int lowered = tolower(c);
+                    if (lowered >= 'a' && lowered <= 'f') {
+                        digit_value = 10 + (lowered - 'a');
+                    } else if (c >= '0' && c <= '9') {
+                        digit_value = c - '0';
+                    } else {
+                        return string;
+                    }
+                    unicode32 = unicode32 * 0x10 + digit_value;
+                }
+                JkUtf8Codepoint utf8 = {0};
+                jk_utf8_codepoint_encode(unicode32, &utf8);
+                *storage_pointer = utf8.b[0];
+                for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
+                    storage_pointer = jk_arena_push(storage, 1);
+                    *storage_pointer = utf8.b[i];
+                }
+            } break;
+
+            default: {
+                return string;
+            } break;
+            }
+        } else {
+            *storage_pointer = (char)c;
+        }
+        storage_pointer = jk_arena_push(storage, 1);
+    }
+
+    *storage_pointer = '\0';
+    string.data = (uint8_t *)start;
+    string.size = storage_pointer - start;
+    return string;
+}
+
+JK_PUBLIC double jk_json_parse_number(JkBuffer json_number_value)
+{
+    double significand_sign = 1.0;
+    double significand = 0.0;
+    double exponent_sign = 1.0;
+    double exponent = 0.0;
+
+    JkBufferPointer pointer = {.buffer = json_number_value, .index = 0};
+    int c = jk_buffer_character_next(&pointer);
+
+    if (c == '-') {
+        significand_sign = -1.0;
+
+        c = jk_buffer_character_next(&pointer);
+
+        if (!isdigit(c)) {
+            return NAN;
+        }
+    }
+
+    // Parse integer
+    do {
+        significand = (significand * 10.0) + (c - '0');
+    } while (isdigit((c = jk_buffer_character_next(&pointer))));
+
+    // Parse fraction if there is one
+    if (c == '.') {
+        c = jk_buffer_character_next(&pointer);
+
+        if (!isdigit(c)) {
+            return NAN;
+        }
+
+        double multiplier = 0.1;
+        do {
+            significand += (c - '0') * multiplier;
+            multiplier /= 10.0;
+        } while (isdigit((c = jk_buffer_character_next(&pointer))));
+    }
+
+    // Parse exponent if there is one
+    if (c == 'e' || c == 'E') {
+        c = jk_buffer_character_next(&pointer);
+
+        if ((c == '-' || c == '+')) {
+            if (c == '-') {
+                exponent_sign = -1.0;
+            }
+            c = jk_buffer_character_next(&pointer);
+        }
+
+        if (!isdigit(c)) {
+            return NAN;
+        }
+
+        do {
+            exponent = (exponent * 10.0) + (c - '0');
+        } while (isdigit((c = jk_buffer_character_next(&pointer))));
+    }
+
+    return significand_sign * significand * pow(10.0, exponent_sign * exponent);
+}
+
+JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name)
+{
+    assert(object->type == JK_JSON_OBJECT);
     JK_PROFILE_ZONE_TIME_BEGIN(jk_json_member_get);
-    JkJson *return_value = jk_json_label_search(object->elements, object->count, label);
+
+    for (JkJson *child = object->first_child; child != NULL; child = child->sibling) {
+        if (strncmp(name, (char const *)child->name.data, child->name.size) == 0) {
+            JK_PROFILE_ZONE_END(jk_json_member_get);
+            return child;
+        }
+    }
+
     JK_PROFILE_ZONE_END(jk_json_member_get);
-    return return_value;
+    return NULL;
 }

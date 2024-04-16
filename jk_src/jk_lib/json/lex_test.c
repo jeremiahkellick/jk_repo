@@ -11,27 +11,6 @@
 #include <windows.h>
 #endif
 
-static size_t stream_read_file(void *file, size_t byte_count, void *buffer)
-{
-    FILE *file_internal = file;
-    return fread(buffer, 1, byte_count, file_internal);
-}
-
-static int stream_seek_relative_file(void *file, long offset)
-{
-    FILE *file_internal = file;
-    return fseek(file_internal, offset, SEEK_CUR);
-}
-
-static void jk_json_print_c(FILE *file, int c)
-{
-    if (c == EOF) {
-        fprintf(file, "end of file");
-    } else {
-        fprintf(file, "character '%c'", c);
-    }
-}
-
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -40,39 +19,21 @@ int main(int argc, char **argv)
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    FILE *file = fopen("./lex_test.json", "rb");
+    JkArena storage;
+    jk_arena_init(&storage, (size_t)1 << 36);
 
-    JkArena arena;
-    jk_arena_init(&arena, (size_t)1 << 36);
+    JkBuffer text = jk_file_read_full("./lex_test.json", &storage);
+    JkBufferPointer text_pointer = {.buffer = text, .index = 0};
 
     JkJsonToken token;
     do {
-        JkJsonLexErrorData error_data;
-        JkJsonLexStatus lex_status = jk_json_lex(
-                &arena, stream_read_file, stream_seek_relative_file, file, &token, &error_data);
-        if (lex_status == JK_JSON_LEX_SUCCESS) {
-            jk_json_print_token(stdout, &token);
-            printf(" ");
-        } else {
-            printf("\n");
-            fprintf(stderr, "%s: Unexpected ", argv[0]);
-            jk_json_print_c(stderr, error_data.c);
-            if (lex_status == JK_JSON_LEX_UNEXPECTED_CHARACTER_IN_STRING) {
-                fprintf(stderr,
-                        ": Invalid character in string. You may have missed a closing double "
-                        "quote.");
-            } else if (lex_status == JK_JSON_LEX_INVALID_ESCAPE_CHARACTER) {
-                fprintf(stderr, ": '\\' must be followed by a valid escape character\n");
-            } else if (lex_status == JK_JSON_LEX_INVALID_UNICODE_ESCAPE) {
-                fprintf(stderr, ": '\\u' escape must be followed by 4 hexadecimal digits\n");
-            } else if (lex_status == JK_JSON_LEX_CHARACTER_NOT_FOLLOWED_BY_DIGIT) {
-                fprintf(stderr,
-                        ": Expected '%c' to be followed by a digit",
-                        error_data.c_to_be_followed_by_digit);
-            }
-            fprintf(stderr, "\n");
+        token = jk_json_lex(&text_pointer, &storage);
+        if (token.type == JK_JSON_INVALID) {
+            fprintf(stderr, "%s: Invalid JSON\n", argv[0]);
             exit(1);
         }
+        jk_json_print_token(stdout, &token, &storage);
+        printf(" ");
     } while (token.type != JK_JSON_TOKEN_EOF);
 
     printf("\n");

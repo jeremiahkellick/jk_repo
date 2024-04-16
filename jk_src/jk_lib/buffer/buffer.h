@@ -9,13 +9,20 @@ typedef struct JkBuffer {
     uint8_t *data;
 } JkBuffer;
 
+typedef struct JkBufferPointer {
+    JkBuffer buffer;
+    size_t index;
+} JkBufferPointer;
+
 #define JK_STRING(string_literal) \
     ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
 
 #define JKS JK_STRING
 
-JkBuffer jk_buffer_from_null_terminated(char *string);
+JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
-int jk_buffer_character_get(JkBuffer buffer, size_t position);
+JK_PUBLIC int jk_buffer_character_peek(JkBufferPointer *pointer);
+
+JK_PUBLIC int jk_buffer_character_next(JkBufferPointer *pointer);
 
 #endif
