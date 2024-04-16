@@ -4,27 +4,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
+#include <jk_src/jk_lib/arena/arena.h>
+#include <jk_src/jk_lib/buffer/buffer.h>
 #include <jk_src/jk_lib/command_line/options.h>
 #include <jk_src/jk_lib/json/json.h>
 #include <jk_src/jk_lib/profile/profile.h>
+#include <jk_src/jk_lib/utils.h>
 #include <jk_src/perfaware/part2/haversine_reference.h>
 // #jk_build dependencies_end
-
-#ifdef _WIN32
-
-typedef struct __stat64 StatStruct;
-#define stat _stat64
-
-#else
-
-typedef struct stat StatStruct;
-
-#endif
 
 typedef enum Coordinate {
     X0,
@@ -34,24 +25,16 @@ typedef enum Coordinate {
     COORDINATE_COUNT,
 } Coordinate;
 
+typedef struct HaversinePair {
+    double v[COORDINATE_COUNT];
+} HaversinePair;
+
 char *coordinate_names[COORDINATE_COUNT] = {
     "x0",
     "y0",
     "x1",
     "y1",
 };
-
-static size_t stream_read_file(void *file, size_t byte_count, void *buffer)
-{
-    FILE *file_internal = file;
-    return fread(buffer, 1, byte_count, file_internal);
-}
-
-static int stream_seek_relative_file(void *file, long offset)
-{
-    FILE *file_internal = file;
-    return fseek(file_internal, offset, SEEK_CUR);
-}
 
 static bool approximately_equal(double a, double b)
 {
@@ -117,130 +100,92 @@ int main(int argc, char **argv)
         answer_file_name = opts_parse.operands[1];
     }
 
-    FILE *json_file = fopen(json_file_name, "rb");
-    if (json_file == NULL) {
-        fprintf(stderr,
-                "%s: Failed to open '%s': %s\n",
-                program_name,
-                json_file_name,
-                strerror(errno));
-        exit(1);
-    }
-
-    FILE *answer_file = NULL;
-    if (answer_file_name) {
-        answer_file = fopen(answer_file_name, "rb");
-        if (answer_file == NULL) {
-            fprintf(stderr,
-                    "%s: Failed to open '%s': %s\n",
-                    program_name,
-                    answer_file_name,
-                    strerror(errno));
-            exit(1);
-        }
-    }
-
     JkArena storage;
-    JkArena tmp_storage;
     jk_arena_init(&storage, (size_t)1 << 35);
-    jk_arena_init(&tmp_storage, (size_t)1 << 35);
 
-    StatStruct stat_struct = {0};
-    stat(json_file_name, &stat_struct);
+    JkBuffer text = jk_file_read_full(json_file_name, &storage);
+    JkBuffer answers = {0};
+    if (answer_file_name) {
+        answers = jk_file_read_full(answer_file_name, &storage);
+    }
 
-    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, stat_struct.st_size);
+    JK_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);
 
-    JkJsonParseData json_parse_data;
-    JkJson *json = jk_json_parse(&storage,
-            &tmp_storage,
-            stream_read_file,
-            stream_seek_relative_file,
-            json_file,
-            &json_parse_data);
-
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, text.size);
+    JkJson *json = jk_json_parse(text, &storage);
     JK_PROFILE_ZONE_END(parse_json);
 
     if (json == NULL) {
         fprintf(stderr, "%s: Failed to parse JSON\n", program_name);
         exit(1);
     }
-    if (!(json->type == JK_JSON_COLLECTION
-                && json->u.collection.type == JK_JSON_COLLECTION_OBJECT)) {
+    if (json->type != JK_JSON_OBJECT) {
         fprintf(stderr, "%s: JSON was not an object\n", program_name);
         exit(1);
     }
-    JkJson *pairs_json = jk_json_member_get(&json->u.collection, "pairs");
+    JkJson *pairs_json = jk_json_member_get(json, "pairs");
     if (pairs_json == NULL) {
         fprintf(stderr, "%s: JSON object did not have a \"pairs\" member\n", program_name);
         exit(1);
     }
-    if (!(pairs_json->type == JK_JSON_COLLECTION
-                && pairs_json->u.collection.type == JK_JSON_COLLECTION_ARRAY)) {
+    if (pairs_json->type != JK_JSON_ARRAY) {
         fprintf(stderr, "%s: JSON object \"pairs\" member was not an array\n", program_name);
         exit(1);
     }
-    JkJson **pairs = pairs_json->u.collection.elements;
-    size_t pair_count = pairs_json->u.collection.count;
 
+    size_t pair_count = pairs_json->child_count;
+    size_t pairs_buffer_size = sizeof(HaversinePair) * pair_count;
+    HaversinePair *pairs = jk_arena_push(&storage, pairs_buffer_size);
+
+    if (answers.size) {
+        assert(answers.size == sizeof(double) * (pair_count + 1));
+    }
+
+    JK_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
+    {
+        size_t i = 0;
+        for (JkJson *pair_json = pairs_json->first_child; pair_json;
+                pair_json = pair_json->sibling, i++) {
+            for (JkJson *coord_json = pair_json->first_child; coord_json;
+                    coord_json = coord_json->sibling) {
+                if (coord_json->name.size != 2) {
+                    continue;
+                }
+                uint8_t x_or_y = coord_json->name.data[0] - 'x';
+                uint8_t zero_or_one = coord_json->name.data[1] - '0';
+                uint8_t j = (zero_or_one << 1) | x_or_y;
+                if (x_or_y < 2 && zero_or_one < 2) {
+                    pairs[i].v[j] = jk_json_parse_number(coord_json->value);
+                }
+            }
+        }
+    }
+    JK_PROFILE_ZONE_END(lookup_and_convert);
+
+    JK_PROFILE_ZONE_END(parse_haversine_pairs);
+
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, pairs_buffer_size);
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
-    double coords[COORDINATE_COUNT];
-
-    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, pair_count * sizeof(coords));
-
     for (size_t i = 0; i < pair_count; i++) {
-        if (!(pairs[i]->type == JK_JSON_COLLECTION
-                    && pairs[i]->u.collection.type == JK_JSON_COLLECTION_OBJECT)) {
-            fprintf(stderr,
-                    "%s: An element of the \"pairs\" array was not an object\n",
-                    program_name);
-            exit(1);
-        }
-        for (int j = 0; j < COORDINATE_COUNT; j++) {
-            JkJson *value = jk_json_member_get(&pairs[i]->u.collection, coordinate_names[j]);
-            if (value == NULL) {
-                fprintf(stderr,
-                        "%s: An object in the \"pairs\" array did not have an \"%s\" member\n",
-                        program_name,
-                        coordinate_names[j]);
-                exit(1);
-            }
-            if (value->type != JK_JSON_NUMBER) {
-                fprintf(stderr,
-                        "%s: Found an object in \"pairs\" where \"%s\" was not a number\n",
-                        program_name,
-                        coordinate_names[j]);
-            }
-            coords[j] = value->u.number;
-        }
-        double distance =
-                haversine_reference(coords[X0], coords[Y0], coords[X1], coords[Y1], EARTH_RADIUS);
+        double distance = haversine_reference(
+                pairs[i].v[X0], pairs[i].v[Y0], pairs[i].v[X1], pairs[i].v[Y1], EARTH_RADIUS);
 
-        // if (answer_file) {
-        //     double answer;
-        //     if (!fread(&answer, sizeof(answer), 1, answer_file)) {
-        //         fprintf(stderr, "%s: Expected '%s' to be bigger\n", program_name,
-        //         answer_file_name); exit(1);
-        //     }
-        //     assert(approximately_equal(distance, answer));
-        // }
+#ifndef NDEBUG
+        if (answers.size) {
+            assert(approximately_equal(distance, JK_DATA_GET(answers.data, i, double)));
+        }
+#endif
 
         sum += distance * sum_coefficient;
     }
-
     JK_PROFILE_ZONE_END(sum);
 
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);
 
-    if (answer_file) {
-        double ref_sum;
-        fseek(answer_file, (long)(sizeof(double) * pair_count), SEEK_SET);
-        if (!fread(&ref_sum, sizeof(double), 1, answer_file)) {
-            fprintf(stderr, "%s: Expected '%s' to be bigger\n", program_name, answer_file_name);
-            exit(1);
-        }
-
+    if (answers.size) {
+        double ref_sum = JK_DATA_GET(answers.data, pair_count, double);
         printf("\nReference sum: %.16f\n", ref_sum);
         printf("Difference: %.16f\n\n", sum - ref_sum);
     }

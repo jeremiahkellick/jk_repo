@@ -8,7 +8,6 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/arena/arena.h>
 #include <jk_src/jk_lib/buffer/buffer.h>
-#include <jk_src/jk_lib/profile/profile.h>
 #include <jk_src/jk_lib/string/utf8.h>
 #include <jk_src/jk_lib/utils.h>
 // #jk_build dependencies_end
@@ -291,6 +290,7 @@ static JkJson *jk_json_parse_with_token(
                 }
                 child->name = name;
 
+                json->child_count++;
                 if (prev_child) {
                     prev_child->sibling = child;
                 } else {
@@ -467,15 +467,12 @@ JK_PUBLIC double jk_json_parse_number(JkBuffer json_number_value)
 JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name)
 {
     assert(object->type == JK_JSON_OBJECT);
-    JK_PROFILE_ZONE_TIME_BEGIN(jk_json_member_get);
 
-    for (JkJson *child = object->first_child; child != NULL; child = child->sibling) {
+    for (JkJson *child = object->first_child; child; child = child->sibling) {
         if (strncmp(name, (char const *)child->name.data, child->name.size) == 0) {
-            JK_PROFILE_ZONE_END(jk_json_member_get);
             return child;
         }
     }
 
-    JK_PROFILE_ZONE_END(jk_json_member_get);
     return NULL;
 }

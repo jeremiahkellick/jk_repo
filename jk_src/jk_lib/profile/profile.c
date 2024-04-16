@@ -128,7 +128,7 @@ JK_PUBLIC void jk_profile_end_and_print(void)
     uint64_t total = jk_cpu_timer_get() - jk_profile.start;
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
     printf("Total time: %.4fms (CPU freq %llu)\n",
-            (double)total / (double)frequency,
+            1000.0 * (double)total / (double)frequency,
             (long long)frequency);
 
 #if !JK_PROFILE_DISABLE

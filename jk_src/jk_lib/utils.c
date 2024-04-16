@@ -1,11 +1,6 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
-// #jk_build dependencies_begin
-#include <jk_src/jk_lib/arena/arena.h>
-#include <jk_src/jk_lib/buffer/buffer.h>
-// #jk_build dependencies_end
-
 #include "utils.h"
 
 #ifdef _WIN32
@@ -41,32 +36,9 @@ JK_PUBLIC bool jk_is_power_of_two(size_t x)
     return (x & (x - 1)) == 0;
 }
 
-JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
+JK_PUBLIC size_t jk_file_size(char *file_name)
 {
-    FILE *file = fopen(file_name, "rb");
-    if (!file) {
-        fprintf(stderr,
-                "jk_file_read_full: Failed to open file '%s': %s\n",
-                file_name,
-                strerror(errno));
-        exit(1);
-    }
-
     StatStruct stat_struct = {0};
     stat(file_name, &stat_struct);
-
-    JkBuffer buffer = {.size = stat_struct.st_size};
-    buffer.data = jk_arena_push(storage, stat_struct.st_size);
-    if (!buffer.data) {
-        fprintf(stderr, "jk_file_read_full: Failed to allocate memory for file '%s'\n", file_name);
-        exit(1);
-    }
-
-    size_t bytes_read = fread(buffer.data, 1, stat_struct.st_size, file);
-    if (bytes_read != (size_t)stat_struct.st_size) {
-        fprintf(stderr, "jk_file_read_full: fread failed\n");
-        exit(1);
-    }
-
-    return buffer;
+    return (size_t)stat_struct.st_size;
 }

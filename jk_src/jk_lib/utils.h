@@ -5,15 +5,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <jk_src/jk_lib/arena/arena.h>
-#include <jk_src/jk_lib/buffer/buffer.h>
-
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+#define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC bool jk_is_power_of_two(size_t x);
 
-JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage);
+JK_PUBLIC size_t jk_file_size(char *file_name);
 
 #endif

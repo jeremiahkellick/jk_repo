@@ -23,6 +23,7 @@ typedef enum JkJsonType {
 typedef struct JkJson {
     JkJsonType type;
     JkBuffer name;
+    uint64_t child_count;
     struct JkJson *first_child;
     struct JkJson *sibling;
     JkBuffer value;
