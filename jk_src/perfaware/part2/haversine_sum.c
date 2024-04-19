@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <jk_gen/single_translation_unit.h>
+// #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/arena/arena.h>

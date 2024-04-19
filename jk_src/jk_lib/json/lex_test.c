@@ -7,17 +7,11 @@
 #include <jk_src/jk_lib/json/json.h>
 // #jk_build dependencies_end
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 int main(int argc, char **argv)
 {
     (void)argc;
 
-#ifdef _WIN32
-    SetConsoleOutputCP(CP_UTF8);
-#endif
+    jk_platform_console_utf8_enable();
 
     JkArena storage;
     jk_arena_init(&storage, (size_t)1 << 36);

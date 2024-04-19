@@ -13,6 +13,4 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC bool jk_is_power_of_two(size_t x);
 
-JK_PUBLIC size_t jk_file_size(char *file_name);
-
 #endif

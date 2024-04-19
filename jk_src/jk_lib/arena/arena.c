@@ -1,74 +1,45 @@
+#include <string.h>
+
 #include "arena.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <sys/mman.h>
-#include <unistd.h>
-#endif
-
-static size_t jk_page_size_internal = 0;
-
-JK_PUBLIC size_t jk_page_size(void)
-{
-#ifdef _WIN32
-    return 4096;
-#else
-    if (jk_page_size_internal == 0) {
-        jk_page_size_internal = getpagesize();
-    }
-    return jk_page_size_internal;
-#endif
-}
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/platform/platform.h>
+// #jk_build dependencies_end
 
 JK_PUBLIC size_t jk_page_size_round_up(size_t n)
 {
-    size_t page_size = jk_page_size();
+    size_t page_size = jk_platform_page_size();
     return (n + page_size - 1) & ~(page_size - 1);
 }
 
 JK_PUBLIC size_t jk_page_size_round_down(size_t n)
 {
-    size_t page_size = jk_page_size();
+    size_t page_size = jk_platform_page_size();
     return n & ~(page_size - 1);
 }
 
 JK_PUBLIC JkArenaInitResult jk_arena_init(JkArena *arena, size_t virtual_size)
 {
-    size_t page_size = jk_page_size();
+    size_t page_size = jk_platform_page_size();
 
     arena->virtual_size = virtual_size;
     arena->size = page_size;
     arena->pos = 0;
 
-#ifdef _WIN32
-    arena->address = VirtualAlloc(NULL, virtual_size, MEM_RESERVE, PAGE_NOACCESS);
+    arena->address = jk_platform_memory_reserve(virtual_size);
     if (!arena->address) {
         return JK_ARENA_INIT_FAILURE;
     }
-    if (!VirtualAlloc(arena->address, page_size, MEM_COMMIT, PAGE_READWRITE)) {
+    if (!jk_platform_memory_commit(arena->address, page_size)) {
         return JK_ARENA_INIT_FAILURE;
     }
-#else
-    arena->address = mmap(NULL, virtual_size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (arena->address == MAP_FAILED) {
-        return JK_ARENA_INIT_FAILURE;
-    }
-    if (mprotect(arena->address, page_size, PROT_READ | PROT_WRITE) == -1) {
-        return JK_ARENA_INIT_FAILURE;
-    }
-#endif
 
     return JK_ARENA_INIT_SUCCESS;
 }
 
 JK_PUBLIC void jk_arena_terminate(JkArena *arena)
 {
-#ifdef _WIN32
-    VirtualFree(arena->address, 0, MEM_RELEASE);
-#else
-    munmap(arena->address, arena->virtual_size);
-#endif
+    jk_platform_memory_free(arena->address, arena->virtual_size);
 }
 
 JK_PUBLIC void *jk_arena_push(JkArena *arena, size_t size)
@@ -79,18 +50,9 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, size_t size)
     }
     if (new_pos > arena->size) {
         size_t expansion_size = jk_page_size_round_up(new_pos - arena->size);
-
-#ifdef _WIN32
-        if (!VirtualAlloc(
-                    arena->address + arena->size, expansion_size, MEM_COMMIT, PAGE_READWRITE)) {
+        if (!jk_platform_memory_commit(arena->address + arena->size, expansion_size)) {
             return NULL;
         }
-#else
-        if (mprotect(arena->address + arena->size, expansion_size, PROT_READ | PROT_WRITE) == -1) {
-            return NULL;
-        }
-#endif
-
         arena->size += expansion_size;
     }
     void *address = arena->address + arena->pos;

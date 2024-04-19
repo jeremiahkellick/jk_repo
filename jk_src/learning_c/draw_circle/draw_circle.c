@@ -6,12 +6,9 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
+#include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #define RADIUS 15
 #define GRID_SIZE (2 * RADIUS + 1)
@@ -68,9 +65,7 @@ static void print_grid(bool (*grid)[GRID_SIZE], int height, int width)
 
 int main(void)
 {
-#ifdef _WIN32
-    SetConsoleOutputCP(CP_UTF8);
-#endif
+    jk_platform_console_utf8_enable();
 
     printf("Drawing a circle %d times\n", ITERATION_COUNT);
     jk_profile_begin();

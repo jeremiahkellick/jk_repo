@@ -3,8 +3,6 @@
 
 #include <stddef.h>
 
-JK_PUBLIC size_t jk_page_size(void);
-
 JK_PUBLIC size_t jk_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_page_size_round_down(size_t n);

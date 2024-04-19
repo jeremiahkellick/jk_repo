@@ -6,8 +6,8 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/arena/arena.h>
+#include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/jk_lib/profile/profile.h>
-#include <jk_src/jk_lib/utils.h>
 // #jk_build dependencies_end
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
@@ -42,7 +42,7 @@ JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
         exit(1);
     }
 
-    JkBuffer buffer = {.size = jk_file_size(file_name)};
+    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
     buffer.data = jk_arena_push(storage, buffer.size);
     if (!buffer.data) {
         JK_PROFILE_ZONE_END(jk_file_read_full);

@@ -4,12 +4,9 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
+#include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/jk_lib/string/utf8.h>
 // #jk_build dependencies_end
-
-#ifdef _WIN32
-#include <windows.h>
-#endif
 
 #define BUFFER_SIZE 256
 
@@ -26,9 +23,7 @@ static void print_unicode(uint32_t codepoint32)
 
 int main(void)
 {
-#ifdef _WIN32
-    SetConsoleOutputCP(CP_UTF8);
-#endif
+    jk_platform_console_utf8_enable();
 
     print_unicode(0x0024);
     print_unicode(0x00A3);
