@@ -1,6 +1,7 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
+#include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
@@ -15,21 +16,21 @@ int main(int argc, char **argv)
         milliseconds_to_wait = atol(argv[1]);
     }
 
-    uint64_t os_freq = jk_os_timer_frequency_get();
+    uint64_t os_freq = jk_platform_os_timer_frequency_get();
     printf("OS frequency: %llu\n", (long long)os_freq);
 
-    uint64_t cpu_start = jk_cpu_timer_get();
+    uint64_t cpu_start = jk_platform_cpu_timer_get();
 
-    uint64_t os_start = jk_os_timer_get();
+    uint64_t os_start = jk_platform_os_timer_get();
     uint64_t os_end = 0;
     uint64_t os_elapsed = 0;
     uint64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
     while (os_elapsed < os_wait_time) {
-        os_end = jk_os_timer_get();
+        os_end = jk_platform_os_timer_get();
         os_elapsed = os_end - os_start;
     }
 
-    uint64_t cpu_end = jk_cpu_timer_get();
+    uint64_t cpu_end = jk_platform_cpu_timer_get();
     uint64_t cpu_elapsed = cpu_end - cpu_start;
     uint64_t cpu_freq = os_freq * cpu_elapsed / os_elapsed;
 

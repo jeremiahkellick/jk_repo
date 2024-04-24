@@ -10,8 +10,7 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/command_line/options.h>
-#include <jk_src/jk_lib/utils.h>
+#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/perfaware/part2/haversine_reference.h>
 // #jk_build dependencies_end
 

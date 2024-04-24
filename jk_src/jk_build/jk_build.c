@@ -667,6 +667,7 @@ int main(int argc, char **argv)
     switch (compiler) { // Compiler options
     case COMPILER_MSVC: {
         array_append(&command, "cl");
+        array_append(&command, "/P");
         array_append(&command, "/W4");
         array_append(&command, "/w44062");
         array_append(&command, "/wd4100");
@@ -789,7 +790,9 @@ int main(int argc, char **argv)
     } break;
 
     case COMPILER_TCC: {
+#ifndef _WIN32
         array_append(&command, "-lm");
+#endif
     } break;
 
     case COMPILER_NONE: {

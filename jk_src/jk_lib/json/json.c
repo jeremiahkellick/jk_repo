@@ -6,10 +6,7 @@
 #include <string.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/arena/arena.h>
-#include <jk_src/jk_lib/buffer/buffer.h>
-#include <jk_src/jk_lib/string/utf8.h>
-#include <jk_src/jk_lib/utils.h>
+#include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
 #include "json.h"

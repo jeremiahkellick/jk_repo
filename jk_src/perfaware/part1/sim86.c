@@ -1,15 +1,15 @@
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/command_line/options.h>
+#include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
 #define OPCODE_MOV_REG_RM_MASK 0xfc
@@ -50,7 +50,7 @@ static char *program_name = NULL;
 
 // clang-format off
 typedef enum Reg {
-    REG_NONE = -1,
+    REG_NOTHING = -1,
 
 //  wide == 0   wide == 1
     REG_AL = 0, REG_AX = 0,
@@ -144,10 +144,10 @@ static Reg rm_to_memory_operand_regs[RM_VALUE_COUNT][OPERAND_MEMORY_REG_COUNT] =
     {REG_BX, REG_DI},
     {REG_BP, REG_SI},
     {REG_BP, REG_DI},
-    {REG_SI, REG_NONE},
-    {REG_DI, REG_NONE},
-    {REG_BP, REG_NONE},
-    {REG_BX, REG_NONE},
+    {REG_SI, REG_NOTHING},
+    {REG_DI, REG_NOTHING},
+    {REG_BP, REG_NOTHING},
+    {REG_BX, REG_NOTHING},
 };
 
 typedef struct OperandMemory {
@@ -353,7 +353,7 @@ static int effective_address_clocks(Binop *binop)
 
     int num_regs = 0;
     for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
-        if (memop->regs[i] != REG_NONE) {
+        if (memop->regs[i] != REG_NOTHING) {
             num_regs++;
         }
     }
@@ -440,8 +440,8 @@ static int16_t read_int16(bool sign_extend)
 static void read_direct_address(Operand *operand)
 {
     operand->type = OPERAND_MEMORY;
-    operand->u.memory.regs[0] = REG_NONE;
-    operand->u.memory.regs[1] = REG_NONE;
+    operand->u.memory.regs[0] = REG_NOTHING;
+    operand->u.memory.regs[1] = REG_NOTHING;
     read_instruction_bytes(2, (uint8_t *)&operand->u.memory.disp);
 }
 
@@ -640,7 +640,7 @@ static void print_instruction(Instruction *inst)
                 printf("[");
                 int num_regs = 0;
                 for (int i = 0; i < OPERAND_MEMORY_REG_COUNT; i++) {
-                    if (op->u.memory.regs[i] != REG_NONE) {
+                    if (op->u.memory.regs[i] != REG_NOTHING) {
                         num_regs++;
                         if (num_regs == 2) {
                             printf("+");

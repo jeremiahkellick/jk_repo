@@ -5,8 +5,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include <jk_src/jk_lib/arena/arena.h>
-#include <jk_src/jk_lib/buffer/buffer.h>
+#include <jk_src/jk_lib/jk_lib.h>
 
 typedef enum JkJsonType {
     JK_JSON_INVALID,

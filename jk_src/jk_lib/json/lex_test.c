@@ -4,7 +4,9 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
+#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/json/json.h>
+#include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
 int main(int argc, char **argv)

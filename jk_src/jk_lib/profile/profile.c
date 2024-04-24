@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 // #jk_build dependencies_begin
+#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/utils.h>
 // #jk_build dependencies_end
 
 #include "profile.h"
