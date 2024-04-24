@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,41 +95,6 @@ JK_PUBLIC int jk_buffer_character_next(JkBufferPointer *pointer)
     int c = jk_buffer_character_peek(pointer);
     pointer->index++;
     return c;
-}
-
-JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
-{
-    JK_PROFILE_ZONE_TIME_BEGIN(jk_file_read_full);
-
-    FILE *file = fopen(file_name, "rb");
-    if (!file) {
-        JK_PROFILE_ZONE_END(jk_file_read_full);
-        fprintf(stderr,
-                "jk_file_read_full: Failed to open file '%s': %s\n",
-                file_name,
-                strerror(errno));
-        exit(1);
-    }
-
-    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
-    buffer.data = jk_arena_push(storage, buffer.size);
-    if (!buffer.data) {
-        JK_PROFILE_ZONE_END(jk_file_read_full);
-        fprintf(stderr, "jk_file_read_full: Failed to allocate memory for file '%s'\n", file_name);
-        exit(1);
-    }
-
-    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(fread, buffer.size);
-    if (fread(buffer.data, buffer.size, 1, file) != 1) {
-        JK_PROFILE_ZONE_END(fread);
-        JK_PROFILE_ZONE_END(jk_file_read_full);
-        fprintf(stderr, "jk_file_read_full: fread failed\n");
-        exit(1);
-    }
-    JK_PROFILE_ZONE_END(fread);
-
-    JK_PROFILE_ZONE_END(jk_file_read_full);
-    return buffer;
 }
 
 // ---- Buffer end -------------------------------------------------------------
@@ -418,6 +384,41 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length)
 }
 
 // ---- Quicksort end ----------------------------------------------------------
+
+JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
+{
+    JK_PROFILE_ZONE_TIME_BEGIN(jk_file_read_full);
+
+    FILE *file = fopen(file_name, "rb");
+    if (!file) {
+        JK_PROFILE_ZONE_END(jk_file_read_full);
+        fprintf(stderr,
+                "jk_file_read_full: Failed to open file '%s': %s\n",
+                file_name,
+                strerror(errno));
+        exit(1);
+    }
+
+    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
+    buffer.data = jk_arena_push(storage, buffer.size);
+    if (!buffer.data) {
+        JK_PROFILE_ZONE_END(jk_file_read_full);
+        fprintf(stderr, "jk_file_read_full: Failed to allocate memory for file '%s'\n", file_name);
+        exit(1);
+    }
+
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(fread, buffer.size);
+    if (fread(buffer.data, buffer.size, 1, file) != 1) {
+        JK_PROFILE_ZONE_END(fread);
+        JK_PROFILE_ZONE_END(jk_file_read_full);
+        fprintf(stderr, "jk_file_read_full: fread failed\n");
+        exit(1);
+    }
+    JK_PROFILE_ZONE_END(fread);
+
+    JK_PROFILE_ZONE_END(jk_file_read_full);
+    return buffer;
+}
 
 /**
  * @brief Returns a hash for the given 32 bit value

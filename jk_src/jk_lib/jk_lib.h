@@ -60,8 +60,6 @@ JK_PUBLIC int jk_buffer_character_peek(JkBufferPointer *pointer);
 
 JK_PUBLIC int jk_buffer_character_next(JkBufferPointer *pointer);
 
-JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage);
-
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- UTF-8 begin ------------------------------------------------------------
@@ -148,6 +146,8 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length);
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
+
+JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
