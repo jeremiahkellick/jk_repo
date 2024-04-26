@@ -771,7 +771,7 @@ int main(int argc, char **argv)
 
         fprintf(stu_file, "#define JK_PUBLIC static\n");
         for (int i = 0; i < dependencies.count; i++) {
-            fprintf(stu_file, "#include <%s>\n", dependencies.items[i]);
+            fprintf(stu_file, "#include <%s>\n", dependencies.items[i] + root_path_length);
         }
 
         fclose(stu_file);
