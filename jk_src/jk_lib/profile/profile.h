@@ -69,4 +69,42 @@ JK_PUBLIC void jk_profile_begin(void);
 
 JK_PUBLIC void jk_profile_end_and_print(void);
 
+typedef enum JkRepetitionTestState {
+    JK_REPETITION_TEST_UNINITIALIZED,
+    JK_REPETITION_TEST_RUNNING,
+    JK_REPETITION_TEST_COMPLETE,
+    JK_REPETITION_TEST_ERROR,
+} JkRepetitionTestState;
+
+typedef struct JkRepetitionTest {
+    JkRepetitionTestState state;
+    uint64_t target_byte_count;
+    uint64_t frequency;
+    uint64_t try_for_clocks;
+    uint64_t repetition_count;
+    uint64_t block_open_count;
+    uint64_t block_close_count;
+    uint64_t elapsed_current;
+    uint64_t elapsed_min;
+    uint64_t elapsed_max;
+    uint64_t elapsed_total;
+    uint64_t byte_count;
+    uint64_t last_found_min_time;
+} JkRepetitionTest;
+
+JK_PUBLIC void jk_repetition_test_init(JkRepetitionTest *test,
+        uint64_t target_byte_count,
+        uint64_t frequency,
+        uint64_t seconds_to_try);
+
+JK_PUBLIC void jk_repetition_test_time_begin(JkRepetitionTest *test);
+
+JK_PUBLIC void jk_repetition_test_time_end(JkRepetitionTest *test);
+
+JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test);
+
+JK_PUBLIC void jk_repetition_test_count_bytes(JkRepetitionTest *test, uint64_t bytes);
+
+JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test);
+
 #endif
