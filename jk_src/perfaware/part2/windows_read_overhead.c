@@ -14,18 +14,35 @@
 typedef struct ReadParams {
     JkBuffer dest;
     char *file_name;
+    bool malloc;
 } ReadParams;
 
 typedef struct JkRepetitionTest JkRepetitionTest;
 
 typedef void ReadFunction(JkRepetitionTest *test, ReadParams params);
 
+static void handle_allocation(ReadParams *params)
+{
+    if (params->malloc) {
+        params->dest.data = malloc(params->dest.size);
+    }
+}
+
+static void handle_deallocation(ReadParams *params)
+{
+    if (params->malloc) {
+        free(params->dest.data);
+    }
+}
+
 static void read_via_fread(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
+        handle_allocation(&params);
         FILE *file = fopen(params.file_name, "rb");
         if (!file) {
             jk_repetition_test_error(test);
+            handle_deallocation(&params);
             continue;
         }
 
@@ -39,15 +56,18 @@ static void read_via_fread(JkRepetitionTest *test, ReadParams params)
             jk_repetition_test_error(test);
         }
         fclose(file);
+        handle_deallocation(&params);
     }
 }
 
 static void read_via_read(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
+        handle_allocation(&params);
         int file = _open(params.file_name, _O_BINARY | _O_RDONLY);
         if (file == -1) {
             jk_repetition_test_error(test);
+            handle_deallocation(&params);
             continue;
         }
 
@@ -74,12 +94,14 @@ static void read_via_read(JkRepetitionTest *test, ReadParams params)
         }
 
         _close(file);
+        handle_deallocation(&params);
     }
 }
 
 static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
+        handle_allocation(&params);
         HANDLE file = CreateFileA(params.file_name,
                 GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -89,6 +111,7 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
                 0);
         if (file == INVALID_HANDLE_VALUE) {
             jk_repetition_test_error(test);
+            handle_deallocation(&params);
             continue;
         }
 
@@ -116,6 +139,7 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
         }
 
         CloseHandle(file);
+        handle_deallocation(&params);
     }
 }
 
@@ -146,10 +170,14 @@ int main(int argc, char **argv)
     }
 
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
-    for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
-        printf("\n%s\n", candidates[i].name);
-        jk_repetition_test_init(&candidates[i].test, params.dest.size, frequency, 10);
-        candidates[i].function(&candidates[i].test, params);
+
+    while (true) {
+        for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+            printf("\n%s%s\n", candidates[i].name, params.malloc ? " w/ malloc" : "");
+            jk_repetition_test_init(&candidates[i].test, params.dest.size, frequency, 10);
+            candidates[i].function(&candidates[i].test, params);
+        }
+        params.malloc = !params.malloc;
     }
 
     return 0;
