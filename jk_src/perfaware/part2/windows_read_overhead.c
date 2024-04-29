@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <windows.h>
 
+#include <jk_gen/single_translation_unit.h>
+
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
@@ -41,7 +43,7 @@ static void read_via_fread(JkRepetitionTest *test, ReadParams params)
         handle_allocation(&params);
         FILE *file = fopen(params.file_name, "rb");
         if (!file) {
-            jk_repetition_test_error(test);
+            jk_repetition_test_error(test, "read_via_fread: Failed to open file\n");
             handle_deallocation(&params);
             continue;
         }
@@ -53,7 +55,7 @@ static void read_via_fread(JkRepetitionTest *test, ReadParams params)
         if (result == 1) {
             jk_repetition_test_count_bytes(test, params.dest.size);
         } else {
-            jk_repetition_test_error(test);
+            jk_repetition_test_error(test, "read_via_fread: fread failed\n");
         }
         fclose(file);
         handle_deallocation(&params);
@@ -66,7 +68,7 @@ static void read_via_read(JkRepetitionTest *test, ReadParams params)
         handle_allocation(&params);
         int file = _open(params.file_name, _O_BINARY | _O_RDONLY);
         if (file == -1) {
-            jk_repetition_test_error(test);
+            jk_repetition_test_error(test, "read_via_read: Failed to open file\n");
             handle_deallocation(&params);
             continue;
         }
@@ -84,7 +86,7 @@ static void read_via_read(JkRepetitionTest *test, ReadParams params)
             jk_repetition_test_time_end(test);
 
             if (result != (int)read_size) {
-                jk_repetition_test_error(test);
+                jk_repetition_test_error(test, "read_via_read: _read failed\n");
                 break;
             }
 
@@ -110,7 +112,7 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
                 FILE_ATTRIBUTE_NORMAL,
                 0);
         if (file == INVALID_HANDLE_VALUE) {
-            jk_repetition_test_error(test);
+            jk_repetition_test_error(test, "read_via_read_file: Failed to open file\n");
             handle_deallocation(&params);
             continue;
         }
@@ -129,7 +131,7 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
             jk_repetition_test_time_end(test);
 
             if (!result || bytes_read != read_size) {
-                jk_repetition_test_error(test);
+                jk_repetition_test_error(test, "read_via_read_file: ReadFile failed\n");
                 break;
             }
 
@@ -146,14 +148,16 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
 typedef struct TestCandidate {
     char *name;
     ReadFunction *function;
-    JkRepetitionTest test;
 } TestCandidate;
 
-TestCandidate candidates[] = {
+static TestCandidate candidates[] = {
     {"fread", read_via_fread},
     {"_read", read_via_read},
     {"ReadFile", read_via_read_file},
 };
+
+// tests[malloc][i]
+static JkRepetitionTest tests[2][JK_ARRAY_COUNT(candidates)];
 
 int main(int argc, char **argv)
 {
@@ -173,9 +177,14 @@ int main(int argc, char **argv)
 
     while (true) {
         for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+            JkRepetitionTest *test = &tests[params.malloc][i];
             printf("\n%s%s\n", candidates[i].name, params.malloc ? " w/ malloc" : "");
-            jk_repetition_test_init(&candidates[i].test, params.dest.size, frequency, 10);
-            candidates[i].function(&candidates[i].test, params);
+            jk_repetition_test_run_wave(test, params.dest.size, frequency, 10);
+            candidates[i].function(test, params);
+            if (test->state == JK_REPETITION_TEST_ERROR) {
+                fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
+                exit(1);
+            }
         }
         params.malloc = !params.malloc;
     }

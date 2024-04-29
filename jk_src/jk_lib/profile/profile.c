@@ -149,22 +149,21 @@ JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
     jk_profile.depth--;
 }
 
-JK_PUBLIC void jk_repetition_test_init(JkRepetitionTest *test,
+JK_PUBLIC void jk_repetition_test_run_wave(JkRepetitionTest *test,
         uint64_t target_byte_count,
         uint64_t frequency,
         uint64_t try_for_seconds)
 {
+    if (test->state == JK_REPETITION_TEST_ERROR) {
+        return;
+    }
+    if (test->state == JK_REPETITION_TEST_UNINITIALIZED) {
+        test->elapsed_min = UINT64_MAX;
+    }
     test->state = JK_REPETITION_TEST_RUNNING;
     test->target_byte_count = target_byte_count;
     test->frequency = frequency;
     test->try_for_clocks = try_for_seconds * frequency;
-    test->repetition_count = 0;
-    test->block_open_count = 0;
-    test->block_close_count = 0;
-    test->elapsed_current = 0;
-    test->elapsed_min = UINT64_MAX;
-    test->elapsed_max = 0;
-    test->elapsed_total = 0;
     test->last_found_min_time = jk_platform_cpu_timer_get();
 }
 
@@ -186,14 +185,18 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
         return false;
     }
     if (test->block_open_count != test->block_close_count) {
-        jk_repetition_test_error(test);
+        jk_repetition_test_error(test,
+                "JkRepetitionTest: jk_repetition_test_time_begin calls not matched one-to-one with "
+                "jk_repetition_test_time_end calls\n");
         return false;
     }
 
     uint64_t current_time = jk_platform_cpu_timer_get();
     if (test->block_open_count > 0) {
         if (test->byte_count != test->target_byte_count) {
-            jk_repetition_test_error(test);
+            jk_repetition_test_error(test,
+                    "JkRepetitionTest: Counted a different number of bytes than "
+                    "target_byte_count\n");
             return false;
         }
 
@@ -206,9 +209,12 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
         if (test->elapsed_max < test->elapsed_current) {
             test->elapsed_max = test->elapsed_current;
         }
-        test->elapsed_current = 0;
-        test->byte_count = 0;
     }
+
+    test->elapsed_current = 0;
+    test->byte_count = 0;
+    test->block_open_count = 0;
+    test->block_close_count = 0;
 
     if (current_time - test->last_found_min_time > test->try_for_clocks) {
         test->state = JK_REPETITION_TEST_COMPLETE;
@@ -243,9 +249,10 @@ JK_PUBLIC void jk_repetition_test_count_bytes(JkRepetitionTest *test, uint64_t b
     test->byte_count += bytes;
 }
 
-JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test)
+JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test, char *message)
 {
     test->state = JK_REPETITION_TEST_ERROR;
+    fprintf(stderr, "%s", message);
 }
 
 #endif

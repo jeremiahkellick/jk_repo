@@ -92,7 +92,7 @@ typedef struct JkRepetitionTest {
     uint64_t last_found_min_time;
 } JkRepetitionTest;
 
-JK_PUBLIC void jk_repetition_test_init(JkRepetitionTest *test,
+JK_PUBLIC void jk_repetition_test_run_wave(JkRepetitionTest *test,
         uint64_t target_byte_count,
         uint64_t frequency,
         uint64_t seconds_to_try);
@@ -105,6 +105,6 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test);
 
 JK_PUBLIC void jk_repetition_test_count_bytes(JkRepetitionTest *test, uint64_t bytes);
 
-JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test);
+JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test, char *message);
 
 #endif
