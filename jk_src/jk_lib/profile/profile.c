@@ -158,7 +158,7 @@ JK_PUBLIC void jk_repetition_test_run_wave(JkRepetitionTest *test,
         return;
     }
     if (test->state == JK_REPETITION_TEST_UNINITIALIZED) {
-        test->elapsed_min = UINT64_MAX;
+        test->min.v[JK_REP_VALUE_CPU_TIMER] = UINT64_MAX;
     }
     test->state = JK_REPETITION_TEST_RUNNING;
     test->target_byte_count = target_byte_count;
@@ -170,13 +170,39 @@ JK_PUBLIC void jk_repetition_test_run_wave(JkRepetitionTest *test,
 JK_PUBLIC void jk_repetition_test_time_begin(JkRepetitionTest *test)
 {
     test->block_open_count++;
-    test->elapsed_current -= jk_platform_cpu_timer_get();
+    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] -= jk_platform_os_metrics_page_fault_count_get();
+    test->current.v[JK_REP_VALUE_CPU_TIMER] -= jk_platform_cpu_timer_get();
 }
 
 JK_PUBLIC void jk_repetition_test_time_end(JkRepetitionTest *test)
 {
-    test->elapsed_current += jk_platform_cpu_timer_get();
+    test->current.v[JK_REP_VALUE_CPU_TIMER] += jk_platform_cpu_timer_get();
+    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] += jk_platform_os_metrics_page_fault_count_get();
     test->block_close_count++;
+}
+
+static void jk_repetition_test_print_values(char *name, JkRepValues values, uint64_t frequency)
+{
+    double test_count =
+            values.v[JK_REP_VALUE_TEST_COUNT] ? (double)values.v[JK_REP_VALUE_TEST_COUNT] : 1.0;
+    double v[JK_REP_VALUE_COUNT];
+
+    for (int i = 0; i < JK_REP_VALUE_COUNT; i++) {
+        v[i] = (double)values.v[i] / (double)test_count;
+    }
+
+    double seconds = v[JK_REP_VALUE_CPU_TIMER] / (double)frequency;
+    printf("%s: %.0f (%.3f ms)", name, v[JK_REP_VALUE_CPU_TIMER], seconds * 1000.0);
+    if (v[JK_REP_VALUE_BYTE_COUNT] > 0.0) {
+        double gigabyte = 1024.0 * 1024.0 * 1024.0;
+        printf(" %.3f GiB/s", v[JK_REP_VALUE_BYTE_COUNT] / gigabyte / seconds);
+    }
+    if (v[JK_REP_VALUE_PAGE_FAULT_COUNT] > 0.0) {
+        printf(" %.3f page faults (%.3f KiB/fault)",
+                v[JK_REP_VALUE_PAGE_FAULT_COUNT],
+                v[JK_REP_VALUE_BYTE_COUNT] / 1024.0 / v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
+    }
+    printf("\n");
 }
 
 JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
@@ -193,26 +219,27 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
 
     uint64_t current_time = jk_platform_cpu_timer_get();
     if (test->block_open_count > 0) {
-        if (test->byte_count != test->target_byte_count) {
+        if (test->current.v[JK_REP_VALUE_BYTE_COUNT] != test->target_byte_count) {
             jk_repetition_test_error(test,
                     "JkRepetitionTest: Counted a different number of bytes than "
                     "target_byte_count\n");
             return false;
         }
 
-        test->repetition_count++;
-        test->elapsed_total += test->elapsed_current;
-        if (test->elapsed_min > test->elapsed_current) {
-            test->elapsed_min = test->elapsed_current;
+        test->total.v[JK_REP_VALUE_TEST_COUNT]++;
+        for (int i = 0; i < JK_REP_VALUE_COUNT; i++) {
+            test->total.v[i] += test->current.v[i];
+        }
+        if (test->current.v[JK_REP_VALUE_CPU_TIMER] < test->min.v[JK_REP_VALUE_CPU_TIMER]) {
+            test->min = test->current;
             test->last_found_min_time = current_time;
         }
-        if (test->elapsed_max < test->elapsed_current) {
-            test->elapsed_max = test->elapsed_current;
+        if (test->current.v[JK_REP_VALUE_CPU_TIMER] > test->max.v[JK_REP_VALUE_CPU_TIMER]) {
+            test->max = test->current;
         }
     }
 
-    test->elapsed_current = 0;
-    test->byte_count = 0;
+    test->current = (JkRepValues){0};
     test->block_open_count = 0;
     test->block_close_count = 0;
 
@@ -220,24 +247,10 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
         test->state = JK_REPETITION_TEST_COMPLETE;
 
         // Print results
-        if (test->repetition_count) {
-            double gigabyte = 1024.0 * 1024.0 * 1024.0;
-            double min_seconds = (double)test->elapsed_min / (double)test->frequency;
-            double max_seconds = (double)test->elapsed_max / (double)test->frequency;
-            double avg_seconds = (double)test->elapsed_total / (double)test->repetition_count
-                    / (double)test->frequency;
-            printf("Min: %llu (%.3f ms) %.3f GiB/s\n",
-                    (long long)test->elapsed_min,
-                    min_seconds * 1000.0,
-                    (double)test->target_byte_count / gigabyte / min_seconds);
-            printf("Max: %llu (%.3f ms) %.3f GiB/s\n",
-                    (long long)test->elapsed_max,
-                    max_seconds * 1000.0,
-                    (double)test->target_byte_count / gigabyte / max_seconds);
-            printf("Avg: %llu (%.3f ms) %.3f GiB/s\n",
-                    (long long)test->elapsed_total / test->repetition_count,
-                    avg_seconds * 1000.0,
-                    (double)test->target_byte_count / gigabyte / avg_seconds);
+        if (test->total.v[JK_REP_VALUE_TEST_COUNT]) {
+            jk_repetition_test_print_values("Min", test->min, test->frequency);
+            jk_repetition_test_print_values("Max", test->max, test->frequency);
+            jk_repetition_test_print_values("Avg", test->total, test->frequency);
         }
     }
 
@@ -246,7 +259,7 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
 
 JK_PUBLIC void jk_repetition_test_count_bytes(JkRepetitionTest *test, uint64_t bytes)
 {
-    test->byte_count += bytes;
+    test->current.v[JK_REP_VALUE_BYTE_COUNT] += bytes;
 }
 
 JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test, char *message)

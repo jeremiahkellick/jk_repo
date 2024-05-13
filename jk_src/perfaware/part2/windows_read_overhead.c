@@ -37,6 +37,23 @@ static void handle_deallocation(ReadParams *params)
     }
 }
 
+static void write_to_all_bytes(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        handle_allocation(&params);
+
+        jk_repetition_test_time_begin(test);
+        for (size_t i = 0; i < params.dest.size; i++) {
+            params.dest.data[i] = (uint8_t)i;
+        }
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(&params);
+    }
+}
+
 static void read_via_fread(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
@@ -151,6 +168,7 @@ typedef struct TestCandidate {
 } TestCandidate;
 
 static TestCandidate candidates[] = {
+    {"Write to all bytes", write_to_all_bytes},
     {"fread", read_via_fread},
     {"_read", read_via_read},
     {"ReadFile", read_via_read_file},
@@ -173,20 +191,23 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    jk_platform_os_metrics_init();
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
 
     while (true) {
         for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
-            JkRepetitionTest *test = &tests[params.malloc][i];
-            printf("\n%s%s\n", candidates[i].name, params.malloc ? " w/ malloc" : "");
-            jk_repetition_test_run_wave(test, params.dest.size, frequency, 10);
-            candidates[i].function(test, params);
-            if (test->state == JK_REPETITION_TEST_ERROR) {
-                fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
-                exit(1);
+            for (int malloc = 0; malloc < 2; malloc++) {
+                params.malloc = malloc;
+                JkRepetitionTest *test = &tests[params.malloc][i];
+                printf("\n%s%s\n", candidates[i].name, params.malloc ? " w/ malloc" : "");
+                jk_repetition_test_run_wave(test, params.dest.size, frequency, 10);
+                candidates[i].function(test, params);
+                if (test->state == JK_REPETITION_TEST_ERROR) {
+                    fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
+                    exit(1);
+                }
             }
         }
-        params.malloc = !params.malloc;
     }
 
     return 0;

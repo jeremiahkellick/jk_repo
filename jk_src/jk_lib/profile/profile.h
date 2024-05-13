@@ -76,20 +76,31 @@ typedef enum JkRepetitionTestState {
     JK_REPETITION_TEST_ERROR,
 } JkRepetitionTestState;
 
+typedef enum JkRepValue {
+    JK_REP_VALUE_TEST_COUNT,
+    JK_REP_VALUE_CPU_TIMER,
+    JK_REP_VALUE_BYTE_COUNT,
+    JK_REP_VALUE_PAGE_FAULT_COUNT,
+
+    JK_REP_VALUE_COUNT,
+} JkRepValue;
+
+typedef struct JkRepValues {
+    uint64_t v[JK_REP_VALUE_COUNT];
+} JkRepValues;
+
 typedef struct JkRepetitionTest {
     JkRepetitionTestState state;
     uint64_t target_byte_count;
     uint64_t frequency;
     uint64_t try_for_clocks;
-    uint64_t repetition_count;
     uint64_t block_open_count;
     uint64_t block_close_count;
-    uint64_t elapsed_current;
-    uint64_t elapsed_min;
-    uint64_t elapsed_max;
-    uint64_t elapsed_total;
-    uint64_t byte_count;
     uint64_t last_found_min_time;
+    JkRepValues current;
+    JkRepValues min;
+    JkRepValues max;
+    JkRepValues total;
 } JkRepetitionTest;
 
 JK_PUBLIC void jk_repetition_test_run_wave(JkRepetitionTest *test,

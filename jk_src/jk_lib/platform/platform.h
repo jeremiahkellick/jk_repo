@@ -19,6 +19,10 @@ JK_PUBLIC void jk_platform_memory_free(void *address, size_t size);
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void);
 
+JK_PUBLIC void jk_platform_os_metrics_init(void);
+
+JK_PUBLIC uint64_t jk_platform_os_metrics_page_fault_count_get(void);
+
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void);
 
 JK_PUBLIC uint64_t jk_platform_os_timer_frequency_get(void);

@@ -1,8 +1,11 @@
+#include <assert.h>
+
 #include "platform.h"
 
 // OS functions
 #ifdef _WIN32
 
+#include <psapi.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <windows.h>
@@ -40,6 +43,29 @@ JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
 JK_PUBLIC void jk_platform_console_utf8_enable(void)
 {
     SetConsoleOutputCP(CP_UTF8);
+}
+
+typedef struct JkPlatformOsMetrics {
+    bool initialized;
+    HANDLE process;
+} JkPlatformOsMetrics;
+
+static JkPlatformOsMetrics jk_platform_os_metrics;
+
+JK_PUBLIC void jk_platform_os_metrics_init(void)
+{
+    assert(!jk_platform_os_metrics.initialized);
+    jk_platform_os_metrics.initialized = true;
+    jk_platform_os_metrics.process =
+            OpenProcess(PROCESS_QUERY_INFORMATION, false, GetCurrentProcessId());
+}
+
+JK_PUBLIC uint64_t jk_platform_os_metrics_page_fault_count_get(void)
+{
+    assert(jk_platform_os_metrics.initialized);
+    PROCESS_MEMORY_COUNTERS memory_counters = {.cb = sizeof(memory_counters)};
+    GetProcessMemoryInfo(jk_platform_os_metrics.process, &memory_counters, sizeof(memory_counters));
+    return (uint64_t)memory_counters.PageFaultCount;
 }
 
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
