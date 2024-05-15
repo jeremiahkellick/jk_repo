@@ -36,8 +36,14 @@ JK_PUBLIC bool jk_platform_memory_commit(void *address, size_t size)
     return VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
 }
 
+JK_PUBLIC void *jk_platform_memory_alloc(size_t size)
+{
+    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+}
+
 JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
 {
+    // TODO: Consider how to deal with different freeing behavior between Windows and Unix
     VirtualFree(address, 0, MEM_RELEASE);
 }
 
@@ -87,6 +93,7 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency_get(void)
 
 #include <stdio.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -120,12 +127,46 @@ JK_PUBLIC bool jk_platform_memory_commit(void *address, size_t size)
     return !mprotect(address, size, PROT_READ | PROT_WRITE);
 }
 
+JK_PUBLIC void *jk_platform_memory_alloc(size_t size)
+{
+    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+}
+
 JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
 {
     munmap(address, size);
 }
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void) {}
+
+#ifndef NDEBUG
+
+typedef struct JkPlatformOsMetrics {
+    bool initialized;
+} JkPlatformOsMetrics;
+
+static JkPlatformOsMetrics jk_platform_os_metrics;
+
+#endif
+
+JK_PUBLIC void jk_platform_os_metrics_init(void)
+{
+    assert(!jk_platform_os_metrics.initialized);
+#ifndef NDEBUG
+    jk_platform_os_metrics.initialized = true;
+#endif
+}
+
+JK_PUBLIC uint64_t jk_platform_os_metrics_page_fault_count_get(void)
+{
+    assert(jk_platform_os_metrics.initialized);
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+        return usage.ru_majflt + usage.ru_minflt;
+    } else {
+        return 0;
+    }
+}
 
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
 {

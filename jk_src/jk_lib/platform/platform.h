@@ -15,6 +15,8 @@ JK_PUBLIC void *jk_platform_memory_reserve(size_t size);
 
 JK_PUBLIC bool jk_platform_memory_commit(void *address, size_t size);
 
+JK_PUBLIC void *jk_platform_memory_alloc(size_t size);
+
 JK_PUBLIC void jk_platform_memory_free(void *address, size_t size);
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void);
