@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -294,6 +295,27 @@ JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_c
         }
         fprintf(file, "%s", options[i].description);
     }
+}
+
+/**
+ * Attempt to parse a positive integer
+ *
+ * @return The parsed integer if successful, -1 if failed
+ */
+int jk_parse_positive_integer(char *string)
+{
+    int multiplier = 1;
+    int result = 0;
+    for (int i = (int)strlen(string) - 1; i >= 0; i--) {
+        if (isdigit(string[i])) {
+            result += (string[i] - '0') * multiplier;
+            multiplier *= 10;
+        } else if (!(string[i] == ',' || string[i] == '\'' || string[i] == '_')) {
+            // Error if character is not a digit or one of the permitted separators
+            return -1;
+        }
+    }
+    return result;
 }
 
 // ---- Command line arguments parsing end -------------------------------------

@@ -5,10 +5,11 @@
 // OS functions
 #ifdef _WIN32
 
-#include <psapi.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <windows.h>
+
+#include <psapi.h>
 
 JK_PUBLIC size_t jk_platform_file_size(char *file_name)
 {

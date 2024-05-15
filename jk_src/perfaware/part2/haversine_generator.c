@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -55,29 +54,6 @@ static unsigned hash_string(char *string)
 static double random_within(double min, double radius)
 {
     return min + ((double)rand() / (double)RAND_MAX) * radius;
-}
-
-int parse_positive_integer(char *string, char *option_name, bool *usage_error)
-{
-    int multiplier = 1;
-    int result = 0;
-    for (int i = (int)strlen(string) - 1; i >= 0; i--) {
-        if (isdigit(string[i])) {
-            result += (string[i] - '0') * multiplier;
-            multiplier *= 10;
-        } else if (!(string[i] == ',' || string[i] == '\'' || string[i] == '_')) {
-            // Error if character is not a digit or one of the permitted separators
-            fprintf(stderr,
-                    "%s: Invalid argument for option %s: expected a positive "
-                    "integer, got '%s'\n",
-                    program_name,
-                    option_name,
-                    string);
-            *usage_error = true;
-            break;
-        }
-    }
-    return result;
 }
 
 Cluster random_cluster(void)
@@ -166,9 +142,15 @@ int main(int argc, char **argv)
             opts_parse.usage_error = true;
         }
         if (opt_results[OPT_CLUSTER_COUNT].present) {
-            cluster_count = parse_positive_integer(
-                    opt_results[OPT_CLUSTER_COUNT].arg, "-c (--clusters)", &opts_parse.usage_error);
-            if (cluster_count <= MIN_CLUSTER_COUNT || cluster_count >= MAX_CLUSTER_COUNT) {
+            cluster_count = jk_parse_positive_integer(opt_results[OPT_CLUSTER_COUNT].arg);
+            if (cluster_count < 0) {
+                fprintf(stderr,
+                        "%s: Invalid argument for option -c (--clusters): Expected a positive "
+                        "integer, got '%s'\n",
+                        program_name,
+                        opt_results[OPT_CLUSTER_COUNT].arg);
+                opts_parse.usage_error = true;
+            } else if (cluster_count <= MIN_CLUSTER_COUNT || cluster_count >= MAX_CLUSTER_COUNT) {
                 fprintf(stderr,
                         "%s: Invalid argument for option -c (--clusters): Expected integer greater "
                         "than %s and less than %s\n",
@@ -179,8 +161,15 @@ int main(int argc, char **argv)
             }
         }
         if (opt_results[OPT_PAIR_COUNT].present) {
-            pair_count = parse_positive_integer(
-                    opt_results[OPT_PAIR_COUNT].arg, "-n (--pair-count)", &opts_parse.usage_error);
+            pair_count = jk_parse_positive_integer(opt_results[OPT_PAIR_COUNT].arg);
+            if (pair_count < 0) {
+                fprintf(stderr,
+                        "%s: Invalid argument for option -n (--pair-count): Expected a positive "
+                        "integer, got '%s'\n",
+                        program_name,
+                        opt_results[OPT_PAIR_COUNT].arg);
+                opts_parse.usage_error = true;
+            }
             if (pair_count >= MAX_PAIR_COUNT) {
                 fprintf(stderr,
                         "%s: Invalid argument for option -n (--pair-count): Expected integer less "

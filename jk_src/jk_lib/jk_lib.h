@@ -127,6 +127,8 @@ JK_PUBLIC void jk_options_parse(int argc,
 
 JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count);
 
+int jk_parse_positive_integer(char *string);
+
 // ---- Command line arguments parsing end -------------------------------------
 
 // ---- Quicksort begin --------------------------------------------------------
