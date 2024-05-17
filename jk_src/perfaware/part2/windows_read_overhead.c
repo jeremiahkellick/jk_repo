@@ -54,6 +54,23 @@ static void write_to_all_bytes(JkRepetitionTest *test, ReadParams params)
     }
 }
 
+static void write_to_all_bytes_backwards(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        handle_allocation(&params);
+
+        jk_repetition_test_time_begin(test);
+        for (size_t i = 0; i < params.dest.size; i++) {
+            params.dest.data[params.dest.size - 1 - i] = (uint8_t)i;
+        }
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(&params);
+    }
+}
+
 static void read_via_fread(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
@@ -169,6 +186,7 @@ typedef struct TestCandidate {
 
 static TestCandidate candidates[] = {
     {"Write to all bytes", write_to_all_bytes},
+    {"Write to all bytes backwards", write_to_all_bytes_backwards},
     {"fread", read_via_fread},
     {"_read", read_via_read},
     {"ReadFile", read_via_read_file},
