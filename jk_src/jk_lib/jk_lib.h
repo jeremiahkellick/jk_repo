@@ -12,7 +12,7 @@ typedef struct JkArena {
     size_t virtual_size;
     size_t size;
     size_t pos;
-    char *address;
+    uint8_t *address;
 } JkArena;
 
 typedef enum JkArenaInitResult {
