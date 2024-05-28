@@ -103,8 +103,8 @@ int main(int argc, char **argv)
         uint64_t count_after = jk_platform_os_metrics_page_fault_count_get();
 
         PagingIndicies paging_counts = {0};
-        for (size_t i = 0; i < touch_page_count; i++) {
-            PagingIndicies indicies = paging_indicies_get(&buffer.data[i * page_size]);
+        for (int i = 0; i < touch_page_count; i++) {
+            PagingIndicies indicies = paging_indicies_get(&buffer.data[(size_t)i * page_size]);
             for (int j = 0; j < PAGING_INDEX_TYPE_COUNT; j++) {
                 if (indicies.v[j] == 0) {
                     paging_counts.v[j]++;

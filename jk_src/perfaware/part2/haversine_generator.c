@@ -132,14 +132,19 @@ int main(int argc, char **argv)
     char *answer_file_path = DEFAULT_ANSWER_FILE_PATH;
     {
         jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
-        if (opts_parse.operand_count == 1) {
-            json_file_path = opts_parse.operands[0];
-        } else if (opts_parse.operand_count > 1 && !opt_results[OPT_HELP].present) {
+        if (opts_parse.operand_count > 2 && !opt_results[OPT_HELP].present) {
             fprintf(stderr,
-                    "%s: Expected 0-1 operands, got %zu\n",
+                    "%s: Expected 0-2 operands, got %zu\n",
                     program_name,
                     opts_parse.operand_count);
             opts_parse.usage_error = true;
+        } else {
+            if (opts_parse.operand_count >= 1) {
+                json_file_path = opts_parse.operands[0];
+            }
+            if (opts_parse.operand_count >= 2) {
+                answer_file_path = opts_parse.operands[1];
+            }
         }
         if (opt_results[OPT_CLUSTER_COUNT].present) {
             cluster_count = jk_parse_positive_integer(opt_results[OPT_CLUSTER_COUNT].arg);
