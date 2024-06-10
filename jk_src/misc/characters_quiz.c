@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include <jk_gen/single_translation_unit.h>
@@ -9,7 +10,6 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
-#include <string.h>
 // #jk_build dependencies_end
 
 #define BUF_SIZE 8
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
     } while (prompt == -1);
 
     size_t *indicies = jk_arena_push(&storage, sizeof(*indicies) * character_count);
-    for (int i = 0; i < character_count; i++) {
+    for (size_t i = 0; i < character_count; i++) {
         indicies[i] = i;
     }
     srand((unsigned)time(NULL));
