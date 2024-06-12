@@ -11,6 +11,22 @@
 
 #include <psapi.h>
 
+typedef struct JkPlatformData {
+    bool initialized;
+    uint64_t large_page_size;
+    HANDLE process;
+} JkPlatformData;
+
+static JkPlatformData jk_platform_data;
+
+JK_PUBLIC void jk_platform_init(void)
+{
+    assert(!jk_platform_data.initialized);
+    jk_platform_data.initialized = true;
+    jk_platform_data.large_page_size = jk_platform_large_pages_try_enable();
+    jk_platform_data.process = OpenProcess(PROCESS_QUERY_INFORMATION, false, GetCurrentProcessId());
+}
+
 JK_PUBLIC size_t jk_platform_file_size(char *file_name)
 {
     struct __stat64 info = {0};
@@ -24,6 +40,36 @@ JK_PUBLIC size_t jk_platform_file_size(char *file_name)
 JK_PUBLIC size_t jk_platform_page_size(void)
 {
     return 4096;
+}
+
+JK_PUBLIC uint64_t jk_platform_large_pages_try_enable(void)
+{
+    static bool has_been_called = false;
+    assert(!has_been_called);
+    has_been_called = true;
+
+    uint64_t result = 0;
+
+    HANDLE process_token;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &process_token)) {
+        TOKEN_PRIVILEGES privileges = {0};
+        privileges.PrivilegeCount = 1;
+        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        if (LookupPrivilegeValue(0, SE_LOCK_MEMORY_NAME, &privileges.Privileges[0].Luid)) {
+            AdjustTokenPrivileges(process_token, false, &privileges, 0, 0, 0);
+            if (GetLastError() == ERROR_SUCCESS) {
+                result = GetLargePageMinimum();
+            }
+        }
+        CloseHandle(process_token);
+    }
+
+    return result;
+}
+
+JK_PUBLIC uint64_t jk_platform_large_page_size(void)
+{
+    return jk_platform_data.large_page_size;
 }
 
 JK_PUBLIC void *jk_platform_memory_reserve(size_t size)
@@ -41,6 +87,11 @@ JK_PUBLIC void *jk_platform_memory_alloc(size_t size)
     return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 }
 
+JK_PUBLIC void *jk_platform_memory_alloc_large(size_t size)
+{
+    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES, PAGE_READWRITE);
+}
+
 JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
 {
     // TODO: Consider how to deal with different freeing behavior between Windows and Unix
@@ -52,26 +103,11 @@ JK_PUBLIC void jk_platform_console_utf8_enable(void)
     SetConsoleOutputCP(CP_UTF8);
 }
 
-typedef struct JkPlatformOsMetrics {
-    bool initialized;
-    HANDLE process;
-} JkPlatformOsMetrics;
-
-static JkPlatformOsMetrics jk_platform_os_metrics;
-
-JK_PUBLIC void jk_platform_os_metrics_init(void)
+JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
 {
-    assert(!jk_platform_os_metrics.initialized);
-    jk_platform_os_metrics.initialized = true;
-    jk_platform_os_metrics.process =
-            OpenProcess(PROCESS_QUERY_INFORMATION, false, GetCurrentProcessId());
-}
-
-JK_PUBLIC uint64_t jk_platform_os_metrics_page_fault_count_get(void)
-{
-    assert(jk_platform_os_metrics.initialized);
+    assert(jk_platform_data.initialized);
     PROCESS_MEMORY_COUNTERS memory_counters = {.cb = sizeof(memory_counters)};
-    GetProcessMemoryInfo(jk_platform_os_metrics.process, &memory_counters, sizeof(memory_counters));
+    GetProcessMemoryInfo(jk_platform_data.process, &memory_counters, sizeof(memory_counters));
     return (uint64_t)memory_counters.PageFaultCount;
 }
 
@@ -82,7 +118,7 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
     return value.QuadPart;
 }
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency_get(void)
+JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
 {
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
@@ -139,27 +175,21 @@ JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void) {}
 
-#ifndef NDEBUG
-
 typedef struct JkPlatformOsMetrics {
     bool initialized;
 } JkPlatformOsMetrics;
 
-static JkPlatformOsMetrics jk_platform_os_metrics;
+static JkPlatformOsMetrics jk_platform_data;
 
-#endif
-
-JK_PUBLIC void jk_platform_os_metrics_init(void)
+JK_PUBLIC void jk_platform_init(void)
 {
-    assert(!jk_platform_os_metrics.initialized);
-#ifndef NDEBUG
-    jk_platform_os_metrics.initialized = true;
-#endif
+    assert(!jk_platform_data.initialized);
+    jk_platform_data.initialized = true;
 }
 
-JK_PUBLIC uint64_t jk_platform_os_metrics_page_fault_count_get(void)
+JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
 {
-    assert(jk_platform_os_metrics.initialized);
+    assert(jk_platform_data.initialized);
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) == 0) {
         return usage.ru_majflt + usage.ru_minflt;
@@ -172,10 +202,10 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
 {
     struct timeval value;
     gettimeofday(&value, 0);
-    return jk_platform_os_timer_frequency_get() * (uint64_t)value.tv_sec + (uint64_t)value.tv_usec;
+    return jk_platform_os_timer_frequency() * (uint64_t)value.tv_sec + (uint64_t)value.tv_usec;
 }
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency_get(void)
+JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
 {
     return 1000000;
 }

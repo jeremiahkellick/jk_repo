@@ -63,7 +63,7 @@ int main(int argc, char **argv)
         exit(opts_parse.usage_error);
     }
 
-    jk_platform_os_metrics_init();
+    jk_platform_init();
 
     uint64_t page_size = jk_platform_page_size();
     JkBuffer buffer = {.size = (uint64_t)page_count * page_size};
@@ -73,13 +73,13 @@ int main(int argc, char **argv)
             continue;
         }
 
-        uint64_t count_before = jk_platform_os_metrics_page_fault_count_get();
+        uint64_t count_before = jk_platform_page_fault_count_get();
         uint64_t touch_size = touch_page_count * page_size;
         for (size_t i = 0; i < touch_size; i++) {
             size_t index = opt_results[OPT_REVERSE].present ? touch_size - 1 - i : i;
             buffer.data[index] = (uint8_t)index;
         }
-        uint64_t count_after = jk_platform_os_metrics_page_fault_count_get();
+        uint64_t count_after = jk_platform_page_fault_count_get();
 
         uint64_t fault_count = count_after - count_before;
         printf("%d, %d, %llu, %lld\n",

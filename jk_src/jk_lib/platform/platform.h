@@ -7,6 +7,8 @@
 
 // OS functions
 
+JK_PUBLIC void jk_platform_init(void);
+
 JK_PUBLIC size_t jk_platform_file_size(char *file_name);
 
 JK_PUBLIC size_t jk_platform_page_size(void);
@@ -21,13 +23,15 @@ JK_PUBLIC void jk_platform_memory_free(void *address, size_t size);
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void);
 
-JK_PUBLIC void jk_platform_os_metrics_init(void);
+JK_PUBLIC uint64_t jk_platform_large_pages_try_enable(void);
 
-JK_PUBLIC uint64_t jk_platform_os_metrics_page_fault_count_get(void);
+JK_PUBLIC uint64_t jk_platform_large_page_size(void);
+
+JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void);
 
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void);
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency_get(void);
+JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
 
 // Compiler functions
 

@@ -13,32 +13,91 @@
 #include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
+typedef enum Alloc {
+    NONE,
+    MALLOC,
+    VIRTUAL_ALLOC,
+    VIRTUAL_ALLOC_LARGE_PAGES,
+    ALLOC_COUNT,
+} Alloc;
+
 typedef struct ReadParams {
     JkBuffer dest;
     char *file_name;
-    bool malloc;
+    Alloc alloc;
 } ReadParams;
 
 typedef void ReadFunction(JkRepetitionTest *test, ReadParams params);
 
-static void handle_allocation(ReadParams *params)
+static void *global_buffer;
+
+static bool handle_allocation(JkRepetitionTest *test, ReadParams *params)
 {
-    if (params->malloc) {
+    switch (params->alloc) {
+    case NONE:
+    case ALLOC_COUNT: {
+        params->dest.data = global_buffer;
+    } break;
+
+    case MALLOC: {
         params->dest.data = malloc(params->dest.size);
+        if (!params->dest.data) {
+            jk_repetition_test_error(test, "malloc failed\n");
+            return false;
+        }
+    } break;
+
+    case VIRTUAL_ALLOC:
+    case VIRTUAL_ALLOC_LARGE_PAGES: {
+        size_t size = params->dest.size;
+        DWORD flAllocationType = MEM_COMMIT | MEM_RESERVE;
+
+        if (params->alloc == VIRTUAL_ALLOC_LARGE_PAGES) {
+            size_t large_page_size = jk_platform_large_page_size();
+            if (large_page_size > 0) {
+                flAllocationType |= MEM_LARGE_PAGES;
+                size = (size + large_page_size - 1) & ~(large_page_size - 1);
+            } else {
+                jk_repetition_test_error(test, "No large page support\n");
+                return false;
+            }
+        }
+
+        params->dest.data = VirtualAlloc(NULL, size, flAllocationType, PAGE_READWRITE);
+        if (!params->dest.data) {
+            jk_repetition_test_error(test, "VirtualAlloc failed\n");
+            return false;
+        }
+    } break;
     }
+
+    return true;
 }
 
-static void handle_deallocation(ReadParams *params)
+static void handle_deallocation(JkRepetitionTest *test, ReadParams *params)
 {
-    if (params->malloc) {
+    switch (params->alloc) {
+    case NONE:
+    case ALLOC_COUNT: {
+    } break;
+
+    case MALLOC: {
         free(params->dest.data);
+    } break;
+
+    case VIRTUAL_ALLOC:
+    case VIRTUAL_ALLOC_LARGE_PAGES: {
+        VirtualFree(params->dest.data, 0, MEM_RELEASE);
+    } break;
     }
 }
 
 static void write_to_all_bytes(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
-        handle_allocation(&params);
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
 
         jk_repetition_test_time_begin(test);
         for (size_t i = 0; i < params.dest.size; i++) {
@@ -48,14 +107,16 @@ static void write_to_all_bytes(JkRepetitionTest *test, ReadParams params)
 
         jk_repetition_test_count_bytes(test, params.dest.size);
 
-        handle_deallocation(&params);
+        handle_deallocation(test, &params);
     }
 }
 
 static void write_to_all_bytes_backwards(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
-        handle_allocation(&params);
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
 
         jk_repetition_test_time_begin(test);
         for (size_t i = 0; i < params.dest.size; i++) {
@@ -65,18 +126,20 @@ static void write_to_all_bytes_backwards(JkRepetitionTest *test, ReadParams para
 
         jk_repetition_test_count_bytes(test, params.dest.size);
 
-        handle_deallocation(&params);
+        handle_deallocation(test, &params);
     }
 }
 
 static void read_via_fread(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
-        handle_allocation(&params);
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
         FILE *file = fopen(params.file_name, "rb");
         if (!file) {
             jk_repetition_test_error(test, "read_via_fread: Failed to open file\n");
-            handle_deallocation(&params);
+            handle_deallocation(test, &params);
             continue;
         }
 
@@ -90,18 +153,20 @@ static void read_via_fread(JkRepetitionTest *test, ReadParams params)
             jk_repetition_test_error(test, "read_via_fread: fread failed\n");
         }
         fclose(file);
-        handle_deallocation(&params);
+        handle_deallocation(test, &params);
     }
 }
 
 static void read_via_read(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
-        handle_allocation(&params);
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
         int file = _open(params.file_name, _O_BINARY | _O_RDONLY);
         if (file == -1) {
             jk_repetition_test_error(test, "read_via_read: Failed to open file\n");
-            handle_deallocation(&params);
+            handle_deallocation(test, &params);
             continue;
         }
 
@@ -128,14 +193,16 @@ static void read_via_read(JkRepetitionTest *test, ReadParams params)
         }
 
         _close(file);
-        handle_deallocation(&params);
+        handle_deallocation(test, &params);
     }
 }
 
 static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
 {
     while (jk_repetition_test_running(test)) {
-        handle_allocation(&params);
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
         HANDLE file = CreateFileA(params.file_name,
                 GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -145,7 +212,7 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
                 0);
         if (file == INVALID_HANDLE_VALUE) {
             jk_repetition_test_error(test, "read_via_read_file: Failed to open file\n");
-            handle_deallocation(&params);
+            handle_deallocation(test, &params);
             continue;
         }
 
@@ -173,7 +240,7 @@ static void read_via_read_file(JkRepetitionTest *test, ReadParams params)
         }
 
         CloseHandle(file);
-        handle_deallocation(&params);
+        handle_deallocation(test, &params);
     }
 }
 
@@ -191,7 +258,7 @@ static TestCandidate candidates[] = {
 };
 
 // tests[malloc][i]
-static JkRepetitionTest tests[2][JK_ARRAY_COUNT(candidates)];
+static JkRepetitionTest tests[ALLOC_COUNT][JK_ARRAY_COUNT(candidates)];
 
 int main(int argc, char **argv)
 {
@@ -201,21 +268,39 @@ int main(int argc, char **argv)
     }
 
     ReadParams params = {.file_name = argv[1], .dest = {.size = jk_platform_file_size(argv[1])}};
-    params.dest.data = malloc(params.dest.size);
-    if (!params.dest.data) {
+    global_buffer = malloc(params.dest.size);
+    if (!global_buffer) {
         fprintf(stderr, "%s: Failed to allocate memory\n", argv[0]);
         exit(1);
     }
 
-    jk_platform_os_metrics_init();
+    jk_platform_init();
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
 
     while (true) {
         for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
-            for (int malloc = 0; malloc < 2; malloc++) {
-                params.malloc = malloc;
-                JkRepetitionTest *test = &tests[params.malloc][i];
-                printf("\n%s%s\n", candidates[i].name, params.malloc ? " w/ malloc" : "");
+            for (params.alloc = 0; params.alloc < ALLOC_COUNT; params.alloc++) {
+                JkRepetitionTest *test = &tests[params.alloc][i];
+
+                printf("\n%s", candidates[i].name);
+                switch (params.alloc) {
+                case NONE:
+                case ALLOC_COUNT: {
+                } break;
+
+                case MALLOC: {
+                    printf(" (malloc)");
+                } break;
+
+                case VIRTUAL_ALLOC: {
+                    printf(" (VirtualAlloc)");
+                } break;
+                case VIRTUAL_ALLOC_LARGE_PAGES: {
+                    printf(" (VirtualAlloc w/ MEM_LARGE_PAGES)");
+                } break;
+                }
+                printf("\n");
+
                 jk_repetition_test_run_wave(test, params.dest.size, frequency, 10);
                 candidates[i].function(test, params);
                 if (test->state == JK_REPETITION_TEST_ERROR) {

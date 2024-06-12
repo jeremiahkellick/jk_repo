@@ -16,7 +16,7 @@ int main(int argc, char **argv)
         milliseconds_to_wait = atol(argv[1]);
     }
 
-    uint64_t os_freq = jk_platform_os_timer_frequency_get();
+    uint64_t os_freq = jk_platform_os_timer_frequency();
     printf("OS frequency: %llu\n", (long long)os_freq);
 
     uint64_t cpu_start = jk_platform_cpu_timer_get();

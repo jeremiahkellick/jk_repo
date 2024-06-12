@@ -11,7 +11,7 @@
 
 JK_PUBLIC uint64_t jk_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait)
 {
-    uint64_t os_freq = jk_platform_os_timer_frequency_get();
+    uint64_t os_freq = jk_platform_os_timer_frequency();
     uint64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
 
     uint64_t os_end = 0;
@@ -170,14 +170,14 @@ JK_PUBLIC void jk_repetition_test_run_wave(JkRepetitionTest *test,
 JK_PUBLIC void jk_repetition_test_time_begin(JkRepetitionTest *test)
 {
     test->block_open_count++;
-    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] -= jk_platform_os_metrics_page_fault_count_get();
+    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] -= jk_platform_page_fault_count_get();
     test->current.v[JK_REP_VALUE_CPU_TIMER] -= jk_platform_cpu_timer_get();
 }
 
 JK_PUBLIC void jk_repetition_test_time_end(JkRepetitionTest *test)
 {
     test->current.v[JK_REP_VALUE_CPU_TIMER] += jk_platform_cpu_timer_get();
-    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] += jk_platform_os_metrics_page_fault_count_get();
+    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] += jk_platform_page_fault_count_get();
     test->block_close_count++;
 }
 

@@ -782,6 +782,7 @@ int main(int argc, char **argv)
     case COMPILER_MSVC: {
         array_append(&command, "/link");
         array_append(&command, "/INCREMENTAL:NO");
+        array_append(&command, "Advapi32.lib");
     } break;
 
     case COMPILER_GCC: {
