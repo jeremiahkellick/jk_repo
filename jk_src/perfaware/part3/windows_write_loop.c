@@ -1,0 +1,257 @@
+#include <fcntl.h>
+#include <io.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <windows.h>
+
+#include <jk_gen/single_translation_unit.h>
+
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_lib/platform/platform.h>
+#include <jk_src/jk_lib/profile/profile.h>
+// #jk_build dependencies_end
+
+void buffer_loop_mov_asm(size_t size, void *data);
+void buffer_loop_nop_asm(size_t size);
+void buffer_loop_cmp_asm(size_t size);
+void buffer_loop_dec_asm(size_t size);
+
+typedef enum Alloc {
+    NONE,
+    MALLOC,
+    VIRTUAL_ALLOC,
+    VIRTUAL_ALLOC_LARGE_PAGES,
+    ALLOC_COUNT,
+} Alloc;
+
+typedef struct ReadParams {
+    JkBuffer dest;
+    char *file_name;
+    Alloc alloc;
+} ReadParams;
+
+typedef void ReadFunction(JkRepetitionTest *test, ReadParams params);
+
+static void *global_buffer;
+
+static bool handle_allocation(JkRepetitionTest *test, ReadParams *params)
+{
+    switch (params->alloc) {
+    case NONE:
+    case ALLOC_COUNT: {
+        params->dest.data = global_buffer;
+    } break;
+
+    case MALLOC: {
+        params->dest.data = malloc(params->dest.size);
+        if (!params->dest.data) {
+            jk_repetition_test_error(test, "malloc failed\n");
+            return false;
+        }
+    } break;
+
+    case VIRTUAL_ALLOC:
+    case VIRTUAL_ALLOC_LARGE_PAGES: {
+        size_t size = params->dest.size;
+        DWORD flAllocationType = MEM_COMMIT | MEM_RESERVE;
+
+        if (params->alloc == VIRTUAL_ALLOC_LARGE_PAGES) {
+            size_t large_page_size = jk_platform_large_page_size();
+            if (large_page_size > 0) {
+                flAllocationType |= MEM_LARGE_PAGES;
+                size = (size + large_page_size - 1) & ~(large_page_size - 1);
+            } else {
+                jk_repetition_test_error(test, "No large page support\n");
+                return false;
+            }
+        }
+
+        params->dest.data = VirtualAlloc(NULL, size, flAllocationType, PAGE_READWRITE);
+        if (!params->dest.data) {
+            jk_repetition_test_error(test, "VirtualAlloc failed\n");
+            return false;
+        }
+    } break;
+    }
+
+    return true;
+}
+
+static void handle_deallocation(JkRepetitionTest *test, ReadParams *params)
+{
+    switch (params->alloc) {
+    case NONE:
+    case ALLOC_COUNT: {
+    } break;
+
+    case MALLOC: {
+        free(params->dest.data);
+    } break;
+
+    case VIRTUAL_ALLOC:
+    case VIRTUAL_ALLOC_LARGE_PAGES: {
+        VirtualFree(params->dest.data, 0, MEM_RELEASE);
+    } break;
+    }
+}
+
+static void write_to_all_bytes(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
+
+        jk_repetition_test_time_begin(test);
+        for (size_t i = 0; i < params.dest.size; i++) {
+            params.dest.data[i] = (uint8_t)i;
+        }
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(test, &params);
+    }
+}
+
+static void buffer_loop_mov(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
+
+        jk_repetition_test_time_begin(test);
+        buffer_loop_mov_asm(params.dest.size, params.dest.data);
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(test, &params);
+    }
+}
+
+static void buffer_loop_nop(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
+
+        jk_repetition_test_time_begin(test);
+        buffer_loop_nop_asm(params.dest.size);
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(test, &params);
+    }
+}
+
+static void buffer_loop_cmp(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
+
+        jk_repetition_test_time_begin(test);
+        buffer_loop_cmp_asm(params.dest.size);
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(test, &params);
+    }
+}
+
+static void buffer_loop_dec(JkRepetitionTest *test, ReadParams params)
+{
+    while (jk_repetition_test_running(test)) {
+        if (!handle_allocation(test, &params)) {
+            continue;
+        }
+
+        jk_repetition_test_time_begin(test);
+        buffer_loop_dec_asm(params.dest.size);
+        jk_repetition_test_time_end(test);
+
+        jk_repetition_test_count_bytes(test, params.dest.size);
+
+        handle_deallocation(test, &params);
+    }
+}
+
+typedef struct TestCandidate {
+    char *name;
+    ReadFunction *function;
+} TestCandidate;
+
+static TestCandidate candidates[] = {
+    {"Write to all bytes", write_to_all_bytes},
+    {"buffer_loop_mov", buffer_loop_mov},
+    {"buffer_loop_nop", buffer_loop_nop},
+    {"buffer_loop_cmp", buffer_loop_cmp},
+    {"buffer_loop_dec", buffer_loop_dec},
+};
+
+// tests[malloc][i]
+static JkRepetitionTest tests[ALLOC_COUNT][JK_ARRAY_COUNT(candidates)];
+
+int main(int argc, char **argv)
+{
+    if (argc != 2) {
+        fprintf(stderr, "%s: Expected 1 file argument, got %d\n", argv[0], argc - 1);
+        exit(1);
+    }
+
+    ReadParams params = {
+        .file_name = argv[1],
+        .dest = {.size = jk_platform_file_size(argv[1])},
+        .alloc = NONE,
+    };
+    global_buffer = malloc(params.dest.size);
+    if (!global_buffer) {
+        fprintf(stderr, "%s: Failed to allocate memory\n", argv[0]);
+        exit(1);
+    }
+
+    jk_platform_init();
+    uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
+
+    while (true) {
+        for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+            JkRepetitionTest *test = &tests[params.alloc][i];
+
+            printf("\n%s", candidates[i].name);
+            switch (params.alloc) {
+            case NONE:
+            case ALLOC_COUNT: {
+            } break;
+
+            case MALLOC: {
+                printf(" (malloc)");
+            } break;
+
+            case VIRTUAL_ALLOC: {
+                printf(" (VirtualAlloc)");
+            } break;
+            case VIRTUAL_ALLOC_LARGE_PAGES: {
+                printf(" (VirtualAlloc w/ MEM_LARGE_PAGES)");
+            } break;
+            }
+            printf("\n");
+
+            jk_repetition_test_run_wave(test, params.dest.size, frequency, 10);
+            candidates[i].function(test, params);
+            if (test->state == JK_REPETITION_TEST_ERROR) {
+                fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
+                exit(1);
+            }
+        }
+    }
+
+    return 0;
+}

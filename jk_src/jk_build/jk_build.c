@@ -782,7 +782,13 @@ int main(int argc, char **argv)
     case COMPILER_MSVC: {
         array_append(&command, "/link");
         array_append(&command, "/INCREMENTAL:NO");
+
+        char libpath[PATH_MAX];
+        snprintf(libpath, PATH_MAX, "/LIBPATH:\"%s\"", root_path);
+        array_append(&command, libpath);
+
         array_append(&command, "Advapi32.lib");
+        array_append(&command, "windows_write_loop.lib");
     } break;
 
     case COMPILER_GCC: {
