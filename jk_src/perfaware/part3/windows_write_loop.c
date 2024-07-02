@@ -16,6 +16,8 @@ void buffer_loop_dec(size_t size, void *data);
 void buffer_loop_nop(size_t size, void *data);
 void buffer_loop_nop_3(size_t size, void *data);
 void buffer_loop_nop_9(size_t size, void *data);
+void loop_predictable(size_t size, void *data);
+void loop_unpredictable(size_t size, void *data);
 
 typedef struct TestCandidate {
     char *name;
@@ -23,9 +25,8 @@ typedef struct TestCandidate {
 } TestCandidate;
 
 static TestCandidate candidates[] = {
-    {"buffer_loop_nop", buffer_loop_nop},
-    {"buffer_loop_nop_3", buffer_loop_nop_3},
-    {"buffer_loop_nop_9", buffer_loop_nop_9},
+    {"loop_predictable", loop_predictable},
+    {"loop_unpredictable", loop_unpredictable},
 };
 
 // tests[malloc][i]
