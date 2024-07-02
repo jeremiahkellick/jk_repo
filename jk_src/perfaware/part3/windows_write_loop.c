@@ -11,9 +11,11 @@
 // #jk_build dependencies_end
 
 void buffer_loop_mov(size_t size, void *data);
-void buffer_loop_nop(size_t size, void *data);
 void buffer_loop_cmp(size_t size, void *data);
 void buffer_loop_dec(size_t size, void *data);
+void buffer_loop_nop(size_t size, void *data);
+void buffer_loop_nop_3(size_t size, void *data);
+void buffer_loop_nop_9(size_t size, void *data);
 
 typedef struct TestCandidate {
     char *name;
@@ -21,10 +23,9 @@ typedef struct TestCandidate {
 } TestCandidate;
 
 static TestCandidate candidates[] = {
-    {"buffer_loop_mov", buffer_loop_mov},
     {"buffer_loop_nop", buffer_loop_nop},
-    {"buffer_loop_cmp", buffer_loop_cmp},
-    {"buffer_loop_dec", buffer_loop_dec},
+    {"buffer_loop_nop_3", buffer_loop_nop_3},
+    {"buffer_loop_nop_9", buffer_loop_nop_9},
 };
 
 // tests[malloc][i]
