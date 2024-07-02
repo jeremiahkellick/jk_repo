@@ -1,11 +1,11 @@
-global buffer_loop_mov_asm
-global buffer_loop_nop_asm
-global buffer_loop_cmp_asm
-global buffer_loop_dec_asm
+global buffer_loop_mov
+global buffer_loop_nop
+global buffer_loop_cmp
+global buffer_loop_dec
 
 section .text
 
-buffer_loop_mov_asm:
+buffer_loop_mov:
     xor rax, rax
 .loop:
     mov [rdx + rax], al
@@ -14,7 +14,7 @@ buffer_loop_mov_asm:
     jb .loop
     ret
 
-buffer_loop_nop_asm:
+buffer_loop_nop:
     xor rax, rax
 .loop:
     db 0x0f, 0x1f, 0x00
@@ -23,7 +23,7 @@ buffer_loop_nop_asm:
     jb .loop
     ret
 
-buffer_loop_cmp_asm:
+buffer_loop_cmp:
     xor rax, rax
 .loop:
     inc rax
@@ -31,7 +31,7 @@ buffer_loop_cmp_asm:
     jb .loop
     ret
 
-buffer_loop_dec_asm:
+buffer_loop_dec:
 .loop:
     dec rcx
     jnz .loop
