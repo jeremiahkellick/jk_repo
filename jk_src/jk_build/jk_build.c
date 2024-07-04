@@ -30,7 +30,6 @@
 
 #endif
 
-#define BUF_SIZE 4096
 #define ARRAY_MAX 255
 
 typedef enum Compiler {
@@ -59,13 +58,13 @@ static void windows_print_last_error_and_exit(void)
     if (error_code == 0) {
         fprintf(stderr, "Unknown error\n");
     } else {
-        char message_buf[BUF_SIZE] = {'\0'};
+        char message_buf[PATH_MAX] = {'\0'};
         FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                 NULL,
                 error_code,
                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                 message_buf,
-                BUF_SIZE - 1,
+                PATH_MAX - 1,
                 NULL);
         fprintf(stderr, "%s", message_buf);
     }
@@ -116,16 +115,16 @@ static int command_run(StringArray *command)
 #ifdef _WIN32
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
-    char command_string[BUF_SIZE];
+    char command_string[PATH_MAX];
     int string_i = 0;
     for (int args_i = 0; args_i < command->count; args_i++) {
         string_i += snprintf(&command_string[string_i],
-                BUF_SIZE - string_i,
+                PATH_MAX - string_i,
                 contains_whitespace(command->items[args_i]) ? "%s\"%s\"" : "%s%s",
                 args_i == 0 ? "" : " ",
                 command->items[args_i]);
-        if (string_i >= BUF_SIZE) {
-            fprintf(stderr, "%s: Insufficient BUF_SIZE\n", program_name);
+        if (string_i >= PATH_MAX) {
+            fprintf(stderr, "%s: Insufficient PATH_MAX\n", program_name);
             exit(1);
         }
     }
@@ -310,9 +309,10 @@ static char const jk_src_string[] = "jk_src/";
 static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
 static char const jk_gen_stu_string[] = JK_GEN_STRING_LITERAL "single_translation_unit.h";
 
-static bool find_dependencies(char *root_file_path, StringArray *dependencies)
+static bool find_dependencies(
+        char *root_file_path, StringArray *dependencies, StringArray *nasm_files)
 {
-    static char buf[BUF_SIZE] = {'\0'};
+    static char buf[PATH_MAX] = {'\0'};
 
     bool dependencies_open = false;
     bool single_translation_unit = false;
@@ -405,6 +405,34 @@ static bool find_dependencies(char *root_file_path, StringArray *dependencies)
                                 program_name);
                         exit(1);
                     }
+                } else if (strcmp(buf, "nasm") == 0) {
+                    if (c == '\n' || c == EOF) {
+                        fprintf(stderr, "%s: '#jk_build nasm' expects a file path\n", program_name);
+                        exit(1);
+                    }
+                    // Read nasm file path into buf
+                    size_t nasm_path_length = 0;
+                    while ((c = getc(file)) != '\n' && c != EOF) {
+                        buf[nasm_path_length++] = (char)c;
+                        if (nasm_path_length > PATH_MAX - 1) {
+                            fprintf(stderr,
+                                    "%s: '#jk_build nasm': Path exceeded PATH_MAX\n",
+                                    program_name);
+                            exit(1);
+                        }
+                    }
+                    buf[nasm_path_length] = '\0';
+                    // Allocate new buffer and write the abolute path of the nasm file to it
+                    char *nasm_path = malloc(root_path_length + nasm_path_length + 1);
+                    if (nasm_path == NULL) {
+                        fprintf(stderr, "%s: Out of memory\n", program_name);
+                        exit(1);
+                    }
+                    memcpy(nasm_path, root_path, root_path_length);
+                    memcpy(nasm_path + root_path_length, buf, nasm_path_length);
+                    nasm_path[root_path_length + nasm_path_length] = '\0';
+
+                    array_append(nasm_files, nasm_path);
                 } else {
                     fprintf(stderr,
                             "%s: #jk_build control comment with unknown command \"%s\"\n",
@@ -427,8 +455,8 @@ static bool find_dependencies(char *root_file_path, StringArray *dependencies)
                         goto reset_parse;
                     }
                     buf[path_length++] = (char)c;
-                    if (path_length > BUF_SIZE - 1) {
-                        fprintf(stderr, "%s: Include path too big for BUF_SIZE\n", program_name);
+                    if (path_length > PATH_MAX - 1) {
+                        fprintf(stderr, "%s: Include path too big for PATH_MAX\n", program_name);
                         exit(1);
                     }
                 }
@@ -660,8 +688,36 @@ int main(int argc, char **argv)
     }
 
     StringArray dependencies = {0};
-    bool single_translation_unit = find_dependencies(source_file_path, &dependencies);
+    StringArray nasm_files = {0};
+    bool single_translation_unit = find_dependencies(source_file_path, &dependencies, &nasm_files);
 
+    for (int i = 0; i < nasm_files.count; i++) {
+        char nasm_output_path[PATH_MAX];
+        snprintf(nasm_output_path, PATH_MAX, "%s/nasm%d.o", build_path, i);
+
+        StringArray nasm_command = {0};
+
+        array_append(&nasm_command, "nasm");
+        array_append(&nasm_command, "-o", nasm_output_path);
+
+        if (compiler == COMPILER_MSVC) {
+            array_append(&nasm_command, "-f", "win64");
+        } else {
+            array_append(&nasm_command, "-f", "elf64");
+        }
+
+        array_append(&nasm_command, nasm_files.items[i]);
+
+        command_run(&nasm_command);
+
+        if (compiler == COMPILER_MSVC) {
+            StringArray lib_command = {0};
+            array_append(&lib_command, "lib", "/nologo", nasm_output_path);
+            command_run(&lib_command);
+        }
+    }
+
+    // Compile command
     StringArray command = {0};
 
     switch (compiler) { // Compiler options
@@ -788,7 +844,6 @@ int main(int argc, char **argv)
         array_append(&command, libpath);
 
         array_append(&command, "Advapi32.lib");
-        array_append(&command, "windows_write_loop.lib");
     } break;
 
     case COMPILER_GCC: {
@@ -805,6 +860,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", argv[0]);
         exit(1);
     } break;
+    }
+
+    for (int i = 0; i < nasm_files.count; i++) {
+        char file_name[32];
+        snprintf(file_name, 32, "nasm%d.%s", i, compiler == COMPILER_MSVC ? "lib" : "o");
+        array_append(&command, file_name);
     }
 
     return command_run(&command);
