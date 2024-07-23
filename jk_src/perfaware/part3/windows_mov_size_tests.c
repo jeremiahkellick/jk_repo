@@ -15,7 +15,10 @@
 void read_4x2(size_t size, void *data);
 void read_8x2(size_t size, void *data);
 void read_16x2(size_t size, void *data);
+void read_32x1(size_t size, void *data);
 void read_32x2(size_t size, void *data);
+void read_32x3(size_t size, void *data);
+void read_32x4(size_t size, void *data);
 
 typedef struct TestCandidate {
     char *name;
@@ -27,6 +30,11 @@ static TestCandidate candidates[] = {
     {"read_8x2", read_8x2},
     {"read_16x2", read_16x2},
     {"read_32x2", read_32x2},
+
+//  {"read_32x1", read_32x1},
+//  {"read_32x2", read_32x2},
+//  {"read_32x3", read_32x3},
+//  {"read_32x4", read_32x4},
 };
 
 static JkRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
