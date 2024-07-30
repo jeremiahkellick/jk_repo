@@ -12,41 +12,39 @@
 #include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
-void read_asm(size_t size, void *data);
+void read_asm(size_t byte_count, size_t size, void *data);
 
-#define TEST_COUNT 4
+static JkRepetitionTest tests[17];
 
-static char *names[] = {"L1", "L2", "L3", "Main memory"};
-
-// Sizes chosen based on Skylake cache sizes
-static size_t sizes[JK_ARRAY_COUNT(names)] = {
-    4096, // L1
-    128 * 1024, // L2
-    512 * 1024, // L3
-    64 * 1024 * 1024, // Main memory
-};
-
-static JkRepetitionTest tests[JK_ARRAY_COUNT(names)];
+#define STARTING_SIZE (16 * 1024)
+#define MAX_SIZE (STARTING_SIZE << (JK_ARRAY_COUNT(tests) - 1))
 
 int main(int argc, char **argv)
 {
     jk_platform_init();
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
 
-    void *data = jk_platform_memory_alloc(sizes[JK_ARRAY_COUNT(names) - 1]);
+    void *data = jk_platform_memory_alloc(MAX_SIZE);
 
     while (true) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(names); i++) {
+        size_t size = STARTING_SIZE;
+        for (size_t i = 0; i < JK_ARRAY_COUNT(tests); i++, size *= 2) {
             JkRepetitionTest *test = &tests[i];
 
-            printf("\n%s\n", names[i]);
+            if (size < 1024 * 1024) {
+                printf("\n%.2f KiB\n", (double)size / 1024.0);
+            } else if (size < 1024 * 1024 * 1024) {
+                printf("\n%.2f MiB\n", (double)size / (1024.0 * 1024.0));
+            } else {
+                printf("\n%.2f GiB\n", (double)size / (1024 * 1024.0 * 1024.0));
+            }
 
-            jk_repetition_test_run_wave(test, sizes[i], frequency, 10);
+            jk_repetition_test_run_wave(test, MAX_SIZE, frequency, 10);
             while (jk_repetition_test_running(test)) {
                 jk_repetition_test_time_begin(test);
-                read_asm(sizes[i], data);
+                read_asm(MAX_SIZE, size, data);
                 jk_repetition_test_time_end(test);
-                jk_repetition_test_count_bytes(test, sizes[i]);
+                jk_repetition_test_count_bytes(test, MAX_SIZE);
             }
             if (test->state == JK_REPETITION_TEST_ERROR) {
                 fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
