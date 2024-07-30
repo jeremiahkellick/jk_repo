@@ -4,7 +4,7 @@
 
 #include <jk_gen/single_translation_unit.h>
 
-// #jk_build nasm jk_src/perfaware/part3/windows_cache_tests.asm
+// #jk_build nasm jk_src/perfaware/part3/windows_cache_test.asm
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
