@@ -12,11 +12,17 @@
 #include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
-void test_control(uint64_t input_size, uint64_t output_size, void *data);
-void test_non_temporal(uint64_t input_size, uint64_t output_size, void *data);
+void test_control(uint64_t outer_loop_iterations,
+        uint64_t inner_loop_iterations,
+        void *input_data,
+        void *output_data);
+void test_non_temporal(uint64_t outer_loop_iterations,
+        uint64_t inner_loop_iterations,
+        void *input_data,
+        void *output_data);
 
 typedef struct Function {
-    void (*ptr)(uint64_t, uint64_t, void *);
+    void (*ptr)(uint64_t, uint64_t, void *, void *);
     char *name;
 } Function;
 
@@ -34,11 +40,14 @@ int main(int argc, char **argv)
 
     uint64_t input_size = 16llu * 1024;
     uint64_t output_size = 1024llu * 1024 * 1024;
+    uint64_t outer_loop_iterations = input_size / 0x80;
+    uint64_t inner_loop_iterations = output_size / input_size;
 
-    void *data = jk_platform_memory_alloc(input_size + output_size);
+    void *input_data = jk_platform_memory_alloc(input_size + output_size);
+    void *output_data = (char *)input_data + input_size;
 
     for (uint32_t i = 0; i < input_size / sizeof(uint32_t); i++) {
-        ((uint32_t *)data)[i] = i;
+        ((uint32_t *)input_data)[i] = i;
     }
 
     while (true) {
@@ -51,7 +60,8 @@ int main(int argc, char **argv)
             jk_repetition_test_run_wave(test, output_size, frequency, 10);
             while (jk_repetition_test_running(test)) {
                 jk_repetition_test_time_begin(test);
-                function->ptr(input_size, output_size, data);
+                function->ptr(
+                        outer_loop_iterations, inner_loop_iterations, input_data, output_data);
                 jk_repetition_test_time_end(test);
                 jk_repetition_test_count_bytes(test, output_size);
             }
