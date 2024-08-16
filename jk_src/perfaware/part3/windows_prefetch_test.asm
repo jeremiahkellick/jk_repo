@@ -4,36 +4,25 @@ global process_nodes_prefetch
 section .text
 
 process_nodes_control:
-    push rdi
-    mov rdi, 3
-    xor rdx, rdx
-
     align 64
 .loop:
-    mov eax, [rcx + 8]
+    db 0x0f, 0x1f, 0x00 ; 3-byte nop
+%rep 224
+    nop
+%endrep
     mov rcx, [rcx]
-    mov rdx, 0
-    div rdi
     test rcx, rcx
     jnz .loop
-
-    pop rdi
     ret
 
 process_nodes_prefetch:
-    push rdi
-    mov rdi, 3
-    xor rdx, rdx
-
     align 64
 .loop:
-    mov eax, [rcx + 8]
+    prefetch [rcx]
+%rep 224
+    nop
+%endrep
     mov rcx, [rcx]
-    prefetcht0 [rcx]
-    mov rdx, 0
-    div rdi
     test rcx, rcx
     jnz .loop
-
-    pop rdi
     ret
