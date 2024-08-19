@@ -14,17 +14,19 @@
 
 typedef struct Node {
     struct Node *next;
-    uint32_t num;
+    uint64_t padding[7];
 } Node;
 
 #define NODE_COUNT ((1024llu * 1024 * 1024) / sizeof(Node))
 
-void process_nodes_control(Node *node);
-void process_nodes_prefetch(Node *node);
+void process_nodes_control(uint64_t rep_count, Node *node);
+void process_nodes_prefetch(uint64_t rep_count, Node *node);
+
+uint64_t rep_counts[] = {4, 8, 16, 32, 64, 128};
 
 typedef struct Function {
     char *name;
-    void (*ptr)(Node *node);
+    void (*ptr)(uint64_t rep_count, Node *node);
 } Function;
 
 Function functions[] = {
@@ -32,11 +34,13 @@ Function functions[] = {
     {.name = "Prefetch", .ptr = process_nodes_prefetch},
 };
 
-// Usage: tests[0 - don't prefetch, 1 - prefetch]
-static JkRepetitionTest tests[JK_ARRAY_COUNT(functions)];
+// Usage: tests[rep_count_index][function_index]
+static JkRepetitionTest tests[JK_ARRAY_COUNT(rep_counts)][JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
+    assert(sizeof(Node) == 64);
+
     jk_platform_init();
     uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
 
@@ -70,26 +74,31 @@ int main(int argc, char **argv)
         if (i + 1 < NODE_COUNT) {
             nodes[idx].next = &nodes[indicies[i + 1]];
         }
-        nodes[idx].num = (uint32_t)i;
     }
 
     while (true) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
-            Function *function = &functions[i];
-            JkRepetitionTest *test = &tests[i];
+        for (size_t rep_count_index = 0; rep_count_index < JK_ARRAY_COUNT(rep_counts);
+                rep_count_index++) {
+            for (size_t function_index = 0; function_index < JK_ARRAY_COUNT(functions);
+                    function_index++) {
+                Function *function = &functions[function_index];
+                JkRepetitionTest *test = &tests[rep_count_index][function_index];
 
-            printf("\n%s\n", function->name);
+                printf("\nRep count: %llu, Function: %s\n",
+                        (long long)rep_counts[rep_count_index],
+                        function->name);
 
-            jk_repetition_test_run_wave(test, NODE_COUNT * sizeof(Node), frequency, 10);
-            while (jk_repetition_test_running(test)) {
-                jk_repetition_test_time_begin(test);
-                function->ptr(starting_node);
-                jk_repetition_test_time_end(test);
-                jk_repetition_test_count_bytes(test, NODE_COUNT * sizeof(Node));
-            }
-            if (test->state == JK_REPETITION_TEST_ERROR) {
-                fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
-                exit(1);
+                jk_repetition_test_run_wave(test, NODE_COUNT * sizeof(Node), frequency, 10);
+                while (jk_repetition_test_running(test)) {
+                    jk_repetition_test_time_begin(test);
+                    function->ptr(rep_counts[rep_count_index], starting_node);
+                    jk_repetition_test_time_end(test);
+                    jk_repetition_test_count_bytes(test, NODE_COUNT * sizeof(Node));
+                }
+                if (test->state == JK_REPETITION_TEST_ERROR) {
+                    fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
+                    exit(1);
+                }
             }
         }
     }
