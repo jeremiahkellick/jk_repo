@@ -202,7 +202,6 @@ static void jk_repetition_test_print_values(char *name, JkRepValues values, uint
                 v[JK_REP_VALUE_PAGE_FAULT_COUNT],
                 v[JK_REP_VALUE_BYTE_COUNT] / 1024.0 / v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
     }
-    printf("\n");
 }
 
 JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
@@ -233,6 +232,9 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
         if (test->current.v[JK_REP_VALUE_CPU_TIMER] < test->min.v[JK_REP_VALUE_CPU_TIMER]) {
             test->min = test->current;
             test->last_found_min_time = current_time;
+            printf("\r                                                                             "
+                   "          \r");
+            jk_repetition_test_print_values("Min", test->min, test->frequency);
         }
         if (test->current.v[JK_REP_VALUE_CPU_TIMER] > test->max.v[JK_REP_VALUE_CPU_TIMER]) {
             test->max = test->current;
@@ -248,9 +250,14 @@ JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test)
 
         // Print results
         if (test->total.v[JK_REP_VALUE_TEST_COUNT]) {
+            printf("\r                                                                             "
+                   "          \r");
             jk_repetition_test_print_values("Min", test->min, test->frequency);
+            printf("\n");
             jk_repetition_test_print_values("Max", test->max, test->frequency);
+            printf("\n");
             jk_repetition_test_print_values("Avg", test->total, test->frequency);
+            printf("\n");
         }
     }
 
