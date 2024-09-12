@@ -309,8 +309,11 @@ static char const jk_src_string[] = "jk_src/";
 static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
 static char const jk_gen_stu_string[] = JK_GEN_STRING_LITERAL "single_translation_unit.h";
 
-static bool find_dependencies(
-        char *root_file_path, StringArray *dependencies, StringArray *nasm_files)
+static bool parse_files(char *root_file_path,
+        StringArray *dependencies,
+        StringArray *nasm_files,
+        StringArray *compiler_arguments,
+        StringArray *linker_arguments)
 {
     static char buf[PATH_MAX] = {'\0'};
 
@@ -386,7 +389,42 @@ static bool find_dependencies(
                 }
                 buf[command_length] = '\0';
 
-                if (strcmp(buf, "dependencies_begin") == 0) {
+                bool cmd_compiler_arguments = strcmp(buf, "compiler_arguments") == 0;
+                bool cmd_linker_arguments = strcmp(buf, "linker_arguments") == 0;
+
+                if (cmd_compiler_arguments || cmd_linker_arguments) {
+                    // Read rest of line into buf
+                    size_t pos = 0;
+                    while ((c = getc(file)) != '\n' && c != EOF) {
+                        buf[pos++] = (char)c;
+                        if (pos > PATH_MAX - 1) {
+                            fprintf(stderr,
+                                    "%s: '#jk_build nasm': Path exceeded PATH_MAX\n",
+                                    program_name);
+                            exit(1);
+                        }
+                    }
+                    buf[pos++] = '\0';
+
+                    char *memory = malloc(sizeof(char) * pos);
+                    if (memory == NULL) {
+                        fprintf(stderr, "%s: Out of memory\n", program_name);
+                        exit(1);
+                    }
+                    memcpy(memory, buf, pos);
+
+                    bool is_start_of_flag = true;
+                    for (size_t i = 0; i < pos; i++) {
+                        if (isspace(memory[i])) {
+                            is_start_of_flag = true;
+                            memory[i] = '\0';
+                        } else if (is_start_of_flag) {
+                            is_start_of_flag = false;
+                            array_append(
+                                    cmd_compiler_arguments ? compiler_arguments : linker_arguments, &memory[i]);
+                        }
+                    }
+                } else if (strcmp(buf, "dependencies_begin") == 0) {
                     if (dependencies_open) {
                         fprintf(stderr,
                                 "%s: Double '#jk_build dependencies_begin' control comments with "
@@ -689,7 +727,10 @@ int main(int argc, char **argv)
 
     StringArray dependencies = {0};
     StringArray nasm_files = {0};
-    bool single_translation_unit = find_dependencies(source_file_path, &dependencies, &nasm_files);
+    StringArray compiler_arguments = {0};
+    StringArray linker_arguments = {0};
+    bool single_translation_unit = parse_files(
+            source_file_path, &dependencies, &nasm_files, &compiler_arguments, &linker_arguments);
 
     for (int i = 0; i < nasm_files.count; i++) {
         char nasm_output_path[PATH_MAX];
@@ -809,6 +850,8 @@ int main(int argc, char **argv)
     } break;
     }
 
+    array_concat(&command, compiler_arguments.count, compiler_arguments.items);
+
     array_append(&command, source_file_path);
 
     if (single_translation_unit) {
@@ -861,6 +904,8 @@ int main(int argc, char **argv)
         exit(1);
     } break;
     }
+
+    array_concat(&command, linker_arguments.count, linker_arguments.items);
 
     for (int i = 0; i < nasm_files.count; i++) {
         char file_name[32];
