@@ -159,4 +159,8 @@ JK_PUBLIC size_t jk_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_page_size_round_down(size_t n);
 
+JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count);
+
+JK_PUBLIC void jk_print_bytes_double(FILE *file, char *format, double byte_count);
+
 #endif

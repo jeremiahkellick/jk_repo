@@ -77,15 +77,12 @@ JK_PUBLIC void jk_profile_end_and_print(void)
         printf(")");
 
         if (entry->byte_count) {
-            double megabyte = 1024.0 * 1024.0;
-            double gigabyte = megabyte * 1024.0;
-
             double seconds = (double)entry->elapsed_inclusive / (double)frequency;
-            double bytes_per_second = (double)entry->byte_count / seconds;
-            double megabytes = (double)entry->byte_count / megabyte;
-            double gigabytes_per_second = bytes_per_second / gigabyte;
-
-            printf(" %.2f MiB at %.2f GiB/s", megabytes, gigabytes_per_second);
+            printf(" ");
+            jk_print_bytes_uint64(stdout, "%.3f", entry->byte_count);
+            printf(" at ");
+            jk_print_bytes_double(stdout, "%.3f", (double)entry->byte_count / seconds);
+            printf("/s");
         }
 
         printf("\n");
@@ -181,6 +178,12 @@ JK_PUBLIC void jk_repetition_test_time_end(JkRepetitionTest *test)
     test->block_close_count++;
 }
 
+JK_PUBLIC double jk_repetition_test_bandwidth(JkRepValues values, uint64_t frequency)
+{
+    double seconds = (double)values.v[JK_REP_VALUE_CPU_TIMER] / (double)frequency;
+    return (double)values.v[JK_REP_VALUE_BYTE_COUNT] / seconds;
+}
+
 static void jk_repetition_test_print_values(char *name, JkRepValues values, uint64_t frequency)
 {
     double test_count =
@@ -194,13 +197,15 @@ static void jk_repetition_test_print_values(char *name, JkRepValues values, uint
     double seconds = v[JK_REP_VALUE_CPU_TIMER] / (double)frequency;
     printf("%s: %.0f (%.3f ms)", name, v[JK_REP_VALUE_CPU_TIMER], seconds * 1000.0);
     if (v[JK_REP_VALUE_BYTE_COUNT] > 0.0) {
-        double gigabyte = 1024.0 * 1024.0 * 1024.0;
-        printf(" %.3f GiB/s", v[JK_REP_VALUE_BYTE_COUNT] / gigabyte / seconds);
+        printf(" ");
+        jk_print_bytes_double(stdout, "%.3f", (double)v[JK_REP_VALUE_BYTE_COUNT] / seconds);
+        printf("/s");
     }
     if (v[JK_REP_VALUE_PAGE_FAULT_COUNT] > 0.0) {
-        printf(" %.3f page faults (%.3f KiB/fault)",
-                v[JK_REP_VALUE_PAGE_FAULT_COUNT],
-                v[JK_REP_VALUE_BYTE_COUNT] / 1024.0 / v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
+        printf(" %.0f page faults (", v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
+        jk_print_bytes_double(
+                stdout, "%.3f", v[JK_REP_VALUE_BYTE_COUNT] / v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
+        printf("/fault)");
     }
 }
 
@@ -272,7 +277,7 @@ JK_PUBLIC void jk_repetition_test_count_bytes(JkRepetitionTest *test, uint64_t b
 JK_PUBLIC void jk_repetition_test_error(JkRepetitionTest *test, char *message)
 {
     test->state = JK_REPETITION_TEST_ERROR;
-    fprintf(stderr, "%s", message);
+    fprintf(stderr, "%s\n", message);
 }
 
 #endif

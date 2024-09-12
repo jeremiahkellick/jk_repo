@@ -112,6 +112,8 @@ JK_PUBLIC void jk_repetition_test_time_begin(JkRepetitionTest *test);
 
 JK_PUBLIC void jk_repetition_test_time_end(JkRepetitionTest *test);
 
+JK_PUBLIC double jk_repetition_test_bandwidth(JkRepValues values, uint64_t frequency);
+
 JK_PUBLIC bool jk_repetition_test_running(JkRepetitionTest *test);
 
 JK_PUBLIC void jk_repetition_test_count_bytes(JkRepetitionTest *test, uint64_t bytes);

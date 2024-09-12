@@ -438,6 +438,7 @@ JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
     }
     JK_PROFILE_ZONE_END(fread);
 
+    fclose(file);
     JK_PROFILE_ZONE_END(jk_file_read_full);
     return buffer;
 }
@@ -472,4 +473,36 @@ JK_PUBLIC size_t jk_page_size_round_down(size_t n)
 {
     size_t page_size = jk_platform_page_size();
     return n & ~(page_size - 1);
+}
+
+JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)
+{
+    if (byte_count < 1024) {
+        fprintf(file, "%llu bytes", (long long)byte_count);
+    } else if (byte_count < 1024 * 1024) {
+        fprintf(file, format, (double)byte_count / 1024.0);
+        fprintf(file, " KiB");
+    } else if (byte_count < 1024 * 1024 * 1024) {
+        fprintf(file, format, (double)byte_count / (1024.0 * 1024.0));
+        fprintf(file, " MiB");
+    } else {
+        fprintf(file, format, (double)byte_count / (1024.0 * 1024.0 * 1024.0));
+        fprintf(file, " GiB");
+    }
+}
+
+JK_PUBLIC void jk_print_bytes_double(FILE *file, char *format, double byte_count)
+{
+    if (byte_count < 1024.0) {
+        fprintf(file, "%.0f bytes", byte_count);
+    } else if (byte_count < 1024.0 * 1024.0) {
+        fprintf(file, format, byte_count / 1024.0);
+        fprintf(file, " KiB");
+    } else if (byte_count < 1024.0 * 1024.0 * 1024.0) {
+        fprintf(file, format, byte_count / (1024.0 * 1024.0));
+        fprintf(file, " MiB");
+    } else {
+        fprintf(file, format, byte_count / (1024.0 * 1024.0 * 1024.0));
+        fprintf(file, " GiB");
+    }
 }
