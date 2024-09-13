@@ -113,18 +113,21 @@ static bool contains_whitespace(char *string)
 static int command_run(StringArray *command)
 {
 #ifdef _WIN32
+
+#define BUFFER_SIZE 4096
+
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
-    char command_string[PATH_MAX];
+    char command_string[BUFFER_SIZE];
     int string_i = 0;
     for (int args_i = 0; args_i < command->count; args_i++) {
         string_i += snprintf(&command_string[string_i],
-                PATH_MAX - string_i,
+                BUFFER_SIZE - string_i,
                 contains_whitespace(command->items[args_i]) ? "%s\"%s\"" : "%s%s",
                 args_i == 0 ? "" : " ",
                 command->items[args_i]);
-        if (string_i >= PATH_MAX) {
-            fprintf(stderr, "%s: Insufficient PATH_MAX\n", program_name);
+        if (string_i >= BUFFER_SIZE) {
+            fprintf(stderr, "%s: Insufficient BUFFER_SIZE\n", program_name);
             exit(1);
         }
     }
@@ -767,6 +770,7 @@ int main(int argc, char **argv)
         array_append(&command, "/W4");
         array_append(&command, "/w44062");
         array_append(&command, "/wd4100");
+        array_append(&command, "/wd4706");
         array_append(&command, "/nologo");
         array_append(&command, "/Gm-");
         array_append(&command, "/GR-");

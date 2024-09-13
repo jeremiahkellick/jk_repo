@@ -9,8 +9,6 @@
 #include <sys/stat.h>
 #include <windows.h>
 
-#include <psapi.h>
-
 typedef struct JkPlatformData {
     bool initialized;
     uint64_t large_page_size;
@@ -103,11 +101,54 @@ JK_PUBLIC void jk_platform_console_utf8_enable(void)
     SetConsoleOutputCP(CP_UTF8);
 }
 
-JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
+typedef struct _PROCESS_MEMORY_COUNTERS {
+    DWORD cb;
+    DWORD PageFaultCount;
+    SIZE_T PeakWorkingSetSize;
+    SIZE_T WorkingSetSize;
+    SIZE_T QuotaPeakPagedPoolUsage;
+    SIZE_T QuotaPagedPoolUsage;
+    SIZE_T QuotaPeakNonPagedPoolUsage;
+    SIZE_T QuotaNonPagedPoolUsage;
+    SIZE_T PagefileUsage;
+    SIZE_T PeakPagefileUsage;
+} PROCESS_MEMORY_COUNTERS;
+
+typedef BOOL (*GetProcessMemoryInfoPointer)(HANDLE, PROCESS_MEMORY_COUNTERS *, DWORD);
+
+PROCESS_MEMORY_COUNTERS jk_process_memory_info_get()
 {
     assert(jk_platform_data.initialized);
+
+    static uint8_t initialized;
+    static HINSTANCE library;
+    static GetProcessMemoryInfoPointer GetProcessMemoryInfo;
+    if (!initialized) {
+        initialized = TRUE;
+        library = LoadLibraryA("psapi.dll");
+        if (library) {
+            GetProcessMemoryInfo =
+                    (GetProcessMemoryInfoPointer)GetProcAddress(library, "GetProcessMemoryInfo");
+        } else {
+            // TODO: log error
+        }
+    }
+
     PROCESS_MEMORY_COUNTERS memory_counters = {.cb = sizeof(memory_counters)};
-    GetProcessMemoryInfo(jk_platform_data.process, &memory_counters, sizeof(memory_counters));
+    if (GetProcessMemoryInfo) {
+        if (!GetProcessMemoryInfo(
+                    jk_platform_data.process, &memory_counters, sizeof(memory_counters))) {
+            // TODO: log error
+        }
+    } else {
+        // TODO: log error
+    }
+    return memory_counters;
+}
+
+JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
+{
+    PROCESS_MEMORY_COUNTERS memory_counters = jk_process_memory_info_get();
     return (uint64_t)memory_counters.PageFaultCount;
 }
 
