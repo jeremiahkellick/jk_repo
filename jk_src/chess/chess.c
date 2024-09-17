@@ -18,95 +18,57 @@ typedef struct Color {
 _STATIC_ASSERT(sizeof(Color) == 4);
 
 static uint32_t running;
-static BITMAPINFO bitmap_info = {
-    .bmiHeader =
-            {
-                .biSize = sizeof(BITMAPINFOHEADER),
-                .biPlanes = 1,
-                .biBitCount = 32,
-                .biCompression = BI_RGB,
-            },
-};
-static Color *bitmap_memory;
-static int bitmap_width;
-static int bitmap_height;
-
-static void resize_dib_section(int width, int height)
-{
-    bitmap_width = width;
-    bitmap_height = height;
-
-    bitmap_info.bmiHeader.biWidth = bitmap_width;
-    bitmap_info.bmiHeader.biHeight = -bitmap_height;
-}
-
-static void update_window(
-        HDC device_context, RECT *window_rect, int x, int y, int width, int height)
-{
-    int window_width = window_rect->right - window_rect->left;
-    int window_height = window_rect->bottom - window_rect->top;
-    StretchDIBits(device_context,
-            /*
-            x,
-            y,
-            width,
-            height,
-            x,
-            y,
-            width,
-            height,
-            */
-            0,
-            0,
-            bitmap_width,
-            bitmap_height,
-            0,
-            0,
-            window_width,
-            window_height,
-            bitmap_memory,
-            &bitmap_info,
-            DIB_RGB_COLORS,
-            SRCCOPY);
-}
+static Color *bitmap;
 
 LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
 
     switch (message) {
-    case WM_SIZE: {
-        RECT rect;
-        GetClientRect(window, &rect);
-        resize_dib_section(rect.right - rect.left, rect.bottom - rect.top);
-    } break;
-
     case WM_DESTROY:
     case WM_CLOSE: {
         running = 0;
     } break;
 
     case WM_PAINT: {
-        for (int y = 0; y < bitmap_height; y++) {
-            for (int x = 0; x < bitmap_width; x++) {
-                bitmap_memory[y * bitmap_width + x].r = (uint8_t)y;
-                bitmap_memory[y * bitmap_width + x].g = (uint8_t)x;
+        RECT rect;
+        GetClientRect(window, &rect);
+        int width = rect.right - rect.left;
+        int height = rect.bottom - rect.top;
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                bitmap[y * width + x].r = (uint8_t)y;
+                bitmap[y * width + x].g = (uint8_t)x;
             }
         }
 
         PAINTSTRUCT paint;
+        BITMAPINFO bitmap_info = {
+            .bmiHeader =
+                    {
+                        .biSize = sizeof(BITMAPINFOHEADER),
+                        .biWidth = width,
+                        .biHeight = -height,
+                        .biPlanes = 1,
+                        .biBitCount = 32,
+                        .biCompression = BI_RGB,
+                    },
+        };
         HDC device_context = BeginPaint(window, &paint);
-
-        RECT rect;
-        GetClientRect(window, &rect);
-
-        update_window(device_context,
-                &rect,
-                paint.rcPaint.left,
-                paint.rcPaint.top,
-                paint.rcPaint.right - paint.rcPaint.left,
-                paint.rcPaint.top - paint.rcPaint.bottom);
-
+        StretchDIBits(device_context,
+                0,
+                0,
+                width,
+                height,
+                0,
+                0,
+                width,
+                height,
+                bitmap,
+                &bitmap_info,
+                DIB_RGB_COLORS,
+                SRCCOPY);
         EndPaint(window, &paint);
     } break;
 
@@ -120,9 +82,9 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    bitmap_memory = VirtualAlloc(NULL, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    bitmap = VirtualAlloc(NULL, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
 
-    if (bitmap_memory) {
+    if (bitmap) {
         WNDCLASSA window_class = {
             .lpfnWndProc = window_proc,
             .hInstance = instance,
