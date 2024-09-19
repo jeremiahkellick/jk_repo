@@ -19,6 +19,71 @@ _STATIC_ASSERT(sizeof(Color) == 4);
 
 static uint32_t running;
 static Color *bitmap;
+static int global_width;
+static int global_height;
+static int x_offset;
+static int y_offset;
+
+void update_dimensions(HWND window)
+{
+    RECT rect;
+    GetClientRect(window, &rect);
+    global_width = rect.right - rect.left;
+    global_height = rect.bottom - rect.top;
+}
+
+int mod(int a, int b) {
+    int result = a % b;
+    return result < 0 ? result + b : result;
+}
+
+void draw_pretty_colors(void)
+{
+    int width = global_width;
+    int height = global_height;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            bitmap[y * width + x].r = (uint8_t)(y - y_offset);
+            if (mod(y - y_offset, 512) < 256) {
+                bitmap[y * width + x].r = 255 - bitmap[y * width + x].r;
+            }
+            bitmap[y * width + x].b = (uint8_t)(x - x_offset);
+            if (mod(x - x_offset, 512) < 256) {
+                bitmap[y * width + x].b = 255 - bitmap[y * width + x].b;
+            }
+        }
+    }
+}
+
+void update_window(HDC device_context)
+{
+    int width = global_width;
+    int height = global_height;
+    BITMAPINFO bitmap_info = {
+        .bmiHeader =
+                {
+                    .biSize = sizeof(BITMAPINFOHEADER),
+                    .biWidth = width,
+                    .biHeight = -height,
+                    .biPlanes = 1,
+                    .biBitCount = 32,
+                    .biCompression = BI_RGB,
+                },
+    };
+    StretchDIBits(device_context,
+            0,
+            0,
+            width,
+            height,
+            0,
+            0,
+            width,
+            height,
+            bitmap,
+            &bitmap_info,
+            DIB_RGB_COLORS,
+            SRCCOPY);
+}
 
 LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
@@ -30,45 +95,16 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
         running = 0;
     } break;
 
-    case WM_PAINT: {
-        RECT rect;
-        GetClientRect(window, &rect);
-        int width = rect.right - rect.left;
-        int height = rect.bottom - rect.top;
+    case WM_SIZE: {
+        update_dimensions(window);
+    } break;
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                bitmap[y * width + x].r = (uint8_t)y;
-                bitmap[y * width + x].g = (uint8_t)x;
-            }
-        }
+    case WM_PAINT: {
+        draw_pretty_colors();
 
         PAINTSTRUCT paint;
-        BITMAPINFO bitmap_info = {
-            .bmiHeader =
-                    {
-                        .biSize = sizeof(BITMAPINFOHEADER),
-                        .biWidth = width,
-                        .biHeight = -height,
-                        .biPlanes = 1,
-                        .biBitCount = 32,
-                        .biCompression = BI_RGB,
-                    },
-        };
         HDC device_context = BeginPaint(window, &paint);
-        StretchDIBits(device_context,
-                0,
-                0,
-                width,
-                height,
-                0,
-                0,
-                width,
-                height,
-                bitmap,
-                &bitmap_info,
-                DIB_RGB_COLORS,
-                SRCCOPY);
+        update_window(device_context);
         EndPaint(window, &paint);
     } break;
 
@@ -82,7 +118,7 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    bitmap = VirtualAlloc(NULL, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    bitmap = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
 
     if (bitmap) {
         WNDCLASSA window_class = {
@@ -105,15 +141,29 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
+            update_dimensions(window);
+
             MSG message;
             running = 1;
+            x_offset = 0;
+            y_offset = 0;
             while (running) {
-                if (GetMessageA(&message, 0, 0, 0) > 0) {
+                while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+                    if (message.message == WM_QUIT) {
+                        running = false;
+                    }
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
-                } else {
-                    running = 0;
                 }
+
+                draw_pretty_colors();
+
+                HDC device_context = GetDC(window);
+                update_window(device_context);
+                ReleaseDC(window, device_context);
+
+                x_offset += 1;
+                y_offset += 1;
             }
         } else {
             OutputDebugStringA("CreateWindowExA failed\n");
