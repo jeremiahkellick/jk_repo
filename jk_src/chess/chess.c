@@ -21,8 +21,7 @@ static uint32_t running;
 static Color *bitmap;
 static int global_width;
 static int global_height;
-static int x_offset;
-static int y_offset;
+static int time;
 
 void update_dimensions(HWND window)
 {
@@ -32,25 +31,40 @@ void update_dimensions(HWND window)
     global_height = rect.bottom - rect.top;
 }
 
-int mod(int a, int b) {
+int mod(int a, int b)
+{
     int result = a % b;
     return result < 0 ? result + b : result;
 }
 
 void draw_pretty_colors(void)
 {
+    int slow_time = time / 2;
+    uint8_t darkness = mod(slow_time, 512) < 256 ? (uint8_t)slow_time : 255 - (uint8_t)slow_time;
     int width = global_width;
     int height = global_height;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            bitmap[y * width + x].r = (uint8_t)(y - y_offset);
-            if (mod(y - y_offset, 512) < 256) {
-                bitmap[y * width + x].r = 255 - bitmap[y * width + x].r;
+            int red;
+            int blue;
+            if (mod(y, 512) < 256) {
+                red = (y & 255) - darkness;
+            } else {
+                red = 255 - (y & 255) - darkness;
             }
-            bitmap[y * width + x].b = (uint8_t)(x - x_offset);
-            if (mod(x - x_offset, 512) < 256) {
-                bitmap[y * width + x].b = 255 - bitmap[y * width + x].b;
+            if (mod(x, 512) < 256) {
+                blue = (x & 255) - darkness;
+            } else {
+                blue = 255 - (x & 255) - darkness;
             }
+            if (red < 0) {
+                red = 0;
+            }
+            if (blue < 0) {
+                blue = 0;
+            }
+            bitmap[y * width + x].r = (uint8_t)red;
+            bitmap[y * width + x].b = (uint8_t)blue;
         }
     }
 }
@@ -145,8 +159,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
             MSG message;
             running = 1;
-            x_offset = 0;
-            y_offset = 0;
+            time = 0;
             while (running) {
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                     if (message.message == WM_QUIT) {
@@ -162,8 +175,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 update_window(device_context);
                 ReleaseDC(window, device_context);
 
-                x_offset += 1;
-                y_offset += 1;
+                time += 1;
             }
         } else {
             OutputDebugStringA("CreateWindowExA failed\n");
