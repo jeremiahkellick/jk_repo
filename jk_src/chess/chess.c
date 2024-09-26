@@ -17,18 +17,22 @@ typedef struct Color {
 } Color;
 _STATIC_ASSERT(sizeof(Color) == 4);
 
-static uint32_t running;
-static Color *bitmap;
-static int global_width;
-static int global_height;
-static int time;
+typedef struct Bitmap {
+    Color *memory;
+    int width;
+    int height;
+} Bitmap;
 
-void update_dimensions(HWND window)
+static uint32_t running;
+static int time;
+static Bitmap window_bitmap;
+
+void update_dimensions(Bitmap *bitmap, HWND window)
 {
     RECT rect;
     GetClientRect(window, &rect);
-    global_width = rect.right - rect.left;
-    global_height = rect.bottom - rect.top;
+    bitmap->width = rect.right - rect.left;
+    bitmap->height = rect.bottom - rect.top;
 }
 
 int mod(int a, int b)
@@ -37,14 +41,12 @@ int mod(int a, int b)
     return result < 0 ? result + b : result;
 }
 
-void draw_pretty_colors(void)
+void draw_pretty_colors(Bitmap bitmap)
 {
     int slow_time = time / 2;
     uint8_t darkness = mod(slow_time, 512) < 256 ? (uint8_t)slow_time : 255 - (uint8_t)slow_time;
-    int width = global_width;
-    int height = global_height;
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
+    for (int y = 0; y < bitmap.height; y++) {
+        for (int x = 0; x < bitmap.width; x++) {
             int red;
             int blue;
             if (mod(y, 512) < 256) {
@@ -63,22 +65,20 @@ void draw_pretty_colors(void)
             if (blue < 0) {
                 blue = 0;
             }
-            bitmap[y * width + x].r = (uint8_t)red;
-            bitmap[y * width + x].b = (uint8_t)blue;
+            bitmap.memory[y * bitmap.width + x].r = (uint8_t)red;
+            bitmap.memory[y * bitmap.width + x].b = (uint8_t)blue;
         }
     }
 }
 
-void update_window(HDC device_context)
+void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
 {
-    int width = global_width;
-    int height = global_height;
     BITMAPINFO bitmap_info = {
         .bmiHeader =
                 {
                     .biSize = sizeof(BITMAPINFOHEADER),
-                    .biWidth = width,
-                    .biHeight = -height,
+                    .biWidth = bitmap.width,
+                    .biHeight = -bitmap.height,
                     .biPlanes = 1,
                     .biBitCount = 32,
                     .biCompression = BI_RGB,
@@ -87,13 +87,13 @@ void update_window(HDC device_context)
     StretchDIBits(device_context,
             0,
             0,
-            width,
-            height,
+            bitmap.width,
+            bitmap.height,
             0,
             0,
-            width,
-            height,
-            bitmap,
+            bitmap.width,
+            bitmap.height,
+            bitmap.memory,
             &bitmap_info,
             DIB_RGB_COLORS,
             SRCCOPY);
@@ -110,15 +110,15 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
     } break;
 
     case WM_SIZE: {
-        update_dimensions(window);
+        update_dimensions(&window_bitmap, window);
     } break;
 
     case WM_PAINT: {
-        draw_pretty_colors();
+        draw_pretty_colors(window_bitmap);
 
         PAINTSTRUCT paint;
         HDC device_context = BeginPaint(window, &paint);
-        update_window(device_context);
+        copy_bitmap_to_window(device_context, window_bitmap);
         EndPaint(window, &paint);
     } break;
 
@@ -132,10 +132,11 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    bitmap = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    window_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
 
-    if (bitmap) {
+    if (window_bitmap.memory) {
         WNDCLASSA window_class = {
+            .style = CS_HREDRAW | CS_VREDRAW,
             .lpfnWndProc = window_proc,
             .hInstance = instance,
             .lpszClassName = "jk_chess_window_class",
@@ -155,7 +156,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
-            update_dimensions(window);
+            update_dimensions(&window_bitmap, window);
 
             MSG message;
             running = 1;
@@ -169,10 +170,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     DispatchMessageA(&message);
                 }
 
-                draw_pretty_colors();
+                draw_pretty_colors(window_bitmap);
 
                 HDC device_context = GetDC(window);
-                update_window(device_context);
+                copy_bitmap_to_window(device_context, window_bitmap);
                 ReleaseDC(window, device_context);
 
                 time += 1;
