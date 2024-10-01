@@ -31,21 +31,21 @@ typedef struct Bitmap {
 } Bitmap;
 
 typedef enum Button {
-    BUTTON_DPAD_UP,
-    BUTTON_DPAD_DOWN,
-    BUTTON_DPAD_LEFT,
-    BUTTON_DPAD_RIGHT,
-    BUTTON_A,
-    BUTTON_B,
+    BUTTON_UP,
+    BUTTON_DOWN,
+    BUTTON_LEFT,
+    BUTTON_RIGHT,
+    BUTTON_CONFIRM,
+    BUTTON_CANCEL,
     BUTTON_COUNT,
 } Button;
 
-#define BUTTON_FLAG_DPAD_UP (1 << BUTTON_DPAD_UP)
-#define BUTTON_FLAG_DPAD_DOWN (1 << BUTTON_DPAD_DOWN)
-#define BUTTON_FLAG_DPAD_LEFT (1 << BUTTON_DPAD_LEFT)
-#define BUTTON_FLAG_DPAD_RIGHT (1 << BUTTON_DPAD_RIGHT)
-#define BUTTON_FLAG_A (1 << BUTTON_A)
-#define BUTTON_FLAG_B (1 << BUTTON_B)
+#define BUTTON_FLAG_UP (1 << BUTTON_UP)
+#define BUTTON_FLAG_DOWN (1 << BUTTON_DOWN)
+#define BUTTON_FLAG_LEFT (1 << BUTTON_LEFT)
+#define BUTTON_FLAG_RIGHT (1 << BUTTON_RIGHT)
+#define BUTTON_FLAG_A (1 << BUTTON_CONFIRM)
+#define BUTTON_FLAG_B (1 << BUTTON_CANCEL)
 
 typedef struct Input {
     int64_t button_flags;
@@ -217,46 +217,19 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                         if (xinput_get_state(i, &state) == ERROR_SUCCESS) {
                             XINPUT_GAMEPAD *pad = &state.Gamepad;
                             input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
-                                    << BUTTON_DPAD_UP;
+                                    << BUTTON_UP;
                             input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-                                    << BUTTON_DPAD_DOWN;
+                                    << BUTTON_DOWN;
                             input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-                                    << BUTTON_DPAD_LEFT;
+                                    << BUTTON_LEFT;
                             input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-                                    << BUTTON_DPAD_RIGHT;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A) << BUTTON_A;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B) << BUTTON_B;
+                                    << BUTTON_RIGHT;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A)
+                                    << BUTTON_CONFIRM;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B)
+                                    << BUTTON_CANCEL;
                         }
                     }
-                }
-
-                if (xinput_set_state) {
-                    for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
-                        XINPUT_VIBRATION vibration = {
-                            .wLeftMotorSpeed = 65535,
-                            .wRightMotorSpeed = 65535,
-                        };
-                        xinput_set_state(i, &vibration);
-                    }
-                }
-
-                if (input.button_flags & BUTTON_FLAG_DPAD_UP) {
-                    OutputDebugStringA("DPAD_UP down\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_DPAD_DOWN) {
-                    OutputDebugStringA("DPAD_DOWN down\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_DPAD_LEFT) {
-                    OutputDebugStringA("DPAD_LEFT down\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_DPAD_RIGHT) {
-                    OutputDebugStringA("DPAD_RIGHT down\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_A) {
-                    OutputDebugStringA("A down\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_B) {
-                    OutputDebugStringA("B down\n");
                 }
 
                 draw_pretty_colors(global_bitmap, global_time);
