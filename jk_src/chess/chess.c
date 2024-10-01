@@ -1,4 +1,4 @@
-// #jk_build linker_arguments User32.lib Gdi32.lib Xinput.lib
+// #jk_build linker_arguments User32.lib Gdi32.lib
 
 #include <stdint.h>
 #include <windows.h>
@@ -9,6 +9,12 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
+
+typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
+typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration);
+
+XInputGetStatePointer xinput_get_state;
+XInputSetStatePointer xinput_set_state;
 
 typedef struct Color {
     uint8_t b;
@@ -157,6 +163,14 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
+    HINSTANCE xinput_library = LoadLibraryA("xinput1_3.dll");
+    if (xinput_library) {
+        xinput_get_state = (XInputGetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
+        xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
+    } else {
+        OutputDebugStringA("Failed to load Xinput1_4.dll\n");
+    }
+
     global_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
 
     if (global_bitmap.memory) {
@@ -197,21 +211,22 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 }
 
                 Input input = {0};
-                for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
-                    XINPUT_STATE state;
-                    if (XInputGetState(i, &state) == ERROR_SUCCESS) {
-                        XINPUT_GAMEPAD *pad = &state.Gamepad;
-                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
-                                << BUTTON_DPAD_UP;
-                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-                                << BUTTON_DPAD_DOWN;
-                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-                                << BUTTON_DPAD_LEFT;
-                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-                                << BUTTON_DPAD_RIGHT;
-                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A) << BUTTON_A;
-                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B) << BUTTON_B;
-                    } else {
+                if (xinput_get_state) {
+                    for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
+                        XINPUT_STATE state;
+                        if (xinput_get_state(i, &state) == ERROR_SUCCESS) {
+                            XINPUT_GAMEPAD *pad = &state.Gamepad;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+                                    << BUTTON_DPAD_UP;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+                                    << BUTTON_DPAD_DOWN;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+                                    << BUTTON_DPAD_LEFT;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+                                    << BUTTON_DPAD_RIGHT;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A) << BUTTON_A;
+                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B) << BUTTON_B;
+                        }
                     }
                 }
 
