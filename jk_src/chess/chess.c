@@ -166,7 +166,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     HINSTANCE xinput_library = LoadLibraryA("xinput1_3.dll");
     if (xinput_library) {
         xinput_get_state = (XInputGetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
-        xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
+        xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputSetState");
     } else {
         OutputDebugStringA("Failed to load Xinput1_4.dll\n");
     }
@@ -227,6 +227,16 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                             input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A) << BUTTON_A;
                             input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B) << BUTTON_B;
                         }
+                    }
+                }
+
+                if (xinput_set_state) {
+                    for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
+                        XINPUT_VIBRATION vibration = {
+                            .wLeftMotorSpeed = 65535,
+                            .wRightMotorSpeed = 65535,
+                        };
+                        xinput_set_state(i, &vibration);
                     }
                 }
 
