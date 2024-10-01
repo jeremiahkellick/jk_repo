@@ -145,6 +145,8 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length);
 
 // ---- Quicksort end ----------------------------------------------------------
 
+typedef uint32_t b32;
+
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))

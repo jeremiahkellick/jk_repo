@@ -1,7 +1,8 @@
-// #jk_build linker_arguments User32.lib Gdi32.lib
+// #jk_build linker_arguments User32.lib Gdi32.lib Xinput.lib
 
 #include <stdint.h>
 #include <windows.h>
+#include <xinput.h>
 
 #include <jk_gen/single_translation_unit.h>
 
@@ -19,13 +20,34 @@ _STATIC_ASSERT(sizeof(Color) == 4);
 
 typedef struct Bitmap {
     Color *memory;
-    int width;
-    int height;
+    int32_t width;
+    int32_t height;
 } Bitmap;
 
-static uint32_t running;
-static int time;
-static Bitmap window_bitmap;
+typedef enum Button {
+    BUTTON_DPAD_UP,
+    BUTTON_DPAD_DOWN,
+    BUTTON_DPAD_LEFT,
+    BUTTON_DPAD_RIGHT,
+    BUTTON_A,
+    BUTTON_B,
+    BUTTON_COUNT,
+} Button;
+
+#define BUTTON_FLAG_DPAD_UP (1 << BUTTON_DPAD_UP)
+#define BUTTON_FLAG_DPAD_DOWN (1 << BUTTON_DPAD_DOWN)
+#define BUTTON_FLAG_DPAD_LEFT (1 << BUTTON_DPAD_LEFT)
+#define BUTTON_FLAG_DPAD_RIGHT (1 << BUTTON_DPAD_RIGHT)
+#define BUTTON_FLAG_A (1 << BUTTON_A)
+#define BUTTON_FLAG_B (1 << BUTTON_B)
+
+typedef struct Input {
+    int64_t button_flags;
+} Input;
+
+static b32 global_running;
+static int64_t global_time;
+static Bitmap global_bitmap;
 
 void update_dimensions(Bitmap *bitmap, HWND window)
 {
@@ -35,29 +57,32 @@ void update_dimensions(Bitmap *bitmap, HWND window)
     bitmap->height = rect.bottom - rect.top;
 }
 
-int mod(int a, int b)
+int64_t mod(int64_t a, int64_t b)
 {
-    int result = a % b;
+    int64_t result = a % b;
     return result < 0 ? result + b : result;
 }
 
-void draw_pretty_colors(Bitmap bitmap)
+void draw_pretty_colors(Bitmap bitmap, int64_t time)
 {
-    int slow_time = time / 2;
-    uint8_t darkness = mod(slow_time, 512) < 256 ? (uint8_t)slow_time : 255 - (uint8_t)slow_time;
-    for (int y = 0; y < bitmap.height; y++) {
-        for (int x = 0; x < bitmap.width; x++) {
-            int red;
-            int blue;
+    int64_t red_time = time / 2;
+    int64_t blue_time = time * 2 / 3;
+    uint8_t red_darkness = mod(red_time, 512) < 256 ? (uint8_t)red_time : 255 - (uint8_t)red_time;
+    uint8_t blue_darkness =
+            mod(blue_time, 512) < 256 ? (uint8_t)blue_time : 255 - (uint8_t)blue_time;
+    for (int64_t y = 0; y < bitmap.height; y++) {
+        for (int64_t x = 0; x < bitmap.width; x++) {
+            int64_t red;
+            int64_t blue;
             if (mod(y, 512) < 256) {
-                red = (y & 255) - darkness;
+                red = (y & 255) - red_darkness;
             } else {
-                red = 255 - (y & 255) - darkness;
+                red = 255 - (y & 255) - red_darkness;
             }
             if (mod(x, 512) < 256) {
-                blue = (x & 255) - darkness;
+                blue = (x & 255) - blue_darkness;
             } else {
-                blue = 255 - (x & 255) - darkness;
+                blue = 255 - (x & 255) - blue_darkness;
             }
             if (red < 0) {
                 red = 0;
@@ -106,19 +131,19 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
     switch (message) {
     case WM_DESTROY:
     case WM_CLOSE: {
-        running = 0;
+        global_running = 0;
     } break;
 
     case WM_SIZE: {
-        update_dimensions(&window_bitmap, window);
+        update_dimensions(&global_bitmap, window);
     } break;
 
     case WM_PAINT: {
-        draw_pretty_colors(window_bitmap);
+        draw_pretty_colors(global_bitmap, global_time);
 
         PAINTSTRUCT paint;
         HDC device_context = BeginPaint(window, &paint);
-        copy_bitmap_to_window(device_context, window_bitmap);
+        copy_bitmap_to_window(device_context, global_bitmap);
         EndPaint(window, &paint);
     } break;
 
@@ -132,11 +157,11 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    window_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    global_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
 
-    if (window_bitmap.memory) {
+    if (global_bitmap.memory) {
         WNDCLASSA window_class = {
-            .style = CS_HREDRAW | CS_VREDRAW,
+            .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
             .lpfnWndProc = window_proc,
             .hInstance = instance,
             .lpszClassName = "jk_chess_window_class",
@@ -156,27 +181,64 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
-            update_dimensions(&window_bitmap, window);
+            HDC device_context = GetDC(window);
+            update_dimensions(&global_bitmap, window);
 
             MSG message;
-            running = 1;
-            time = 0;
-            while (running) {
+            global_running = 1;
+            global_time = 0;
+            while (global_running) {
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                     if (message.message == WM_QUIT) {
-                        running = false;
+                        global_running = false;
                     }
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
                 }
 
-                draw_pretty_colors(window_bitmap);
+                Input input = {0};
+                for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
+                    XINPUT_STATE state;
+                    if (XInputGetState(i, &state) == ERROR_SUCCESS) {
+                        XINPUT_GAMEPAD *pad = &state.Gamepad;
+                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+                                << BUTTON_DPAD_UP;
+                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+                                << BUTTON_DPAD_DOWN;
+                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+                                << BUTTON_DPAD_LEFT;
+                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+                                << BUTTON_DPAD_RIGHT;
+                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A) << BUTTON_A;
+                        input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B) << BUTTON_B;
+                    } else {
+                    }
+                }
 
-                HDC device_context = GetDC(window);
-                copy_bitmap_to_window(device_context, window_bitmap);
-                ReleaseDC(window, device_context);
+                if (input.button_flags & BUTTON_FLAG_DPAD_UP) {
+                    OutputDebugStringA("DPAD_UP down\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_DPAD_DOWN) {
+                    OutputDebugStringA("DPAD_DOWN down\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_DPAD_LEFT) {
+                    OutputDebugStringA("DPAD_LEFT down\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_DPAD_RIGHT) {
+                    OutputDebugStringA("DPAD_RIGHT down\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_A) {
+                    OutputDebugStringA("A down\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_B) {
+                    OutputDebugStringA("B down\n");
+                }
 
-                time += 1;
+                draw_pretty_colors(global_bitmap, global_time);
+
+                copy_bitmap_to_window(device_context, global_bitmap);
+
+                global_time += 1;
             }
         } else {
             OutputDebugStringA("CreateWindowExA failed\n");
