@@ -30,6 +30,32 @@ typedef struct Bitmap {
     int32_t height;
 } Bitmap;
 
+typedef enum Key {
+    KEY_UP,
+    KEY_DOWN,
+    KEY_LEFT,
+    KEY_RIGHT,
+    KEY_W,
+    KEY_S,
+    KEY_A,
+    KEY_D,
+    KEY_ENTER,
+    KEY_SPACE,
+    KEY_ESCAPE,
+} Key;
+
+#define KEY_FLAG_UP (1 << KEY_UP)
+#define KEY_FLAG_DOWN (1 << KEY_DOWN)
+#define KEY_FLAG_LEFT (1 << KEY_LEFT)
+#define KEY_FLAG_RIGHT (1 << KEY_RIGHT)
+#define KEY_FLAG_W (1 << KEY_W)
+#define KEY_FLAG_S (1 << KEY_S)
+#define KEY_FLAG_A (1 << KEY_A)
+#define KEY_FLAG_D (1 << KEY_D)
+#define KEY_FLAG_ENTER (1 << KEY_ENTER)
+#define KEY_FLAG_SPACE (1 << KEY_SPACE)
+#define KEY_FLAG_ESCAPE (1 << KEY_ESCAPE)
+
 typedef enum Button {
     BUTTON_UP,
     BUTTON_DOWN,
@@ -37,15 +63,14 @@ typedef enum Button {
     BUTTON_RIGHT,
     BUTTON_CONFIRM,
     BUTTON_CANCEL,
-    BUTTON_COUNT,
 } Button;
 
 #define BUTTON_FLAG_UP (1 << BUTTON_UP)
 #define BUTTON_FLAG_DOWN (1 << BUTTON_DOWN)
 #define BUTTON_FLAG_LEFT (1 << BUTTON_LEFT)
 #define BUTTON_FLAG_RIGHT (1 << BUTTON_RIGHT)
-#define BUTTON_FLAG_A (1 << BUTTON_CONFIRM)
-#define BUTTON_FLAG_B (1 << BUTTON_CANCEL)
+#define BUTTON_FLAG_CONFIRM (1 << BUTTON_CONFIRM)
+#define BUTTON_FLAG_CANCEL (1 << BUTTON_CANCEL)
 
 typedef struct Input {
     int64_t button_flags;
@@ -53,6 +78,7 @@ typedef struct Input {
 
 static b32 global_running;
 static int64_t global_time;
+static int64_t global_keys_down;
 static Bitmap global_bitmap;
 
 void update_dimensions(Bitmap *bitmap, HWND window)
@@ -144,6 +170,67 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
         update_dimensions(&global_bitmap, window);
     } break;
 
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP: {
+        int64_t flag = 0;
+        switch (wparam) {
+        case VK_UP: {
+            flag = KEY_FLAG_UP;
+        } break;
+
+        case VK_DOWN: {
+            flag = KEY_FLAG_DOWN;
+        } break;
+
+        case VK_LEFT: {
+            flag = KEY_FLAG_LEFT;
+        } break;
+
+        case VK_RIGHT: {
+            flag = KEY_FLAG_RIGHT;
+        } break;
+
+        case 'W': {
+            flag = KEY_FLAG_W;
+        } break;
+
+        case 'S': {
+            flag = KEY_FLAG_S;
+        } break;
+
+        case 'A': {
+            flag = KEY_FLAG_A;
+        } break;
+
+        case 'D': {
+            flag = KEY_FLAG_D;
+        } break;
+
+        case VK_RETURN: {
+            flag = KEY_FLAG_ENTER;
+        } break;
+
+        case VK_SPACE: {
+            flag = KEY_FLAG_SPACE;
+        } break;
+
+        case VK_ESCAPE: {
+            flag = KEY_FLAG_ESCAPE;
+        } break;
+
+        default: {
+        } break;
+        }
+
+        if ((lparam >> 31) & 1) { // key is up
+            global_keys_down &= ~flag;
+        } else { // key is down
+            global_keys_down |= flag;
+        }
+    } break;
+
     case WM_PAINT: {
         draw_pretty_colors(global_bitmap, global_time);
 
@@ -168,7 +255,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         xinput_get_state = (XInputGetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
         xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputSetState");
     } else {
-        OutputDebugStringA("Failed to load Xinput1_4.dll\n");
+        OutputDebugStringA("Failed to load xinput1_3.dll\n");
     }
 
     global_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
@@ -211,6 +298,29 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 }
 
                 Input input = {0};
+
+                // Keyboard input
+                {
+                    input.button_flags |=
+                            (((global_keys_down >> KEY_UP) | (global_keys_down >> KEY_W)) & 1)
+                            << BUTTON_UP;
+                    input.button_flags |=
+                            (((global_keys_down >> KEY_DOWN) | (global_keys_down >> KEY_S)) & 1)
+                            << BUTTON_DOWN;
+                    input.button_flags |=
+                            (((global_keys_down >> KEY_LEFT) | (global_keys_down >> KEY_A)) & 1)
+                            << BUTTON_LEFT;
+                    input.button_flags |=
+                            (((global_keys_down >> KEY_RIGHT) | (global_keys_down >> KEY_D)) & 1)
+                            << BUTTON_RIGHT;
+                    input.button_flags |=
+                            (((global_keys_down >> KEY_ENTER) | (global_keys_down >> KEY_SPACE))
+                                    & 1)
+                            << BUTTON_CONFIRM;
+                    input.button_flags |= ((global_keys_down >> KEY_ESCAPE) & 1) << BUTTON_CANCEL;
+                }
+
+                // Controller input
                 if (xinput_get_state) {
                     for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
                         XINPUT_STATE state;
@@ -230,6 +340,25 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                                     << BUTTON_CANCEL;
                         }
                     }
+                }
+
+                if (input.button_flags & BUTTON_FLAG_UP) {
+                    OutputDebugStringA("UP\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_DOWN) {
+                    OutputDebugStringA("DOWN\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_LEFT) {
+                    OutputDebugStringA("LEFT\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_RIGHT) {
+                    OutputDebugStringA("RIGHT\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_CONFIRM) {
+                    OutputDebugStringA("CONFIRM\n");
+                }
+                if (input.button_flags & BUTTON_FLAG_CANCEL) {
+                    OutputDebugStringA("CANCEL\n");
                 }
 
                 draw_pretty_colors(global_bitmap, global_time);
