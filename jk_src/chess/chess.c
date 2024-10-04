@@ -78,6 +78,8 @@ typedef struct Input {
 
 static b32 global_running;
 static int64_t global_time;
+static int64_t global_x;
+static int64_t global_y;
 static int64_t global_keys_down;
 static Bitmap global_bitmap;
 
@@ -102,19 +104,21 @@ void draw_pretty_colors(Bitmap bitmap, int64_t time)
     uint8_t red_darkness = mod(red_time, 512) < 256 ? (uint8_t)red_time : 255 - (uint8_t)red_time;
     uint8_t blue_darkness =
             mod(blue_time, 512) < 256 ? (uint8_t)blue_time : 255 - (uint8_t)blue_time;
-    for (int64_t y = 0; y < bitmap.height; y++) {
-        for (int64_t x = 0; x < bitmap.width; x++) {
+    for (int64_t screen_y = 0; screen_y < bitmap.height; screen_y++) {
+        for (int64_t screen_x = 0; screen_x < bitmap.width; screen_x++) {
+            int64_t world_y = screen_y + global_y;
+            int64_t world_x = screen_x + global_x;
             int64_t red;
             int64_t blue;
-            if (mod(y, 512) < 256) {
-                red = (y & 255) - red_darkness;
+            if (mod(world_y, 512) < 256) {
+                red = (world_y & 255) - red_darkness;
             } else {
-                red = 255 - (y & 255) - red_darkness;
+                red = 255 - (world_y & 255) - red_darkness;
             }
-            if (mod(x, 512) < 256) {
-                blue = (x & 255) - blue_darkness;
+            if (mod(world_x, 512) < 256) {
+                blue = (world_x & 255) - blue_darkness;
             } else {
-                blue = 255 - (x & 255) - blue_darkness;
+                blue = 255 - (world_x & 255) - blue_darkness;
             }
             if (red < 0) {
                 red = 0;
@@ -122,8 +126,8 @@ void draw_pretty_colors(Bitmap bitmap, int64_t time)
             if (blue < 0) {
                 blue = 0;
             }
-            bitmap.memory[y * bitmap.width + x].r = (uint8_t)red;
-            bitmap.memory[y * bitmap.width + x].b = (uint8_t)blue;
+            bitmap.memory[screen_y * bitmap.width + screen_x].r = (uint8_t)red;
+            bitmap.memory[screen_y * bitmap.width + screen_x].b = (uint8_t)blue;
         }
     }
 }
@@ -343,22 +347,16 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 }
 
                 if (input.button_flags & BUTTON_FLAG_UP) {
-                    OutputDebugStringA("UP\n");
+                    global_y -= 2;
                 }
                 if (input.button_flags & BUTTON_FLAG_DOWN) {
-                    OutputDebugStringA("DOWN\n");
+                    global_y += 2;
                 }
                 if (input.button_flags & BUTTON_FLAG_LEFT) {
-                    OutputDebugStringA("LEFT\n");
+                    global_x -= 2;
                 }
                 if (input.button_flags & BUTTON_FLAG_RIGHT) {
-                    OutputDebugStringA("RIGHT\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_CONFIRM) {
-                    OutputDebugStringA("CONFIRM\n");
-                }
-                if (input.button_flags & BUTTON_FLAG_CANCEL) {
-                    OutputDebugStringA("CANCEL\n");
+                    global_x += 2;
                 }
 
                 draw_pretty_colors(global_bitmap, global_time);
