@@ -1,5 +1,6 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib
 
+#include <dsound.h>
 #include <stdint.h>
 #include <windows.h>
 #include <xinput.h>
@@ -15,6 +16,9 @@ typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVib
 
 XInputGetStatePointer xinput_get_state;
 XInputSetStatePointer xinput_set_state;
+
+typedef HRESULT (*DirectSoundCreatePointer)(
+        LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 
 typedef struct Color {
     uint8_t b;
@@ -224,6 +228,12 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
             flag = KEY_FLAG_ESCAPE;
         } break;
 
+        case VK_F4: {
+            if ((lparam >> 29) & 1) { // Alt key is down
+                global_running = false;
+            }
+        } break;
+
         default: {
         } break;
         }
@@ -254,12 +264,15 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    HINSTANCE xinput_library = LoadLibraryA("xinput1_3.dll");
+    HINSTANCE xinput_library = LoadLibraryA("Xinput1_4.dll");
+    if (!xinput_library) {
+        xinput_library = LoadLibraryA("xinput1_3.dll");
+    }
     if (xinput_library) {
         xinput_get_state = (XInputGetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
         xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputSetState");
     } else {
-        OutputDebugStringA("Failed to load xinput1_3.dll\n");
+        OutputDebugStringA("Failed to load XInput\n");
     }
 
     global_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
@@ -286,8 +299,76 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
+            uint32_t audio_samples_per_second = 48000;
+            uint32_t audio_buffer_size = audio_samples_per_second * sizeof(int16_t) * 2;
+
             HDC device_context = GetDC(window);
             update_dimensions(&global_bitmap, window);
+
+            // Initialize DirectSound
+            HINSTANCE direct_sound_library = LoadLibraryA("dsound.dll");
+            if (direct_sound_library) {
+                DirectSoundCreatePointer direct_sound_create =
+                        (DirectSoundCreatePointer)GetProcAddress(
+                                direct_sound_library, "DirectSoundCreate");
+                LPDIRECTSOUND direct_sound;
+                if (direct_sound_create && (direct_sound_create(0, &direct_sound, 0) == DS_OK)) {
+                    WAVEFORMATEX wave_format = {
+                        .wFormatTag = WAVE_FORMAT_PCM,
+                        .nChannels = 2,
+                        .nSamplesPerSec = audio_samples_per_second,
+                        .wBitsPerSample = 16,
+                    };
+                    wave_format.nBlockAlign =
+                            (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
+                    wave_format.nAvgBytesPerSec =
+                            wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+                    if (direct_sound->lpVtbl->SetCooperativeLevel(
+                                direct_sound, window, DSSCL_PRIORITY)
+                            == DS_OK) {
+                        DSBUFFERDESC buffer_desciption = {
+                            .dwSize = sizeof(buffer_desciption),
+                            .dwFlags = DSBCAPS_PRIMARYBUFFER,
+                        };
+                        LPDIRECTSOUNDBUFFER primary_buffer;
+                        if (direct_sound->lpVtbl->CreateSoundBuffer(
+                                    direct_sound, &buffer_desciption, &primary_buffer, 0)
+                                == DS_OK) {
+                            if (primary_buffer->lpVtbl->SetFormat(primary_buffer, &wave_format)
+                                    == DS_OK) {
+                                OutputDebugStringA("Primary buffer format set\n");
+                            } else {
+                                OutputDebugStringA(
+                                        "DirectSound SetFormat on primary buffer failed\n");
+                            }
+                        } else {
+                            OutputDebugStringA("Failed to create primary buffer\n");
+                        }
+                    } else {
+                        OutputDebugStringA("DirectSound SetCooperativeLevel failed\n");
+                    }
+
+                    {
+                        DSBUFFERDESC buffer_description = {
+                            .dwSize = sizeof(buffer_description),
+                            .dwBufferBytes = audio_buffer_size,
+                            .lpwfxFormat = &wave_format,
+                        };
+                        LPDIRECTSOUNDBUFFER secondary_buffer;
+                        if (direct_sound->lpVtbl->CreateSoundBuffer(
+                                    direct_sound, &buffer_description, &secondary_buffer, 0)
+                                == DS_OK) {
+                            OutputDebugStringA("Second buffer created successfully\n");
+                        } else {
+                            OutputDebugStringA("Failed to create secondary buffer\n");
+                        }
+                    }
+                } else {
+                    OutputDebugStringA("Failed to create DirectSound\n");
+                }
+            } else {
+                OutputDebugStringA("Failed to load DirectSound\n");
+            }
 
             MSG message;
             global_running = 1;
