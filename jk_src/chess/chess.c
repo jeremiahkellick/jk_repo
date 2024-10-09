@@ -103,6 +103,44 @@ static int64_t global_keys_down;
 static Bitmap global_bitmap;
 static LPDIRECTSOUNDBUFFER global_audio_buffer;
 
+uint32_t lost_woods[] = {
+    349, // F
+    440, // A
+    494, // B
+    494, // B
+    349, // F
+    440, // A
+    494, // B
+    494, // B
+
+    349, // F
+    440, // A
+    494, // B
+    659, // E
+    587, // D
+    587, // D
+    494, // B
+    523, // C
+
+    494, // B
+    392, // G
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    294, // Low D
+
+    330, // Low E
+    392, // G
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+};
+
 void update_dimensions(Bitmap *bitmap, HWND window)
 {
     RECT rect;
@@ -320,6 +358,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint32_t audio_buffer_sample_count = audio_samples_per_second * audio_buffer_seconds;
             uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
 
+            uint32_t bpm = 160;
+            uint32_t eighth_notes_per_second = (bpm / 60) * 2;
+            uint32_t samples_per_eighth_note = audio_samples_per_second / eighth_notes_per_second;
+
             HDC device_context = GetDC(window);
             update_dimensions(&global_bitmap, window);
 
@@ -385,8 +427,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
             MSG message;
             uint32_t sample_index = 0;
-            uint32_t hz = 262;
-            uint32_t square_wave_period = audio_samples_per_second / hz;
 
             global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
 
@@ -496,6 +536,11 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                                 for (DWORD region_offset_index = 0; region_offset_index
                                         < region->size / sizeof(region_samples[0]);
                                         region_offset_index++) {
+                                    uint32_t eighth_note_index =
+                                            (sample_index / samples_per_eighth_note)
+                                            % JK_ARRAY_COUNT(lost_woods);
+                                    uint32_t hz = lost_woods[eighth_note_index];
+                                    uint32_t square_wave_period = audio_samples_per_second / hz;
                                     int16_t value = (sample_index % square_wave_period)
                                                     < square_wave_period / 2
                                             ? -1600
