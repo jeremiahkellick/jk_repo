@@ -34,6 +34,21 @@ typedef struct Bitmap {
     int32_t height;
 } Bitmap;
 
+typedef struct AudioBufferRegion {
+    DWORD size;
+    void *data;
+} AudioBufferRegion;
+
+typedef enum AudioChannel {
+    AUDIO_CHANNEL_LEFT,
+    AUDIO_CHANNEL_RIGHT,
+    AUDIO_CHANNEL_COUNT,
+} AudioChannel;
+
+typedef struct AudioSample {
+    int16_t channels[AUDIO_CHANNEL_COUNT];
+} AudioSample;
+
 typedef enum Key {
     KEY_UP,
     KEY_DOWN,
@@ -86,6 +101,7 @@ static int64_t global_x;
 static int64_t global_y;
 static int64_t global_keys_down;
 static Bitmap global_bitmap;
+static LPDIRECTSOUNDBUFFER global_audio_buffer;
 
 void update_dimensions(Bitmap *bitmap, HWND window)
 {
@@ -300,7 +316,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 0);
         if (window) {
             uint32_t audio_samples_per_second = 48000;
-            uint32_t audio_buffer_size = audio_samples_per_second * sizeof(int16_t) * 2;
+            uint32_t audio_buffer_seconds = 2;
+            uint32_t audio_buffer_sample_count = audio_samples_per_second * audio_buffer_seconds;
+            uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
 
             HDC device_context = GetDC(window);
             update_dimensions(&global_bitmap, window);
@@ -315,7 +333,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 if (direct_sound_create && (direct_sound_create(0, &direct_sound, 0) == DS_OK)) {
                     WAVEFORMATEX wave_format = {
                         .wFormatTag = WAVE_FORMAT_PCM,
-                        .nChannels = 2,
+                        .nChannels = AUDIO_CHANNEL_COUNT,
                         .nSamplesPerSec = audio_samples_per_second,
                         .wBitsPerSample = 16,
                     };
@@ -335,9 +353,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                                     direct_sound, &buffer_desciption, &primary_buffer, 0)
                                 == DS_OK) {
                             if (primary_buffer->lpVtbl->SetFormat(primary_buffer, &wave_format)
-                                    == DS_OK) {
-                                OutputDebugStringA("Primary buffer format set\n");
-                            } else {
+                                    != DS_OK) {
                                 OutputDebugStringA(
                                         "DirectSound SetFormat on primary buffer failed\n");
                             }
@@ -354,12 +370,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                             .dwBufferBytes = audio_buffer_size,
                             .lpwfxFormat = &wave_format,
                         };
-                        LPDIRECTSOUNDBUFFER secondary_buffer;
                         if (direct_sound->lpVtbl->CreateSoundBuffer(
-                                    direct_sound, &buffer_description, &secondary_buffer, 0)
-                                == DS_OK) {
-                            OutputDebugStringA("Second buffer created successfully\n");
-                        } else {
+                                    direct_sound, &buffer_description, &global_audio_buffer, 0)
+                                != DS_OK) {
                             OutputDebugStringA("Failed to create secondary buffer\n");
                         }
                     }
@@ -371,8 +384,14 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             }
 
             MSG message;
-            global_running = 1;
+            uint32_t sample_index = 0;
+            uint32_t hz = 262;
+            uint32_t square_wave_period = audio_samples_per_second / hz;
+
+            global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
+
             global_time = 0;
+            global_running = 1;
             while (global_running) {
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                     if (message.message == WM_QUIT) {
@@ -441,6 +460,65 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 }
 
                 draw_pretty_colors(global_bitmap, global_time);
+
+                // Write audio to buffer
+                {
+                    DWORD play_cursor;
+                    DWORD write_cursor;
+                    if (global_audio_buffer->lpVtbl->GetCurrentPosition(
+                                global_audio_buffer, &play_cursor, &write_cursor)
+                            == DS_OK) {
+                        AudioBufferRegion regions[2] = {0};
+
+                        uint32_t byte_to_lock =
+                                sample_index * sizeof(AudioSample) % audio_buffer_size;
+                        uint32_t bytes_to_write;
+                        if (byte_to_lock > play_cursor) {
+                            bytes_to_write = audio_buffer_size - byte_to_lock + play_cursor;
+                        } else {
+                            bytes_to_write = play_cursor - byte_to_lock;
+                        }
+
+                        if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
+                                    byte_to_lock,
+                                    bytes_to_write,
+                                    &regions[0].data,
+                                    &regions[0].size,
+                                    &regions[1].data,
+                                    &regions[1].size,
+                                    0)
+                                == DS_OK) {
+                            for (int region_index = 0; region_index < 2; region_index++) {
+                                AudioBufferRegion *region = &regions[region_index];
+
+                                AudioSample *region_samples = region->data;
+                                assert(region->size % sizeof(region_samples[0]) == 0);
+                                for (DWORD region_offset_index = 0; region_offset_index
+                                        < region->size / sizeof(region_samples[0]);
+                                        region_offset_index++) {
+                                    int16_t value = (sample_index % square_wave_period)
+                                                    < square_wave_period / 2
+                                            ? -1600
+                                            : 1600;
+                                    for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT;
+                                            channel_index++) {
+                                        region_samples[region_offset_index]
+                                                .channels[channel_index] = value;
+                                    }
+                                    sample_index++;
+                                }
+                            }
+
+                            global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
+                                    regions[0].data,
+                                    regions[0].size,
+                                    regions[1].data,
+                                    regions[1].size);
+                        }
+                    } else {
+                        OutputDebugStringA("Failed to get DirectSound current position\n");
+                    }
+                }
 
                 copy_bitmap_to_window(device_context, global_bitmap);
 
