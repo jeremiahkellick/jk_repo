@@ -147,6 +147,17 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length);
 
 typedef uint32_t b32;
 
+void jk_assert(char *message, char *file, int64_t line);
+
+#define JK_ASSERT(expression) \
+    (void)((!!(expression)) || (jk_assert(#expression, __FILE__, (int64_t)(__LINE__)), 0))
+
+#ifdef NDEBUG
+#define JK_DEBUG_ASSERT
+#else
+#define JK_DEBUG_ASSERT(expression) JK_ASSERT(expression)
+#endif
+
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))

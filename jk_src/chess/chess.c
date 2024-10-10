@@ -1,6 +1,7 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib
 
 #include <dsound.h>
+#include <math.h>
 #include <stdint.h>
 #include <windows.h>
 #include <xinput.h>
@@ -358,9 +359,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint32_t audio_buffer_sample_count = audio_samples_per_second * audio_buffer_seconds;
             uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
 
-            uint32_t bpm = 160;
-            uint32_t eighth_notes_per_second = (bpm / 60) * 2;
-            uint32_t samples_per_eighth_note = audio_samples_per_second / eighth_notes_per_second;
+            double bpm = 140.0;
+            double eighth_notes_per_second = (bpm / 60.0) * 2.0;
+            uint32_t samples_per_eighth_note =
+                    (uint32_t)((double)audio_samples_per_second / eighth_notes_per_second);
 
             HDC device_context = GetDC(window);
             update_dimensions(&global_bitmap, window);
@@ -425,14 +427,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 OutputDebugStringA("Failed to load DirectSound\n");
             }
 
-            MSG message;
-            uint32_t sample_index = 0;
-
             global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
 
+            uint32_t sample_index = 0;
             global_time = 0;
             global_running = 1;
             while (global_running) {
+                MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                     if (message.message == WM_QUIT) {
                         global_running = false;
@@ -532,23 +533,43 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                                 AudioBufferRegion *region = &regions[region_index];
 
                                 AudioSample *region_samples = region->data;
-                                assert(region->size % sizeof(region_samples[0]) == 0);
+                                JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
                                 for (DWORD region_offset_index = 0; region_offset_index
                                         < region->size / sizeof(region_samples[0]);
                                         region_offset_index++) {
                                     uint32_t eighth_note_index =
                                             (sample_index / samples_per_eighth_note)
                                             % JK_ARRAY_COUNT(lost_woods);
+
+                                    double x = (double)sample_index / samples_per_eighth_note;
+                                    // Number from 0.0 to 2.0 based on how far into the current
+                                    // eighth note we are
+                                    double note_progress = (x - floor(x)) * 2.0;
+                                    double fade_factor = 1.0;
+                                    if (note_progress < 1.0) {
+                                        if (lost_woods[eighth_note_index]
+                                                != lost_woods[eighth_note_index == 0
+                                                                ? JK_ARRAY_COUNT(lost_woods) - 1
+                                                                : eighth_note_index - 1]) {
+                                            fade_factor = note_progress;
+                                        }
+                                    } else {
+                                        if (lost_woods[eighth_note_index]
+                                                != lost_woods[(eighth_note_index + 1)
+                                                        % JK_ARRAY_COUNT(lost_woods)]) {
+                                            fade_factor = 2.0 - note_progress;
+                                        }
+                                    }
+
                                     uint32_t hz = lost_woods[eighth_note_index];
                                     uint32_t square_wave_period = audio_samples_per_second / hz;
-                                    int16_t value = (sample_index % square_wave_period)
-                                                    < square_wave_period / 2
-                                            ? -1600
-                                            : 1600;
+                                    double value = sin((double)(sample_index % square_wave_period)
+                                            / (double)square_wave_period * 2.0 * 3.14159);
                                     for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT;
                                             channel_index++) {
                                         region_samples[region_offset_index]
-                                                .channels[channel_index] = value;
+                                                .channels[channel_index] =
+                                                (int16_t)(value * fade_factor * 2000.0);
                                     }
                                     sample_index++;
                                 }

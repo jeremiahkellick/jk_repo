@@ -407,6 +407,12 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length)
 
 // ---- Quicksort end ----------------------------------------------------------
 
+void jk_assert(char *message, char *file, int64_t line)
+{
+    fprintf(stderr, "Assertion failed: %s, %s:%lld\n", message, file, (long long)line);
+    abort();
+}
+
 JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
 {
     JK_PROFILE_ZONE_TIME_BEGIN(jk_file_read_full);
