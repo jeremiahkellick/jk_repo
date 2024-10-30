@@ -1,11 +1,9 @@
 #ifndef JK_PLATFORM_H
 #define JK_PLATFORM_H
 
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <jk_src/jk_lib/jk_lib.h>
 
-// OS functions
+// ---- OS functions begin -----------------------------------------------------
 
 JK_PUBLIC void jk_platform_init(void);
 
@@ -15,7 +13,7 @@ JK_PUBLIC size_t jk_platform_page_size(void);
 
 JK_PUBLIC void *jk_platform_memory_reserve(size_t size);
 
-JK_PUBLIC bool jk_platform_memory_commit(void *address, size_t size);
+JK_PUBLIC b32 jk_platform_memory_commit(void *address, size_t size);
 
 JK_PUBLIC void *jk_platform_memory_alloc(size_t size);
 
@@ -33,8 +31,176 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void);
 
 JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
 
-// Compiler functions
+// ---- OS functions end -------------------------------------------------------
+
+// ---- Compiler functions begin -----------------------------------------------
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void);
+
+// ---- Compiler functions end -------------------------------------------------
+
+// ---- Arena begin ------------------------------------------------------------
+
+typedef struct JkPlatformArena {
+    size_t virtual_size;
+    size_t size;
+    size_t pos;
+    uint8_t *address;
+} JkPlatformArena;
+
+typedef enum JkPlatformArenaInitResult {
+    JK_PLATFORM_ARENA_INIT_SUCCESS,
+    JK_PLATFORM_ARENA_INIT_FAILURE,
+} JkPlatformArenaInitResult;
+
+JK_PUBLIC JkPlatformArenaInitResult jk_platform_arena_init(
+        JkPlatformArena *arena, size_t virtual_size);
+
+JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena);
+
+JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, size_t size);
+
+JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, size_t size);
+
+typedef enum JkPlatformArenaPopResult {
+    JK_PLATFORM_ARENA_POP_SUCCESS,
+    JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS,
+} JkPlatformArenaPopResult;
+
+JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, size_t size);
+
+// ---- Arena end --------------------------------------------------------------
+
+// ---- Profile begin ----------------------------------------------------------
+
+#ifndef JK_PLATFORM_PROFILE_DISABLE
+#define JK_PLATFORM_PROFILE_DISABLE 0
+#endif
+
+#if JK_PLATFORM_PROFILE_DISABLE
+
+#define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(...)
+#define JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(...)
+#define JK_PLATFORM_PROFILE_ZONE_END(...)
+
+#else
+
+typedef struct JkPlatformProfileEntry {
+    char *name;
+    uint64_t elapsed_exclusive;
+    uint64_t elapsed_inclusive;
+    uint64_t hit_count;
+    uint64_t byte_count;
+    uint64_t depth;
+
+#ifndef NDEBUG
+    int64_t active_count;
+#endif
+
+    b32 seen;
+} JkPlatformProfileEntry;
+
+typedef struct JkPlatformProfileTiming {
+    uint64_t saved_elapsed_inclusive;
+    JkPlatformProfileEntry *parent;
+    uint64_t start;
+
+#ifndef NDEBUG
+    JkPlatformProfileEntry *entry;
+    b32 ended;
+#endif
+} JkPlatformProfileTiming;
+
+JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
+        JkPlatformProfileEntry *entry,
+        char *name,
+        uint64_t byte_count);
+
+JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing);
+
+#define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, byte_count)          \
+    JkPlatformProfileTiming jk_platform_profile_timing__##identifier;             \
+    do {                                                                          \
+        static JkPlatformProfileEntry jk_platform_profile_time_begin_entry;       \
+        jk_platform_profile_zone_begin(&jk_platform_profile_timing__##identifier, \
+                &jk_platform_profile_time_begin_entry,                            \
+                #identifier,                                                      \
+                byte_count);                                                      \
+    } while (0)
+
+#define JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(identifier) \
+    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, 0)
+
+#define JK_PLATFORM_PROFILE_ZONE_END(identifier) \
+    jk_platform_profile_zone_end(&jk_platform_profile_timing__##identifier);
+
+#endif
+
+JK_PUBLIC void jk_platform_profile_begin(void);
+
+JK_PUBLIC void jk_platform_profile_end_and_print(void);
+
+typedef enum JkPlatformRepetitionTestState {
+    JK_REPETITION_TEST_UNINITIALIZED,
+    JK_REPETITION_TEST_RUNNING,
+    JK_REPETITION_TEST_COMPLETE,
+    JK_REPETITION_TEST_ERROR,
+} JkPlatformRepetitionTestState;
+
+typedef enum JkPlatformRepValue {
+    JK_REP_VALUE_TEST_COUNT,
+    JK_REP_VALUE_CPU_TIMER,
+    JK_REP_VALUE_BYTE_COUNT,
+    JK_REP_VALUE_PAGE_FAULT_COUNT,
+
+    JK_REP_VALUE_COUNT,
+} JkPlatformRepValue;
+
+typedef struct JkPlatformRepValues {
+    uint64_t v[JK_REP_VALUE_COUNT];
+} JkPlatformRepValues;
+
+typedef struct JkPlatformRepetitionTest {
+    JkPlatformRepetitionTestState state;
+    uint64_t target_byte_count;
+    uint64_t frequency;
+    uint64_t try_for_clocks;
+    uint64_t block_open_count;
+    uint64_t block_close_count;
+    uint64_t last_found_min_time;
+    JkPlatformRepValues current;
+    JkPlatformRepValues min;
+    JkPlatformRepValues max;
+    JkPlatformRepValues total;
+} JkPlatformRepetitionTest;
+
+JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *test,
+        uint64_t target_byte_count,
+        uint64_t frequency,
+        uint64_t seconds_to_try);
+
+JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *test);
+
+JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test);
+
+JK_PUBLIC double jk_platform_repetition_test_bandwidth(
+        JkPlatformRepValues values, uint64_t frequency);
+
+JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test);
+
+JK_PUBLIC void jk_platform_repetition_test_count_bytes(
+        JkPlatformRepetitionTest *test, uint64_t bytes);
+
+JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test, char *message);
+
+// ---- Profile end ------------------------------------------------------------
+
+JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
+
+JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);
+
+JK_PUBLIC JkBuffer jk_platform_file_read_full(char *file_name, JkPlatformArena *storage);
+
+JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait);
 
 #endif

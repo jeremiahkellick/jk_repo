@@ -8,9 +8,7 @@
 // #jk_build nasm jk_src/perfaware/part3/conditional_nop.asm
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 void conditional_nop(size_t size, void *data);
@@ -70,7 +68,7 @@ static void fill_with_pattern(JkBuffer buffer, Pattern pattern)
     }
 }
 
-static JkRepetitionTest tests[PATTERN_COUNT];
+static JkPlatformRepetitionTest tests[PATTERN_COUNT];
 
 int main(int argc, char **argv)
 {
@@ -86,22 +84,22 @@ int main(int argc, char **argv)
     }
 
     jk_platform_init();
-    uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
+    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    while (true) {
+    for (;;) {
         for (Pattern pattern = 0; pattern < PATTERN_COUNT; pattern++) {
             fill_with_pattern(buffer, pattern);
 
-            JkRepetitionTest *test = &tests[pattern];
+            JkPlatformRepetitionTest *test = &tests[pattern];
 
             printf("\n%s\n", pattern_names[pattern]);
 
-            jk_repetition_test_run_wave(test, buffer.size, frequency, 10);
-            while (jk_repetition_test_running(test)) {
-                jk_repetition_test_time_begin(test);
+            jk_platform_repetition_test_run_wave(test, buffer.size, frequency, 10);
+            while (jk_platform_repetition_test_running(test)) {
+                jk_platform_repetition_test_time_begin(test);
                 conditional_nop(buffer.size, buffer.data);
-                jk_repetition_test_time_end(test);
-                jk_repetition_test_count_bytes(test, buffer.size);
+                jk_platform_repetition_test_time_end(test);
+                jk_platform_repetition_test_count_bytes(test, buffer.size);
             }
             if (test->state == JK_REPETITION_TEST_ERROR) {
                 fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
@@ -109,6 +107,4 @@ int main(int argc, char **argv)
             }
         }
     }
-
-    return 0;
 }

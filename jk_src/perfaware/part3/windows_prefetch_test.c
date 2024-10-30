@@ -7,9 +7,7 @@
 // #jk_build nasm jk_src/perfaware/part3/windows_prefetch_test.asm
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 typedef struct Node {
@@ -33,14 +31,14 @@ Function functions[] = {
 };
 
 // Usage: tests[rep_count_index][function_index]
-static JkRepetitionTest tests[32][JK_ARRAY_COUNT(functions)];
+static JkPlatformRepetitionTest tests[32][JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
     assert(sizeof(Node) == 64);
 
     jk_platform_init();
-    uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
+    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     void *memory =
             jk_platform_memory_alloc(NODE_COUNT * sizeof(uint64_t) + NODE_COUNT * sizeof(Node));
@@ -78,7 +76,7 @@ int main(int argc, char **argv)
         for (size_t function_index = 0; function_index < JK_ARRAY_COUNT(functions);
                 function_index++) {
             Function *function = &functions[function_index];
-            JkRepetitionTest *test = &tests[rep_count_index][function_index];
+            JkPlatformRepetitionTest *test = &tests[rep_count_index][function_index];
             uint64_t rep_count = 4 * (rep_count_index + 1);
             if (rep_count_index >= 16) {
                 rep_count = 64 * (rep_count_index - 14);
@@ -86,12 +84,12 @@ int main(int argc, char **argv)
 
             printf("\nRep count: %llu, Function: %s\n", (long long)rep_count, function->name);
 
-            jk_repetition_test_run_wave(test, NODE_COUNT * sizeof(Node), frequency, 10);
-            while (jk_repetition_test_running(test)) {
-                jk_repetition_test_time_begin(test);
+            jk_platform_repetition_test_run_wave(test, NODE_COUNT * sizeof(Node), frequency, 10);
+            while (jk_platform_repetition_test_running(test)) {
+                jk_platform_repetition_test_time_begin(test);
                 function->ptr(rep_count, starting_node);
-                jk_repetition_test_time_end(test);
-                jk_repetition_test_count_bytes(test, NODE_COUNT * sizeof(Node));
+                jk_platform_repetition_test_time_end(test);
+                jk_platform_repetition_test_count_bytes(test, NODE_COUNT * sizeof(Node));
             }
             if (test->state == JK_REPETITION_TEST_ERROR) {
                 fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
@@ -115,7 +113,7 @@ int main(int argc, char **argv)
         for (size_t function_index = 0; function_index < JK_ARRAY_COUNT(functions);
                 function_index++) {
             printf(",%.3f",
-                    jk_repetition_test_bandwidth(
+                    jk_platform_repetition_test_bandwidth(
                             tests[rep_count_index][function_index].min, frequency)
                             / (1024.0 * 1024.0));
         }

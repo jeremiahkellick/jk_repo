@@ -3,9 +3,7 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 #define STARTING_SIZE (8llu * 1024)
@@ -13,7 +11,7 @@
 static char *program_name = "!! program_name not yet overwritten with argv[0] !!";
 
 static uint64_t just_read(
-        JkRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
+        JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
 {
     FILE *file = fopen(file_name, "rb");
     if (file) {
@@ -26,21 +24,21 @@ static uint64_t just_read(
                     read_size = remaining_size;
                 }
                 if (fread(buffer, read_size, 1, file) == 1) {
-                    jk_repetition_test_count_bytes(test, read_size);
+                    jk_platform_repetition_test_count_bytes(test, read_size);
                 } else {
-                    jk_repetition_test_error(test, "Failed to read file");
+                    jk_platform_repetition_test_error(test, "Failed to read file");
                 }
                 remaining_size -= read_size;
             }
 
             jk_platform_memory_free(buffer, buffer_size);
         } else {
-            jk_repetition_test_error(test, "Failed to allocate memory");
+            jk_platform_repetition_test_error(test, "Failed to allocate memory");
         }
 
         fclose(file);
     } else {
-        jk_repetition_test_error(test, "Failed to open file");
+        jk_platform_repetition_test_error(test, "Failed to open file");
     }
 
     return 0;
@@ -65,7 +63,7 @@ static uint64_t sum(JkBuffer buffer)
 }
 
 static uint64_t read_and_sum(
-        JkRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
+        JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
 {
     uint64_t result = 0;
 
@@ -81,21 +79,21 @@ static uint64_t read_and_sum(
                 }
                 if (fread(buffer, read_size, 1, file) == 1) {
                     result += sum((JkBuffer){.size = read_size, .data = buffer});
-                    jk_repetition_test_count_bytes(test, read_size);
+                    jk_platform_repetition_test_count_bytes(test, read_size);
                 } else {
-                    jk_repetition_test_error(test, "Failed to read file");
+                    jk_platform_repetition_test_error(test, "Failed to read file");
                 }
                 remaining_size -= read_size;
             }
 
             jk_platform_memory_free(buffer, buffer_size);
         } else {
-            jk_repetition_test_error(test, "Failed to allocate memory");
+            jk_platform_repetition_test_error(test, "Failed to allocate memory");
         }
 
         fclose(file);
     } else {
-        jk_repetition_test_error(test, "Failed to open file");
+        jk_platform_repetition_test_error(test, "Failed to open file");
     }
 
     return result;
@@ -148,7 +146,7 @@ static DWORD sum_thread(LPVOID ptr)
 }
 
 static uint64_t read_and_sum_threads(
-        JkRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
+        JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
 {
     size_t half_size = buffer_size / 2;
     SumThreadData thread_data = {.iterations = (file_size + half_size - 1) / half_size};
@@ -161,7 +159,7 @@ static uint64_t read_and_sum_threads(
                 thread_data.locks[i].sem_write = CreateSemaphore(NULL, 1, 1, NULL);
                 thread_data.locks[i].sem_read = CreateSemaphore(NULL, 0, 1, NULL);
                 if (!thread_data.locks[i].sem_write || !thread_data.locks[i].sem_read) {
-                    jk_repetition_test_error(test, "Failed to create mutex");
+                    jk_platform_repetition_test_error(test, "Failed to create mutex");
                     return 0;
                 }
             }
@@ -184,10 +182,10 @@ static uint64_t read_and_sum_threads(
 
                     if (fread(lock->buffer.data, lock->buffer.size, 1, file) == 1) {
                         remaining_size -= lock->buffer.size;
-                        jk_repetition_test_count_bytes(test, lock->buffer.size);
+                        jk_platform_repetition_test_count_bytes(test, lock->buffer.size);
                         ReleaseSemaphore(lock->sem_read, 1, NULL);
                     } else {
-                        jk_repetition_test_error(test, "Failed to read file");
+                        jk_platform_repetition_test_error(test, "Failed to read file");
                         break;
                     }
 
@@ -197,7 +195,7 @@ static uint64_t read_and_sum_threads(
                 WaitForSingleObject(thread, ULONG_MAX);
                 CloseHandle(thread);
             } else {
-                jk_repetition_test_error(test, "Failed to create thread");
+                jk_platform_repetition_test_error(test, "Failed to create thread");
             }
 
             for (int i = 0; i < JK_ARRAY_COUNT(thread_data.locks); i++) {
@@ -211,12 +209,12 @@ static uint64_t read_and_sum_threads(
 
             jk_platform_memory_free(buffer, buffer_size);
         } else {
-            jk_repetition_test_error(test, "Failed to allocate memory");
+            jk_platform_repetition_test_error(test, "Failed to allocate memory");
         }
 
         fclose(file);
     } else {
-        jk_repetition_test_error(test, "Failed to open file");
+        jk_platform_repetition_test_error(test, "Failed to open file");
     }
 
     return thread_data.result;
@@ -224,7 +222,8 @@ static uint64_t read_and_sum_threads(
 
 typedef struct Function {
     char *name;
-    uint64_t (*ptr)(JkRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size);
+    uint64_t (*ptr)(
+            JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size);
 } Function;
 
 static Function functions[] = {
@@ -233,7 +232,7 @@ static Function functions[] = {
     {.name = "Read and sum", .ptr = read_and_sum},
 };
 
-static JkRepetitionTest tests[13][JK_ARRAY_COUNT(functions)];
+static JkPlatformRepetitionTest tests[13][JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
@@ -246,32 +245,32 @@ int main(int argc, char **argv)
 
     jk_platform_init();
     size_t file_size = jk_platform_file_size(argv[1]);
-    uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
+    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    JkArena storage;
-    jk_arena_init(&storage, 64llu * 1024 * 1024 * 1024);
-    JkBuffer full_file_buffer = jk_file_read_full(argv[1], &storage);
+    JkPlatformArena storage;
+    jk_platform_arena_init(&storage, 64llu * 1024 * 1024 * 1024);
+    JkBuffer full_file_buffer = jk_platform_file_read_full(argv[1], &storage);
     uint64_t reference_sum = sum(full_file_buffer);
-    jk_arena_terminate(&storage);
+    jk_platform_arena_terminate(&storage);
 
     size_t buffer_size = STARTING_SIZE;
     for (size_t i = 0; i < JK_ARRAY_COUNT(tests); i++, buffer_size *= 2) {
         for (size_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
-            JkRepetitionTest *test = &tests[i][j];
+            JkPlatformRepetitionTest *test = &tests[i][j];
 
             printf("\nFunction: %s, buffer size: ", functions[j].name);
             jk_print_bytes_uint64(stdout, "%.0f", buffer_size);
             printf("\n");
 
-            jk_repetition_test_run_wave(test, file_size, frequency, 10);
-            uint8_t passed = true;
-            while (jk_repetition_test_running(test)) {
-                jk_repetition_test_time_begin(test);
+            jk_platform_repetition_test_run_wave(test, file_size, frequency, 10);
+            uint8_t passed = 1;
+            while (jk_platform_repetition_test_running(test)) {
+                jk_platform_repetition_test_time_begin(test);
                 uint64_t sum = functions[j].ptr(test, argv[1], file_size, buffer_size);
                 if (sum != reference_sum) {
-                    passed = false;
+                    passed = 0;
                 }
-                jk_repetition_test_time_end(test);
+                jk_platform_repetition_test_time_end(test);
             }
             if (!passed) {
                 fprintf(stderr, "WARNING: Checksum mismatch\n");
@@ -288,7 +287,7 @@ int main(int argc, char **argv)
         jk_print_bytes_uint64(stdout, "%.0f", size);
         for (size_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
             printf(",%.3f",
-                    jk_repetition_test_bandwidth(tests[i][j].min, frequency)
+                    jk_platform_repetition_test_bandwidth(tests[i][j].min, frequency)
                             / (1024.0 * 1024.0 * 1024.0));
         }
         printf("\n");

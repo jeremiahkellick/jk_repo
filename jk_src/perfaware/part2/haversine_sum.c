@@ -1,16 +1,10 @@
-#include <assert.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/json/json.h>
-#include <jk_src/jk_lib/profile/profile.h>
 #include <jk_src/perfaware/part2/haversine_reference.h>
 // #jk_build dependencies_end
 
@@ -33,7 +27,7 @@ char *coordinate_names[COORDINATE_COUNT] = {
     "y1",
 };
 
-static bool approximately_equal(double a, double b)
+static b32 approximately_equal(double a, double b)
 {
     double diff = a - b;
     return diff > -0.0001 && diff < 0.0001;
@@ -61,7 +55,7 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 int main(int argc, char **argv)
 {
-    jk_profile_begin();
+    jk_platform_profile_begin();
 
     program_name = argv[0];
 
@@ -74,7 +68,7 @@ int main(int argc, char **argv)
                     "%s: Expected 1-2 operands, got %zu\n",
                     program_name,
                     opts_parse.operand_count);
-            opts_parse.usage_error = true;
+            opts_parse.usage_error = 1;
         }
         if (opt_results[OPT_HELP].present || opts_parse.usage_error) {
             printf("NAME\n"
@@ -97,20 +91,20 @@ int main(int argc, char **argv)
         answer_file_name = opts_parse.operands[1];
     }
 
-    JkArena storage;
-    jk_arena_init(&storage, (size_t)1 << 35);
+    JkPlatformArena storage;
+    jk_platform_arena_init(&storage, (size_t)1 << 35);
 
-    JkBuffer text = jk_file_read_full(json_file_name, &storage);
+    JkBuffer text = jk_platform_file_read_full(json_file_name, &storage);
     JkBuffer answers = {0};
     if (answer_file_name) {
-        answers = jk_file_read_full(answer_file_name, &storage);
+        answers = jk_platform_file_read_full(answer_file_name, &storage);
     }
 
-    JK_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);
+    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);
 
-    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, text.size);
+    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, text.size);
     JkJson *json = jk_json_parse(text, &storage);
-    JK_PROFILE_ZONE_END(parse_json);
+    JK_PLATFORM_PROFILE_ZONE_END(parse_json);
 
     if (json == NULL) {
         fprintf(stderr, "%s: Failed to parse JSON\n", program_name);
@@ -132,13 +126,13 @@ int main(int argc, char **argv)
 
     size_t pair_count = pairs_json->child_count;
     size_t pairs_buffer_size = sizeof(HaversinePair) * pair_count;
-    HaversinePair *pairs = jk_arena_push(&storage, pairs_buffer_size);
+    HaversinePair *pairs = jk_platform_arena_push(&storage, pairs_buffer_size);
 
     if (answers.size) {
-        assert(answers.size == sizeof(double) * (pair_count + 1));
+        JK_ASSERT(answers.size == sizeof(double) * (pair_count + 1));
     }
 
-    JK_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
+    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
     {
         size_t i = 0;
         for (JkJson *pair_json = pairs_json->first_child; pair_json;
@@ -157,11 +151,11 @@ int main(int argc, char **argv)
             }
         }
     }
-    JK_PROFILE_ZONE_END(lookup_and_convert);
+    JK_PLATFORM_PROFILE_ZONE_END(lookup_and_convert);
 
-    JK_PROFILE_ZONE_END(parse_haversine_pairs);
+    JK_PLATFORM_PROFILE_ZONE_END(parse_haversine_pairs);
 
-    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, pairs_buffer_size);
+    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, pairs_buffer_size);
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)pair_count;
     for (size_t i = 0; i < pair_count; i++) {
@@ -170,13 +164,13 @@ int main(int argc, char **argv)
 
 #ifndef NDEBUG
         if (answers.size) {
-            assert(approximately_equal(distance, JK_DATA_GET(answers.data, i, double)));
+            JK_ASSERT(approximately_equal(distance, JK_DATA_GET(answers.data, i, double)));
         }
 #endif
 
         sum += distance * sum_coefficient;
     }
-    JK_PROFILE_ZONE_END(sum);
+    JK_PLATFORM_PROFILE_ZONE_END(sum);
 
     printf("Pair count: %zu\n", pair_count);
     printf("Haversine sum: %.16f\n", sum);
@@ -187,7 +181,7 @@ int main(int argc, char **argv)
         printf("Difference: %.16f\n\n", sum - ref_sum);
     }
 
-    jk_profile_end_and_print();
+    jk_platform_profile_end_and_print();
 
     return 0;
 }

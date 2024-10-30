@@ -1,82 +1,8 @@
 #include <ctype.h>
-#include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "jk_lib.h"
-
-// #jk_build dependencies_begin
-#include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
-// #jk_build dependencies_end
-
-// ---- Arena begin ------------------------------------------------------------
-
-JK_PUBLIC JkArenaInitResult jk_arena_init(JkArena *arena, size_t virtual_size)
-{
-    size_t page_size = jk_platform_page_size();
-
-    arena->virtual_size = virtual_size;
-    arena->size = page_size;
-    arena->pos = 0;
-
-    arena->address = jk_platform_memory_reserve(virtual_size);
-    if (!arena->address) {
-        return JK_ARENA_INIT_FAILURE;
-    }
-    if (!jk_platform_memory_commit(arena->address, page_size)) {
-        return JK_ARENA_INIT_FAILURE;
-    }
-
-    return JK_ARENA_INIT_SUCCESS;
-}
-
-JK_PUBLIC void jk_arena_terminate(JkArena *arena)
-{
-    jk_platform_memory_free(arena->address, arena->virtual_size);
-}
-
-JK_PUBLIC void *jk_arena_push(JkArena *arena, size_t size)
-{
-    size_t new_pos = arena->pos + size;
-    if (new_pos > arena->virtual_size) {
-        return NULL;
-    }
-    if (new_pos > arena->size) {
-        size_t expansion_size = jk_page_size_round_up(new_pos - arena->size);
-        if (!jk_platform_memory_commit(arena->address + arena->size, expansion_size)) {
-            return NULL;
-        }
-        arena->size += expansion_size;
-    }
-    void *address = arena->address + arena->pos;
-    arena->pos = new_pos;
-    return address;
-}
-
-JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, size_t size)
-{
-    void *pointer = jk_arena_push(arena, size);
-    memset(pointer, 0, size);
-    return pointer;
-}
-
-JK_PUBLIC JkArenaPopResult jk_arena_pop(JkArena *arena, size_t size)
-{
-    if (size > arena->pos) {
-        return JK_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS;
-    }
-    arena->pos -= size;
-    return JK_ARENA_POP_SUCCESS;
-}
-
-JK_PUBLIC void jk_arena_clear(JkArena *arena)
-{
-    arena->pos = 0;
-}
-
-// ---- Arena end --------------------------------------------------------------
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -121,7 +47,7 @@ JK_PUBLIC void jk_utf8_codepoint_encode(uint32_t codepoint32, JkUtf8Codepoint *c
     }
 }
 
-JK_PUBLIC bool jk_utf8_byte_is_continuation(char byte)
+JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte)
 {
     return (byte & 0xc0) == 0x80;
 }
@@ -168,27 +94,27 @@ JK_PUBLIC void jk_options_parse(int argc,
         size_t option_count,
         JkOptionsParseResult *result)
 {
-    bool options_ended = false;
+    b32 options_ended = 0;
     result->operands = &argv[argc];
     result->operand_count = 0;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
-            bool i_plus_one_is_arg = false;
+            b32 i_plus_one_is_arg = 0;
             if (argv[i][1] == '-') {
                 if (argv[i][2] == '\0') { // -- encountered
-                    options_ended = true;
+                    options_ended = 1;
                 } else { // Double hyphen option
                     char *name = &argv[i][2];
                     int end = 0;
                     while (name[end] != '=' && name[end] != '\0') {
                         end++;
                     }
-                    bool matched = false;
+                    b32 matched = 0;
                     for (size_t j = 0; !matched && j < option_count; j++) {
                         if (options_in[j].long_name
                                 && strncmp(name, options_in[j].long_name, end) == 0) {
-                            matched = true;
-                            options_out[j].present = true;
+                            matched = 1;
+                            options_out[j].present = 1;
 
                             if (options_in[j].arg_name) {
                                 if (name[end] == '=') {
@@ -196,7 +122,7 @@ JK_PUBLIC void jk_options_parse(int argc,
                                         options_out[j].arg = &name[end + 1];
                                     }
                                 } else {
-                                    i_plus_one_is_arg = true;
+                                    i_plus_one_is_arg = 1;
                                     options_out[j].arg = argv[i + 1];
                                 }
                             } else {
@@ -206,30 +132,30 @@ JK_PUBLIC void jk_options_parse(int argc,
                                             "argument\n",
                                             argv[0],
                                             argv[i]);
-                                    result->usage_error = true;
+                                    result->usage_error = 1;
                                 }
                             }
                         }
                     }
                     if (!matched) {
                         fprintf(stderr, "%s: Invalid option '%s'\n", argv[0], argv[i]);
-                        result->usage_error = true;
+                        result->usage_error = 1;
                     }
                 }
             } else { // Single-hypen option(s)
-                bool has_argument = false;
+                b32 has_argument = 0;
                 for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
-                    bool matched = false;
+                    b32 matched = 0;
                     for (size_t j = 0; !matched && j < option_count; j++) {
                         if (*c == options_in[j].flag) {
-                            matched = true;
-                            options_out[j].present = true;
+                            matched = 1;
+                            options_out[j].present = 1;
                             has_argument = options_in[j].arg_name != NULL;
 
                             if (has_argument) {
                                 options_out[j].arg = ++c;
                                 if (options_out[j].arg[0] == '\0') {
-                                    i_plus_one_is_arg = true;
+                                    i_plus_one_is_arg = 1;
                                     options_out[j].arg = argv[i + 1];
                                 }
                             }
@@ -237,7 +163,7 @@ JK_PUBLIC void jk_options_parse(int argc,
                     }
                     if (!matched) {
                         fprintf(stderr, "%s: Invalid option '%c' in '%s'\n", argv[0], *c, argv[i]);
-                        result->usage_error = true;
+                        result->usage_error = 1;
                         break;
                     }
                 }
@@ -258,7 +184,7 @@ JK_PUBLIC void jk_options_parse(int argc,
                             "%s: Option '%s' missing required argument\n",
                             argv[0],
                             argv[i - 1]);
-                    result->usage_error = true;
+                    result->usage_error = 1;
                 }
             }
         } else { // Regular argument
@@ -413,42 +339,6 @@ void jk_assert(char *message, char *file, int64_t line)
     abort();
 }
 
-JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage)
-{
-    JK_PROFILE_ZONE_TIME_BEGIN(jk_file_read_full);
-
-    FILE *file = fopen(file_name, "rb");
-    if (!file) {
-        JK_PROFILE_ZONE_END(jk_file_read_full);
-        fprintf(stderr,
-                "jk_file_read_full: Failed to open file '%s': %s\n",
-                file_name,
-                strerror(errno));
-        exit(1);
-    }
-
-    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
-    buffer.data = jk_arena_push(storage, buffer.size);
-    if (!buffer.data) {
-        JK_PROFILE_ZONE_END(jk_file_read_full);
-        fprintf(stderr, "jk_file_read_full: Failed to allocate memory for file '%s'\n", file_name);
-        exit(1);
-    }
-
-    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(fread, buffer.size);
-    if (fread(buffer.data, buffer.size, 1, file) != 1) {
-        JK_PROFILE_ZONE_END(fread);
-        JK_PROFILE_ZONE_END(jk_file_read_full);
-        fprintf(stderr, "jk_file_read_full: fread failed\n");
-        exit(1);
-    }
-    JK_PROFILE_ZONE_END(fread);
-
-    fclose(file);
-    JK_PROFILE_ZONE_END(jk_file_read_full);
-    return buffer;
-}
-
 /**
  * @brief Returns a hash for the given 32 bit value
  *
@@ -464,21 +354,9 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     return x;
 }
 
-JK_PUBLIC bool jk_is_power_of_two(size_t x)
+JK_PUBLIC b32 jk_is_power_of_two(size_t x)
 {
     return (x & (x - 1)) == 0;
-}
-
-JK_PUBLIC size_t jk_page_size_round_up(size_t n)
-{
-    size_t page_size = jk_platform_page_size();
-    return (n + page_size - 1) & ~(page_size - 1);
-}
-
-JK_PUBLIC size_t jk_page_size_round_down(size_t n)
-{
-    size_t page_size = jk_platform_page_size();
-    return n & ~(page_size - 1);
 }
 
 JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)

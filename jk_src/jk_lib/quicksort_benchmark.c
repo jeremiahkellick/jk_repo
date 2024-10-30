@@ -4,8 +4,7 @@
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
-#include <jk_src/jk_lib/profile/profile.h>
+#include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
 #define ARRAY_LENGTH 20000000
@@ -25,7 +24,7 @@ int main(void)
     }
 
     int tmp;
-    jk_profile_begin();
+    jk_platform_profile_begin();
     jk_quicksort(array, ARRAY_LENGTH, sizeof(int), &tmp, int_compare);
-    jk_profile_end_and_print();
+    jk_platform_profile_end_and_print();
 }

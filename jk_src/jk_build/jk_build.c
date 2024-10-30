@@ -700,7 +700,8 @@ int main(int argc, char **argv)
                    "\t--help\tDisplay this help text and exit.\n\n"
                    "\t--no-profile\n"
                    "\t\tExclude profiler timings from the compilation, except for the\n"
-                   "\t\ttotal timing. Equivalent to \"#define JK_PROFILE_DISABLE 1\".\n\n"
+                   "\t\ttotal timing. Equivalent to\n"
+                   "\t\t#define JK_PLATFORM_PROFILE_DISABLE 1\n\n"
                    "\t-O, --optimize\n"
                    "\t\tPrioritize the speed of the resulting executable over its\n"
                    "\t\tdebuggability and compilation speed.\n");
@@ -789,7 +790,7 @@ int main(int argc, char **argv)
             array_append(&command, "/D", "JK_PUBLIC=");
         }
         if (no_profile) {
-            array_append(&command, "/D", "JK_PROFILE_DISABLE");
+            array_append(&command, "/D", "JK_PLATFORM_PROFILE_DISABLE");
         }
         array_append(&command, "/I", root_path);
     } break;
@@ -820,7 +821,7 @@ int main(int argc, char **argv)
             array_append(&command, "-Og");
         }
         if (no_profile) {
-            array_append(&command, "-D", "JK_PROFILE_DISABLE");
+            array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
         array_append(&command, "-D", "_DEFAULT_SOURCE=");
         array_append(&command, "-I", root_path);
@@ -842,7 +843,7 @@ int main(int argc, char **argv)
             array_append(&command, "-D", "NDEBUG");
         }
         if (no_profile) {
-            array_append(&command, "-D", "JK_PROFILE_DISABLE");
+            array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
         array_append(&command, "-D", "_DEFAULT_SOURCE=");
         array_append(&command, "-I", root_path);

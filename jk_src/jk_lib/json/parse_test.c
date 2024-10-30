@@ -16,10 +16,10 @@ int main(int argc, char **argv)
 
     jk_platform_console_utf8_enable();
 
-    JkArena storage;
-    jk_arena_init(&storage, (size_t)1 << 35);
+    JkPlatformArena storage;
+    jk_platform_arena_init(&storage, (size_t)1 << 35);
 
-    JkBuffer text = jk_file_read_full("./parse_test.json", &storage);
+    JkBuffer text = jk_platform_file_read_full("./parse_test.json", &storage);
 
     JkJson *json = jk_json_parse(text, &storage);
     if (json) {

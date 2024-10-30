@@ -2,7 +2,6 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 #include <stdint.h>
@@ -46,9 +45,9 @@ int main(int argc, char **argv)
             (long long)cpu_elapsed);
     printf("CPU freq: %llu (estimated)\n", (long long)cpu_freq);
 
-    printf("jk_cpu_timer_frequency_estimate(%llu): %llu\n",
+    printf("jk_platform_cpu_timer_frequency_estimate(%llu): %llu\n",
             (long long)milliseconds_to_wait,
-            (long long)jk_cpu_timer_frequency_estimate(milliseconds_to_wait));
+            (long long)jk_platform_cpu_timer_frequency_estimate(milliseconds_to_wait));
 
     return 0;
 }

@@ -1,41 +1,11 @@
 #ifndef JK_LIB_H
 #define JK_LIB_H
 
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
-// ---- Arena begin ------------------------------------------------------------
-
-typedef struct JkArena {
-    size_t virtual_size;
-    size_t size;
-    size_t pos;
-    uint8_t *address;
-} JkArena;
-
-typedef enum JkArenaInitResult {
-    JK_ARENA_INIT_SUCCESS,
-    JK_ARENA_INIT_FAILURE,
-} JkArenaInitResult;
-
-JK_PUBLIC JkArenaInitResult jk_arena_init(JkArena *arena, size_t virtual_size);
-
-JK_PUBLIC void jk_arena_terminate(JkArena *arena);
-
-JK_PUBLIC void *jk_arena_push(JkArena *arena, size_t size);
-
-JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, size_t size);
-
-typedef enum JkArenaPopResult {
-    JK_ARENA_POP_SUCCESS,
-    JK_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS,
-} JkArenaPopResult;
-
-JK_PUBLIC JkArenaPopResult jk_arena_pop(JkArena *arena, size_t size);
-
-// ---- Arena end --------------------------------------------------------------
+typedef uint32_t b32;
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -70,7 +40,7 @@ typedef struct JkUtf8Codepoint {
 
 JK_PUBLIC void jk_utf8_codepoint_encode(uint32_t codepoint32, JkUtf8Codepoint *codepoint);
 
-JK_PUBLIC bool jk_utf8_byte_is_continuation(char byte);
+JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte);
 
 typedef enum JkUtf8CodepointGetResult {
     JK_UTF8_CODEPOINT_GET_SUCCESS,
@@ -107,7 +77,7 @@ typedef struct JkOption {
 } JkOption;
 
 typedef union JkOptionResult {
-    bool present;
+    b32 present;
     char *arg;
 } JkOptionResult;
 
@@ -115,7 +85,7 @@ typedef struct JkOptionsParseResult {
     /** Pointer to the first operand (first non-option argument) */
     char **operands;
     size_t operand_count;
-    bool usage_error;
+    b32 usage_error;
 } JkOptionsParseResult;
 
 JK_PUBLIC void jk_options_parse(int argc,
@@ -145,15 +115,13 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length);
 
 // ---- Quicksort end ----------------------------------------------------------
 
-typedef uint32_t b32;
-
 void jk_assert(char *message, char *file, int64_t line);
 
 #define JK_ASSERT(expression) \
     (void)((!!(expression)) || (jk_assert(#expression, __FILE__, (int64_t)(__LINE__)), 0))
 
 #ifdef NDEBUG
-#define JK_DEBUG_ASSERT
+#define JK_DEBUG_ASSERT(...)
 #else
 #define JK_DEBUG_ASSERT(expression) JK_ASSERT(expression)
 #endif
@@ -162,15 +130,13 @@ void jk_assert(char *message, char *file, int64_t line);
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
 
-JK_PUBLIC JkBuffer jk_file_read_full(char *file_name, JkArena *storage);
-
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
-JK_PUBLIC bool jk_is_power_of_two(size_t x);
+JK_PUBLIC b32 jk_is_power_of_two(size_t x);
 
-JK_PUBLIC size_t jk_page_size_round_up(size_t n);
+JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
-JK_PUBLIC size_t jk_page_size_round_down(size_t n);
+JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);
 
 JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count);
 

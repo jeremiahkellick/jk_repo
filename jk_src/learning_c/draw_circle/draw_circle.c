@@ -1,13 +1,11 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 #define RADIUS 15
@@ -68,11 +66,11 @@ int main(void)
     jk_platform_console_utf8_enable();
 
     printf("Drawing a circle %d times\n", ITERATION_COUNT);
-    jk_profile_begin();
+    jk_platform_profile_begin();
     for (int i = 0; i < ITERATION_COUNT; i++) {
         draw_circle(screen, RADIUS);
     }
-    jk_profile_end_and_print();
+    jk_platform_profile_end_and_print();
 
     print_grid(screen, GRID_SIZE, GRID_SIZE);
 

@@ -7,9 +7,7 @@
 // #jk_build nasm jk_src/perfaware/part3/windows_non_temporal.asm
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/jk_lib/profile/profile.h>
 // #jk_build dependencies_end
 
 void test_control(uint64_t outer_loop_iterations,
@@ -31,12 +29,12 @@ static Function functions[] = {
     {.ptr = test_non_temporal, .name = "Non-temporal"},
 };
 
-static JkRepetitionTest tests[JK_ARRAY_COUNT(functions)];
+static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
     jk_platform_init();
-    uint64_t frequency = jk_cpu_timer_frequency_estimate(100);
+    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     uint64_t input_size = 16llu * 1024;
     uint64_t output_size = 1024llu * 1024 * 1024;
@@ -50,20 +48,20 @@ int main(int argc, char **argv)
         ((uint32_t *)input_data)[i] = i;
     }
 
-    while (true) {
+    for (;;) {
         for (size_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
             Function *function = &functions[i];
-            JkRepetitionTest *test = &tests[i];
+            JkPlatformRepetitionTest *test = &tests[i];
 
             printf("\n%s\n", function->name);
 
-            jk_repetition_test_run_wave(test, output_size, frequency, 10);
-            while (jk_repetition_test_running(test)) {
-                jk_repetition_test_time_begin(test);
+            jk_platform_repetition_test_run_wave(test, output_size, frequency, 10);
+            while (jk_platform_repetition_test_running(test)) {
+                jk_platform_repetition_test_time_begin(test);
                 function->ptr(
                         outer_loop_iterations, inner_loop_iterations, input_data, output_data);
-                jk_repetition_test_time_end(test);
-                jk_repetition_test_count_bytes(test, output_size);
+                jk_platform_repetition_test_time_end(test);
+                jk_platform_repetition_test_count_bytes(test, output_size);
             }
             if (test->state == JK_REPETITION_TEST_ERROR) {
                 fprintf(stderr, "%s: Error encountered during repetition test\n", argv[0]);
@@ -71,6 +69,4 @@ int main(int argc, char **argv)
             }
         }
     }
-
-    return 0;
 }

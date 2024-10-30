@@ -61,14 +61,14 @@ static char *sorted_strings[LENGTH] = {
     "Watermelon",
 };
 
-static bool string_arrays_are_equal(char **a, char **b, int length)
+static b32 string_arrays_are_equal(char **a, char **b, int length)
 {
     for (int i = 0; i < length; i++) {
         if (strcmp(a[i], b[i]) != 0) {
-            return false;
+            return 0;
         }
     }
-    return true;
+    return 1;
 }
 
 static void print_int_array(int array[])
@@ -107,24 +107,24 @@ int main(void)
     printf("Arena\n");
 
     size_t page_size = jk_platform_page_size();
-    JkArena arena;
-    JkArenaInitResult result = jk_arena_init(&arena, page_size * 3);
-    if (result == JK_ARENA_INIT_FAILURE) {
-        perror("jk_arena_init");
+    JkPlatformArena arena;
+    JkPlatformArenaInitResult result = jk_platform_arena_init(&arena, page_size * 3);
+    if (result == JK_PLATFORM_ARENA_INIT_FAILURE) {
+        perror("jk_platform_arena_init");
         return 1;
     }
 
-    char *push1 = jk_arena_push(&arena, sizeof(string1));
+    char *push1 = jk_platform_arena_push(&arena, sizeof(string1));
     if (push1 == NULL) {
-        perror("jk_arena_push");
+        perror("jk_platform_arena_push");
         return 1;
     }
     memcpy(push1, string1, sizeof(string1));
     printf("%s", push1);
 
-    char *push2 = jk_arena_push(&arena, page_size * 2);
+    char *push2 = jk_platform_arena_push(&arena, page_size * 2);
     if (push2 == NULL) {
-        perror("jk_arena_push");
+        perror("jk_platform_arena_push");
         return 1;
     }
     char *print = &push2[page_size * 2 - sizeof(string2)];
@@ -132,15 +132,16 @@ int main(void)
     printf("%s", print);
 
     size_t size_before = arena.size;
-    char *push3 = jk_arena_push(&arena, page_size * 2);
+    char *push3 = jk_platform_arena_push(&arena, page_size * 2);
     size_t size_after = arena.size;
     assert(push3 == NULL);
     assert(size_before == size_after);
 
-    assert(jk_arena_pop(&arena, page_size * 2) == JK_ARENA_POP_SUCCESS);
-    assert(jk_arena_pop(&arena, page_size * 2) == JK_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS);
+    assert(jk_platform_arena_pop(&arena, page_size * 2) == JK_PLATFORM_ARENA_POP_SUCCESS);
+    assert(jk_platform_arena_pop(&arena, page_size * 2)
+            == JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS);
 
-    jk_arena_terminate(&arena);
+    jk_platform_arena_terminate(&arena);
     // ---- Arena end ----------------------------------------------------------
 
     // ---- Buffer begin -------------------------------------------------------

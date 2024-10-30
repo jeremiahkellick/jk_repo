@@ -60,9 +60,9 @@ int main(int argc, char **argv)
 
     jk_platform_console_utf8_enable();
 
-    JkArena storage;
-    jk_arena_init(&storage, (size_t)1 << 35);
-    JkBuffer file = jk_file_read_full(argv[1], &storage);
+    JkPlatformArena storage;
+    jk_platform_arena_init(&storage, (size_t)1 << 35);
+    JkBuffer file = jk_platform_file_read_full(argv[1], &storage);
     size_t file_ptr = 0;
 
     FILE *incorrect = fopen("incorrect.txt", "wb");
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
             break;
         }
         character_count++;
-        Character *data = jk_arena_push_zero(&storage, sizeof(*data));
+        Character *data = jk_platform_arena_push_zero(&storage, sizeof(*data));
         size_t start = file_ptr;
         data->v[CHARACTER].data = file.data + file_ptr;
         do {
@@ -136,7 +136,7 @@ int main(int argc, char **argv)
         }
     } while (prompt == -1);
 
-    size_t *indicies = jk_arena_push(&storage, sizeof(*indicies) * character_count);
+    size_t *indicies = jk_platform_arena_push(&storage, sizeof(*indicies) * character_count);
     for (size_t i = 0; i < character_count; i++) {
         indicies[i] = i;
     }
