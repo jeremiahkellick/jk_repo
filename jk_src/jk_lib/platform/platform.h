@@ -77,6 +77,7 @@ typedef struct JkPlatformPmcTracer {
     uint64_t registration;
     GUID guid;
     uint32_t thread_id;
+    void *thread_handle;
     b32 ended;
 } JkPlatformPmcTracer;
 

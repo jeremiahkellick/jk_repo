@@ -177,53 +177,6 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
 
 // ---- Performance-monitoring counters begin ----------------------------------
 
-// Privilege begin
-BOOL EnablePrivilege(HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
-{
-    TOKEN_PRIVILEGES tp;
-    LUID luid;
-
-    if (!LookupPrivilegeValue(NULL, lpszPrivilege, &luid)) {
-        printf("LookupPrivilegeValue error: %lu\n", GetLastError());
-        return FALSE;
-    }
-
-    tp.PrivilegeCount = 1;
-    tp.Privileges[0].Luid = luid;
-    tp.Privileges[0].Attributes = bEnablePrivilege ? SE_PRIVILEGE_ENABLED : 0;
-
-    if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
-        printf("AdjustTokenPrivileges error: %lu\n", GetLastError());
-        return FALSE;
-    } else {
-        DWORD last_error = GetLastError();
-        if (last_error == ERROR_NOT_ALL_ASSIGNED) {
-            printf("Privilege not fully assigned: %lu\n", last_error);
-        }
-    }
-
-    return (GetLastError() == ERROR_SUCCESS);
-}
-
-BOOL EnableSystemProfilePrivilege()
-{
-    HANDLE hToken;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-        return EnablePrivilege(hToken, SE_SYSTEM_PROFILE_NAME, TRUE);
-    }
-    return FALSE;
-}
-
-BOOL EnableDebugPrivilege()
-{
-    HANDLE hToken;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-        return EnablePrivilege(hToken, SE_DEBUG_NAME, TRUE);
-    }
-    return FALSE;
-}
-// Privilege end
-
 static char global_jk_platform_pmc_trace_name[] = "jk_platform_pmc_trace";
 
 typedef struct JkPlatformEventTraceConfig {
@@ -261,21 +214,45 @@ JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray 
     }
 
     ULONG buffer_size;
-    ULONG result0 = TraceQueryInformation(0, TraceProfileSourceListInfo, 0, 0, &buffer_size);
+    void *buffer = NULL;
+    ULONG trace_query_1 = TraceQueryInformation(0, TraceProfileSourceListInfo, 0, 0, &buffer_size);
+    ULONG trace_query_2 = ERROR_PROC_NOT_FOUND;
 
-    void *buffer = malloc(buffer_size);
-    ULONG result1 =
-            TraceQueryInformation(0, TraceProfileSourceListInfo, buffer, buffer_size, &buffer_size);
-    PROFILE_SOURCE_INFO *info = buffer;
-    while (info->NextEntryOffset) {
-        for (size_t i = 0; i < count; i++) {
-            if (lstrcmpW(info->Description, names[i]) == 0) {
-                result.sources[result.count++] = info->Source;
-            }
-        }
-        info = (PROFILE_SOURCE_INFO *)((uint8_t *)info + info->NextEntryOffset);
+    if (trace_query_1 == ERROR_BAD_LENGTH) {
+        buffer = malloc(buffer_size);
+    } else {
+        fprintf(stderr,
+                "jk_platform_pmc_map_names: First TraceQueryInformation returned unexpected error "
+                "code %lu\n",
+                trace_query_1);
     }
-    free(buffer);
+
+    if (buffer) {
+        trace_query_2 = TraceQueryInformation(
+                0, TraceProfileSourceListInfo, buffer, buffer_size, &buffer_size);
+    } else {
+        fprintf(stderr, "jk_platform_pmc_map_names: Failed to allocate memory\n");
+    }
+
+    if (trace_query_2 == ERROR_SUCCESS) {
+        PROFILE_SOURCE_INFO *info = buffer;
+        while (info->NextEntryOffset) {
+            for (size_t i = 0; i < count; i++) {
+                if (lstrcmpW(info->Description, names[i]) == 0) {
+                    result.sources[result.count++] = info->Source;
+                }
+            }
+            info = (PROFILE_SOURCE_INFO *)((uint8_t *)info + info->NextEntryOffset);
+        }
+    } else {
+        fprintf(stderr,
+                "jk_platform_pmc_map_names: Second TraceQueryInformation returned error code %lu\n",
+                trace_query_2);
+    }
+
+    if (buffer) {
+        free(buffer);
+    }
 
     if (result.count == count) {
         return result;
@@ -291,8 +268,11 @@ JK_PUBLIC b32 jk_platform_pmc_mapping_valid(JkPlatformPmcMapping mapping)
 
 static DWORD jk_platform_pmc_thread(LPVOID trace)
 {
-    ULONG result = ProcessTrace((uint64_t *)&trace, 1, 0, 0);
-    return 0;
+    ULONG error_code = ProcessTrace((uint64_t *)&trace, 1, 0, 0);
+    fprintf(stderr,
+            "jk_platform_pmc_thread: ProcessTrace unexpectedly returned with error code %lu\n",
+            error_code);
+    return error_code;
 }
 
 static void jk_platform_event_record_callback(EVENT_RECORD *event)
@@ -303,7 +283,6 @@ static void jk_platform_event_record_callback(EVENT_RECORD *event)
     static uint64_t counters[JK_PLATFORM_PMC_SOURCES_MAX];
     static uint64_t syscall_event_count = 0;
 
-    JkPlatformPmcTracer *tracer = event->UserContext;
     if (IsEqualGUID(&event->EventHeader.ProviderId, &global_jk_platform_pmc_marker_events_guid)) {
         JkPlatformPmcMarker marker = *(JkPlatformPmcMarker *)event->UserData;
         marker.zone->marker_processed_count++;
@@ -348,93 +327,108 @@ static void jk_platform_event_record_callback(EVENT_RECORD *event)
     }
 }
 
-/*
-ULONG jk_platform_pmc_register_guids_callback(
-        WMIDPREQUESTCODE RequestCode, PVOID Context, ULONG *Reserved, PVOID Buffer)
-{
-    JkPlatformPmcTracer *tracer = Context;
-    if (RequestCode == WMI_ENABLE_EVENTS) {
-        tracer->provider = *(TRACEHANDLE *)Buffer;
-    } else if (RequestCode == WMI_DISABLE_EVENTS) {
-        tracer->provider = 0;
-    }
-    return ERROR_SUCCESS;
-}
-*/
-
 JK_PUBLIC void jk_platform_pmc_trace_begin(
         JkPlatformPmcTracer *tracer, JkPlatformPmcMapping *mapping)
 {
+    ULONG start_trace = ERROR_PROC_NOT_FOUND;
+    tracer->session = 0;
+    tracer->trace = INVALID_PROCESSTRACE_HANDLE;
+    tracer->thread_handle = NULL;
+
     tracer->count = mapping->count;
 
-    BOOL resultb = EnableSystemProfilePrivilege();
-    BOOL resultDebug = EnableDebugPrivilege();
+    if (tracer->count > 0) {
+        JkPlatformEventTraceConfig config = {0};
+        config.properties.Wnode.BufferSize = sizeof(config);
+        config.properties.LoggerNameOffset = offsetof(JkPlatformEventTraceConfig, logger_name);
 
-    /*
-    ULONG result0 = RegisterTraceGuidsA(jk_platform_pmc_register_guids_callback,
-            tracer,
-            &global_jk_platform_pmc_marker_events_guid,
-            0,
-            0,
-            0,
-            0,
-            &tracer->registration);
-    */
+        ControlTraceA(
+                0, global_jk_platform_pmc_trace_name, &config.properties, EVENT_TRACE_CONTROL_STOP);
 
-    JkPlatformEventTraceConfig config = {0};
-    config.properties.Wnode.BufferSize = sizeof(config);
-    config.properties.LoggerNameOffset = offsetof(JkPlatformEventTraceConfig, logger_name);
+        config.properties.Wnode.ClientContext = 3;
+        config.properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+        config.properties.LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_SYSTEM_LOGGER_MODE;
+        config.properties.EnableFlags = EVENT_TRACE_FLAG_SYSTEMCALL | EVENT_TRACE_FLAG_NO_SYSCONFIG;
 
-    ULONG result1 = ControlTraceA(
-            0, global_jk_platform_pmc_trace_name, &config.properties, EVENT_TRACE_CONTROL_STOP);
+        start_trace = StartTraceA(
+                &tracer->session, global_jk_platform_pmc_trace_name, &config.properties);
+        if (start_trace != ERROR_SUCCESS) {
+            fprintf(stderr,
+                    "jk_platform_pmc_trace_begin: StartTraceA returned error code %lu\n",
+                    start_trace);
+        }
+    }
 
-    config.properties.Wnode.ClientContext = 3;
-    config.properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
-    config.properties.LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_SYSTEM_LOGGER_MODE;
-    config.properties.EnableFlags = EVENT_TRACE_FLAG_SYSTEMCALL | EVENT_TRACE_FLAG_NO_SYSCONFIG;
-
-    ULONG result2 =
-            StartTraceA(&tracer->session, global_jk_platform_pmc_trace_name, &config.properties);
-
-    ULONG result3, result4;
-    if (mapping->count > 0) {
-        result3 = TraceSetInformation(tracer->session,
+    if (start_trace == ERROR_SUCCESS) {
+        ULONG trace_set_1 = TraceSetInformation(tracer->session,
                 TracePmcCounterListInfo,
                 mapping->sources,
                 (ULONG)(mapping->count * sizeof(mapping->sources[0])));
+        if (trace_set_1 != ERROR_SUCCESS) {
+            fprintf(stderr,
+                    "jk_platform_pmc_trace_begin: TraceSetInformation returned error code %lu\n",
+                    trace_set_1);
+        }
 
         CLASSIC_EVENT_ID event_ids[] = {
             {global_jk_platform_pmc_guid_system, 51},
             {global_jk_platform_pmc_guid_system, 52},
         };
-        result4 = TraceSetInformation(
+        ULONG trace_set_2 = TraceSetInformation(
                 tracer->session, TracePmcEventListInfo, event_ids, sizeof(event_ids));
+        if (trace_set_2 != ERROR_SUCCESS) {
+            fprintf(stderr,
+                    "jk_platform_pmc_trace_begin: TraceSetInformation returned error code %lu\n",
+                    trace_set_2);
+        }
+
+        EVENT_TRACE_LOGFILEA log_file = {
+            .LoggerName = global_jk_platform_pmc_trace_name,
+            .EventRecordCallback = jk_platform_event_record_callback,
+            .ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP
+                    | PROCESS_TRACE_MODE_REAL_TIME,
+        };
+        tracer->trace = OpenTraceA(&log_file);
+        if (tracer->trace == INVALID_PROCESSTRACE_HANDLE) {
+            fprintf(stderr, "jk_platform_pmc_trace_begin: OpenTraceA failed\n");
+        }
     }
 
-    ULONG result5 = EnableTrace(
-            1, 0xffffffff, 255, &global_jk_platform_pmc_marker_events_guid, tracer->session);
-
-    EVENT_TRACE_LOGFILEA log_file = {
-        .LoggerName = global_jk_platform_pmc_trace_name,
-        .EventRecordCallback = jk_platform_event_record_callback,
-        .ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP
-                | PROCESS_TRACE_MODE_REAL_TIME,
-        .Context = tracer,
-    };
-    tracer->trace = OpenTraceA(&log_file);
-
-    HANDLE thread_handle = CreateThread(
-            0, 0, jk_platform_pmc_thread, (void *)tracer->trace, 0, (DWORD *)&tracer->thread_id);
-    CloseHandle(thread_handle);
+    if (tracer->trace != INVALID_PROCESSTRACE_HANDLE) {
+        tracer->thread_handle = CreateThread(0,
+                0,
+                jk_platform_pmc_thread,
+                (void *)tracer->trace,
+                0,
+                (DWORD *)&tracer->thread_id);
+        if (!tracer->thread_handle) {
+            fprintf(stderr, "jk_platform_pmc_trace_begin: CreateThread failed\n");
+        }
+    }
 }
 
-JK_PUBLIC void jk_platform_pmc_trace_end(JkPlatformPmcTracer *tracer) {}
+JK_PUBLIC void jk_platform_pmc_trace_end(JkPlatformPmcTracer *tracer)
+{
+    JkPlatformEventTraceConfig config = {0};
+    config.properties.Wnode.BufferSize = sizeof(config);
+    config.properties.LoggerNameOffset = offsetof(JkPlatformEventTraceConfig, logger_name);
+
+    ControlTraceA(
+            0, global_jk_platform_pmc_trace_name, &config.properties, EVENT_TRACE_CONTROL_STOP);
+
+    CloseHandle(tracer->thread_handle);
+}
 
 JK_PUBLIC void jk_platform_pmc_zone_open(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
 {
     memset(zone, 0, sizeof(*zone));
     zone->count = tracer->count;
-    zone->complete_event = CreateEventA(0, 1, 0, 0);
+    if (tracer->thread_handle) {
+        zone->complete_event = CreateEventA(0, 1, 0, 0);
+        if (!zone->complete_event) {
+            fprintf(stderr, "jk_platform_pmc_zone_open: CreateEventA failed\n");
+        }
+    }
 }
 
 JK_PUBLIC void jk_platform_pmc_zone_close(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
@@ -445,6 +439,10 @@ JK_PUBLIC void jk_platform_pmc_zone_close(JkPlatformPmcTracer *tracer, JkPlatfor
 static void jk_platform_pmc_marker_event_issue(
         TRACEHANDLE provider, JkPlatformPmcMarkerType type, JkPlatformPmcZone *zone)
 {
+    if (!provider) {
+        return;
+    }
+
     JkPlatformPmcMarkerEvent event = {
         .header =
                 {
@@ -461,7 +459,9 @@ static void jk_platform_pmc_marker_event_issue(
     zone->marker_issued_count++;
     ULONG status = TraceEvent(provider, &event.header);
     if (status != ERROR_SUCCESS) {
-        fprintf(stderr, "TraceEvent returned %lu\n", status);
+        fprintf(stderr,
+                "jk_platform_pmc_marker_event_issue: TraceEvent returned error code %lu\n",
+                status);
     }
 }
 
