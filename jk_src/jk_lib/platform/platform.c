@@ -1,16 +1,22 @@
-#include "platform.h"
+#include <string.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
+#include "platform.h"
+
 // ---- OS functions begin -----------------------------------------------------
 
 #ifdef _WIN32
 
+#include <windows.h>
+
+#define INITGUID // Causes definition of SystemTraceControlGuid in evntrace.h
+#include <evntcons.h>
+#include <evntrace.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <windows.h>
 
 typedef struct JkPlatformData {
     b32 initialized;
@@ -168,6 +174,329 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
     QueryPerformanceFrequency(&freq);
     return freq.QuadPart;
 }
+
+// ---- Performance-monitoring counters begin ----------------------------------
+
+// Privilege begin
+BOOL EnablePrivilege(HANDLE hToken, LPCTSTR lpszPrivilege, BOOL bEnablePrivilege)
+{
+    TOKEN_PRIVILEGES tp;
+    LUID luid;
+
+    if (!LookupPrivilegeValue(NULL, lpszPrivilege, &luid)) {
+        printf("LookupPrivilegeValue error: %lu\n", GetLastError());
+        return FALSE;
+    }
+
+    tp.PrivilegeCount = 1;
+    tp.Privileges[0].Luid = luid;
+    tp.Privileges[0].Attributes = bEnablePrivilege ? SE_PRIVILEGE_ENABLED : 0;
+
+    if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
+        printf("AdjustTokenPrivileges error: %lu\n", GetLastError());
+        return FALSE;
+    } else {
+        DWORD last_error = GetLastError();
+        if (last_error == ERROR_NOT_ALL_ASSIGNED) {
+            printf("Privilege not fully assigned: %lu\n", last_error);
+        }
+    }
+
+    return (GetLastError() == ERROR_SUCCESS);
+}
+
+BOOL EnableSystemProfilePrivilege()
+{
+    HANDLE hToken;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+        return EnablePrivilege(hToken, SE_SYSTEM_PROFILE_NAME, TRUE);
+    }
+    return FALSE;
+}
+
+BOOL EnableDebugPrivilege()
+{
+    HANDLE hToken;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+        return EnablePrivilege(hToken, SE_DEBUG_NAME, TRUE);
+    }
+    return FALSE;
+}
+// Privilege end
+
+static char global_jk_platform_pmc_trace_name[] = "jk_platform_pmc_trace";
+
+typedef struct JkPlatformEventTraceConfig {
+    EVENT_TRACE_PROPERTIES properties;
+    char logger_name[1024];
+} JkPlatformEventTraceConfig;
+
+typedef enum JkPlatformPmcMarkerType {
+    JK_PLATFORM_PMC_MARKER_START,
+    JK_PLATFORM_PMC_MARKER_STOP,
+} JkPlatformPmcMarkerType;
+
+typedef struct JkPlatformPmcMarker {
+    JkPlatformPmcMarkerType type;
+    JkPlatformPmcZone *zone;
+} JkPlatformPmcMarker;
+
+typedef struct JkPlatformPmcMarkerEvent {
+    EVENT_TRACE_HEADER header;
+    JkPlatformPmcMarker marker;
+} JkPlatformPmcMarkerEvent;
+
+static GUID global_jk_platform_pmc_marker_events_guid = {
+    0xe734482b, 0xbeee, 0x4ed2, {0x85, 0xc4, 0x08, 0x15, 0x73, 0x92, 0x27, 0x8c}};
+
+static GUID global_jk_platform_pmc_guid_system = {
+    0xce1dbfb4, 0x137e, 0x4da6, {0x87, 0xb0, 0x3f, 0x59, 0xaa, 0x10, 0x2c, 0xbc}};
+
+JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray names, size_t count)
+{
+    JkPlatformPmcMapping result = {0};
+
+    if (count > JK_PLATFORM_PMC_SOURCES_MAX) {
+        return result;
+    }
+
+    ULONG buffer_size;
+    ULONG result0 = TraceQueryInformation(0, TraceProfileSourceListInfo, 0, 0, &buffer_size);
+
+    void *buffer = malloc(buffer_size);
+    ULONG result1 =
+            TraceQueryInformation(0, TraceProfileSourceListInfo, buffer, buffer_size, &buffer_size);
+    PROFILE_SOURCE_INFO *info = buffer;
+    while (info->NextEntryOffset) {
+        for (size_t i = 0; i < count; i++) {
+            if (lstrcmpW(info->Description, names[i]) == 0) {
+                result.sources[result.count++] = info->Source;
+            }
+        }
+        info = (PROFILE_SOURCE_INFO *)((uint8_t *)info + info->NextEntryOffset);
+    }
+    free(buffer);
+
+    if (result.count == count) {
+        return result;
+    } else {
+        return (JkPlatformPmcMapping){0};
+    }
+}
+
+JK_PUBLIC b32 jk_platform_pmc_mapping_valid(JkPlatformPmcMapping mapping)
+{
+    return mapping.count > 0;
+}
+
+static DWORD jk_platform_pmc_thread(LPVOID trace)
+{
+    ULONG result = ProcessTrace((uint64_t *)&trace, 1, 0, 0);
+    return 0;
+}
+
+static void jk_platform_event_record_callback(EVENT_RECORD *event)
+{
+    static JkPlatformPmcZone *zone;
+    static b32 subtract_next_counters = 0;
+
+    static uint64_t counters[JK_PLATFORM_PMC_SOURCES_MAX];
+    static uint64_t syscall_event_count = 0;
+
+    JkPlatformPmcTracer *tracer = event->UserContext;
+    if (IsEqualGUID(&event->EventHeader.ProviderId, &global_jk_platform_pmc_marker_events_guid)) {
+        JkPlatformPmcMarker marker = *(JkPlatformPmcMarker *)event->UserData;
+        marker.zone->marker_processed_count++;
+        if (marker.type == JK_PLATFORM_PMC_MARKER_START) {
+            zone = marker.zone;
+            zone->result.hit_count++;
+            subtract_next_counters = 1;
+        } else { // marker.type == JK_PLATFORM_PMC_MARKER_STOP
+            for (int i = 0; i < marker.zone->count; i++) {
+                marker.zone->result.counters[i] += counters[i];
+            }
+            if (marker.zone->closed
+                    && marker.zone->marker_processed_count == marker.zone->marker_issued_count) {
+                marker.zone->complete = 1;
+                SetEvent(marker.zone->complete_event);
+            }
+        }
+    } else if (IsEqualGUID(&event->EventHeader.ProviderId, &global_jk_platform_pmc_guid_system)) {
+        switch (event->EventHeader.EventDescriptor.Opcode) {
+        case 51:
+        case 52: {
+            for (int i = 0; i < event->ExtendedDataCount; i++) {
+                EVENT_HEADER_EXTENDED_DATA_ITEM *item = &event->ExtendedData[i];
+                if (item->ExtType == EVENT_HEADER_EXT_TYPE_PMC_COUNTERS) {
+                    syscall_event_count++;
+                    memcpy(counters, (void *)item->DataPtr, item->DataSize);
+                    if (subtract_next_counters) {
+                        subtract_next_counters = 0;
+                        JK_DEBUG_ASSERT(
+                                zone->count * sizeof(zone->result.counters[0]) == item->DataSize);
+                        for (int j = 0; j < zone->count; j++) {
+                            zone->result.counters[j] -= counters[j];
+                        }
+                    }
+                }
+            }
+        } break;
+
+        default: {
+        } break;
+        }
+    }
+}
+
+/*
+ULONG jk_platform_pmc_register_guids_callback(
+        WMIDPREQUESTCODE RequestCode, PVOID Context, ULONG *Reserved, PVOID Buffer)
+{
+    JkPlatformPmcTracer *tracer = Context;
+    if (RequestCode == WMI_ENABLE_EVENTS) {
+        tracer->provider = *(TRACEHANDLE *)Buffer;
+    } else if (RequestCode == WMI_DISABLE_EVENTS) {
+        tracer->provider = 0;
+    }
+    return ERROR_SUCCESS;
+}
+*/
+
+JK_PUBLIC void jk_platform_pmc_trace_begin(
+        JkPlatformPmcTracer *tracer, JkPlatformPmcMapping *mapping)
+{
+    tracer->count = mapping->count;
+
+    BOOL resultb = EnableSystemProfilePrivilege();
+    BOOL resultDebug = EnableDebugPrivilege();
+
+    /*
+    ULONG result0 = RegisterTraceGuidsA(jk_platform_pmc_register_guids_callback,
+            tracer,
+            &global_jk_platform_pmc_marker_events_guid,
+            0,
+            0,
+            0,
+            0,
+            &tracer->registration);
+    */
+
+    JkPlatformEventTraceConfig config = {0};
+    config.properties.Wnode.BufferSize = sizeof(config);
+    config.properties.LoggerNameOffset = offsetof(JkPlatformEventTraceConfig, logger_name);
+
+    ULONG result1 = ControlTraceA(
+            0, global_jk_platform_pmc_trace_name, &config.properties, EVENT_TRACE_CONTROL_STOP);
+
+    config.properties.Wnode.ClientContext = 3;
+    config.properties.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+    config.properties.LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_SYSTEM_LOGGER_MODE;
+    config.properties.EnableFlags = EVENT_TRACE_FLAG_SYSTEMCALL | EVENT_TRACE_FLAG_NO_SYSCONFIG;
+
+    ULONG result2 =
+            StartTraceA(&tracer->session, global_jk_platform_pmc_trace_name, &config.properties);
+
+    ULONG result3, result4;
+    if (mapping->count > 0) {
+        result3 = TraceSetInformation(tracer->session,
+                TracePmcCounterListInfo,
+                mapping->sources,
+                (ULONG)(mapping->count * sizeof(mapping->sources[0])));
+
+        CLASSIC_EVENT_ID event_ids[] = {
+            {global_jk_platform_pmc_guid_system, 51},
+            {global_jk_platform_pmc_guid_system, 52},
+        };
+        result4 = TraceSetInformation(
+                tracer->session, TracePmcEventListInfo, event_ids, sizeof(event_ids));
+    }
+
+    ULONG result5 = EnableTrace(
+            1, 0xffffffff, 255, &global_jk_platform_pmc_marker_events_guid, tracer->session);
+
+    EVENT_TRACE_LOGFILEA log_file = {
+        .LoggerName = global_jk_platform_pmc_trace_name,
+        .EventRecordCallback = jk_platform_event_record_callback,
+        .ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP
+                | PROCESS_TRACE_MODE_REAL_TIME,
+        .Context = tracer,
+    };
+    tracer->trace = OpenTraceA(&log_file);
+
+    HANDLE thread_handle = CreateThread(
+            0, 0, jk_platform_pmc_thread, (void *)tracer->trace, 0, (DWORD *)&tracer->thread_id);
+    CloseHandle(thread_handle);
+}
+
+JK_PUBLIC void jk_platform_pmc_trace_end(JkPlatformPmcTracer *tracer) {}
+
+JK_PUBLIC void jk_platform_pmc_zone_open(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    memset(zone, 0, sizeof(*zone));
+    zone->count = tracer->count;
+    zone->complete_event = CreateEventA(0, 1, 0, 0);
+}
+
+JK_PUBLIC void jk_platform_pmc_zone_close(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    zone->closed = 1;
+}
+
+static void jk_platform_pmc_marker_event_issue(
+        TRACEHANDLE provider, JkPlatformPmcMarkerType type, JkPlatformPmcZone *zone)
+{
+    JkPlatformPmcMarkerEvent event = {
+        .header =
+                {
+                    .Size = sizeof(event),
+                    .Flags = WNODE_FLAG_TRACED_GUID,
+                    .Guid = global_jk_platform_pmc_marker_events_guid,
+                },
+        .marker =
+                {
+                    .type = type,
+                    .zone = zone,
+                },
+    };
+    zone->marker_issued_count++;
+    ULONG status = TraceEvent(provider, &event.header);
+    if (status != ERROR_SUCCESS) {
+        fprintf(stderr, "TraceEvent returned %lu\n", status);
+    }
+}
+
+JK_PUBLIC void jk_platform_pmc_zone_collection_start(
+        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    jk_platform_pmc_marker_event_issue(tracer->session, JK_PLATFORM_PMC_MARKER_START, zone);
+}
+
+JK_PUBLIC void jk_platform_pmc_zone_collection_stop(
+        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    jk_platform_pmc_marker_event_issue(tracer->session, JK_PLATFORM_PMC_MARKER_STOP, zone);
+}
+
+JK_PUBLIC b32 jk_platform_pmc_zone_result_ready(
+        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    return zone->complete;
+}
+
+JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_get(
+        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    return zone->result;
+}
+
+JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_wait(
+        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+{
+    WaitForSingleObject(zone->complete_event, INFINITE);
+    return jk_platform_pmc_zone_result_get(tracer, zone);
+}
+
+// ---- Performance-monitoring counters end ------------------------------------
 
 #else
 
