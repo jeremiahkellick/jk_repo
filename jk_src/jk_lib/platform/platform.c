@@ -205,13 +205,9 @@ static GUID global_jk_platform_pmc_marker_events_guid = {
 static GUID global_jk_platform_pmc_guid_system = {
     0xce1dbfb4, 0x137e, 0x4da6, {0x87, 0xb0, 0x3f, 0x59, 0xaa, 0x10, 0x2c, 0xbc}};
 
-JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray names, size_t count)
+JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray names)
 {
     JkPlatformPmcMapping result = {0};
-
-    if (count > JK_PLATFORM_PMC_SOURCES_MAX) {
-        return result;
-    }
 
     ULONG buffer_size;
     void *buffer = NULL;
@@ -234,12 +230,18 @@ JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray 
         fprintf(stderr, "jk_platform_pmc_map_names: Failed to allocate memory\n");
     }
 
+    uint64_t names_count = 0;
+    while (names.strings[names_count]) {
+        names_count++;
+    }
+
     if (trace_query_2 == ERROR_SUCCESS) {
         PROFILE_SOURCE_INFO *info = buffer;
         while (info->NextEntryOffset) {
-            for (size_t i = 0; i < count; i++) {
-                if (lstrcmpW(info->Description, names[i]) == 0) {
-                    result.sources[result.count++] = info->Source;
+            for (size_t i = 0; i < names_count; i++) {
+                if (lstrcmpW(info->Description, names.strings[i]) == 0) {
+                    result.sources[i] = info->Source;
+                    result.count++;
                 }
             }
             info = (PROFILE_SOURCE_INFO *)((uint8_t *)info + info->NextEntryOffset);
@@ -254,7 +256,7 @@ JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray 
         free(buffer);
     }
 
-    if (result.count == count) {
+    if (result.count == names_count) {
         return result;
     } else {
         return (JkPlatformPmcMapping){0};
@@ -278,27 +280,24 @@ static DWORD jk_platform_pmc_thread(LPVOID trace)
 static void jk_platform_event_record_callback(EVENT_RECORD *event)
 {
     static JkPlatformPmcZone *zone;
-    static b32 subtract_next_counters = 0;
-
+    static uint64_t timestamp;
     static uint64_t counters[JK_PLATFORM_PMC_SOURCES_MAX];
-    static uint64_t syscall_event_count = 0;
+
+    JkPlatformPmcTracer *tracer = event->UserContext;
 
     if (IsEqualGUID(&event->EventHeader.ProviderId, &global_jk_platform_pmc_marker_events_guid)) {
         JkPlatformPmcMarker marker = *(JkPlatformPmcMarker *)event->UserData;
-        marker.zone->marker_processed_count++;
         if (marker.type == JK_PLATFORM_PMC_MARKER_START) {
             zone = marker.zone;
-            zone->result.hit_count++;
-            subtract_next_counters = 1;
         } else { // marker.type == JK_PLATFORM_PMC_MARKER_STOP
-            for (int i = 0; i < marker.zone->count; i++) {
+            marker.zone->result.time_elapsed += timestamp;
+            for (int i = 0; i < tracer->count; i++) {
                 marker.zone->result.counters[i] += counters[i];
             }
-            if (marker.zone->closed
-                    && marker.zone->marker_processed_count == marker.zone->marker_issued_count) {
-                marker.zone->complete = 1;
-                SetEvent(marker.zone->complete_event);
-            }
+
+            _mm_mfence();
+
+            marker.zone->result_ready = TRUE;
         }
     } else if (IsEqualGUID(&event->EventHeader.ProviderId, &global_jk_platform_pmc_guid_system)) {
         switch (event->EventHeader.EventDescriptor.Opcode) {
@@ -307,15 +306,16 @@ static void jk_platform_event_record_callback(EVENT_RECORD *event)
             for (int i = 0; i < event->ExtendedDataCount; i++) {
                 EVENT_HEADER_EXTENDED_DATA_ITEM *item = &event->ExtendedData[i];
                 if (item->ExtType == EVENT_HEADER_EXT_TYPE_PMC_COUNTERS) {
-                    syscall_event_count++;
+                    timestamp = event->EventHeader.TimeStamp.QuadPart;
                     memcpy(counters, (void *)item->DataPtr, item->DataSize);
-                    if (subtract_next_counters) {
-                        subtract_next_counters = 0;
+                    if (zone) {
                         JK_DEBUG_ASSERT(
-                                zone->count * sizeof(zone->result.counters[0]) == item->DataSize);
-                        for (int j = 0; j < zone->count; j++) {
+                                tracer->count * sizeof(zone->result.counters[0]) == item->DataSize);
+                        zone->result.time_elapsed -= timestamp;
+                        for (int j = 0; j < tracer->count; j++) {
                             zone->result.counters[j] -= counters[j];
                         }
+                        zone = 0;
                     }
                 }
             }
@@ -387,6 +387,7 @@ JK_PUBLIC void jk_platform_pmc_trace_begin(
             .EventRecordCallback = jk_platform_event_record_callback,
             .ProcessTraceMode = PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP
                     | PROCESS_TRACE_MODE_REAL_TIME,
+            .Context = tracer,
         };
         tracer->trace = OpenTraceA(&log_file);
         if (tracer->trace == INVALID_PROCESSTRACE_HANDLE) {
@@ -419,23 +420,6 @@ JK_PUBLIC void jk_platform_pmc_trace_end(JkPlatformPmcTracer *tracer)
     CloseHandle(tracer->thread_handle);
 }
 
-JK_PUBLIC void jk_platform_pmc_zone_open(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
-{
-    memset(zone, 0, sizeof(*zone));
-    zone->count = tracer->count;
-    if (tracer->thread_handle) {
-        zone->complete_event = CreateEventA(0, 1, 0, 0);
-        if (!zone->complete_event) {
-            fprintf(stderr, "jk_platform_pmc_zone_open: CreateEventA failed\n");
-        }
-    }
-}
-
-JK_PUBLIC void jk_platform_pmc_zone_close(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
-{
-    zone->closed = 1;
-}
-
 static void jk_platform_pmc_marker_event_issue(
         TRACEHANDLE provider, JkPlatformPmcMarkerType type, JkPlatformPmcZone *zone)
 {
@@ -456,7 +440,6 @@ static void jk_platform_pmc_marker_event_issue(
                     .zone = zone,
                 },
     };
-    zone->marker_issued_count++;
     ULONG status = TraceEvent(provider, &event.header);
     if (status != ERROR_SUCCESS) {
         fprintf(stderr,
@@ -465,35 +448,40 @@ static void jk_platform_pmc_marker_event_issue(
     }
 }
 
-JK_PUBLIC void jk_platform_pmc_zone_collection_start(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+JK_PUBLIC void jk_platform_pmc_zone_begin(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
 {
-    jk_platform_pmc_marker_event_issue(tracer->session, JK_PLATFORM_PMC_MARKER_START, zone);
+    memset(zone, 0, sizeof(*zone));
+    if (tracer->thread_handle) {
+        jk_platform_pmc_marker_event_issue(tracer->session, JK_PLATFORM_PMC_MARKER_START, zone);
+    } else {
+        zone->result_ready = TRUE;
+    }
 }
 
-JK_PUBLIC void jk_platform_pmc_zone_collection_stop(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+JK_PUBLIC void jk_platform_pmc_zone_end(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
 {
     jk_platform_pmc_marker_event_issue(tracer->session, JK_PLATFORM_PMC_MARKER_STOP, zone);
 }
 
-JK_PUBLIC b32 jk_platform_pmc_zone_result_ready(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+JK_PUBLIC b32 jk_platform_pmc_zone_result_ready(JkPlatformPmcZone *zone)
 {
-    return zone->complete;
+    return zone->result_ready;
 }
 
-JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_get(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_get(JkPlatformPmcZone *zone)
 {
     return zone->result;
 }
 
-JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_wait(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone)
+JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_wait(JkPlatformPmcZone *zone)
 {
-    WaitForSingleObject(zone->complete_event, INFINITE);
-    return jk_platform_pmc_zone_result_get(tracer, zone);
+    while (!jk_platform_pmc_zone_result_ready(zone)) {
+        _mm_pause();
+    }
+
+    _mm_mfence();
+
+    return jk_platform_pmc_zone_result_get(zone);
 }
 
 // ---- Performance-monitoring counters end ------------------------------------

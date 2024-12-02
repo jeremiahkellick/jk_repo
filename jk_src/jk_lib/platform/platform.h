@@ -60,12 +60,14 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
 
 // -------- Performance-monitoring counters begin ------------------------------
 
-typedef wchar_t *JkPlatformPmcNameArray[];
+#define JK_PLATFORM_PMC_SOURCES_MAX 8
 
-#define JK_PLATFORM_PMC_SOURCES_MAX 16
+typedef struct JkPlatformPmcNameArray {
+    wchar_t *strings[JK_PLATFORM_PMC_SOURCES_MAX];
+} JkPlatformPmcNameArray;
 
 typedef struct JkPlatformPmcMapping {
-    size_t count;
+    uint64_t count;
     uint32_t sources[JK_PLATFORM_PMC_SOURCES_MAX];
 } JkPlatformPmcMapping;
 
@@ -82,29 +84,16 @@ typedef struct JkPlatformPmcTracer {
 } JkPlatformPmcTracer;
 
 typedef struct JkPlatformPmcResult {
-    uint64_t hit_count;
+    uint64_t time_elapsed;
     uint64_t counters[JK_PLATFORM_PMC_SOURCES_MAX];
 } JkPlatformPmcResult;
 
 typedef struct JkPlatformPmcZone {
     JkPlatformPmcResult result;
-    uint64_t marker_processed_count;
-    uint64_t count;
-    b32 closed;
-    b32 complete;
-    void *complete_event;
-
-    uint64_t padding[4];
-
-    uint64_t marker_issued_count;
+    b32 result_ready;
 } JkPlatformPmcZone;
 
-_STATIC_ASSERT(offsetof(JkPlatformPmcZone, marker_issued_count)
-                - offsetof(JkPlatformPmcZone, marker_processed_count)
-        >= 64);
-
-JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(
-        JkPlatformPmcNameArray names, size_t count);
+JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray names);
 
 JK_PUBLIC b32 jk_platform_pmc_mapping_valid(JkPlatformPmcMapping mapping);
 
@@ -113,24 +102,15 @@ JK_PUBLIC void jk_platform_pmc_trace_begin(
 
 JK_PUBLIC void jk_platform_pmc_trace_end(JkPlatformPmcTracer *tracer);
 
-JK_PUBLIC void jk_platform_pmc_zone_open(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
+JK_PUBLIC void jk_platform_pmc_zone_begin(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
 
-JK_PUBLIC void jk_platform_pmc_zone_close(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
+JK_PUBLIC void jk_platform_pmc_zone_end(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
 
-JK_PUBLIC void jk_platform_pmc_zone_collection_start(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
+JK_PUBLIC b32 jk_platform_pmc_zone_result_ready(JkPlatformPmcZone *zone);
 
-JK_PUBLIC void jk_platform_pmc_zone_collection_stop(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
+JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_get(JkPlatformPmcZone *zone);
 
-JK_PUBLIC b32 jk_platform_pmc_zone_result_ready(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
-
-JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_get(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
-
-JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_wait(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
+JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_wait(JkPlatformPmcZone *zone);
 
 // -------- Performance-monitoring counters end --------------------------------
 
