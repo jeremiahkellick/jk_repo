@@ -1,6 +1,6 @@
 #include <math.h>
 
-#include "haversine_reference.h"
+#include "haversine_lib.h"
 
 static double square(double A)
 {
