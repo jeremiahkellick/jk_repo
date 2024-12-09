@@ -1,37 +1,8 @@
-#include <stdlib.h>
-#include <string.h>
-
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/json/json.h>
 #include <jk_src/perfaware/part2/haversine_lib.h>
 // #jk_build dependencies_end
-
-typedef enum Coordinate {
-    X0,
-    Y0,
-    X1,
-    Y1,
-    COORDINATE_COUNT,
-} Coordinate;
-
-typedef struct HaversinePair {
-    double v[COORDINATE_COUNT];
-} HaversinePair;
-
-char *coordinate_names[COORDINATE_COUNT] = {
-    "x0",
-    "y0",
-    "x1",
-    "y1",
-};
-
-static b32 approximately_equal(double a, double b)
-{
-    double diff = a - b;
-    return diff > -0.0001 && diff < 0.0001;
-}
 
 typedef enum Opt {
     OPT_HELP,
@@ -86,85 +57,29 @@ int main(int argc, char **argv)
         }
     }
     char *json_file_name = opts_parse.operands[0];
-    char *answer_file_name = NULL;
+    char *answers_file_name = NULL;
     if (opts_parse.operand_count > 1) {
-        answer_file_name = opts_parse.operands[1];
+        answers_file_name = opts_parse.operands[1];
     }
 
     JkPlatformArena storage;
     jk_platform_arena_init(&storage, (size_t)1 << 35);
 
-    JkBuffer text = jk_platform_file_read_full(json_file_name, &storage);
-    JkBuffer answers = {0};
-    if (answer_file_name) {
-        answers = jk_platform_file_read_full(answer_file_name, &storage);
-    }
+    HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);
-
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, text.size);
-    JkJson *json = jk_json_parse(text, &storage);
-    JK_PLATFORM_PROFILE_ZONE_END(parse_json);
-
-    if (json == NULL) {
-        fprintf(stderr, "%s: Failed to parse JSON\n", program_name);
-        exit(1);
-    }
-    if (json->type != JK_JSON_OBJECT) {
-        fprintf(stderr, "%s: JSON was not an object\n", program_name);
-        exit(1);
-    }
-    JkJson *pairs_json = jk_json_member_get(json, "pairs");
-    if (pairs_json == NULL) {
-        fprintf(stderr, "%s: JSON object did not have a \"pairs\" member\n", program_name);
-        exit(1);
-    }
-    if (pairs_json->type != JK_JSON_ARRAY) {
-        fprintf(stderr, "%s: JSON object \"pairs\" member was not an array\n", program_name);
-        exit(1);
-    }
-
-    size_t pair_count = pairs_json->child_count;
-    size_t pairs_buffer_size = sizeof(HaversinePair) * pair_count;
-    HaversinePair *pairs = jk_platform_arena_push(&storage, pairs_buffer_size);
-
-    if (answers.size) {
-        JK_ASSERT(answers.size == sizeof(double) * (pair_count + 1));
-    }
-
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
-    {
-        size_t i = 0;
-        for (JkJson *pair_json = pairs_json->first_child; pair_json;
-                pair_json = pair_json->sibling, i++) {
-            for (JkJson *coord_json = pair_json->first_child; coord_json;
-                    coord_json = coord_json->sibling) {
-                if (coord_json->name.size != 2) {
-                    continue;
-                }
-                uint8_t x_or_y = coord_json->name.data[0] - 'x';
-                uint8_t zero_or_one = coord_json->name.data[1] - '0';
-                uint8_t j = (zero_or_one << 1) | x_or_y;
-                if (x_or_y < 2 && zero_or_one < 2) {
-                    pairs[i].v[j] = jk_json_parse_number(coord_json->value);
-                }
-            }
-        }
-    }
-    JK_PLATFORM_PROFILE_ZONE_END(lookup_and_convert);
-
-    JK_PLATFORM_PROFILE_ZONE_END(parse_haversine_pairs);
-
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, pairs_buffer_size);
+    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * sizeof(context.pairs[0]));
     double sum = 0.0;
-    double sum_coefficient = 1.0 / (double)pair_count;
-    for (size_t i = 0; i < pair_count; i++) {
-        double distance = haversine_reference(
-                pairs[i].v[X0], pairs[i].v[Y0], pairs[i].v[X1], pairs[i].v[Y1], EARTH_RADIUS);
+    double sum_coefficient = 1.0 / (double)context.pair_count;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double distance = haversine_reference(context.pairs[i].v[X0],
+                context.pairs[i].v[Y0],
+                context.pairs[i].v[X1],
+                context.pairs[i].v[Y1],
+                EARTH_RADIUS);
 
 #ifndef NDEBUG
-        if (answers.size) {
-            JK_ASSERT(approximately_equal(distance, JK_DATA_GET(answers.data, i, double)));
+        if (context.answers) {
+            JK_ASSERT(approximately_equal(distance, context.answers[i]));
         }
 #endif
 
@@ -172,13 +87,12 @@ int main(int argc, char **argv)
     }
     JK_PLATFORM_PROFILE_ZONE_END(sum);
 
-    printf("Pair count: %zu\n", pair_count);
+    printf("Pair count: %zu\n", context.pair_count);
     printf("Haversine sum: %.16f\n", sum);
 
-    if (answers.size) {
-        double ref_sum = JK_DATA_GET(answers.data, pair_count, double);
-        printf("\nReference sum: %.16f\n", ref_sum);
-        printf("Difference: %.16f\n\n", sum - ref_sum);
+    if (context.answers) {
+        printf("\nReference sum: %.16f\n", context.sum_answer);
+        printf("Difference: %.16f\n\n", sum - context.sum_answer);
     }
 
     jk_platform_profile_end_and_print();
