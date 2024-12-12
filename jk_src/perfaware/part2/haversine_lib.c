@@ -45,6 +45,36 @@ JK_PUBLIC double haversine_reference(double X0, double Y0, double X1, double Y1,
     return Result;
 }
 
+JK_PUBLIC double haversine_reference_sum(HaversineContext context)
+{
+    double sum = 0.0;
+    double sum_coefficient = 1.0 / (double)context.pair_count;
+
+    for (uint64_t i = 0; i < context.pair_count; i++) {
+        HaversinePair pair = context.pairs[i];
+        sum += sum_coefficient
+                * haversine_reference(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS);
+    }
+
+    return sum;
+}
+
+JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context)
+{
+    uint64_t error_count = 0;
+
+    for (uint64_t i = 0; i < context.pair_count; i++) {
+        HaversinePair pair = context.pairs[i];
+        if (!approximately_equal(context.answers[i],
+                    haversine_reference(
+                            pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS))) {
+            error_count++;
+        }
+    }
+
+    return error_count;
+}
+
 JK_PUBLIC b32 approximately_equal(double a, double b)
 {
     double epsilon = 0.0000001;

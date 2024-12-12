@@ -811,6 +811,12 @@ JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing)
     jk_platform_profile.depth--;
 }
 
+#endif
+
+// ---- Profile end ------------------------------------------------------------
+
+// ---- Repetition test begin --------------------------------------------------
+
 JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *test,
         uint64_t target_byte_count,
         uint64_t frequency,
@@ -950,9 +956,7 @@ JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test,
     fprintf(stderr, "%s\n", message);
 }
 
-#endif
-
-// ---- Profile end ------------------------------------------------------------
+// ---- Repetition test end ----------------------------------------------------
 
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n)
 {
