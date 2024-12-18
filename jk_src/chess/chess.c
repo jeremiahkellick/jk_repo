@@ -219,6 +219,81 @@ void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
             SRCCOPY);
 }
 
+typedef struct Audio {
+    uint32_t samples_per_second;
+    uint32_t sample_index;
+    double bpm;
+} Audio;
+
+int32_t audio_samples_per_eighth_note(Audio *audio)
+{
+    double bpm = 140.0;
+    double eighth_notes_per_second = (bpm / 60.0) * 2.0;
+    return (uint32_t)((double)audio->samples_per_second / eighth_notes_per_second);
+}
+
+void audio_buffer_write(Audio *audio, uint32_t position, uint32_t size)
+{
+    AudioBufferRegion regions[2] = {0};
+    if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
+                position,
+                size,
+                &regions[0].data,
+                &regions[0].size,
+                &regions[1].data,
+                &regions[1].size,
+                0)
+            == DS_OK) {
+        for (int region_index = 0; region_index < 2; region_index++) {
+            AudioBufferRegion *region = &regions[region_index];
+
+            AudioSample *region_samples = region->data;
+            JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
+            for (DWORD region_offset_index = 0;
+                    region_offset_index < region->size / sizeof(region_samples[0]);
+                    region_offset_index++) {
+                uint32_t eighth_note_index =
+                        (audio->sample_index / audio_samples_per_eighth_note(audio))
+                        % JK_ARRAY_COUNT(lost_woods);
+
+                double x = (double)audio->sample_index / audio_samples_per_eighth_note(audio);
+                // Number from 0.0 to 2.0 based on how far into the current
+                // eighth note we are
+                double note_progress = (x - floor(x)) * 2.0;
+                double fade_factor = 1.0;
+                if (note_progress < 1.0) {
+                    if (lost_woods[eighth_note_index]
+                            != lost_woods[eighth_note_index == 0 ? JK_ARRAY_COUNT(lost_woods) - 1
+                                                                 : eighth_note_index - 1]) {
+                        fade_factor = note_progress;
+                    }
+                } else {
+                    if (lost_woods[eighth_note_index]
+                            != lost_woods[(eighth_note_index + 1) % JK_ARRAY_COUNT(lost_woods)]) {
+                        fade_factor = 2.0 - note_progress;
+                    }
+                }
+
+                uint32_t hz = lost_woods[eighth_note_index];
+                uint32_t square_wave_period = audio->samples_per_second / hz;
+                double value = sin((double)(audio->sample_index % square_wave_period)
+                        / (double)square_wave_period * 2.0 * 3.14159);
+                for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
+                    region_samples[region_offset_index].channels[channel_index] =
+                            (int16_t)(value * fade_factor * 2000.0);
+                }
+                audio->sample_index++;
+            }
+        }
+
+        global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
+                regions[0].data,
+                regions[0].size,
+                regions[1].data,
+                regions[1].size);
+    }
+}
+
 LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
@@ -226,7 +301,7 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
     switch (message) {
     case WM_DESTROY:
     case WM_CLOSE: {
-        global_running = 0;
+        global_running = FALSE;
     } break;
 
     case WM_SIZE: {
@@ -285,7 +360,7 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
         case VK_F4: {
             if ((lparam >> 29) & 1) { // Alt key is down
-                global_running = false;
+                global_running = FALSE;
             }
         } break;
 
@@ -354,15 +429,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
-            uint32_t audio_samples_per_second = 48000;
+            Audio audio = {
+                .samples_per_second = 48000,
+                .bpm = 140.0,
+            };
             uint32_t audio_buffer_seconds = 2;
-            uint32_t audio_buffer_sample_count = audio_samples_per_second * audio_buffer_seconds;
+            uint32_t audio_buffer_sample_count = audio.samples_per_second * audio_buffer_seconds;
             uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
-
-            double bpm = 140.0;
-            double eighth_notes_per_second = (bpm / 60.0) * 2.0;
-            uint32_t samples_per_eighth_note =
-                    (uint32_t)((double)audio_samples_per_second / eighth_notes_per_second);
 
             HDC device_context = GetDC(window);
             update_dimensions(&global_bitmap, window);
@@ -378,7 +451,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     WAVEFORMATEX wave_format = {
                         .wFormatTag = WAVE_FORMAT_PCM,
                         .nChannels = AUDIO_CHANNEL_COUNT,
-                        .nSamplesPerSec = audio_samples_per_second,
+                        .nSamplesPerSec = audio.samples_per_second,
                         .wBitsPerSample = 16,
                     };
                     wave_format.nBlockAlign =
@@ -427,16 +500,16 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 OutputDebugStringA("Failed to load DirectSound\n");
             }
 
+            audio_buffer_write(&audio, 0, audio_buffer_size);
             global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
 
-            uint32_t sample_index = 0;
             global_time = 0;
-            global_running = 1;
+            global_running = TRUE;
             while (global_running) {
                 MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                     if (message.message == WM_QUIT) {
-                        global_running = false;
+                        global_running = FALSE;
                     }
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
@@ -509,78 +582,17 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     if (global_audio_buffer->lpVtbl->GetCurrentPosition(
                                 global_audio_buffer, &play_cursor, &write_cursor)
                             == DS_OK) {
-                        AudioBufferRegion regions[2] = {0};
 
-                        uint32_t byte_to_lock =
-                                sample_index * sizeof(AudioSample) % audio_buffer_size;
-                        uint32_t bytes_to_write;
-                        if (byte_to_lock > play_cursor) {
-                            bytes_to_write = audio_buffer_size - byte_to_lock + play_cursor;
+                        uint32_t position =
+                                (audio.sample_index * sizeof(AudioSample)) % audio_buffer_size;
+                        uint32_t size;
+                        if (position > play_cursor) {
+                            size = audio_buffer_size - position + play_cursor;
                         } else {
-                            bytes_to_write = play_cursor - byte_to_lock;
+                            size = play_cursor - position;
                         }
 
-                        if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
-                                    byte_to_lock,
-                                    bytes_to_write,
-                                    &regions[0].data,
-                                    &regions[0].size,
-                                    &regions[1].data,
-                                    &regions[1].size,
-                                    0)
-                                == DS_OK) {
-                            for (int region_index = 0; region_index < 2; region_index++) {
-                                AudioBufferRegion *region = &regions[region_index];
-
-                                AudioSample *region_samples = region->data;
-                                JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
-                                for (DWORD region_offset_index = 0; region_offset_index
-                                        < region->size / sizeof(region_samples[0]);
-                                        region_offset_index++) {
-                                    uint32_t eighth_note_index =
-                                            (sample_index / samples_per_eighth_note)
-                                            % JK_ARRAY_COUNT(lost_woods);
-
-                                    double x = (double)sample_index / samples_per_eighth_note;
-                                    // Number from 0.0 to 2.0 based on how far into the current
-                                    // eighth note we are
-                                    double note_progress = (x - floor(x)) * 2.0;
-                                    double fade_factor = 1.0;
-                                    if (note_progress < 1.0) {
-                                        if (lost_woods[eighth_note_index]
-                                                != lost_woods[eighth_note_index == 0
-                                                                ? JK_ARRAY_COUNT(lost_woods) - 1
-                                                                : eighth_note_index - 1]) {
-                                            fade_factor = note_progress;
-                                        }
-                                    } else {
-                                        if (lost_woods[eighth_note_index]
-                                                != lost_woods[(eighth_note_index + 1)
-                                                        % JK_ARRAY_COUNT(lost_woods)]) {
-                                            fade_factor = 2.0 - note_progress;
-                                        }
-                                    }
-
-                                    uint32_t hz = lost_woods[eighth_note_index];
-                                    uint32_t square_wave_period = audio_samples_per_second / hz;
-                                    double value = sin((double)(sample_index % square_wave_period)
-                                            / (double)square_wave_period * 2.0 * 3.14159);
-                                    for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT;
-                                            channel_index++) {
-                                        region_samples[region_offset_index]
-                                                .channels[channel_index] =
-                                                (int16_t)(value * fade_factor * 2000.0);
-                                    }
-                                    sample_index++;
-                                }
-                            }
-
-                            global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
-                                    regions[0].data,
-                                    regions[0].size,
-                                    regions[1].data,
-                                    regions[1].size);
-                        }
+                        audio_buffer_write(&audio, position, size);
                     } else {
                         OutputDebugStringA("Failed to get DirectSound current position\n");
                     }
