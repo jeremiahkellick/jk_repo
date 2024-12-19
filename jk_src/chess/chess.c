@@ -222,7 +222,10 @@ void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
 typedef struct Audio {
     uint32_t samples_per_second;
     uint32_t sample_index;
+    uint32_t pitch_multiplier;
+    uint32_t latency_sample_count;
     double bpm;
+    double sin_t;
 } Audio;
 
 int32_t audio_samples_per_eighth_note(Audio *audio)
@@ -274,10 +277,9 @@ void audio_buffer_write(Audio *audio, uint32_t position, uint32_t size)
                     }
                 }
 
-                uint32_t hz = lost_woods[eighth_note_index];
-                uint32_t square_wave_period = audio->samples_per_second / hz;
-                double value = sin((double)(audio->sample_index % square_wave_period)
-                        / (double)square_wave_period * 2.0 * 3.14159);
+                uint32_t hz = lost_woods[eighth_note_index] * audio->pitch_multiplier;
+                audio->sin_t += 2.0 * 3.14159 * ((double)hz / (double)audio->samples_per_second);
+                double value = sin(audio->sin_t);
                 for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
                     region_samples[region_offset_index].channels[channel_index] =
                             (int16_t)(value * fade_factor * 2000.0);
@@ -394,7 +396,10 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    HINSTANCE xinput_library = LoadLibraryA("Xinput1_4.dll");
+    HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
+    if (!xinput_library) {
+        xinput_library = LoadLibraryA("xinput9_1_0.dll");
+    }
     if (!xinput_library) {
         xinput_library = LoadLibraryA("xinput1_3.dll");
     }
@@ -431,6 +436,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         if (window) {
             Audio audio = {
                 .samples_per_second = 48000,
+                .pitch_multiplier = 1,
+                .latency_sample_count = audio.samples_per_second / 15,
                 .bpm = 140.0,
             };
             uint32_t audio_buffer_seconds = 2;
@@ -500,7 +507,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 OutputDebugStringA("Failed to load DirectSound\n");
             }
 
-            audio_buffer_write(&audio, 0, audio_buffer_size);
+            audio_buffer_write(&audio, 0, audio.latency_sample_count * sizeof(AudioSample));
             global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
 
             global_time = 0;
@@ -573,6 +580,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     global_x += 2;
                 }
 
+                audio.pitch_multiplier = (input.button_flags & BUTTON_FLAG_UP) ? 2 : 1;
+
                 draw_pretty_colors(global_bitmap, global_time);
 
                 // Write audio to buffer
@@ -585,11 +594,14 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
                         uint32_t position =
                                 (audio.sample_index * sizeof(AudioSample)) % audio_buffer_size;
+                        uint32_t target_cursor =
+                                (play_cursor + audio.latency_sample_count * sizeof(AudioSample))
+                                % audio_buffer_size;
                         uint32_t size;
-                        if (position > play_cursor) {
-                            size = audio_buffer_size - position + play_cursor;
+                        if (position > target_cursor) {
+                            size = audio_buffer_size - position + target_cursor;
                         } else {
-                            size = play_cursor - position;
+                            size = target_cursor - position;
                         }
 
                         audio_buffer_write(&audio, position, size);
