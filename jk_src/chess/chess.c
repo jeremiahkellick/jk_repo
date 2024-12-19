@@ -3,13 +3,14 @@
 #include <dsound.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <windows.h>
 #include <xinput.h>
 
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
 typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
@@ -103,6 +104,7 @@ static int64_t global_y;
 static int64_t global_keys_down;
 static Bitmap global_bitmap;
 static LPDIRECTSOUNDBUFFER global_audio_buffer;
+static char global_string_buffer[1024];
 
 uint32_t lost_woods[] = {
     349, // F
@@ -512,6 +514,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
             global_time = 0;
             global_running = TRUE;
+            uint64_t frame_time_total = 0;
+            uint64_t frame_time_min = ULLONG_MAX;
+            uint64_t frame_time_max = 0;
+            uint64_t counter_previous = jk_platform_cpu_timer_get();
             while (global_running) {
                 MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -612,8 +618,37 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
                 copy_bitmap_to_window(device_context, global_bitmap);
 
-                global_time += 1;
+                global_time++;
+
+                uint64_t counter_current = jk_platform_cpu_timer_get();
+                uint64_t frame_time_current = counter_current - counter_previous;
+                counter_previous = counter_current;
+
+                frame_time_total += frame_time_current;
+                if (frame_time_current < frame_time_min) {
+                    frame_time_min = frame_time_current;
+                }
+                if (frame_time_current > frame_time_max) {
+                    frame_time_max = frame_time_current;
+                }
             }
+
+            uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+
+            snprintf(global_string_buffer,
+                    JK_ARRAY_COUNT(global_string_buffer),
+                    "\nFrame Time\nMin: %.3fms\nMax: %.3fms\nAvg: %.3fms\n",
+                    (double)frame_time_min / (double)frequency * 1000.0,
+                    (double)frame_time_max / (double)frequency * 1000.0,
+                    ((double)frame_time_total / (double)global_time) / (double)frequency * 1000.0);
+            OutputDebugStringA(global_string_buffer);
+            snprintf(global_string_buffer,
+                    JK_ARRAY_COUNT(global_string_buffer),
+                    "\nFPS\nMin: %.0f\nMax: %.0f\nAvg: %.0f\n\n",
+                    (double)frequency / (double)frame_time_min,
+                    (double)frequency / (double)frame_time_max,
+                    ((double)global_time / (double)frame_time_total) * (double)frequency);
+            OutputDebugStringA(global_string_buffer);
         } else {
             OutputDebugStringA("CreateWindowExA failed\n");
         }
