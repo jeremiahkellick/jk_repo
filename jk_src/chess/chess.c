@@ -1,26 +1,10 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib
 
-#include <dsound.h>
-#include <math.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <windows.h>
-#include <xinput.h>
-
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
-
-typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
-typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration);
-
-XInputGetStatePointer xinput_get_state;
-XInputSetStatePointer xinput_set_state;
-
-typedef HRESULT (*DirectSoundCreatePointer)(
-        LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 
 typedef struct Color {
     uint8_t b;
@@ -35,6 +19,73 @@ typedef struct Bitmap {
     int32_t width;
     int32_t height;
 } Bitmap;
+
+typedef struct Chess {
+    Bitmap bitmap;
+    int64_t time;
+    int64_t x;
+    int64_t y;
+} Chess;
+
+int64_t mod(int64_t a, int64_t b)
+{
+    int64_t result = a % b;
+    return result < 0 ? result + b : result;
+}
+
+void render(Chess *chess)
+{
+    int64_t red_time = chess->time / 2;
+    int64_t blue_time = chess->time * 2 / 3;
+    uint8_t red_darkness = mod(red_time, 512) < 256 ? (uint8_t)red_time : 255 - (uint8_t)red_time;
+    uint8_t blue_darkness =
+            mod(blue_time, 512) < 256 ? (uint8_t)blue_time : 255 - (uint8_t)blue_time;
+    for (int64_t screen_y = 0; screen_y < chess->bitmap.height; screen_y++) {
+        for (int64_t screen_x = 0; screen_x < chess->bitmap.width; screen_x++) {
+            int64_t world_y = screen_y + chess->y;
+            int64_t world_x = screen_x + chess->x;
+            int64_t red;
+            int64_t blue;
+            if (mod(world_y, 512) < 256) {
+                red = (world_y & 255) - red_darkness;
+            } else {
+                red = 255 - (world_y & 255) - red_darkness;
+            }
+            if (mod(world_x, 512) < 256) {
+                blue = (world_x & 255) - blue_darkness;
+            } else {
+                blue = 255 - (world_x & 255) - blue_darkness;
+            }
+            if (red < 0) {
+                red = 0;
+            }
+            if (blue < 0) {
+                blue = 0;
+            }
+            chess->bitmap.memory[screen_y * chess->bitmap.width + screen_x].r = (uint8_t)red;
+            chess->bitmap.memory[screen_y * chess->bitmap.width + screen_x].b = (uint8_t)blue;
+        }
+    }
+}
+
+#ifdef _WIN32
+// ---- Windows begin ----------------------------------------------------------
+
+#include <dsound.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <windows.h>
+#include <xinput.h>
+
+typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
+typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration);
+
+XInputGetStatePointer xinput_get_state;
+XInputSetStatePointer xinput_set_state;
+
+typedef HRESULT (*DirectSoundCreatePointer)(
+        LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 
 typedef struct AudioBufferRegion {
     DWORD size;
@@ -97,12 +148,9 @@ typedef struct Input {
     int64_t button_flags;
 } Input;
 
+static Chess global_chess;
 static b32 global_running;
-static int64_t global_time;
-static int64_t global_x;
-static int64_t global_y;
 static int64_t global_keys_down;
-static Bitmap global_bitmap;
 static LPDIRECTSOUNDBUFFER global_audio_buffer;
 static char global_string_buffer[1024];
 
@@ -150,47 +198,6 @@ void update_dimensions(Bitmap *bitmap, HWND window)
     GetClientRect(window, &rect);
     bitmap->width = rect.right - rect.left;
     bitmap->height = rect.bottom - rect.top;
-}
-
-int64_t mod(int64_t a, int64_t b)
-{
-    int64_t result = a % b;
-    return result < 0 ? result + b : result;
-}
-
-void draw_pretty_colors(Bitmap bitmap, int64_t time)
-{
-    int64_t red_time = time / 2;
-    int64_t blue_time = time * 2 / 3;
-    uint8_t red_darkness = mod(red_time, 512) < 256 ? (uint8_t)red_time : 255 - (uint8_t)red_time;
-    uint8_t blue_darkness =
-            mod(blue_time, 512) < 256 ? (uint8_t)blue_time : 255 - (uint8_t)blue_time;
-    for (int64_t screen_y = 0; screen_y < bitmap.height; screen_y++) {
-        for (int64_t screen_x = 0; screen_x < bitmap.width; screen_x++) {
-            int64_t world_y = screen_y + global_y;
-            int64_t world_x = screen_x + global_x;
-            int64_t red;
-            int64_t blue;
-            if (mod(world_y, 512) < 256) {
-                red = (world_y & 255) - red_darkness;
-            } else {
-                red = 255 - (world_y & 255) - red_darkness;
-            }
-            if (mod(world_x, 512) < 256) {
-                blue = (world_x & 255) - blue_darkness;
-            } else {
-                blue = 255 - (world_x & 255) - blue_darkness;
-            }
-            if (red < 0) {
-                red = 0;
-            }
-            if (blue < 0) {
-                blue = 0;
-            }
-            bitmap.memory[screen_y * bitmap.width + screen_x].r = (uint8_t)red;
-            bitmap.memory[screen_y * bitmap.width + screen_x].b = (uint8_t)blue;
-        }
-    }
 }
 
 void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
@@ -309,7 +316,7 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
     } break;
 
     case WM_SIZE: {
-        update_dimensions(&global_bitmap, window);
+        update_dimensions(&global_chess.bitmap, window);
     } break;
 
     case WM_SYSKEYDOWN:
@@ -380,11 +387,11 @@ LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
     } break;
 
     case WM_PAINT: {
-        draw_pretty_colors(global_bitmap, global_time);
+        render(&global_chess);
 
         PAINTSTRUCT paint;
         HDC device_context = BeginPaint(window, &paint);
-        copy_bitmap_to_window(device_context, global_bitmap);
+        copy_bitmap_to_window(device_context, global_chess.bitmap);
         EndPaint(window, &paint);
     } break;
 
@@ -412,9 +419,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         OutputDebugStringA("Failed to load XInput\n");
     }
 
-    global_bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    global_chess.bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
 
-    if (global_bitmap.memory) {
+    if (global_chess.bitmap.memory) {
         WNDCLASSA window_class = {
             .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
             .lpfnWndProc = window_proc,
@@ -447,7 +454,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
 
             HDC device_context = GetDC(window);
-            update_dimensions(&global_bitmap, window);
+            update_dimensions(&global_chess.bitmap, window);
 
             // Initialize DirectSound
             HINSTANCE direct_sound_library = LoadLibraryA("dsound.dll");
@@ -512,7 +519,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             audio_buffer_write(&audio, 0, audio.latency_sample_count * sizeof(AudioSample));
             global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
 
-            global_time = 0;
+            global_chess.time = 0;
             global_running = TRUE;
             uint64_t frame_time_total = 0;
             uint64_t frame_time_min = ULLONG_MAX;
@@ -574,21 +581,21 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 }
 
                 if (input.button_flags & BUTTON_FLAG_UP) {
-                    global_y -= 2;
+                    global_chess.y -= 2;
                 }
                 if (input.button_flags & BUTTON_FLAG_DOWN) {
-                    global_y += 2;
+                    global_chess.y += 2;
                 }
                 if (input.button_flags & BUTTON_FLAG_LEFT) {
-                    global_x -= 2;
+                    global_chess.x -= 2;
                 }
                 if (input.button_flags & BUTTON_FLAG_RIGHT) {
-                    global_x += 2;
+                    global_chess.x += 2;
                 }
 
                 audio.pitch_multiplier = (input.button_flags & BUTTON_FLAG_UP) ? 2 : 1;
 
-                draw_pretty_colors(global_bitmap, global_time);
+                render(&global_chess);
 
                 // Write audio to buffer
                 {
@@ -616,9 +623,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     }
                 }
 
-                copy_bitmap_to_window(device_context, global_bitmap);
+                copy_bitmap_to_window(device_context, global_chess.bitmap);
 
-                global_time++;
+                global_chess.time++;
 
                 uint64_t counter_current = jk_platform_cpu_timer_get();
                 uint64_t frame_time_current = counter_current - counter_previous;
@@ -640,14 +647,15 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     "\nFrame Time\nMin: %.3fms\nMax: %.3fms\nAvg: %.3fms\n",
                     (double)frame_time_min / (double)frequency * 1000.0,
                     (double)frame_time_max / (double)frequency * 1000.0,
-                    ((double)frame_time_total / (double)global_time) / (double)frequency * 1000.0);
+                    ((double)frame_time_total / (double)global_chess.time) / (double)frequency
+                            * 1000.0);
             OutputDebugStringA(global_string_buffer);
             snprintf(global_string_buffer,
                     JK_ARRAY_COUNT(global_string_buffer),
                     "\nFPS\nMin: %.0f\nMax: %.0f\nAvg: %.0f\n\n",
                     (double)frequency / (double)frame_time_min,
                     (double)frequency / (double)frame_time_max,
-                    ((double)global_time / (double)frame_time_total) * (double)frequency);
+                    ((double)global_chess.time / (double)frame_time_total) * (double)frequency);
             OutputDebugStringA(global_string_buffer);
         } else {
             OutputDebugStringA("CreateWindowExA failed\n");
@@ -658,3 +666,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
     return 0;
 }
+
+// ---- Windows end ------------------------------------------------------------
+#endif
