@@ -1,10 +1,74 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib
 
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+
 #include <jk_gen/single_translation_unit.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
+
+static uint32_t lost_woods[] = {
+    349, // F
+    440, // A
+    494, // B
+    494, // B
+    349, // F
+    440, // A
+    494, // B
+    494, // B
+
+    349, // F
+    440, // A
+    494, // B
+    659, // E
+    587, // D
+    587, // D
+    494, // B
+    523, // C
+
+    494, // B
+    392, // G
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    294, // Low D
+
+    330, // Low E
+    392, // G
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+    330, // Low E
+};
+
+#define BPM 140.0
+
+typedef enum InputId {
+    INPUT_UP,
+    INPUT_DOWN,
+    INPUT_LEFT,
+    INPUT_RIGHT,
+    INPUT_CONFIRM,
+    INPUT_CANCEL,
+} InputId;
+
+#define INPUT_FLAG_UP (1 << INPUT_UP)
+#define INPUT_FLAG_DOWN (1 << INPUT_DOWN)
+#define INPUT_FLAG_LEFT (1 << INPUT_LEFT)
+#define INPUT_FLAG_RIGHT (1 << INPUT_RIGHT)
+#define INPUT_FLAG_CONFIRM (1 << INPUT_CONFIRM)
+#define INPUT_FLAG_CANCEL (1 << INPUT_CANCEL)
+
+typedef struct Input {
+    int64_t flags;
+} Input;
 
 typedef struct Color {
     uint8_t b;
@@ -14,6 +78,24 @@ typedef struct Color {
 } Color;
 _STATIC_ASSERT(sizeof(Color) == 4);
 
+typedef enum AudioChannel {
+    AUDIO_CHANNEL_LEFT,
+    AUDIO_CHANNEL_RIGHT,
+    AUDIO_CHANNEL_COUNT,
+} AudioChannel;
+
+typedef struct AudioSample {
+    int16_t channels[AUDIO_CHANNEL_COUNT];
+} AudioSample;
+
+typedef struct Audio {
+    uint32_t samples_per_second;
+    uint32_t sample_count;
+    AudioSample *sample_buffer;
+    uint32_t audio_time;
+    double sin_t;
+} Audio;
+
 typedef struct Bitmap {
     Color *memory;
     int32_t width;
@@ -21,19 +103,83 @@ typedef struct Bitmap {
 } Bitmap;
 
 typedef struct Chess {
+    Input input;
+    Audio audio;
     Bitmap bitmap;
     int64_t time;
     int64_t x;
     int64_t y;
 } Chess;
 
-int64_t mod(int64_t a, int64_t b)
+static int64_t mod(int64_t a, int64_t b)
 {
     int64_t result = a % b;
     return result < 0 ? result + b : result;
 }
 
-void render(Chess *chess)
+static int32_t audio_samples_per_eighth_note(uint32_t samples_per_second)
+{
+    double eighth_notes_per_second = (BPM / 60.0) * 2.0;
+    return (uint32_t)((double)samples_per_second / eighth_notes_per_second);
+}
+
+static void audio_write(Audio *audio, int32_t pitch_multiplier)
+{
+    for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
+        uint32_t eighth_note_index =
+                (audio->audio_time / audio_samples_per_eighth_note(audio->samples_per_second))
+                % JK_ARRAY_COUNT(lost_woods);
+
+        double x = (double)audio->audio_time
+                / audio_samples_per_eighth_note(audio->samples_per_second);
+        // Number from 0.0 to 2.0 based on how far into the current
+        // eighth note we are
+        double note_progress = (x - floor(x)) * 2.0;
+        double fade_factor = 1.0;
+        if (note_progress < 1.0) {
+            if (lost_woods[eighth_note_index]
+                    != lost_woods[eighth_note_index == 0 ? JK_ARRAY_COUNT(lost_woods) - 1
+                                                         : eighth_note_index - 1]) {
+                fade_factor = note_progress;
+            }
+        } else {
+            if (lost_woods[eighth_note_index]
+                    != lost_woods[(eighth_note_index + 1) % JK_ARRAY_COUNT(lost_woods)]) {
+                fade_factor = 2.0 - note_progress;
+            }
+        }
+
+        uint32_t hz = lost_woods[eighth_note_index] * pitch_multiplier;
+        audio->sin_t += 2.0 * 3.14159 * ((double)hz / (double)audio->samples_per_second);
+        int16_t value = (int16_t)(sin(audio->sin_t) * fade_factor * 2000.0);
+        for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
+            audio->sample_buffer[sample_index].channels[channel_index] = value;
+        }
+        audio->audio_time++;
+    }
+}
+
+static void update(Chess *chess)
+{
+    if (chess->input.flags & INPUT_FLAG_UP) {
+        chess->y -= 2;
+    }
+    if (chess->input.flags & INPUT_FLAG_DOWN) {
+        chess->y += 2;
+    }
+    if (chess->input.flags & INPUT_FLAG_LEFT) {
+        chess->x -= 2;
+    }
+    if (chess->input.flags & INPUT_FLAG_RIGHT) {
+        chess->x += 2;
+    }
+
+    audio_write(&chess->audio, (chess->input.flags & INPUT_FLAG_UP) ? 2 : 1);
+
+    chess->time++;
+}
+
+static void render(Chess *chess)
 {
     int64_t red_time = chess->time / 2;
     int64_t blue_time = chess->time * 2 / 3;
@@ -72,9 +218,6 @@ void render(Chess *chess)
 // ---- Windows begin ----------------------------------------------------------
 
 #include <dsound.h>
-#include <math.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <windows.h>
 #include <xinput.h>
 
@@ -91,16 +234,6 @@ typedef struct AudioBufferRegion {
     DWORD size;
     void *data;
 } AudioBufferRegion;
-
-typedef enum AudioChannel {
-    AUDIO_CHANNEL_LEFT,
-    AUDIO_CHANNEL_RIGHT,
-    AUDIO_CHANNEL_COUNT,
-} AudioChannel;
-
-typedef struct AudioSample {
-    int16_t channels[AUDIO_CHANNEL_COUNT];
-} AudioSample;
 
 typedef enum Key {
     KEY_UP,
@@ -128,71 +261,23 @@ typedef enum Key {
 #define KEY_FLAG_SPACE (1 << KEY_SPACE)
 #define KEY_FLAG_ESCAPE (1 << KEY_ESCAPE)
 
-typedef enum Button {
-    BUTTON_UP,
-    BUTTON_DOWN,
-    BUTTON_LEFT,
-    BUTTON_RIGHT,
-    BUTTON_CONFIRM,
-    BUTTON_CANCEL,
-} Button;
+#define SAMPLES_PER_SECOND 48000
 
-#define BUTTON_FLAG_UP (1 << BUTTON_UP)
-#define BUTTON_FLAG_DOWN (1 << BUTTON_DOWN)
-#define BUTTON_FLAG_LEFT (1 << BUTTON_LEFT)
-#define BUTTON_FLAG_RIGHT (1 << BUTTON_RIGHT)
-#define BUTTON_FLAG_CONFIRM (1 << BUTTON_CONFIRM)
-#define BUTTON_FLAG_CANCEL (1 << BUTTON_CANCEL)
+typedef struct Memory {
+    AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
+    uint8_t video[512llu * 1024 * 1024];
+} Memory;
 
-typedef struct Input {
-    int64_t button_flags;
-} Input;
+static Chess global_chess = {
+    .audio.samples_per_second = SAMPLES_PER_SECOND,
+};
 
-static Chess global_chess;
 static b32 global_running;
 static int64_t global_keys_down;
 static LPDIRECTSOUNDBUFFER global_audio_buffer;
 static char global_string_buffer[1024];
 
-uint32_t lost_woods[] = {
-    349, // F
-    440, // A
-    494, // B
-    494, // B
-    349, // F
-    440, // A
-    494, // B
-    494, // B
-
-    349, // F
-    440, // A
-    494, // B
-    659, // E
-    587, // D
-    587, // D
-    494, // B
-    523, // C
-
-    494, // B
-    392, // G
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    294, // Low D
-
-    330, // Low E
-    392, // G
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-};
-
-void update_dimensions(Bitmap *bitmap, HWND window)
+static void update_dimensions(Bitmap *bitmap, HWND window)
 {
     RECT rect;
     GetClientRect(window, &rect);
@@ -200,7 +285,7 @@ void update_dimensions(Bitmap *bitmap, HWND window)
     bitmap->height = rect.bottom - rect.top;
 }
 
-void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
+static void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
 {
     BITMAPINFO bitmap_info = {
         .bmiHeader =
@@ -228,84 +313,7 @@ void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
             SRCCOPY);
 }
 
-typedef struct Audio {
-    uint32_t samples_per_second;
-    uint32_t sample_index;
-    uint32_t pitch_multiplier;
-    uint32_t latency_sample_count;
-    double bpm;
-    double sin_t;
-} Audio;
-
-int32_t audio_samples_per_eighth_note(Audio *audio)
-{
-    double bpm = 140.0;
-    double eighth_notes_per_second = (bpm / 60.0) * 2.0;
-    return (uint32_t)((double)audio->samples_per_second / eighth_notes_per_second);
-}
-
-void audio_buffer_write(Audio *audio, uint32_t position, uint32_t size)
-{
-    AudioBufferRegion regions[2] = {0};
-    if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
-                position,
-                size,
-                &regions[0].data,
-                &regions[0].size,
-                &regions[1].data,
-                &regions[1].size,
-                0)
-            == DS_OK) {
-        for (int region_index = 0; region_index < 2; region_index++) {
-            AudioBufferRegion *region = &regions[region_index];
-
-            AudioSample *region_samples = region->data;
-            JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
-            for (DWORD region_offset_index = 0;
-                    region_offset_index < region->size / sizeof(region_samples[0]);
-                    region_offset_index++) {
-                uint32_t eighth_note_index =
-                        (audio->sample_index / audio_samples_per_eighth_note(audio))
-                        % JK_ARRAY_COUNT(lost_woods);
-
-                double x = (double)audio->sample_index / audio_samples_per_eighth_note(audio);
-                // Number from 0.0 to 2.0 based on how far into the current
-                // eighth note we are
-                double note_progress = (x - floor(x)) * 2.0;
-                double fade_factor = 1.0;
-                if (note_progress < 1.0) {
-                    if (lost_woods[eighth_note_index]
-                            != lost_woods[eighth_note_index == 0 ? JK_ARRAY_COUNT(lost_woods) - 1
-                                                                 : eighth_note_index - 1]) {
-                        fade_factor = note_progress;
-                    }
-                } else {
-                    if (lost_woods[eighth_note_index]
-                            != lost_woods[(eighth_note_index + 1) % JK_ARRAY_COUNT(lost_woods)]) {
-                        fade_factor = 2.0 - note_progress;
-                    }
-                }
-
-                uint32_t hz = lost_woods[eighth_note_index] * audio->pitch_multiplier;
-                audio->sin_t += 2.0 * 3.14159 * ((double)hz / (double)audio->samples_per_second);
-                double value = sin(audio->sin_t);
-                for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
-                    region_samples[region_offset_index].channels[channel_index] =
-                            (int16_t)(value * fade_factor * 2000.0);
-                }
-                audio->sample_index++;
-            }
-        }
-
-        global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
-                regions[0].data,
-                regions[0].size,
-                regions[1].data,
-                regions[1].size);
-    }
-}
-
-LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
 
@@ -419,7 +427,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         OutputDebugStringA("Failed to load XInput\n");
     }
 
-    global_chess.bitmap.memory = VirtualAlloc(0, 512llu * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
+    global_chess.audio.sample_buffer = memory->audio;
+    global_chess.bitmap.memory = (Color *)memory->video;
 
     if (global_chess.bitmap.memory) {
         WNDCLASSA window_class = {
@@ -443,15 +453,11 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
-            Audio audio = {
-                .samples_per_second = 48000,
-                .pitch_multiplier = 1,
-                .latency_sample_count = audio.samples_per_second / 15,
-                .bpm = 140.0,
-            };
             uint32_t audio_buffer_seconds = 2;
-            uint32_t audio_buffer_sample_count = audio.samples_per_second * audio_buffer_seconds;
+            uint32_t audio_buffer_sample_count =
+                    global_chess.audio.samples_per_second * audio_buffer_seconds;
             uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
+            uint32_t audio_position = 0;
 
             HDC device_context = GetDC(window);
             update_dimensions(&global_chess.bitmap, window);
@@ -467,7 +473,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     WAVEFORMATEX wave_format = {
                         .wFormatTag = WAVE_FORMAT_PCM,
                         .nChannels = AUDIO_CHANNEL_COUNT,
-                        .nSamplesPerSec = audio.samples_per_second,
+                        .nSamplesPerSec = global_chess.audio.samples_per_second,
                         .wBitsPerSample = 16,
                     };
                     wave_format.nBlockAlign =
@@ -516,7 +522,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 OutputDebugStringA("Failed to load DirectSound\n");
             }
 
-            audio_buffer_write(&audio, 0, audio.latency_sample_count * sizeof(AudioSample));
             global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
 
             global_chess.time = 0;
@@ -535,27 +540,28 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     DispatchMessageA(&message);
                 }
 
-                Input input = {0};
+                memset(&global_chess.input, 0, sizeof(global_chess.input));
 
                 // Keyboard input
                 {
-                    input.button_flags |=
+                    global_chess.input.flags |=
                             (((global_keys_down >> KEY_UP) | (global_keys_down >> KEY_W)) & 1)
-                            << BUTTON_UP;
-                    input.button_flags |=
+                            << INPUT_UP;
+                    global_chess.input.flags |=
                             (((global_keys_down >> KEY_DOWN) | (global_keys_down >> KEY_S)) & 1)
-                            << BUTTON_DOWN;
-                    input.button_flags |=
+                            << INPUT_DOWN;
+                    global_chess.input.flags |=
                             (((global_keys_down >> KEY_LEFT) | (global_keys_down >> KEY_A)) & 1)
-                            << BUTTON_LEFT;
-                    input.button_flags |=
+                            << INPUT_LEFT;
+                    global_chess.input.flags |=
                             (((global_keys_down >> KEY_RIGHT) | (global_keys_down >> KEY_D)) & 1)
-                            << BUTTON_RIGHT;
-                    input.button_flags |=
+                            << INPUT_RIGHT;
+                    global_chess.input.flags |=
                             (((global_keys_down >> KEY_ENTER) | (global_keys_down >> KEY_SPACE))
                                     & 1)
-                            << BUTTON_CONFIRM;
-                    input.button_flags |= ((global_keys_down >> KEY_ESCAPE) & 1) << BUTTON_CANCEL;
+                            << INPUT_CONFIRM;
+                    global_chess.input.flags |= ((global_keys_down >> KEY_ESCAPE) & 1)
+                            << INPUT_CANCEL;
                 }
 
                 // Controller input
@@ -564,68 +570,88 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                         XINPUT_STATE state;
                         if (xinput_get_state(i, &state) == ERROR_SUCCESS) {
                             XINPUT_GAMEPAD *pad = &state.Gamepad;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
-                                    << BUTTON_UP;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-                                    << BUTTON_DOWN;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-                                    << BUTTON_LEFT;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-                                    << BUTTON_RIGHT;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A)
-                                    << BUTTON_CONFIRM;
-                            input.button_flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B)
-                                    << BUTTON_CANCEL;
+                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+                                    << INPUT_UP;
+                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+                                    << INPUT_DOWN;
+                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+                                    << INPUT_LEFT;
+                            global_chess.input.flags |=
+                                    !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) << INPUT_RIGHT;
+                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A)
+                                    << INPUT_CONFIRM;
+                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B)
+                                    << INPUT_CANCEL;
                         }
                     }
                 }
 
-                if (input.button_flags & BUTTON_FLAG_UP) {
-                    global_chess.y -= 2;
-                }
-                if (input.button_flags & BUTTON_FLAG_DOWN) {
-                    global_chess.y += 2;
-                }
-                if (input.button_flags & BUTTON_FLAG_LEFT) {
-                    global_chess.x -= 2;
-                }
-                if (input.button_flags & BUTTON_FLAG_RIGHT) {
-                    global_chess.x += 2;
-                }
-
-                audio.pitch_multiplier = (input.button_flags & BUTTON_FLAG_UP) ? 2 : 1;
-
-                render(&global_chess);
-
-                // Write audio to buffer
                 {
                     DWORD play_cursor;
                     DWORD write_cursor;
                     if (global_audio_buffer->lpVtbl->GetCurrentPosition(
                                 global_audio_buffer, &play_cursor, &write_cursor)
                             == DS_OK) {
-
-                        uint32_t position =
-                                (audio.sample_index * sizeof(AudioSample)) % audio_buffer_size;
                         uint32_t target_cursor =
-                                (play_cursor + audio.latency_sample_count * sizeof(AudioSample))
+                                (write_cursor
+                                        + (SAMPLES_PER_SECOND * sizeof(AudioSample) * 20) / 1000)
                                 % audio_buffer_size;
                         uint32_t size;
-                        if (position > target_cursor) {
-                            size = audio_buffer_size - position + target_cursor;
+                        if (audio_position > target_cursor) {
+                            size = audio_buffer_size - audio_position + target_cursor;
                         } else {
-                            size = target_cursor - position;
+                            size = target_cursor - audio_position;
                         }
-
-                        audio_buffer_write(&audio, position, size);
+                        global_chess.audio.sample_count = size / sizeof(AudioSample);
                     } else {
+                        global_chess.audio.sample_count = 0;
                         OutputDebugStringA("Failed to get DirectSound current position\n");
                     }
                 }
 
-                copy_bitmap_to_window(device_context, global_chess.bitmap);
+                update(&global_chess);
+                render(&global_chess);
 
-                global_chess.time++;
+                // Write audio to buffer
+                {
+                    AudioBufferRegion regions[2] = {0};
+                    if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
+                                audio_position,
+                                global_chess.audio.sample_count * sizeof(AudioSample),
+                                &regions[0].data,
+                                &regions[0].size,
+                                &regions[1].data,
+                                &regions[1].size,
+                                0)
+                            == DS_OK) {
+                        uint32_t buffer_index = 0;
+                        for (int region_index = 0; region_index < 2; region_index++) {
+                            AudioBufferRegion *region = &regions[region_index];
+
+                            AudioSample *region_samples = region->data;
+                            JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
+                            for (DWORD region_offset_index = 0;
+                                    region_offset_index < region->size / sizeof(region_samples[0]);
+                                    region_offset_index++) {
+                                region_samples[region_offset_index] =
+                                        global_chess.audio.sample_buffer[buffer_index++];
+                            }
+                        }
+
+                        audio_position =
+                                (audio_position
+                                        + global_chess.audio.sample_count * sizeof(AudioSample))
+                                % audio_buffer_size;
+
+                        global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
+                                regions[0].data,
+                                regions[0].size,
+                                regions[1].data,
+                                regions[1].size);
+                    }
+                }
+
+                copy_bitmap_to_window(device_context, global_chess.bitmap);
 
                 uint64_t counter_current = jk_platform_cpu_timer_get();
                 uint64_t frame_time_current = counter_current - counter_previous;
