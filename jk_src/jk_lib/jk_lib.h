@@ -76,7 +76,7 @@ typedef struct JkOption {
     char *description;
 } JkOption;
 
-typedef union JkOptionResult {
+typedef struct JkOptionResult {
     b32 present;
     char *arg;
 } JkOptionResult;
