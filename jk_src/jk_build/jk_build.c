@@ -424,7 +424,8 @@ static bool parse_files(char *root_file_path,
                         } else if (is_start_of_flag) {
                             is_start_of_flag = false;
                             array_append(
-                                    cmd_compiler_arguments ? compiler_arguments : linker_arguments, &memory[i]);
+                                    cmd_compiler_arguments ? compiler_arguments : linker_arguments,
+                                    &memory[i]);
                         }
                     }
                 } else if (strcmp(buf, "dependencies_begin") == 0) {
@@ -777,7 +778,7 @@ int main(int argc, char **argv)
         array_append(&command, "/GR-");
         array_append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
         array_append(&command, "/Zi");
-        array_append(&command, "/std:c++20");
+        array_append(&command, "/std:c11");
         array_append(&command, "/EHa-");
         if (optimize) {
             array_append(&command, "/O2");
@@ -798,7 +799,7 @@ int main(int argc, char **argv)
     case COMPILER_GCC: {
         array_append(&command, "gcc");
         array_append(&command, "-o", basename);
-        array_append(&command, "-std=c99");
+        array_append(&command, "-std=c11");
         array_append(&command, "-pedantic");
         array_append(&command, "-g");
         array_append(&command, "-pipe");
@@ -823,7 +824,6 @@ int main(int argc, char **argv)
         if (no_profile) {
             array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
-        array_append(&command, "-D", "_DEFAULT_SOURCE=");
         array_append(&command, "-I", root_path);
     } break;
 
@@ -833,7 +833,7 @@ int main(int argc, char **argv)
         strcat(basename, ".exe");
 #endif
         array_append(&command, "-o", basename);
-        array_append(&command, "-std=c99");
+        array_append(&command, "-std=c11");
         array_append(&command, "-Wall");
         array_append(&command, "-g");
         if (!single_translation_unit) {
@@ -845,7 +845,6 @@ int main(int argc, char **argv)
         if (no_profile) {
             array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
-        array_append(&command, "-D", "_DEFAULT_SOURCE=");
         array_append(&command, "-I", root_path);
     } break;
 
