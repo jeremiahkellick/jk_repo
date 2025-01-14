@@ -262,17 +262,18 @@ typedef enum Key {
 #define KEY_FLAG_ESCAPE (1 << KEY_ESCAPE)
 
 #define SAMPLES_PER_SECOND 48000
+#define FRAME_RATE 60
+#define SAMPLES_PER_FRAME (SAMPLES_PER_SECOND / FRAME_RATE)
+#define AUDIO_DELAY_MS 30
 
 typedef struct Memory {
     AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
     uint8_t video[512llu * 1024 * 1024];
 } Memory;
 
-#define FRAME_RATE 60
-
 static Chess global_chess = {
     .audio.samples_per_second = SAMPLES_PER_SECOND,
-    .audio.samples_per_frame = SAMPLES_PER_SECOND / FRAME_RATE,
+    .audio.samples_per_frame = SAMPLES_PER_FRAME,
 };
 
 static b32 global_running;
@@ -521,7 +522,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                         };
                         if (direct_sound->lpVtbl->CreateSoundBuffer(
                                     direct_sound, &buffer_description, &global_audio_buffer, 0)
-                                != DS_OK) {
+                                == DS_OK) {
+                            global_audio_buffer->lpVtbl->Play(
+                                    global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
+                        } else {
                             OutputDebugStringA("Failed to create secondary buffer\n");
                         }
                     }
@@ -542,7 +546,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint64_t frame_time_max = 0;
             uint64_t counter_previous = jk_platform_os_timer_get();
             uint64_t target_flip_time = counter_previous + ticks_per_frame;
-            b32 first = TRUE;
+            b32 audio_position_update_required = TRUE;
             while (global_running) {
                 MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -604,6 +608,23 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
                 // Write audio to buffer
                 {
+                    if (audio_position_update_required) {
+                        audio_position_update_required = FALSE;
+
+                        DWORD play_cursor;
+                        DWORD write_cursor;
+                        if (global_audio_buffer->lpVtbl->GetCurrentPosition(
+                                    global_audio_buffer, &play_cursor, &write_cursor)
+                                == DS_OK) {
+                            audio_position =
+                                    (write_cursor
+                                            + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
+                                                    * sizeof(AudioSample))
+                                    % audio_buffer_size;
+                        } else {
+                            OutputDebugStringA("Failed to get DirectSound current position\n");
+                        }
+                    }
                     AudioBufferRegion regions[2] = {0};
                     if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
                                 audio_position,
@@ -657,6 +678,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     } while (ticks_remaining > 0);
                 } else {
                     OutputDebugStringA("Missed a frame\n");
+
+                    // If we're off by more than half a frame, give up on catching up
+                    if (ticks_remaining < -((int64_t)ticks_per_frame / 2)) {
+                        target_flip_time = counter_current + ticks_per_frame;
+                        audio_position_update_required = TRUE;
+                    }
                 }
 
                 copy_bitmap_to_window(device_context, global_chess.bitmap);
@@ -681,10 +708,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
                 counter_previous = counter_current;
                 target_flip_time += ticks_per_frame;
-                if (first) {
-                    first = FALSE;
-                    global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
-                }
             }
 
             snprintf(global_string_buffer,
