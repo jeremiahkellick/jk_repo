@@ -781,10 +781,12 @@ int main(int argc, char **argv)
         array_append(&command, "/std:c11");
         array_append(&command, "/EHa-");
         if (optimize) {
+            array_append(&command, "/MT");
             array_append(&command, "/O2");
             array_append(&command, "/GL");
             array_append(&command, "/D", "NDEBUG");
         } else {
+            array_append(&command, "/MTd");
             array_append(&command, "/Od");
         }
         if (!single_translation_unit) {

@@ -1,4 +1,4 @@
-// #jk_build linker_arguments User32.lib Gdi32.lib
+// #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
 #include <math.h>
 #include <stdint.h>
@@ -90,7 +90,7 @@ typedef struct AudioSample {
 
 typedef struct Audio {
     uint32_t samples_per_second;
-    uint32_t sample_count;
+    uint32_t samples_per_frame;
     AudioSample *sample_buffer;
     uint32_t audio_time;
     double sin_t;
@@ -125,7 +125,7 @@ static int32_t audio_samples_per_eighth_note(uint32_t samples_per_second)
 
 static void audio_write(Audio *audio, int32_t pitch_multiplier)
 {
-    for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
+    for (uint32_t sample_index = 0; sample_index < audio->samples_per_frame; sample_index++) {
         uint32_t eighth_note_index =
                 (audio->audio_time / audio_samples_per_eighth_note(audio->samples_per_second))
                 % JK_ARRAY_COUNT(lost_woods);
@@ -162,16 +162,16 @@ static void audio_write(Audio *audio, int32_t pitch_multiplier)
 static void update(Chess *chess)
 {
     if (chess->input.flags & INPUT_FLAG_UP) {
-        chess->y -= 2;
+        chess->y -= 4;
     }
     if (chess->input.flags & INPUT_FLAG_DOWN) {
-        chess->y += 2;
+        chess->y += 4;
     }
     if (chess->input.flags & INPUT_FLAG_LEFT) {
-        chess->x -= 2;
+        chess->x -= 4;
     }
     if (chess->input.flags & INPUT_FLAG_RIGHT) {
-        chess->x += 2;
+        chess->x += 4;
     }
 
     audio_write(&chess->audio, (chess->input.flags & INPUT_FLAG_UP) ? 2 : 1);
@@ -181,8 +181,8 @@ static void update(Chess *chess)
 
 static void render(Chess *chess)
 {
-    int64_t red_time = chess->time / 2;
-    int64_t blue_time = chess->time * 2 / 3;
+    int64_t red_time = chess->time;
+    int64_t blue_time = chess->time * 4 / 3;
     uint8_t red_darkness = mod(red_time, 512) < 256 ? (uint8_t)red_time : 255 - (uint8_t)red_time;
     uint8_t blue_darkness =
             mod(blue_time, 512) < 256 ? (uint8_t)blue_time : 255 - (uint8_t)blue_time;
@@ -268,8 +268,11 @@ typedef struct Memory {
     uint8_t video[512llu * 1024 * 1024];
 } Memory;
 
+#define FRAME_RATE 60
+
 static Chess global_chess = {
     .audio.samples_per_second = SAMPLES_PER_SECOND,
+    .audio.samples_per_frame = SAMPLES_PER_SECOND / FRAME_RATE,
 };
 
 static b32 global_running;
@@ -413,6 +416,13 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
+    uint64_t frequency = jk_platform_os_timer_frequency();
+    uint64_t ticks_per_frame = frequency / FRAME_RATE;
+
+    // Set the Windows scheduler granularity to 1ms
+    timeBeginPeriod(1);
+    b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
+
     HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
     if (!xinput_library) {
         xinput_library = LoadLibraryA("xinput9_1_0.dll");
@@ -522,14 +532,17 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 OutputDebugStringA("Failed to load DirectSound\n");
             }
 
-            global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
-
             global_chess.time = 0;
             global_running = TRUE;
+            uint64_t work_time_total = 0;
+            uint64_t work_time_min = ULLONG_MAX;
+            uint64_t work_time_max = 0;
             uint64_t frame_time_total = 0;
             uint64_t frame_time_min = ULLONG_MAX;
             uint64_t frame_time_max = 0;
-            uint64_t counter_previous = jk_platform_cpu_timer_get();
+            uint64_t counter_previous = jk_platform_os_timer_get();
+            uint64_t target_flip_time = counter_previous + ticks_per_frame;
+            b32 first = TRUE;
             while (global_running) {
                 MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -586,29 +599,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     }
                 }
 
-                {
-                    DWORD play_cursor;
-                    DWORD write_cursor;
-                    if (global_audio_buffer->lpVtbl->GetCurrentPosition(
-                                global_audio_buffer, &play_cursor, &write_cursor)
-                            == DS_OK) {
-                        uint32_t target_cursor =
-                                (write_cursor
-                                        + (SAMPLES_PER_SECOND * sizeof(AudioSample) * 20) / 1000)
-                                % audio_buffer_size;
-                        uint32_t size;
-                        if (audio_position > target_cursor) {
-                            size = audio_buffer_size - audio_position + target_cursor;
-                        } else {
-                            size = target_cursor - audio_position;
-                        }
-                        global_chess.audio.sample_count = size / sizeof(AudioSample);
-                    } else {
-                        global_chess.audio.sample_count = 0;
-                        OutputDebugStringA("Failed to get DirectSound current position\n");
-                    }
-                }
-
                 update(&global_chess);
                 render(&global_chess);
 
@@ -617,7 +607,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     AudioBufferRegion regions[2] = {0};
                     if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
                                 audio_position,
-                                global_chess.audio.sample_count * sizeof(AudioSample),
+                                global_chess.audio.samples_per_frame * sizeof(AudioSample),
                                 &regions[0].data,
                                 &regions[0].size,
                                 &regions[1].data,
@@ -638,9 +628,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                             }
                         }
 
-                        audio_position =
-                                (audio_position
-                                        + global_chess.audio.sample_count * sizeof(AudioSample))
+                        audio_position = (audio_position
+                                                 + global_chess.audio.samples_per_frame
+                                                         * sizeof(AudioSample))
                                 % audio_buffer_size;
 
                         global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
@@ -651,26 +641,63 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     }
                 }
 
+                uint64_t counter_work = jk_platform_os_timer_get();
+                uint64_t counter_current = counter_work;
+                int64_t ticks_remaining = (uint64_t)target_flip_time - (uint64_t)counter_current;
+                if (ticks_remaining > 0) {
+                    do {
+                        if (can_sleep) {
+                            DWORD sleep_ms = (DWORD)((1000 * ticks_remaining) / frequency);
+                            if (sleep_ms > 0) {
+                                Sleep(sleep_ms);
+                            }
+                        }
+                        counter_current = jk_platform_os_timer_get();
+                        ticks_remaining = target_flip_time - counter_current;
+                    } while (ticks_remaining > 0);
+                } else {
+                    OutputDebugStringA("Missed a frame\n");
+                }
+
                 copy_bitmap_to_window(device_context, global_chess.bitmap);
 
-                uint64_t counter_current = jk_platform_cpu_timer_get();
-                uint64_t frame_time_current = counter_current - counter_previous;
-                counter_previous = counter_current;
-
-                frame_time_total += frame_time_current;
-                if (frame_time_current < frame_time_min) {
-                    frame_time_min = frame_time_current;
+                uint64_t work_time = counter_work - counter_previous;
+                work_time_total += work_time;
+                if (work_time < work_time_min) {
+                    work_time_min = work_time;
                 }
-                if (frame_time_current > frame_time_max) {
-                    frame_time_max = frame_time_current;
+                if (work_time > work_time_max) {
+                    work_time_max = work_time;
+                }
+
+                uint64_t frame_time = counter_current - counter_previous;
+                frame_time_total += frame_time;
+                if (frame_time < frame_time_min) {
+                    frame_time_min = frame_time;
+                }
+                if (frame_time > frame_time_max) {
+                    frame_time_max = frame_time;
+                }
+
+                counter_previous = counter_current;
+                target_flip_time += ticks_per_frame;
+                if (first) {
+                    first = FALSE;
+                    global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
                 }
             }
 
-            uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
-
             snprintf(global_string_buffer,
                     JK_ARRAY_COUNT(global_string_buffer),
-                    "\nFrame Time\nMin: %.3fms\nMax: %.3fms\nAvg: %.3fms\n",
+                    "\nWork Time\nMin: %.2fms\nMax: %.2fms\nAvg: %.2fms\n",
+                    (double)work_time_min / (double)frequency * 1000.0,
+                    (double)work_time_max / (double)frequency * 1000.0,
+                    ((double)work_time_total / (double)global_chess.time) / (double)frequency
+                            * 1000.0);
+            OutputDebugStringA(global_string_buffer);
+            snprintf(global_string_buffer,
+                    JK_ARRAY_COUNT(global_string_buffer),
+                    "\nFrame Time\nMin: %.2fms\nMax: %.2fms\nAvg: %.2fms\n",
                     (double)frame_time_min / (double)frequency * 1000.0,
                     (double)frame_time_max / (double)frequency * 1000.0,
                     ((double)frame_time_total / (double)global_chess.time) / (double)frequency
@@ -678,7 +705,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             OutputDebugStringA(global_string_buffer);
             snprintf(global_string_buffer,
                     JK_ARRAY_COUNT(global_string_buffer),
-                    "\nFPS\nMin: %.0f\nMax: %.0f\nAvg: %.0f\n\n",
+                    "\nFPS\nMin: %.2f\nMax: %.2f\nAvg: %.2f\n\n",
                     (double)frequency / (double)frame_time_min,
                     (double)frequency / (double)frame_time_max,
                     ((double)global_chess.time / (double)frame_time_total) * (double)frequency);
