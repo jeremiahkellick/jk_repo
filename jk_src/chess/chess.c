@@ -10,6 +10,8 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
+#define PI 3.14159265358979323846
+
 static uint32_t lost_woods[] = {
     349, // F
     440, // A
@@ -90,7 +92,7 @@ typedef struct AudioSample {
 
 typedef struct Audio {
     uint32_t samples_per_second;
-    uint32_t samples_per_frame;
+    uint32_t sample_count;
     AudioSample *sample_buffer;
     uint32_t audio_time;
     double sin_t;
@@ -125,7 +127,7 @@ static int32_t audio_samples_per_eighth_note(uint32_t samples_per_second)
 
 static void audio_write(Audio *audio, int32_t pitch_multiplier)
 {
-    for (uint32_t sample_index = 0; sample_index < audio->samples_per_frame; sample_index++) {
+    for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
         uint32_t eighth_note_index =
                 (audio->audio_time / audio_samples_per_eighth_note(audio->samples_per_second))
                 % JK_ARRAY_COUNT(lost_woods);
@@ -150,7 +152,10 @@ static void audio_write(Audio *audio, int32_t pitch_multiplier)
         }
 
         uint32_t hz = lost_woods[eighth_note_index] * pitch_multiplier;
-        audio->sin_t += 2.0 * 3.14159 * ((double)hz / (double)audio->samples_per_second);
+        audio->sin_t += 2.0 * PI * ((double)hz / (double)audio->samples_per_second);
+        if (audio->sin_t > 2.0 * PI) {
+            audio->sin_t -= 2.0 * PI;
+        }
         int16_t value = (int16_t)(sin(audio->sin_t) * fade_factor * 2000.0);
         for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
             audio->sample_buffer[sample_index].channels[channel_index] = value;
@@ -273,7 +278,6 @@ typedef struct Memory {
 
 static Chess global_chess = {
     .audio.samples_per_second = SAMPLES_PER_SECOND,
-    .audio.samples_per_frame = SAMPLES_PER_FRAME,
 };
 
 static b32 global_running;
@@ -546,7 +550,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint64_t frame_time_max = 0;
             uint64_t counter_previous = jk_platform_os_timer_get();
             uint64_t target_flip_time = counter_previous + ticks_per_frame;
-            b32 audio_position_update_required = TRUE;
+            b32 reset_audio_position = TRUE;
             while (global_running) {
                 MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -603,32 +607,46 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     }
                 }
 
+                // Find necessary audio sample count
+                {
+                    DWORD play_cursor;
+                    DWORD write_cursor;
+                    if (global_audio_buffer->lpVtbl->GetCurrentPosition(
+                                global_audio_buffer, &play_cursor, &write_cursor)
+                            == DS_OK) {
+                        uint32_t safe_start_point =
+                                (write_cursor
+                                        + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
+                                                * sizeof(AudioSample))
+                                % audio_buffer_size;
+                        if (reset_audio_position) {
+                            reset_audio_position = FALSE;
+                            audio_position = safe_start_point;
+                        }
+                        uint32_t end_point =
+                                (safe_start_point + SAMPLES_PER_FRAME * sizeof(AudioSample))
+                                % audio_buffer_size;
+                        uint32_t size;
+                        if (end_point < audio_position) {
+                            size = audio_buffer_size - audio_position + end_point;
+                        } else {
+                            size = end_point - audio_position;
+                        }
+                        global_chess.audio.sample_count = size / sizeof(AudioSample);
+                    } else {
+                        OutputDebugStringA("Failed to get DirectSound current position\n");
+                        global_chess.audio.sample_count = SAMPLES_PER_FRAME * sizeof(AudioSample);
+                    }
+                }
+
                 update(&global_chess);
-                render(&global_chess);
 
                 // Write audio to buffer
                 {
-                    if (audio_position_update_required) {
-                        audio_position_update_required = FALSE;
-
-                        DWORD play_cursor;
-                        DWORD write_cursor;
-                        if (global_audio_buffer->lpVtbl->GetCurrentPosition(
-                                    global_audio_buffer, &play_cursor, &write_cursor)
-                                == DS_OK) {
-                            audio_position =
-                                    (write_cursor
-                                            + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
-                                                    * sizeof(AudioSample))
-                                    % audio_buffer_size;
-                        } else {
-                            OutputDebugStringA("Failed to get DirectSound current position\n");
-                        }
-                    }
                     AudioBufferRegion regions[2] = {0};
                     if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
                                 audio_position,
-                                global_chess.audio.samples_per_frame * sizeof(AudioSample),
+                                global_chess.audio.sample_count * sizeof(AudioSample),
                                 &regions[0].data,
                                 &regions[0].size,
                                 &regions[1].data,
@@ -649,9 +667,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                             }
                         }
 
-                        audio_position = (audio_position
-                                                 + global_chess.audio.samples_per_frame
-                                                         * sizeof(AudioSample))
+                        audio_position =
+                                (audio_position
+                                        + global_chess.audio.sample_count * sizeof(AudioSample))
                                 % audio_buffer_size;
 
                         global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
@@ -661,6 +679,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                                 regions[1].size);
                     }
                 }
+
+                render(&global_chess);
 
                 uint64_t counter_work = jk_platform_os_timer_get();
                 uint64_t counter_current = counter_work;
@@ -682,7 +702,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     // If we're off by more than half a frame, give up on catching up
                     if (ticks_remaining < -((int64_t)ticks_per_frame / 2)) {
                         target_flip_time = counter_current + ticks_per_frame;
-                        audio_position_update_required = TRUE;
+                        reset_audio_position = TRUE;
                     }
                 }
 
