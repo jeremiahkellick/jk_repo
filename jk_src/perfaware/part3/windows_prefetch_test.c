@@ -1,8 +1,9 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-#include <jk_gen/perfaware/part3/windows_prefetch_test.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build nasm jk_src/perfaware/part3/windows_prefetch_test.asm
 

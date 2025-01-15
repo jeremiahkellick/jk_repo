@@ -1,6 +1,7 @@
 #include <stdio.h>
+#include <windows.h>
 
-#include <jk_gen/perfaware/part3/read_chunk_size_test.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>

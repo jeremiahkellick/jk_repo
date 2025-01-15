@@ -1,4 +1,7 @@
-#include <jk_gen/perfaware/part4/haversine_sum_benchmark.stu.h>
+#include <math.h>
+#include <stdlib.h>
+
+// #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>

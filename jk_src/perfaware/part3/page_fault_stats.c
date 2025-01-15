@@ -1,7 +1,8 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_gen/perfaware/part3/page_fault_stats.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>

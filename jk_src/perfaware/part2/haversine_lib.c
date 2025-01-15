@@ -7,13 +7,13 @@
 
 #include "haversine_lib.h"
 
-static double square(double A)
+JK_PUBLIC double square(double A)
 {
     double Result = (A * A);
     return Result;
 }
 
-static double radians_from_degrees(double Degrees)
+JK_PUBLIC double radians_from_degrees(double Degrees)
 {
     double Result = 0.01745329251994329577 * Degrees;
     return Result;
@@ -74,20 +74,6 @@ JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context)
 
     return error_count;
 }
-
-JK_PUBLIC b32 approximately_equal(double a, double b)
-{
-    double epsilon = 0.0000001;
-    double diff = a - b;
-    return diff > -epsilon && diff < epsilon;
-}
-
-JK_PUBLIC char *coordinate_names[COORDINATE_COUNT] = {
-    "x0",
-    "y0",
-    "x1",
-    "y1",
-};
 
 JK_PUBLIC HaversineContext haversine_setup(
         char *json_file_name, char *answers_file_name, JkPlatformArena *storage)
@@ -158,3 +144,17 @@ JK_PUBLIC HaversineContext haversine_setup(
 
     return context;
 }
+
+JK_PUBLIC b32 approximately_equal(double a, double b)
+{
+    double epsilon = 0.0000001;
+    double diff = a - b;
+    return diff > -epsilon && diff < epsilon;
+}
+
+JK_PUBLIC char *coordinate_names[COORDINATE_COUNT] = {
+    "x0",
+    "y0",
+    "x1",
+    "y1",
+};

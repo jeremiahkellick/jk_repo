@@ -51,8 +51,6 @@ static char root_path[PATH_MAX] = {0};
 static size_t root_path_length = 0;
 /** jk_repo/build/ */
 static char build_path[PATH_MAX] = {0};
-/** Absolute path of generated header to build as a single translation unit */
-static char stu_header_path[PATH_MAX] = {0};
 
 #ifdef _WIN32
 static void windows_print_last_error_and_exit(void)
@@ -322,10 +320,11 @@ static void ensure_directory_exists(char *directory_path)
     }
 }
 
+#define JK_SRC_STRING_LITERAL "jk_src/"
 #define JK_GEN_STRING_LITERAL "jk_gen/"
 
 static char const jk_build_string[] = "jk_build";
-static char const jk_src_string[] = "jk_src/";
+static char const jk_src_string[] = JK_SRC_STRING_LITERAL;
 static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
 
 static bool parse_files(char *root_file_path,
@@ -444,6 +443,10 @@ static bool parse_files(char *root_file_path,
                                     &memory[i]);
                         }
                     }
+                } else if (strcmp(buf, "single_translation_unit") == 0) {
+                    if (path_index == 0) {
+                        single_translation_unit = true;
+                    }
                 } else if (strcmp(buf, "dependencies_begin") == 0) {
                     if (dependencies_open) {
                         fprintf(stderr,
@@ -561,23 +564,6 @@ static bool parse_files(char *root_file_path,
                     dependency_path[root_path_length + path_length] = '\0';
 
                     array_append(dependencies, dependency_path);
-                } else if (!single_translation_unit) {
-                    if (path_length >= 6 && memcmp(buf + path_length - 6, ".stu.h", 6) == 0) {
-                        if (path_length < sizeof(JK_GEN_STRING_LITERAL) - 1
-                                || memcmp(buf,
-                                           JK_GEN_STRING_LITERAL,
-                                           sizeof(JK_GEN_STRING_LITERAL) - 1)
-                                        != 0) {
-                            fprintf(stderr,
-                                    "%s: Invalid .stu.h file path. Must be in jk_gen/. '%s'\n",
-                                    program_name,
-                                    buf);
-                            exit(1);
-                        }
-                        strcat(stu_header_path, root_path);
-                        strncat(stu_header_path, buf, path_length);
-                        single_translation_unit = true;
-                    }
                 }
             }
 
@@ -895,50 +881,80 @@ int main(int argc, char **argv)
 
     array_concat(&command, compiler_arguments.count, compiler_arguments.items);
 
-    array_append(&command, source_file_path);
-
     if (single_translation_unit) {
+        char stu_file_path[PATH_MAX] = {0};
         char directory[PATH_MAX] = {0};
 
-        int64_t length = strlen(stu_header_path);
-        int64_t last_slash = -1;
-        for (int64_t i = 0; i < length; i++) {
-            switch (stu_header_path[i]) {
-            case '/':
-            case '\\':
-                last_slash = i;
-                break;
-            default:
-                break;
-            }
+        // Get path for the single translation unit root source file
+        {
+            strcpy(stu_file_path, source_file_path);
+            _Static_assert(sizeof(JK_GEN_STRING_LITERAL) == sizeof(JK_SRC_STRING_LITERAL),
+                    "required for this simple find and replace to work");
+            char *jk_src = strstr(stu_file_path, JK_SRC_STRING_LITERAL);
+            memcpy(jk_src, JK_GEN_STRING_LITERAL, sizeof(JK_GEN_STRING_LITERAL) - 1);
+
+            uint64_t length = strlen(source_file_path);
+            char extension[] = "stu.c";
+            memcpy(stu_file_path + length - 1, extension, sizeof(extension));
         }
-        strncpy(directory, stu_header_path, last_slash);
+
+        // Get the directory
+        {
+            int64_t length = strlen(stu_file_path);
+            int64_t last_slash = -1;
+            for (int64_t i = 0; i < length; i++) {
+                switch (stu_file_path[i]) {
+                case '/':
+                case '\\':
+                    last_slash = i;
+                    break;
+                default:
+                    break;
+                }
+            }
+            strncpy(directory, stu_file_path, last_slash);
+        }
 
         ensure_directory_exists(directory);
 
-        FILE *stu_file = fopen(stu_header_path, "wb");
+        FILE *stu_file = fopen(stu_file_path, "wb");
         if (stu_file == NULL) {
             fprintf(stderr,
                     "%s: Failed to open '%s': %s\n",
                     program_name,
-                    stu_header_path,
+                    stu_file_path,
                     strerror(errno));
             exit(1);
         }
 
         fprintf(stu_file, "#define JK_PUBLIC static\n");
+        fprintf(stu_file, "#include <%s>\n", source_file_path + root_path_length);
         for (int i = 0; i < dependencies.count; i++) {
             fprintf(stu_file, "#include <%s>\n", dependencies.items[i] + root_path_length);
         }
 
         fclose(stu_file);
+
+        array_append(&command, stu_file_path);
     } else {
+        array_append(&command, source_file_path);
         array_concat(&command, dependencies.count, dependencies.items);
     }
 
     switch (compiler) { // Linker options
     case COMPILER_MSVC: {
         array_append(&command, "/link");
+
+        char out_option[PATH_MAX] = {0};
+        strcpy(out_option, "/OUT:");
+        strcat(out_option, basename);
+        if (library) {
+            strcat(out_option, ".dll");
+        } else {
+            strcat(out_option, ".exe");
+        }
+        array_append(&command, out_option);
+
         array_append(&command, "/INCREMENTAL:NO");
 
         if (library) {

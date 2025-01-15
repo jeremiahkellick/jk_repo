@@ -1,9 +1,13 @@
 #ifndef HAVERSINE_LIB_H
 #define HAVERSINE_LIB_H
 
-#include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_lib/platform/platform.h>
 
 #define EARTH_RADIUS 6372.8
+
+JK_PUBLIC double square(double A);
+
+JK_PUBLIC double radians_from_degrees(double Degrees);
 
 JK_PUBLIC double haversine_reference(
         double x0, double y0, double x1, double y1, double earth_radius);
@@ -35,8 +39,11 @@ JK_PUBLIC double haversine_reference_sum(HaversineContext context);
 
 JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context);
 
-JK_PUBLIC char *coordinate_names[COORDINATE_COUNT];
+JK_PUBLIC HaversineContext haversine_setup(
+        char *json_file_name, char *answers_file_name, JkPlatformArena *storage);
 
 JK_PUBLIC b32 approximately_equal(double a, double b);
+
+JK_PUBLIC char *coordinate_names[COORDINATE_COUNT];
 
 #endif
