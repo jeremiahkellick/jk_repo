@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,7 +42,7 @@ typedef enum Compiler {
 
 /** argv[0] */
 static char *program_name = NULL;
-/** Abolsute path of source file passed in as argv[1] */
+/** Absolute path of source file passed in as argv[1] */
 static char source_file_path[PATH_MAX] = {0};
 /** Basename of source file without extension */
 static char basename[PATH_MAX] = {0};
@@ -50,6 +51,8 @@ static char root_path[PATH_MAX] = {0};
 static size_t root_path_length = 0;
 /** jk_repo/build/ */
 static char build_path[PATH_MAX] = {0};
+/** Absolute path of generated header to build as a single translation unit */
+static char stu_header_path[PATH_MAX] = {0};
 
 #ifdef _WIN32
 static void windows_print_last_error_and_exit(void)
@@ -295,13 +298,27 @@ static bool compare_case_insensitive(char *a, char *b)
 
 static void ensure_directory_exists(char *directory_path)
 {
-    if (mkdir(directory_path, 0775) == -1 && errno != EEXIST) {
-        fprintf(stderr,
-                "%s: Failed to create \"%s\": %s\n",
-                program_name,
-                directory_path,
-                strerror(errno));
-        exit(1);
+    char buffer[PATH_MAX];
+
+    size_t length = strlen(directory_path);
+    size_t i = 0;
+    while (i < length) {
+        while (i < length && directory_path[i] != '/') {
+            i++;
+        }
+        memcpy(buffer, directory_path, i);
+        buffer[i] = '\0';
+
+        if (mkdir(buffer, 0775) == -1 && errno != EEXIST) {
+            fprintf(stderr,
+                    "%s: Failed to create \"%s\": %s\n",
+                    program_name,
+                    directory_path,
+                    strerror(errno));
+            exit(1);
+        }
+
+        i++;
     }
 }
 
@@ -310,7 +327,6 @@ static void ensure_directory_exists(char *directory_path)
 static char const jk_build_string[] = "jk_build";
 static char const jk_src_string[] = "jk_src/";
 static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
-static char const jk_gen_stu_string[] = JK_GEN_STRING_LITERAL "single_translation_unit.h";
 
 static bool parse_files(char *root_file_path,
         StringArray *dependencies,
@@ -515,42 +531,54 @@ static bool parse_files(char *root_file_path,
                                 buf);
                         goto reset_parse;
                     }
-                } else {
-                    if (path_length == sizeof(jk_gen_stu_string) - 1
-                            && memcmp(buf, jk_gen_stu_string, sizeof(jk_gen_stu_string) - 1) == 0) {
-                        single_translation_unit = true;
-                    }
-                    goto reset_parse;
-                }
 
-                if (buf[path_length - 2] != '.' || buf[path_length - 1] != 'h') {
-                    fprintf(stderr,
-                            "%s: Warning: Tried to use dependencies_begin on an include path that "
-                            "did not end in '.h', ignoring <%s>\n",
-                            program_name,
-                            buf);
-                    goto reset_parse;
-                }
-                buf[path_length - 1] = 'c';
-
-                // Check if already in dependencies
-                for (int i = 0; i < dependencies->count; i++) {
-                    if (strcmp(buf, dependencies->items[i] + root_path_length) == 0) {
+                    if (buf[path_length - 2] != '.' || buf[path_length - 1] != 'h') {
+                        fprintf(stderr,
+                                "%s: Warning: Tried to use dependencies_begin on an include path "
+                                "that "
+                                "did not end in '.h', ignoring <%s>\n",
+                                program_name,
+                                buf);
                         goto reset_parse;
                     }
-                }
+                    buf[path_length - 1] = 'c';
 
-                // Allocate new buffer and write abolute path of dependency to it
-                char *dependency_path = malloc(root_path_length + path_length + 1);
-                if (dependency_path == NULL) {
-                    fprintf(stderr, "%s: Out of memory\n", program_name);
-                    exit(1);
-                }
-                memcpy(dependency_path, root_path, root_path_length);
-                memcpy(dependency_path + root_path_length, buf, path_length);
-                dependency_path[root_path_length + path_length] = '\0';
+                    // Check if already in dependencies
+                    for (int i = 0; i < dependencies->count; i++) {
+                        if (strcmp(buf, dependencies->items[i] + root_path_length) == 0) {
+                            goto reset_parse;
+                        }
+                    }
 
-                array_append(dependencies, dependency_path);
+                    // Allocate new buffer and write abolute path of dependency to it
+                    char *dependency_path = malloc(root_path_length + path_length + 1);
+                    if (dependency_path == NULL) {
+                        fprintf(stderr, "%s: Out of memory\n", program_name);
+                        exit(1);
+                    }
+                    memcpy(dependency_path, root_path, root_path_length);
+                    memcpy(dependency_path + root_path_length, buf, path_length);
+                    dependency_path[root_path_length + path_length] = '\0';
+
+                    array_append(dependencies, dependency_path);
+                } else if (!single_translation_unit) {
+                    if (path_length >= 6 && memcmp(buf + path_length - 6, ".stu.h", 6) == 0) {
+                        if (path_length < sizeof(JK_GEN_STRING_LITERAL) - 1
+                                || memcmp(buf,
+                                           JK_GEN_STRING_LITERAL,
+                                           sizeof(JK_GEN_STRING_LITERAL) - 1)
+                                        != 0) {
+                            fprintf(stderr,
+                                    "%s: Invalid .stu.h file path. Must be in jk_gen/. '%s'\n",
+                                    program_name,
+                                    buf);
+                            exit(1);
+                        }
+                        strcat(stu_header_path, root_path);
+                        strncat(stu_header_path, buf, path_length);
+                        single_translation_unit = true;
+                    }
+                }
             }
 
         reset_parse:
@@ -582,6 +610,7 @@ int main(int argc, char **argv)
     char *source_file_arg = NULL;
     bool optimize = false;
     bool no_profile = false;
+    bool library = false;
     {
         bool help = false;
         bool usage_error = false;
@@ -613,6 +642,8 @@ int main(int argc, char **argv)
                             }
                         } else if (strcmp(argv[i], "--help") == 0) {
                             help = true;
+                        } else if (strcmp(argv[i], "--library") == 0) {
+                            library = true;
                         } else if (strcmp(argv[i], "--optimize") == 0) {
                             optimize = true;
                         } else if (strcmp(argv[i], "--no-profile") == 0) {
@@ -633,6 +664,10 @@ int main(int argc, char **argv)
                             if (compiler_string[0] == '\0') {
                                 compiler_string = argv[++i];
                             }
+                        } break;
+
+                        case 'l': {
+                            library = true;
                         } break;
 
                         case 'O': {
@@ -689,7 +724,7 @@ int main(int argc, char **argv)
             printf("NAME\n"
                    "\tjk_build - builds programs in jk_repo\n\n"
                    "SYNOPSIS\n"
-                   "\tjk_build [-c gcc|msvc|tcc] [--no-profile] [-O] FILE\n\n"
+                   "\tjk_build [-c gcc|msvc|tcc] [--no-profile] [-l|-O] FILE\n\n"
                    "DESCRIPTION\n"
                    "\tjk_build can be used to compile any program in jk_repo. FILE can be any\n"
                    "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
@@ -699,6 +734,8 @@ int main(int argc, char **argv)
                    "\t-c COMPILER, --compiler=COMPILER\n"
                    "\t\tChoose which compiler to use. COMPILER can be gcc, msvc, or tcc.\n\n"
                    "\t--help\tDisplay this help text and exit.\n\n"
+                   "\t--library\n"
+                   "\t\tCompile the code as a library instead of an executable\n\n"
                    "\t--no-profile\n"
                    "\t\tExclude profiler timings from the compilation, except for the\n"
                    "\t\ttotal timing. Equivalent to\n"
@@ -861,15 +898,31 @@ int main(int argc, char **argv)
     array_append(&command, source_file_path);
 
     if (single_translation_unit) {
-        char buffer[PATH_MAX];
-        strcpy(buffer, root_path);
-        strcat(buffer, jk_gen_string);
-        ensure_directory_exists(buffer);
-        strcat(buffer, &jk_gen_stu_string[sizeof(jk_gen_string) - 1]);
+        char directory[PATH_MAX] = {0};
 
-        FILE *stu_file = fopen(buffer, "wb");
+        int64_t length = strlen(stu_header_path);
+        int64_t last_slash = -1;
+        for (int64_t i = 0; i < length; i++) {
+            switch (stu_header_path[i]) {
+            case '/':
+            case '\\':
+                last_slash = i;
+                break;
+            default:
+                break;
+            }
+        }
+        strncpy(directory, stu_header_path, last_slash);
+
+        ensure_directory_exists(directory);
+
+        FILE *stu_file = fopen(stu_header_path, "wb");
         if (stu_file == NULL) {
-            fprintf(stderr, "%s: Failed to open '%s': %s\n", program_name, buffer, strerror(errno));
+            fprintf(stderr,
+                    "%s: Failed to open '%s': %s\n",
+                    program_name,
+                    stu_header_path,
+                    strerror(errno));
             exit(1);
         }
 
@@ -887,6 +940,10 @@ int main(int argc, char **argv)
     case COMPILER_MSVC: {
         array_append(&command, "/link");
         array_append(&command, "/INCREMENTAL:NO");
+
+        if (library) {
+            array_append(&command, "/DLL");
+        }
 
         char libpath[PATH_MAX];
         snprintf(libpath, PATH_MAX, "/LIBPATH:\"%s\"", root_path);

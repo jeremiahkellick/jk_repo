@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/perfaware/part3/read_chunk_size_test.stu.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>

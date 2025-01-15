@@ -1,4 +1,4 @@
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/perfaware/part2/haversine_sum.stu.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/perfaware/part2/haversine_lib.h>

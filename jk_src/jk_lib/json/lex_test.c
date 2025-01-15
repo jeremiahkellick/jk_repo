@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/jk_lib/json/lex_test.stu.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>

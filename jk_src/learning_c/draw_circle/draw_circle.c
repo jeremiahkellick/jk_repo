@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/learning_c/draw_circle/draw_circle.stu.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>

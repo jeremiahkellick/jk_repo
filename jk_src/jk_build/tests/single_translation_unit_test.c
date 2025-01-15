@@ -1,4 +1,4 @@
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/jk_build/tests/single_translation_unit_test.stu.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_build/tests/dependencies/dep1.h>

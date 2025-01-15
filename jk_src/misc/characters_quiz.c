@@ -5,7 +5,7 @@
 #include <string.h>
 #include <time.h>
 
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/misc/characters_quiz.stu.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>

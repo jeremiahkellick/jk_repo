@@ -2,7 +2,7 @@
 #include <math.h>
 #include <stdio.h>
 
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/perfaware/part3/windows_prefetch_test.stu.h>
 
 // #jk_build nasm jk_src/perfaware/part3/windows_prefetch_test.asm
 

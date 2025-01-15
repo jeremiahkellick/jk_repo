@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_gen/single_translation_unit.h>
+#include <jk_gen/perfaware/part3/windows_mov_size_tests.stu.h>
 
 // #jk_build nasm jk_src/perfaware/part3/windows_mov_size_tests.asm
 
