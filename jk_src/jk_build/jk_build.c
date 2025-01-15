@@ -411,36 +411,38 @@ static bool parse_files(char *root_file_path,
                 bool cmd_linker_arguments = strcmp(buf, "linker_arguments") == 0;
 
                 if (cmd_compiler_arguments || cmd_linker_arguments) {
-                    // Read rest of line into buf
-                    size_t pos = 0;
-                    while ((c = getc(file)) != '\n' && c != EOF) {
-                        buf[pos++] = (char)c;
-                        if (pos > PATH_MAX - 1) {
-                            fprintf(stderr,
-                                    "%s: '#jk_build nasm': Path exceeded PATH_MAX\n",
-                                    program_name);
+                    if (path_index == 0) {
+                        // Read rest of line into buf
+                        size_t pos = 0;
+                        while ((c = getc(file)) != '\n' && c != EOF) {
+                            buf[pos++] = (char)c;
+                            if (pos > PATH_MAX - 1) {
+                                fprintf(stderr,
+                                        "%s: '#jk_build nasm': Path exceeded PATH_MAX\n",
+                                        program_name);
+                                exit(1);
+                            }
+                        }
+                        buf[pos++] = '\0';
+
+                        char *memory = malloc(sizeof(char) * pos);
+                        if (memory == NULL) {
+                            fprintf(stderr, "%s: Out of memory\n", program_name);
                             exit(1);
                         }
-                    }
-                    buf[pos++] = '\0';
+                        memcpy(memory, buf, pos);
 
-                    char *memory = malloc(sizeof(char) * pos);
-                    if (memory == NULL) {
-                        fprintf(stderr, "%s: Out of memory\n", program_name);
-                        exit(1);
-                    }
-                    memcpy(memory, buf, pos);
-
-                    bool is_start_of_flag = true;
-                    for (size_t i = 0; i < pos; i++) {
-                        if (isspace(memory[i])) {
-                            is_start_of_flag = true;
-                            memory[i] = '\0';
-                        } else if (is_start_of_flag) {
-                            is_start_of_flag = false;
-                            array_append(
-                                    cmd_compiler_arguments ? compiler_arguments : linker_arguments,
-                                    &memory[i]);
+                        bool is_start_of_flag = true;
+                        for (size_t i = 0; i < pos; i++) {
+                            if (isspace(memory[i])) {
+                                is_start_of_flag = true;
+                                memory[i] = '\0';
+                            } else if (is_start_of_flag) {
+                                is_start_of_flag = false;
+                                array_append(cmd_compiler_arguments ? compiler_arguments
+                                                                    : linker_arguments,
+                                        &memory[i]);
+                            }
                         }
                     }
                 } else if (strcmp(buf, "single_translation_unit") == 0) {
@@ -596,7 +598,6 @@ int main(int argc, char **argv)
     char *source_file_arg = NULL;
     bool optimize = false;
     bool no_profile = false;
-    bool library = false;
     {
         bool help = false;
         bool usage_error = false;
@@ -628,8 +629,6 @@ int main(int argc, char **argv)
                             }
                         } else if (strcmp(argv[i], "--help") == 0) {
                             help = true;
-                        } else if (strcmp(argv[i], "--library") == 0) {
-                            library = true;
                         } else if (strcmp(argv[i], "--optimize") == 0) {
                             optimize = true;
                         } else if (strcmp(argv[i], "--no-profile") == 0) {
@@ -650,10 +649,6 @@ int main(int argc, char **argv)
                             if (compiler_string[0] == '\0') {
                                 compiler_string = argv[++i];
                             }
-                        } break;
-
-                        case 'l': {
-                            library = true;
                         } break;
 
                         case 'O': {
@@ -720,8 +715,6 @@ int main(int argc, char **argv)
                    "\t-c COMPILER, --compiler=COMPILER\n"
                    "\t\tChoose which compiler to use. COMPILER can be gcc, msvc, or tcc.\n\n"
                    "\t--help\tDisplay this help text and exit.\n\n"
-                   "\t--library\n"
-                   "\t\tCompile the code as a library instead of an executable\n\n"
                    "\t--no-profile\n"
                    "\t\tExclude profiler timings from the compilation, except for the\n"
                    "\t\ttotal timing. Equivalent to\n"
@@ -792,6 +785,7 @@ int main(int argc, char **argv)
     switch (compiler) { // Compiler options
     case COMPILER_MSVC: {
         array_append(&command, "cl");
+
         array_append(&command, "/W4");
         array_append(&command, "/w44062");
         array_append(&command, "/wd4100");
@@ -948,18 +942,10 @@ int main(int argc, char **argv)
         char out_option[PATH_MAX] = {0};
         strcpy(out_option, "/OUT:");
         strcat(out_option, basename);
-        if (library) {
-            strcat(out_option, ".dll");
-        } else {
-            strcat(out_option, ".exe");
-        }
+        strcat(out_option, ".exe");
         array_append(&command, out_option);
 
         array_append(&command, "/INCREMENTAL:NO");
-
-        if (library) {
-            array_append(&command, "/DLL");
-        }
 
         char libpath[PATH_MAX];
         snprintf(libpath, PATH_MAX, "/LIBPATH:\"%s\"", root_path);
