@@ -1,6 +1,7 @@
 #include "chess.h"
 
 #include <math.h>
+#include <string.h>
 
 // #jk_build compiler_arguments /LD
 // #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render
@@ -149,8 +150,10 @@ RENDER_FUNCTION(render)
             if (blue < 0) {
                 blue = 0;
             }
-            chess->bitmap.memory[screen_y * chess->bitmap.width + screen_x].r = (uint8_t)red;
-            chess->bitmap.memory[screen_y * chess->bitmap.width + screen_x].b = (uint8_t)blue;
+            Color *pixel = &chess->bitmap.memory[screen_y * chess->bitmap.width + screen_x];
+            memset(pixel, 0, sizeof(*pixel));
+            pixel->r = (uint8_t)red;
+            pixel->b = (uint8_t)blue;
         }
     }
 }

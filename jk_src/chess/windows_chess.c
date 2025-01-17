@@ -203,6 +203,32 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
+    // Set working directory to the directory containing the executable
+    {
+        // Load executable file name into buffer
+        char buffer[MAX_PATH];
+        DWORD file_name_length = GetModuleFileNameA(0, buffer, MAX_PATH);
+        if (file_name_length > 0) {
+            OutputDebugStringA(buffer);
+            OutputDebugStringA("\n");
+        } else {
+            OutputDebugStringA("Failed to find the path of this executable\n");
+        }
+
+        // Truncate file name at last component to convert it the containing directory name
+        uint64_t last_slash = 0;
+        for (uint64_t i = 0; buffer[i]; i++) {
+            if (buffer[i] == '/' || buffer[i] == '\\') {
+                last_slash = i;
+            }
+        }
+        buffer[last_slash + 1] = '\0';
+
+        if (!SetCurrentDirectoryA(buffer)) {
+            OutputDebugStringA("Failed to set the working directory\n");
+        }
+    }
+
     uint64_t frequency = jk_platform_os_timer_frequency();
     uint64_t ticks_per_frame = frequency / FRAME_RATE;
 
@@ -222,16 +248,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputSetState");
     } else {
         OutputDebugStringA("Failed to load XInput\n");
-    }
-
-    UpdateFunction *update = NULL;
-    RenderFunction *render = NULL;
-    HINSTANCE chess_library = LoadLibraryA("chess.dll");
-    if (chess_library) {
-        update = (UpdateFunction *)GetProcAddress(chess_library, "update");
-        render = (RenderFunction *)GetProcAddress(chess_library, "render");
-    } else {
-        OutputDebugStringA("Failed to load chess.dll\n");
     }
 
     Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
@@ -331,6 +347,11 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 OutputDebugStringA("Failed to load DirectSound\n");
             }
 
+            UpdateFunction *update = 0;
+            RenderFunction *render = 0;
+            HINSTANCE chess_library = 0;
+            FILETIME chess_dll_last_modified_time = {0};
+
             global_chess.time = 0;
             global_running = TRUE;
             uint64_t work_time_total = 0;
@@ -343,6 +364,45 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint64_t target_flip_time = counter_previous + ticks_per_frame;
             b32 reset_audio_position = TRUE;
             while (global_running) {
+                // Hot reloading
+                HANDLE chess_dll_file = CreateFile("chess.dll",
+                        GENERIC_READ,
+                        0,
+                        0,
+                        OPEN_EXISTING,
+                        FILE_ATTRIBUTE_NORMAL,
+                        NULL);
+                if (chess_dll_file != INVALID_HANDLE_VALUE) {
+                    FILETIME last_modified_time;
+                    BOOL got_file_time = GetFileTime(chess_dll_file, 0, 0, &last_modified_time);
+                    CloseHandle(chess_dll_file);
+                    if (got_file_time) {
+                        if (CompareFileTime(&last_modified_time, &chess_dll_last_modified_time)
+                                != 0) {
+                            chess_dll_last_modified_time = last_modified_time;
+                            if (chess_library) {
+                                FreeLibrary(chess_library);
+                                update = 0;
+                                render = 0;
+                            }
+                            if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
+                                OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
+                            }
+                            chess_library = LoadLibraryA("chess_tmp.dll");
+                            if (chess_library) {
+                                update = (UpdateFunction *)GetProcAddress(chess_library, "update");
+                                render = (RenderFunction *)GetProcAddress(chess_library, "render");
+                            } else {
+                                OutputDebugStringA("Failed to load chess_tmp.dll\n");
+                            }
+                        }
+                    } else {
+                        OutputDebugStringA("Failed to get last modified time of chess.dll\n");
+                    }
+                } else {
+                    OutputDebugStringA("Failed to open chess.dll\n");
+                }
+
                 MSG message;
                 while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                     if (message.message == WM_QUIT) {
