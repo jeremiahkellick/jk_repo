@@ -6,7 +6,7 @@
 #include <string.h>
 #include <time.h>
 
-#include <jk_gen/perfaware/part2/haversine_generator.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
@@ -38,6 +38,11 @@ typedef struct Cluster {
     double y_min;
 } Cluster;
 
+static Cluster default_cluster = {
+    .x_min = -180.0,
+    .y_min = -90.0,
+};
+
 static unsigned hash_string(char *string)
 {
     unsigned hash = 0;
@@ -59,8 +64,8 @@ static double random_within(double min, double radius)
 Cluster random_cluster(void)
 {
     Cluster cluster = {
-        .x_min = random_within(0.0, 360.0 - 45.0),
-        .y_min = random_within(0.0, 180.0 - 45.0),
+        .x_min = random_within(-180, 360.0 - 45.0),
+        .y_min = random_within(-90.0, 180.0 - 45.0),
     };
     return cluster;
 }
@@ -233,8 +238,8 @@ int main(int argc, char **argv)
     double x_radius;
     double y_radius;
     int points_per_cluster;
-    Cluster cluster0 = {0};
-    Cluster cluster1 = {0};
+    Cluster cluster0 = default_cluster;
+    Cluster cluster1 = default_cluster;
 
     if (cluster_count == -1) {
         x_radius = 360.0;

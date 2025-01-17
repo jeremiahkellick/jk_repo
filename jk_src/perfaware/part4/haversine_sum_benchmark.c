@@ -8,111 +8,6 @@
 #include <jk_src/perfaware/part2/haversine_lib.h>
 // #jk_build dependencies_end
 
-typedef struct Domain {
-    char *name;
-    double min;
-    double max;
-} Domain;
-
-typedef enum DomainType {
-    DOMAIN_SQRT,
-    DOMAIN_ASIN,
-    DOMAIN_SIN,
-    DOMAIN_COS,
-
-    DOMAIN_COUNT,
-} MathFunction;
-
-static Domain domains[DOMAIN_COUNT] = {
-    {.name = "sqrt", .min = INFINITY, .max = -INFINITY},
-    {.name = "asin", .min = INFINITY, .max = -INFINITY},
-    {.name = "sin", .min = INFINITY, .max = -INFINITY},
-    {.name = "cos", .min = INFINITY, .max = -INFINITY},
-};
-
-JK_PUBLIC void print_tracked_domains(void)
-{
-    printf("\n");
-    for (int i = 0; i < DOMAIN_COUNT; i++) {
-        Domain *d = &domains[i];
-        printf("%s: %.3f-%.3f\n", d->name, d->min, d->max);
-    }
-    printf("\n");
-}
-
-static void update_domain(Domain *domain, double value)
-{
-    if (value < domain->min) {
-        domain->min = value;
-    }
-    if (value > domain->max) {
-        domain->max = value;
-    }
-}
-
-static double tracked_sqrt(double value)
-{
-    update_domain(&domains[DOMAIN_SQRT], value);
-    return sqrt(value);
-}
-
-static double tracked_asin(double value)
-{
-    update_domain(&domains[DOMAIN_ASIN], value);
-    return asin(value);
-}
-
-static double tracked_sin(double value)
-{
-    update_domain(&domains[DOMAIN_SIN], value);
-    return sqrt(value);
-}
-
-static double tracked_cos(double value)
-{
-    update_domain(&domains[DOMAIN_COS], value);
-    return cos(value);
-}
-
-JK_PUBLIC double haversine_track_domains(
-        double X0, double Y0, double X1, double Y1, double EarthRadius)
-{
-    double lat1 = Y0;
-    double lat2 = Y1;
-    double lon1 = X0;
-    double lon2 = X1;
-
-    double dLat = radians_from_degrees(lat2 - lat1);
-    double dLon = radians_from_degrees(lon2 - lon1);
-    lat1 = radians_from_degrees(lat1);
-    lat2 = radians_from_degrees(lat2);
-
-    double a = square(tracked_sin(dLat / 2.0))
-            + tracked_cos(lat1) * tracked_cos(lat2) * square(tracked_sin(dLon / 2));
-    double c = 2.0 * tracked_asin(tracked_sqrt(a));
-
-    double Result = EarthRadius * c;
-
-    return Result;
-}
-
-JK_PUBLIC double haversine_track_domains_sum(HaversineContext context)
-{
-    double sum = 0.0;
-    double sum_coefficient = 1.0 / (double)context.pair_count;
-
-    for (uint64_t i = 0; i < context.pair_count; i++) {
-        HaversinePair pair = context.pairs[i];
-        sum += sum_coefficient
-                * haversine_track_domains(
-                        pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS);
-    }
-
-    print_tracked_domains();
-
-    return sum;
-}
-
 typedef struct Test {
     char *name;
     HaversineSumFunction compute;
@@ -121,9 +16,6 @@ typedef struct Test {
 
 static Test tests[] = {
     {.name = "Reference", .compute = haversine_reference_sum, .verify = haversine_reference_verify},
-    {.name = "Tracked domains",
-        .compute = haversine_track_domains_sum,
-        .verify = haversine_reference_verify},
 };
 
 typedef enum Opt {
