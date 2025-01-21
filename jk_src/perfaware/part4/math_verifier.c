@@ -11,6 +11,12 @@
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
 typedef struct MathFunc {
     char *name;
     double (*exec)(double);
@@ -21,7 +27,7 @@ typedef struct MathFuncArray {
     MathFunc *data;
 } MathFuncArray;
 
-void print_diffs(Reference reference, MathFuncArray functions)
+static void print_diffs(Reference reference, MathFuncArray functions)
 {
     printf("f(%+.16f) = %+.16f [reference]\n", reference.input, reference.output);
     for (uint32_t i = 0; i < functions.count; i++) {
@@ -33,7 +39,7 @@ void print_diffs(Reference reference, MathFuncArray functions)
     }
 }
 
-void check_against_references(
+static void check_against_references(
         char *label, MathFuncArray functions, uint32_t reference_count, Reference *references)
 {
     printf("%s:\n", label);
@@ -43,7 +49,7 @@ void check_against_references(
     printf("\n");
 }
 
-void samples_max_diff(double (*reference_func)(double),
+static void samples_max_diff(double (*reference_func)(double),
         MathFuncArray functions,
         double min_input,
         double max_input,
@@ -83,6 +89,21 @@ static double identity(double x)
     return x;
 }
 
+static double my_sqrt(double value)
+{
+    return _mm_cvtsd_f64(_mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(value)));
+}
+
+static double my_sqrt_32(double value)
+{
+    return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss((float)value)));
+}
+
+static double rsqrt(double value)
+{
+    return 1.0 / _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss((float)value)));
+}
+
 int main(void)
 {
     MathFunc sine_funcs[] = {{"sin", sin}, {"fake_sin", identity}};
@@ -94,7 +115,13 @@ int main(void)
     MathFunc arcsine_funcs[] = {{"asin", asin}, {"fake_asin", identity}};
     MathFuncArray arcsines = {.count = JK_ARRAY_COUNT(arcsine_funcs), .data = arcsine_funcs};
 
-    MathFunc square_root_funcs[] = {{"sqrt", sqrt}, {"fake_sqrt", identity}};
+    MathFunc square_root_funcs[] = {
+        {"sqrt", sqrt},
+        {"fake_sqrt", identity},
+        {"my_sqrt", my_sqrt},
+        {"my_sqrt_32", my_sqrt_32},
+        {"rsqrt", rsqrt},
+    };
     MathFuncArray square_roots = {
         .count = JK_ARRAY_COUNT(square_root_funcs), .data = square_root_funcs};
 
