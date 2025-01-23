@@ -1,7 +1,6 @@
 #include "chess.h"
 
 #include <math.h>
-#include <string.h>
 
 // #jk_build compiler_arguments /LD
 // #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render
@@ -13,89 +12,11 @@
 
 _Static_assert(sizeof(Color) == 4, "Color must be 4 bytes");
 
-static uint32_t lost_woods[] = {
-    349, // F
-    440, // A
-    494, // B
-    494, // B
-    349, // F
-    440, // A
-    494, // B
-    494, // B
-
-    349, // F
-    440, // A
-    494, // B
-    659, // E
-    587, // D
-    587, // D
-    494, // B
-    523, // C
-
-    494, // B
-    392, // G
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    294, // Low D
-
-    330, // Low E
-    392, // G
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-    330, // Low E
-};
-
-static int64_t mod(int64_t a, int64_t b)
-{
-    int64_t result = a % b;
-    return result < 0 ? result + b : result;
-}
-
-static int32_t audio_samples_per_eighth_note(uint32_t samples_per_second)
-{
-    double eighth_notes_per_second = (BPM / 60.0) * 2.0;
-    return (uint32_t)((double)samples_per_second / eighth_notes_per_second);
-}
-
 static void audio_write(Audio *audio, int32_t pitch_multiplier)
 {
     for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
-        uint32_t eighth_note_index =
-                (audio->audio_time / audio_samples_per_eighth_note(SAMPLES_PER_SECOND))
-                % JK_ARRAY_COUNT(lost_woods);
-
-        double x = (double)audio->audio_time / audio_samples_per_eighth_note(SAMPLES_PER_SECOND);
-        // Number from 0.0 to 2.0 based on how far into the current
-        // eighth note we are
-        double note_progress = (x - floor(x)) * 2.0;
-        double fade_factor = 1.0;
-        if (note_progress < 1.0) {
-            if (lost_woods[eighth_note_index]
-                    != lost_woods[eighth_note_index == 0 ? JK_ARRAY_COUNT(lost_woods) - 1
-                                                         : eighth_note_index - 1]) {
-                fade_factor = note_progress;
-            }
-        } else {
-            if (lost_woods[eighth_note_index]
-                    != lost_woods[(eighth_note_index + 1) % JK_ARRAY_COUNT(lost_woods)]) {
-                fade_factor = 2.0 - note_progress;
-            }
-        }
-
-        uint32_t hz = lost_woods[eighth_note_index] * pitch_multiplier;
-        audio->sin_t += 2.0 * PI * ((double)hz / (double)SAMPLES_PER_SECOND);
-        if (audio->sin_t > 2.0 * PI) {
-            audio->sin_t -= 2.0 * PI;
-        }
-        int16_t value = (int16_t)(sin(audio->sin_t) * fade_factor * 2000.0);
         for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
-            audio->sample_buffer[sample_index].channels[channel_index] = value;
+            audio->sample_buffer[sample_index].channels[channel_index] = 0;
         }
         audio->audio_time++;
     }
@@ -121,39 +42,39 @@ UPDATE_FUNCTION(update)
     chess->time++;
 }
 
+Color background = {0x25, 0x29, 0x24};
+
+Color light_squares = {0xc6, 0xcd, 0xc5};
+Color dark_squares = {0x39, 0x41, 0x38};
+
 RENDER_FUNCTION(render)
 {
-    int64_t red_time = chess->time;
-    int64_t blue_time = chess->time * 4 / 3;
-    uint8_t red_darkness = mod(red_time, 512) < 256 ? (uint8_t)red_time : 255 - (uint8_t)red_time;
-    uint8_t blue_darkness =
-            mod(blue_time, 512) < 256 ? (uint8_t)blue_time : 255 - (uint8_t)blue_time;
-    for (int64_t screen_y = 0; screen_y < chess->bitmap.height; screen_y++) {
-        for (int64_t screen_x = 0; screen_x < chess->bitmap.width; screen_x++) {
-            int64_t world_y = screen_y + chess->y;
-            int64_t world_x = screen_x + chess->x;
-            int64_t red;
-            int64_t blue;
-            if (mod(world_y, 512) < 256) {
-                red = (world_y & 255) - red_darkness;
+    int32_t square_size = 112;
+    int32_t board_size = square_size * 8;
+    int32_t x_offset = (chess->bitmap.width - board_size) / 2;
+    if (x_offset < 0) {
+        x_offset = 0;
+    }
+    int32_t y_offset = (chess->bitmap.height - board_size) / 2;
+    if (y_offset < 0) {
+        y_offset = 0;
+    }
+
+    for (int32_t y = 0; y < chess->bitmap.height; y++) {
+        for (int32_t x = 0; x < chess->bitmap.width; x++) {
+            int32_t board_x = x - x_offset;
+            int32_t board_y = y - y_offset;
+            Color color;
+            if (board_x >= 0 && board_x < board_size && board_y >= 0 && board_y < board_size) {
+                if ((board_x / square_size) % 2 == (board_y / square_size) % 2) {
+                    color = light_squares;
+                } else {
+                    color = dark_squares;
+                }
             } else {
-                red = 255 - (world_y & 255) - red_darkness;
+                color = background;
             }
-            if (mod(world_x, 512) < 256) {
-                blue = (world_x & 255) - blue_darkness;
-            } else {
-                blue = 255 - (world_x & 255) - blue_darkness;
-            }
-            if (red < 0) {
-                red = 0;
-            }
-            if (blue < 0) {
-                blue = 0;
-            }
-            Color *pixel = &chess->bitmap.memory[screen_y * chess->bitmap.width + screen_x];
-            memset(pixel, 0, sizeof(*pixel));
-            pixel->r = (uint8_t)red;
-            pixel->b = (uint8_t)blue;
+            chess->bitmap.memory[y * chess->bitmap.width + x] = color;
         }
     }
 }
