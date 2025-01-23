@@ -29,6 +29,8 @@ typedef enum InputId {
 
 typedef struct Input {
     int64_t flags;
+    int32_t mouse_x;
+    int32_t mouse_y;
 } Input;
 
 typedef struct Color {

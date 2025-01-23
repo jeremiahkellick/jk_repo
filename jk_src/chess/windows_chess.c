@@ -365,42 +365,30 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             b32 reset_audio_position = TRUE;
             while (global_running) {
                 // Hot reloading
-                HANDLE chess_dll_file = CreateFile("chess.dll",
-                        GENERIC_READ,
-                        0,
-                        0,
-                        OPEN_EXISTING,
-                        FILE_ATTRIBUTE_NORMAL,
-                        NULL);
-                if (chess_dll_file != INVALID_HANDLE_VALUE) {
-                    FILETIME last_modified_time;
-                    BOOL got_file_time = GetFileTime(chess_dll_file, 0, 0, &last_modified_time);
-                    CloseHandle(chess_dll_file);
-                    if (got_file_time) {
-                        if (CompareFileTime(&last_modified_time, &chess_dll_last_modified_time)
-                                != 0) {
-                            chess_dll_last_modified_time = last_modified_time;
-                            if (chess_library) {
-                                FreeLibrary(chess_library);
-                                update = 0;
-                                render = 0;
-                            }
-                            if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
-                                OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
-                            }
-                            chess_library = LoadLibraryA("chess_tmp.dll");
-                            if (chess_library) {
-                                update = (UpdateFunction *)GetProcAddress(chess_library, "update");
-                                render = (RenderFunction *)GetProcAddress(chess_library, "render");
-                            } else {
-                                OutputDebugStringA("Failed to load chess_tmp.dll\n");
-                            }
+                WIN32_FILE_ATTRIBUTE_DATA chess_dll_info;
+                if (GetFileAttributesExA("chess.dll", GetFileExInfoStandard, &chess_dll_info)) {
+                    if (CompareFileTime(
+                                &chess_dll_info.ftLastWriteTime, &chess_dll_last_modified_time)
+                            != 0) {
+                        chess_dll_last_modified_time = chess_dll_info.ftLastWriteTime;
+                        if (chess_library) {
+                            FreeLibrary(chess_library);
+                            update = 0;
+                            render = 0;
                         }
-                    } else {
-                        OutputDebugStringA("Failed to get last modified time of chess.dll\n");
+                        if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
+                            OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
+                        }
+                        chess_library = LoadLibraryA("chess_tmp.dll");
+                        if (chess_library) {
+                            update = (UpdateFunction *)GetProcAddress(chess_library, "update");
+                            render = (RenderFunction *)GetProcAddress(chess_library, "render");
+                        } else {
+                            OutputDebugStringA("Failed to load chess_tmp.dll\n");
+                        }
                     }
                 } else {
-                    OutputDebugStringA("Failed to open chess.dll\n");
+                    OutputDebugStringA("Failed to get last modified time of chess.dll\n");
                 }
 
                 MSG message;
@@ -412,7 +400,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     DispatchMessageA(&message);
                 }
 
-                memset(&global_chess.input, 0, sizeof(global_chess.input));
+                global_chess.input.flags = 0;
 
                 // Keyboard input
                 {
@@ -456,6 +444,24 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                                     << INPUT_CANCEL;
                         }
                     }
+                }
+
+                // Mouse input
+                {
+                    POINT mouse_pos;
+                    if (GetCursorPos(&mouse_pos)) {
+                        if (ScreenToClient(window, &mouse_pos)) {
+                            global_chess.input.mouse_x = mouse_pos.x;
+                            global_chess.input.mouse_y = mouse_pos.y;
+                        } else {
+                            OutputDebugStringA("Failed to get mouse position\n");
+                        }
+                    } else {
+                        OutputDebugStringA("Failed to get mouse position\n");
+                    }
+
+                    global_chess.input.flags |= !!(GetKeyState(VK_LBUTTON) & 0x80) << INPUT_CONFIRM;
+                    global_chess.input.flags |= !!(GetKeyState(VK_RBUTTON) & 0x80) << INPUT_CANCEL;
                 }
 
                 // Find necessary audio sample count
