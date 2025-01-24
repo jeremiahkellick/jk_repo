@@ -5,9 +5,6 @@
 
 #define SAMPLES_PER_SECOND 48000
 #define FRAME_RATE 60
-#define BPM 140.0
-
-#define PI 3.14159265358979323846
 
 #define SAMPLES_PER_FRAME (SAMPLES_PER_SECOND / FRAME_RATE)
 
@@ -57,19 +54,30 @@ typedef struct Audio {
     double sin_t;
 } Audio;
 
+#define SQUARE_SIZE 112
+
 typedef struct Bitmap {
     Color *memory;
     int32_t width;
     int32_t height;
 } Bitmap;
 
+// We can represent a square with 4 bits where the three lower order bits are the piece and the high
+// order bit is the team. Then a board is 4 bits * 64 squares / 8 bits per byte = 32 bytes
+typedef struct Board {
+    uint8_t bytes[32];
+} Board;
+
+#define FLAG_INITIALIZED (1 << 0)
+
 typedef struct Chess {
+    uint64_t flags;
     Input input;
     Audio audio;
     Bitmap bitmap;
     int64_t time;
-    int64_t x;
-    int64_t y;
+    Board board;
+    uint8_t tilemap[SQUARE_SIZE * SQUARE_SIZE * 6];
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)

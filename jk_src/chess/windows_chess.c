@@ -254,6 +254,29 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_chess.audio.sample_buffer = memory->audio;
     global_chess.bitmap.memory = (Color *)memory->video;
 
+    JkPlatformArena storage;
+    if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
+        JkBuffer image_file = jk_platform_file_read_full("chess_tilemap.bmp", &storage);
+        if (image_file.size) {
+            uint32_t *colors = (uint32_t *)(image_file.data + 0x46);
+            for (int32_t y = 0; y < SQUARE_SIZE * 6; y++) {
+                int32_t tilemap_y = SQUARE_SIZE * 6 - y - 1;
+                for (int32_t x = 0; x < SQUARE_SIZE; x += 8) {
+                    uint8_t bits = 0;
+                    for (uint8_t bit_index = 0; bit_index < 8; bit_index++) {
+                        if (colors[SQUARE_SIZE * y + x + bit_index]) {
+                            bits |= 1 << bit_index;
+                        }
+                    }
+                    global_chess.tilemap[(SQUARE_SIZE * tilemap_y + x) / 8] = bits;
+                }
+            }
+        } else {
+            OutputDebugStringA("Failed to load king.bmp\n");
+        }
+        jk_platform_arena_terminate(&storage);
+    }
+
     if (global_chess.bitmap.memory) {
         WNDCLASSA window_class = {
             .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
