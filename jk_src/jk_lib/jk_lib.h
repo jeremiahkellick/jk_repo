@@ -97,7 +97,7 @@ JK_PUBLIC void jk_options_parse(int argc,
 
 JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count);
 
-int jk_parse_positive_integer(char *string);
+JK_PUBLIC int jk_parse_positive_integer(char *string);
 
 // ---- Command line arguments parsing end -------------------------------------
 
@@ -115,7 +115,29 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length);
 
 // ---- Quicksort end ----------------------------------------------------------
 
-void jk_assert(char *message, char *file, int64_t line);
+// ---- JkIntVector2 begin -------------------------------------------------------
+
+typedef struct JkIntVector2 {
+    union {
+        int32_t coords[2];
+        struct {
+            int32_t x;
+            int32_t y;
+        };
+    };
+} JkIntVector2;
+
+JK_PUBLIC b32 jk_int_vector_2_equal(JkIntVector2 a, JkIntVector2 b);
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b);
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_sub(JkIntVector2 a, JkIntVector2 b);
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 vector);
+
+// ---- IntVector2 end ---------------------------------------------------------
+
+JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 
 #define JK_ASSERT(expression) \
     (void)((!!(expression)) || (jk_assert(#expression, __FILE__, (int64_t)(__LINE__)), 0))

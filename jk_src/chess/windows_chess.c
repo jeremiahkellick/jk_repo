@@ -36,6 +36,7 @@ typedef enum Key {
     KEY_S,
     KEY_A,
     KEY_D,
+    KEY_R,
     KEY_ENTER,
     KEY_SPACE,
     KEY_ESCAPE,
@@ -49,6 +50,7 @@ typedef enum Key {
 #define KEY_FLAG_S (1 << KEY_S)
 #define KEY_FLAG_A (1 << KEY_A)
 #define KEY_FLAG_D (1 << KEY_D)
+#define KEY_FLAG_R (1 << KEY_R)
 #define KEY_FLAG_ENTER (1 << KEY_ENTER)
 #define KEY_FLAG_SPACE (1 << KEY_SPACE)
 #define KEY_FLAG_ESCAPE (1 << KEY_ESCAPE)
@@ -155,6 +157,10 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
             flag = KEY_FLAG_D;
         } break;
 
+        case 'R': {
+            flag = KEY_FLAG_R;
+        } break;
+
         case VK_RETURN: {
             flag = KEY_FLAG_ENTER;
         } break;
@@ -259,16 +265,16 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         JkBuffer image_file = jk_platform_file_read_full("chess_tilemap.bmp", &storage);
         if (image_file.size) {
             uint32_t *colors = (uint32_t *)(image_file.data + 0x46);
-            for (int32_t y = 0; y < SQUARE_SIZE * 6; y++) {
-                int32_t tilemap_y = SQUARE_SIZE * 6 - y - 1;
-                for (int32_t x = 0; x < SQUARE_SIZE; x += 8) {
+            for (int32_t y = 0; y < SQUARE_SIDE_LENGTH * 6; y++) {
+                int32_t tilemap_y = SQUARE_SIDE_LENGTH * 6 - y - 1;
+                for (int32_t x = 0; x < SQUARE_SIDE_LENGTH; x += 8) {
                     uint8_t bits = 0;
                     for (uint8_t bit_index = 0; bit_index < 8; bit_index++) {
-                        if (colors[SQUARE_SIZE * y + x + bit_index]) {
+                        if (colors[SQUARE_SIDE_LENGTH * y + x + bit_index]) {
                             bits |= 1 << bit_index;
                         }
                     }
-                    global_chess.tilemap[(SQUARE_SIZE * tilemap_y + x) / 8] = bits;
+                    global_chess.tilemap[(SQUARE_SIDE_LENGTH * tilemap_y + x) / 8] = bits;
                 }
             }
         } else {
@@ -445,6 +451,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                             << INPUT_CONFIRM;
                     global_chess.input.flags |= ((global_keys_down >> KEY_ESCAPE) & 1)
                             << INPUT_CANCEL;
+                    global_chess.input.flags |= ((global_keys_down >> KEY_R) & 1) << INPUT_RESET;
                 }
 
                 // Controller input
@@ -474,8 +481,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     POINT mouse_pos;
                     if (GetCursorPos(&mouse_pos)) {
                         if (ScreenToClient(window, &mouse_pos)) {
-                            global_chess.input.mouse_x = mouse_pos.x;
-                            global_chess.input.mouse_y = mouse_pos.y;
+                            global_chess.input.mouse_pos.x = mouse_pos.x;
+                            global_chess.input.mouse_pos.y = mouse_pos.y;
                         } else {
                             OutputDebugStringA("Failed to get mouse position\n");
                         }

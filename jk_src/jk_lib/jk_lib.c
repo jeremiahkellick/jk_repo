@@ -228,7 +228,7 @@ JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_c
  *
  * @return The parsed integer if successful, -1 if failed
  */
-int jk_parse_positive_integer(char *string)
+JK_PUBLIC int jk_parse_positive_integer(char *string)
 {
     int multiplier = 1;
     int result = 0;
@@ -333,7 +333,41 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length)
 
 // ---- Quicksort end ----------------------------------------------------------
 
-void jk_assert(char *message, char *file, int64_t line)
+// ---- JkIntVector2 begin -------------------------------------------------------
+
+JK_PUBLIC b32 jk_int_vector_2_equal(JkIntVector2 a, JkIntVector2 b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b)
+{
+    return (JkIntVector2){.x = a.x + b.x, .y = a.y + b.y};
+}
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_sub(JkIntVector2 a, JkIntVector2 b)
+{
+    return (JkIntVector2){.x = a.x - b.x, .y = a.y - b.y};
+}
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_mul(int32_t scalar, JkIntVector2 vector)
+{
+    return (JkIntVector2){.x = scalar * vector.x, .y = scalar * vector.y};
+}
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_div(int32_t divisor, JkIntVector2 vector)
+{
+    return (JkIntVector2){.x = divisor * vector.x, .y = divisor * vector.y};
+}
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 vector)
+{
+    return (JkIntVector2){.x = vector.x % divisor, .y = vector.y % divisor};
+}
+
+// ---- IntVector2 end ---------------------------------------------------------
+
+JK_PUBLIC void jk_assert(char *message, char *file, int64_t line)
 {
     fprintf(stderr, "Assertion failed: %s, %s:%lld\n", message, file, (long long)line);
     abort();

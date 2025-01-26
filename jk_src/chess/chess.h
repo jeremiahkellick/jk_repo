@@ -1,6 +1,7 @@
 #ifndef CHESS_H
 #define CHESS_H
 
+#include <jk_src/jk_lib/jk_lib.h>
 #include <stdint.h>
 
 #define SAMPLES_PER_SECOND 48000
@@ -15,6 +16,7 @@ typedef enum InputId {
     INPUT_RIGHT,
     INPUT_CONFIRM,
     INPUT_CANCEL,
+    INPUT_RESET,
 } InputId;
 
 #define INPUT_FLAG_UP (1 << INPUT_UP)
@@ -23,11 +25,11 @@ typedef enum InputId {
 #define INPUT_FLAG_RIGHT (1 << INPUT_RIGHT)
 #define INPUT_FLAG_CONFIRM (1 << INPUT_CONFIRM)
 #define INPUT_FLAG_CANCEL (1 << INPUT_CANCEL)
+#define INPUT_FLAG_RESET (1 << INPUT_RESET)
 
 typedef struct Input {
     int64_t flags;
-    int32_t mouse_x;
-    int32_t mouse_y;
+    JkIntVector2 mouse_pos;
 } Input;
 
 typedef struct Color {
@@ -54,7 +56,8 @@ typedef struct Audio {
     double sin_t;
 } Audio;
 
-#define SQUARE_SIZE 112
+#define SQUARE_SIDE_LENGTH 112
+#define BOARD_SIDE_LENGTH (SQUARE_SIDE_LENGTH * 8)
 
 typedef struct Bitmap {
     Color *memory;
@@ -68,16 +71,31 @@ typedef struct Board {
     uint8_t bytes[32];
 } Board;
 
-#define FLAG_INITIALIZED (1 << 0)
+typedef struct Move {
+    uint8_t src;
+    uint8_t dest;
+} Move;
+
+typedef enum FlagIndex {
+    FLAG_INDEX_INITIALIZED,
+    FLAG_INDEX_CURRENT_PLAYER,
+} FlagIndex;
+
+#define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
+#define FLAG_CURRENT_PLAYER (1llu << FLAG_INDEX_CURRENT_PLAYER)
 
 typedef struct Chess {
     uint64_t flags;
+    JkIntVector2 selected_square;
     Input input;
+    Input input_prev;
     Audio audio;
     Bitmap bitmap;
     int64_t time;
     Board board;
-    uint8_t tilemap[SQUARE_SIZE * SQUARE_SIZE * 6];
+    uint8_t tilemap[SQUARE_SIDE_LENGTH * SQUARE_SIDE_LENGTH * 6];
+    uint8_t moves_count;
+    Move moves[UINT8_MAX];
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)
