@@ -96,6 +96,7 @@ typedef struct Chess {
     uint8_t tilemap[SQUARE_SIDE_LENGTH * SQUARE_SIDE_LENGTH * 6];
     uint8_t moves_count;
     Move moves[UINT8_MAX];
+    Move move_prev;
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)

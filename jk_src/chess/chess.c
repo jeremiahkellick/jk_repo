@@ -79,16 +79,25 @@ static uint8_t board_index_get_unbounded(JkIntVector2 pos)
     }
 }
 
-static Piece board_piece_get(Board board, JkIntVector2 pos)
+static JkIntVector2 board_index_to_vector_2(uint8_t index)
 {
-    uint8_t piece_index = board_index_get(pos);
-    uint8_t byte_index = piece_index / 2; // A piece is 4 bits, so there are 2 pieces per byte
-    uint8_t is_higher_4_bits = piece_index % 2;
+    return (JkIntVector2){.x = index % 8, .y = index / 8};
+}
+
+static Piece board_piece_get_index(Board board, uint8_t index)
+{
+    uint8_t byte_index = index / 2; // A piece is 4 bits, so there are 2 pieces per byte
+    uint8_t is_higher_4_bits = index % 2;
     uint8_t byte = board.bytes[byte_index];
     if (is_higher_4_bits) {
         byte >>= 4;
     }
     return (Piece){.type = byte & 0x7, .team = (byte >> 3) & 1}; // Mask to lower 4 bits
+}
+
+static Piece board_piece_get(Board board, JkIntVector2 pos)
+{
+    return board_piece_get_index(board, board_index_get(pos));
 }
 
 static void board_piece_set(Board *board, JkIntVector2 pos, Piece piece)
@@ -182,8 +191,30 @@ static void moves_append(Chess *chess, JkIntVector2 src, JkIntVector2 dest)
     };
 }
 
+static void moves_append_in_direction_until_stopped(
+        Chess *chess, Team current_team, JkIntVector2 src, JkIntVector2 direction)
+{
+    JkIntVector2 dest = src;
+    for (;;) {
+        dest = jk_int_vector_2_add(dest, direction);
+        if (board_in_bounds(dest)) {
+            Piece piece = board_piece_get(chess->board, dest);
+            if (piece.type == NONE) {
+                moves_append(chess, src, dest);
+            } else {
+                if (piece.team != current_team) {
+                    moves_append(chess, src, dest);
+                }
+                return;
+            }
+        } else {
+            return;
+        }
+    }
+}
+
 // Returns the number of moves written to the buffer
-static void moves_get(Chess *chess, Team current_team, Move *moves_buffer)
+static void moves_get(Chess *chess, Team current_team)
 {
     chess->moves_count = 0;
 
@@ -203,38 +234,59 @@ static void moves_get(Chess *chess, Team current_team, Move *moves_buffer)
                             moves_append(chess, src, dest);
                         }
                     }
+
+                    // TODO: castling
                 } break;
 
                 case QUEEN: {
+                    for (int32_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                        moves_append_in_direction_until_stopped(
+                                chess, current_team, src, all_directions[i]);
+                    }
                 } break;
 
                 case ROOK: {
+                    for (int32_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
+                        moves_append_in_direction_until_stopped(
+                                chess, current_team, src, straights[i]);
+                    }
                 } break;
 
                 case BISHOP: {
+                    for (int32_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
+                        moves_append_in_direction_until_stopped(
+                                chess, current_team, src, diagonals[i]);
+                    }
                 } break;
 
                 case KNIGHT: {
-                } break;
-
-                case PAWN: {
-                    // Basic move
-                    {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, pawn_moves[current_team]);
-                        if (board_in_bounds(dest)
-                                && board_piece_get(chess->board, dest).type == NONE) {
+                    for (int32_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
+                        JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
+                        if (square_available(chess->board, current_team, dest)) {
                             moves_append(chess, src, dest);
                         }
                     }
+                } break;
 
-                    // Extended move
-                    if ((current_team == WHITE && src.y == 1)
-                            || (current_team == BLACK && src.y == 6)) {
-                        JkIntVector2 dest =
-                                jk_int_vector_2_add(src, pawn_extended_moves[current_team]);
-                        if (board_in_bounds(dest)
-                                && board_piece_get(chess->board, dest).type == NONE) {
-                            moves_append(chess, src, dest);
+                case PAWN: {
+                    // Move
+                    {
+                        JkIntVector2 move = jk_int_vector_2_add(src, pawn_moves[current_team]);
+                        if (board_in_bounds(move)
+                                && board_piece_get(chess->board, move).type == NONE) {
+                            moves_append(chess, src, move);
+
+                            // Extended move
+                            if ((current_team == WHITE && src.y == 1)
+                                    || (current_team == BLACK && src.y == 6)) {
+                                JkIntVector2 extended_move =
+                                        jk_int_vector_2_add(src, pawn_extended_moves[current_team]);
+                                if (board_in_bounds(extended_move)
+                                        && board_piece_get(chess->board, extended_move).type
+                                                == NONE) {
+                                    moves_append(chess, src, extended_move);
+                                }
+                            }
                         }
                     }
 
@@ -248,9 +300,28 @@ static void moves_get(Chess *chess, Team current_team, Move *moves_buffer)
                             }
                         }
                     }
-
-                    // TODO: en-passant
                 } break;
+                }
+            }
+        }
+    }
+
+    // En-passant
+    if (abs((int32_t)chess->move_prev.src - (int32_t)chess->move_prev.dest) == 16) {
+        Piece move_prev_piece = board_piece_get_index(chess->board, chess->move_prev.dest);
+        if (move_prev_piece.type == PAWN) {
+            JkIntVector2 pos = board_index_to_vector_2(chess->move_prev.dest);
+            JkIntVector2 directions[] = {{-1, 0}, {1, 0}};
+            for (uint8_t i = 0; i < JK_ARRAY_COUNT(directions); i++) {
+                JkIntVector2 en_passant_src = jk_int_vector_2_add(pos, directions[i]);
+                if (board_in_bounds(en_passant_src)) {
+                    Piece piece = board_piece_get(chess->board, en_passant_src);
+                    if (piece.type == PAWN && piece.team == current_team) {
+                        int32_t y_delta = chess->move_prev.src < chess->move_prev.dest ? -1 : 1;
+                        JkIntVector2 en_passant_dest =
+                                jk_int_vector_2_add(pos, (JkIntVector2){0, y_delta});
+                        moves_append(chess, en_passant_src, en_passant_dest);
+                    }
                 }
             }
         }
@@ -340,7 +411,7 @@ UPDATE_FUNCTION(update)
         chess->flags &= ~FLAG_CURRENT_PLAYER;
         chess->selected_square = (JkIntVector2){-1, -1};
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
-        moves_get(chess, WHITE, chess->moves);
+        moves_get(chess, WHITE);
     }
 
     uint64_t available_destinations =
@@ -351,12 +422,26 @@ UPDATE_FUNCTION(update)
         if (board_in_bounds(clicked_pos)) {
             uint8_t clicked_index = board_index_get(clicked_pos);
             if (available_destinations & (1llu << clicked_index)) {
+                // Move a piece
                 Piece piece = board_piece_get(chess->board, chess->selected_square);
+
+                // En-passant handling
+                if (piece.type == PAWN && chess->selected_square.x != clicked_pos.x
+                        && board_piece_get_index(chess->board, clicked_index).type == NONE) {
+                    int32_t y_delta = (chess->flags & FLAG_CURRENT_PLAYER) ? 1 : -1;
+                    board_piece_set(&chess->board,
+                            jk_int_vector_2_add(clicked_pos, (JkIntVector2){0, y_delta}),
+                            (Piece){0});
+                }
+
                 board_piece_set(&chess->board, chess->selected_square, (Piece){0});
                 board_piece_set(&chess->board, clicked_pos, piece);
+
+                chess->move_prev = (Move){
+                    .src = board_index_get(chess->selected_square), .dest = clicked_index};
                 chess->selected_square = (JkIntVector2){-1, -1};
                 chess->flags ^= FLAG_CURRENT_PLAYER;
-                moves_get(chess, (chess->flags >> FLAG_INDEX_CURRENT_PLAYER) & 1, chess->moves);
+                moves_get(chess, (chess->flags >> FLAG_INDEX_CURRENT_PLAYER) & 1);
             } else {
                 for (uint8_t i = 0; i < chess->moves_count; i++) {
                     if (chess->moves[i].src == board_index_get(clicked_pos)) {
