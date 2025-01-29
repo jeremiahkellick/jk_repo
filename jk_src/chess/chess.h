@@ -65,24 +65,47 @@ typedef struct Bitmap {
     int32_t height;
 } Bitmap;
 
-// We can represent a square with 4 bits where the three lower order bits are the piece and the high
-// order bit is the team. Then a board is 4 bits * 64 squares / 8 bits per byte = 32 bytes
-typedef struct Board {
-    uint8_t bytes[32];
-} Board;
-
 typedef struct Move {
     uint8_t src;
     uint8_t dest;
 } Move;
 
+typedef struct MoveArray {
+    uint8_t count;
+    Move data[UINT8_MAX];
+} MoveArray;
+
+typedef enum BoardFlagIndex {
+    BOARD_FLAG_INDEX_CURRENT_PLAYER,
+    BOARD_FLAG_INDEX_WHITE_KING_MOVED,
+    BOARD_FLAG_INDEX_BLACK_KING_MOVED,
+    BOARD_FLAG_INDEX_A1_ROOK_MOVED,
+    BOARD_FLAG_INDEX_H1_ROOK_MOVED,
+    BOARD_FLAG_INDEX_A8_ROOK_MOVED,
+    BOARD_FLAG_INDEX_H8_ROOK_MOVED,
+} BoardFlagIndex;
+
+#define BOARD_FLAG_CURRENT_PLAYER (1llu << BOARD_FLAG_INDEX_CURRENT_PLAYER)
+#define BOARD_FLAG_WHITE_KING_MOVED (1llu << BOARD_FLAG_INDEX_WHITE_KING_MOVED)
+#define BOARD_FLAG_BLACK_KING_MOVED (1llu << BOARD_FLAG_INDEX_BLACK_KING_MOVED)
+#define BOARD_FLAG_A1_ROOK_MOVED (1llu << BOARD_FLAG_INDEX_A1_ROOK_MOVED)
+#define BOARD_FLAG_H1_ROOK_MOVED (1llu << BOARD_FLAG_INDEX_H1_ROOK_MOVED)
+#define BOARD_FLAG_A8_ROOK_MOVED (1llu << BOARD_FLAG_INDEX_A8_ROOK_MOVED)
+#define BOARD_FLAG_H8_ROOK_MOVED (1llu << BOARD_FLAG_INDEX_H8_ROOK_MOVED)
+
+// We can represent a square with 4 bits where the three lower order bits are the piece and the high
+// order bit is the team. Then a board is 4 bits * 64 squares / 8 bits per byte = 32 bytes
+typedef struct Board {
+    uint8_t bytes[32];
+    Move move_prev;
+    uint64_t flags;
+} Board;
+
 typedef enum FlagIndex {
     FLAG_INDEX_INITIALIZED,
-    FLAG_INDEX_CURRENT_PLAYER,
 } FlagIndex;
 
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
-#define FLAG_CURRENT_PLAYER (1llu << FLAG_INDEX_CURRENT_PLAYER)
 
 typedef struct Chess {
     uint64_t flags;
@@ -94,9 +117,7 @@ typedef struct Chess {
     int64_t time;
     Board board;
     uint8_t tilemap[SQUARE_SIDE_LENGTH * SQUARE_SIDE_LENGTH * 6];
-    uint8_t moves_count;
-    Move moves[UINT8_MAX];
-    Move move_prev;
+    MoveArray moves;
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)
