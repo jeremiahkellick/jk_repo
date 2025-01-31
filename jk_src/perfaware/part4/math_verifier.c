@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "reference_tables.c"
 
@@ -17,71 +18,19 @@
 #include <x86intrin.h>
 #endif
 
-typedef struct MathFunc {
-    char *name;
-    double (*exec)(double);
-} MathFunc;
-
-typedef struct MathFuncArray {
-    uint32_t count;
-    MathFunc *data;
-} MathFuncArray;
-
-static void print_diffs(Reference reference, MathFuncArray functions)
-{
-    printf("f(%+.16f) = %+.16f [reference]\n", reference.input, reference.output);
-    for (uint32_t i = 0; i < functions.count; i++) {
-        double output = functions.data[i].exec(reference.input);
-        printf("                       = %+.16f (%+.16f) [%s]\n",
-                output,
-                reference.output - output,
-                functions.data[i].name);
-    }
-}
-
-static void check_against_references(
-        char *label, MathFuncArray functions, uint32_t reference_count, Reference *references)
+static void check_hard_coded_reference(
+        char *label, double (*function)(double), uint32_t reference_count, Reference *references)
 {
     printf("%s:\n", label);
     for (uint32_t i = 0; i < reference_count; i++) {
-        print_diffs(references[i], functions);
+        printf("f(%+.24f) = %+.24f [reference]\n", references[i].input, references[i].output);
+        double output = function(references[i].input);
+        printf("                               = %+.24f (%+.24f) [%s]\n",
+                output,
+                references[i].output - output,
+                label);
     }
     printf("\n");
-}
-
-static void samples_max_diff(double (*reference_func)(double),
-        MathFuncArray functions,
-        double min_input,
-        double max_input,
-        uint32_t step_count)
-{
-    double step_size = (max_input - min_input) / (double)step_count;
-    for (uint32_t func_index = 0; func_index < functions.count; func_index++) {
-        MathFunc function = functions.data[func_index];
-
-        b32 diff_found = 0;
-        double input_at_largest_diff = 0.0;
-        double largest_diff = 0.0;
-        for (uint32_t i = 0; i < step_count; i++) {
-            double input = min_input + step_size * (double)i;
-            double diff = fabs(reference_func(input) - function.exec(input));
-            if (diff > largest_diff) {
-                diff_found = 1;
-                input_at_largest_diff = input;
-                largest_diff = diff;
-            }
-        }
-        if (diff_found) {
-            Reference reference = {
-                .input = input_at_largest_diff,
-                .output = reference_func(input_at_largest_diff),
-            };
-            printf("Largest diff for %s:\n", function.name);
-            print_diffs(reference, functions);
-        } else {
-            printf("No differences found for %s\n", function.name);
-        }
-    }
 }
 
 static double identity(double x)
@@ -101,40 +50,136 @@ static double my_sqrt_32(double value)
 
 static double rsqrt(double value)
 {
-    return 1.0 / _mm_cvtss_f32(_mm_rsqrt_ss(_mm_set_ss((float)value)));
+    return _mm_cvtss_f32(_mm_rcp_ss(_mm_rsqrt_ss(_mm_set_ss((float)value))));
+}
+
+typedef struct JkPrecisionTestResult {
+    double diff_count;
+    double diff_total;
+    double diff_max;
+    double input_at_diff_max;
+    double value_at_diff_max;
+    char label[64];
+} JkPrecisionTestResult;
+
+typedef struct JkPrecisionTester {
+    double input;
+    uint64_t step_index;
+    uint64_t result_index;
+    uint64_t result_count;
+    JkPrecisionTestResult results[256];
+} JkPrecisionTester;
+
+static double jk_precision_test_result_diff_avg(JkPrecisionTestResult result)
+{
+    return result.diff_total / (double)result.diff_count;
+}
+
+JK_PUBLIC b32 jk_precision_test(JkPrecisionTester *t, double min, double max, uint64_t step_count)
+{
+    t->input = min + (max - min) * (double)t->step_index / (double)(step_count - 1);
+    t->result_index = t->result_count;
+
+    b32 continue_testing = t->step_index++ < step_count;
+
+    if (!continue_testing) { // End of test
+        t->step_index = 0;
+        // Print new results and bring result_count up to include them
+        JkPrecisionTestResult result;
+        while (t->result_count < JK_ARRAY_COUNT(t->results)
+                && (result = t->results[t->result_count]).diff_count > 0) {
+            printf("%+.24f (%+.24f) at %+.24f [%s]\n",
+                    result.diff_max,
+                    jk_precision_test_result_diff_avg(result),
+                    result.input_at_diff_max,
+                    result.label);
+            t->result_count++;
+        }
+    }
+
+    return continue_testing;
+}
+
+JK_PUBLIC void jk_precision_test_result(
+        JkPrecisionTester *t, double reference, double value, char *label)
+{
+    if (t->result_index < JK_ARRAY_COUNT(t->results)) {
+        JkPrecisionTestResult *result = t->results + t->result_index++;
+
+        if (result->label[0] != label[0]) {
+            strncpy(result->label, label, JK_ARRAY_COUNT(result->label));
+        }
+
+        double diff = fabs(reference - value);
+        result->diff_count++;
+        result->diff_total += diff;
+        if (result->diff_max < diff) {
+            result->diff_max = diff;
+            result->input_at_diff_max = t->input;
+        }
+    } else {
+        fprintf(stderr, "jk_precision_test_result: Ran out of result slots\n");
+    }
+}
+
+static int jk_precision_test_result_compare(void *a, void *b)
+{
+    double a_diff_max = ((JkPrecisionTestResult *)a)->diff_max;
+    double b_diff_max = ((JkPrecisionTestResult *)b)->diff_max;
+    return a_diff_max < b_diff_max ? -1 : b_diff_max < a_diff_max ? 1 : 0;
+}
+
+static void jk_precision_test_result_quicksort(uint64_t count, JkPrecisionTestResult *data)
+{
+    JkPrecisionTestResult tmp;
+    jk_quicksort(
+            data, count, sizeof(JkPrecisionTestResult), &tmp, jk_precision_test_result_compare);
+}
+
+JK_PUBLIC void jk_precision_test_print(JkPrecisionTester *t)
+{
+    jk_precision_test_result_quicksort(t->result_count, t->results);
+
+    for (uint64_t i = 0; i < t->result_count; i++) {
+        JkPrecisionTestResult result = t->results[i];
+        printf("%+.24f (%+.24f) [%s]\n",
+                result.diff_max,
+                jk_precision_test_result_diff_avg(result),
+                result.label);
+    }
 }
 
 int main(void)
 {
-    MathFunc sine_funcs[] = {{"sin", sin}, {"fake_sin", identity}};
-    MathFuncArray sines = {.count = JK_ARRAY_COUNT(sine_funcs), .data = sine_funcs};
+    check_hard_coded_reference("sin", sin, JK_ARRAY_COUNT(ref_table_sin), ref_table_sin);
+    check_hard_coded_reference("cos", cos, JK_ARRAY_COUNT(ref_table_cos), ref_table_cos);
+    check_hard_coded_reference("asin", asin, JK_ARRAY_COUNT(ref_table_asin), ref_table_asin);
+    check_hard_coded_reference("sqrt", sqrt, JK_ARRAY_COUNT(ref_table_sqrt), ref_table_sqrt);
 
-    MathFunc cosine_funcs[] = {{"cos", cos}, {"fake_cos", identity}};
-    MathFuncArray cosines = {.count = JK_ARRAY_COUNT(cosine_funcs), .data = cosine_funcs};
+    JkPrecisionTester tester = {0};
 
-    MathFunc arcsine_funcs[] = {{"asin", asin}, {"fake_asin", identity}};
-    MathFuncArray arcsines = {.count = JK_ARRAY_COUNT(arcsine_funcs), .data = arcsine_funcs};
+    while (jk_precision_test(&tester, -PI_64, PI_64, 100000000)) {
+        jk_precision_test_result(&tester, sin(tester.input), identity(tester.input), "fake_sin");
+    }
 
-    MathFunc square_root_funcs[] = {
-        {"sqrt", sqrt},
-        {"fake_sqrt", identity},
-        {"my_sqrt", my_sqrt},
-        {"my_sqrt_32", my_sqrt_32},
-        {"rsqrt", rsqrt},
-    };
-    MathFuncArray square_roots = {
-        .count = JK_ARRAY_COUNT(square_root_funcs), .data = square_root_funcs};
+    while (jk_precision_test(&tester, -PI_64 / 2.0, PI_64 / 2.0, 100000000)) {
+        jk_precision_test_result(&tester, cos(tester.input), identity(tester.input), "fake_cos");
+    }
 
-    check_against_references("Sine", sines, JK_ARRAY_COUNT(ref_table_sin), ref_table_sin);
-    check_against_references("Cosine", cosines, JK_ARRAY_COUNT(ref_table_cos), ref_table_cos);
-    check_against_references("Arcsine", arcsines, JK_ARRAY_COUNT(ref_table_asin), ref_table_asin);
-    check_against_references(
-            "Square root", square_roots, JK_ARRAY_COUNT(ref_table_sqrt), ref_table_sqrt);
+    while (jk_precision_test(&tester, 0.0, 1.0, 100000000)) {
+        jk_precision_test_result(&tester, asin(tester.input), identity(tester.input), "fake_asin");
+    }
 
-    samples_max_diff(sin, sines, -PI_64, PI_64, 100000000);
-    samples_max_diff(cos, cosines, -PI_64 / 2.0, PI_64 / 2.0, 100000000);
-    samples_max_diff(asin, arcsines, 0.0, 1.0, 100000000);
-    samples_max_diff(sqrt, square_roots, 0.0, 1.0, 100000000);
+    while (jk_precision_test(&tester, 0.0, 1.0, 100000000)) {
+        double reference = sqrt(tester.input);
+        jk_precision_test_result(&tester, reference, identity(tester.input), "fake_sqrt");
+        jk_precision_test_result(&tester, reference, my_sqrt(tester.input), "my_sqrt");
+        jk_precision_test_result(&tester, reference, my_sqrt_32(tester.input), "my_sqrt_32");
+        jk_precision_test_result(&tester, reference, rsqrt(tester.input), "rsqrt");
+    }
+
+    printf("\n");
+    jk_precision_test_print(&tester);
 
     return 0;
 }
