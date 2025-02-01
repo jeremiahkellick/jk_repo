@@ -55,7 +55,26 @@ static double rsqrtss(double value)
 
 static double sin_deg_2(double value)
 {
-    return (-4.0 / (PI_64 * PI_64)) * value * value + (4.0 / PI_64) * value;
+    double sign = value < 0 ? -1.0 : 1.0;
+    double x = sign * value;
+    return sign * ((-4.0 / (PI_64 * PI_64)) * x * x + (4.0 / PI_64) * x);
+}
+
+#define SQRT_OF_2 1.4142135623730950488
+#define A ((8.0 - 8.0 * SQRT_OF_2) / (PI_64 * PI_64))
+#define B ((-2.0 + 4 * SQRT_OF_2) / PI_64)
+
+static double sin_deg_2_alt(double value)
+{
+    double sign = value < 0 ? -1.0 : 1.0;
+    double abs = fabs(value);
+    double x = PI_64 / 2.0 - fabs(-PI_64 / 2.0 + abs);
+    return sign * (A * (x * x) + B * x);
+}
+
+static double cos_deg_2(double value)
+{
+    return sin_deg_2_alt(value + PI_64 / 2.0);
 }
 
 typedef struct JkPrecisionTestResult {
@@ -167,10 +186,13 @@ int main(void)
         double reference = sin(tester.input);
         jk_precision_test_result(&tester, reference, identity(tester.input), "fake_sin");
         jk_precision_test_result(&tester, reference, sin_deg_2(tester.input), "sin_deg_2");
+        jk_precision_test_result(&tester, reference, sin_deg_2_alt(tester.input), "sin_deg_2_alt");
     }
 
     while (jk_precision_test(&tester, -PI_64 / 2.0, PI_64 / 2.0, 100000000)) {
-        jk_precision_test_result(&tester, cos(tester.input), identity(tester.input), "fake_cos");
+        double reference = cos(tester.input);
+        jk_precision_test_result(&tester, reference, identity(tester.input), "fake_cos");
+        jk_precision_test_result(&tester, reference, cos_deg_2(tester.input), "cos_deg_2");
     }
 
     while (jk_precision_test(&tester, 0.0, 1.0, 100000000)) {
@@ -183,11 +205,6 @@ int main(void)
         jk_precision_test_result(&tester, reference, sqrtsd(tester.input), "sqrtsd");
         jk_precision_test_result(&tester, reference, sqrtss(tester.input), "sqrtss");
         jk_precision_test_result(&tester, reference, rsqrtss(tester.input), "rsqrtss");
-    }
-
-    while (jk_precision_test(&tester, 0.0, PI_64, 100000000)) {
-        jk_precision_test_result(
-                &tester, sin(tester.input), sin_deg_2(tester.input), "sin_deg_2 (half)");
     }
 
     printf("\n");
