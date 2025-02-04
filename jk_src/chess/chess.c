@@ -504,6 +504,30 @@ static void moves_get(MoveArray *moves, Board board, Team current_team)
     }
 }
 
+static void moves_remove_if_leaves_king_in_check(MoveArray *moves, Board board, Team current_team)
+{
+    uint8_t move_index = 0;
+    while (move_index < moves->count) {
+        Board hypothetical = board;
+        board_move_perform(&hypothetical, moves->data[move_index]);
+
+        uint8_t king_index = 0;
+        for (uint8_t square_index = 0; square_index < 64; square_index++) {
+            Piece piece = board_piece_get_index(hypothetical, square_index);
+            if (piece.type == KING && piece.team == current_team) {
+                king_index = square_index;
+            }
+        }
+
+        uint64_t threatened = board_threatened_squares_get(hypothetical, !current_team);
+        if (threatened & (1llu << king_index)) {
+            moves->data[move_index] = moves->data[--moves->count];
+        } else {
+            move_index++;
+        }
+    }
+}
+
 static void audio_write(Audio *audio, int32_t pitch_multiplier)
 {
     for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
@@ -588,6 +612,7 @@ UPDATE_FUNCTION(update)
         chess->selected_square = (JkIntVector2){-1, -1};
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board, WHITE);
+        moves_remove_if_leaves_king_in_check(&chess->moves, chess->board, WHITE);
 
         JK_DEBUG_ASSERT(board_flag_king_moved_get(WHITE) == BOARD_FLAG_WHITE_KING_MOVED);
         JK_DEBUG_ASSERT(board_flag_king_moved_get(BLACK) == BOARD_FLAG_BLACK_KING_MOVED);
@@ -610,9 +635,9 @@ UPDATE_FUNCTION(update)
                             .src = board_index_get(chess->selected_square), .dest = clicked_index});
 
                 chess->selected_square = (JkIntVector2){-1, -1};
-                moves_get(&chess->moves,
-                        chess->board,
-                        (chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1);
+                Team current_team = (chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1l;
+                moves_get(&chess->moves, chess->board, current_team);
+                moves_remove_if_leaves_king_in_check(&chess->moves, chess->board, current_team);
             } else {
                 chess->selected_square = (JkIntVector2){-1, -1};
                 for (uint8_t i = 0; i < chess->moves.count; i++) {
