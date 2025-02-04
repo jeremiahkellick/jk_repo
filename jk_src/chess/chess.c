@@ -559,6 +559,12 @@ static JkIntVector2 screen_to_board_pos_pixels(Bitmap *bitmap, JkIntVector2 scre
     return jk_int_vector_2_sub(screen_pos, screen_board_origin_get(bitmap));
 }
 
+static b32 screen_in_bounds(Bitmap *bitmap, JkIntVector2 screen_pos)
+{
+    return screen_pos.x >= 0 && screen_pos.x < bitmap->width && screen_pos.y >= 0
+            && screen_pos.y < bitmap->height;
+}
+
 static b32 board_pos_pixels_in_bounds(JkIntVector2 board_pos_pixels)
 {
     return board_pos_pixels.x >= 0 && board_pos_pixels.x < BOARD_SIDE_LENGTH
@@ -622,34 +628,50 @@ UPDATE_FUNCTION(update)
         JK_DEBUG_ASSERT(board_flag_rook_moved_get(BLACK, 1) == BOARD_FLAG_H8_ROOK_MOVED);
     }
 
+    if (button_pressed(chess, INPUT_FLAG_CANCEL)) {
+        chess->selected_square = (JkIntVector2){-1, -1};
+    }
+
     uint64_t available_destinations =
             destinations_get_by_src(chess, board_index_get_unbounded(chess->selected_square));
+    JkIntVector2 mouse_pos = screen_to_board_pos(&chess->bitmap, chess->input.mouse_pos);
+    uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
+    b32 mouse_on_destination = mouse_index < 64 && (available_destinations & (1llu << mouse_index));
+    uint64_t piece_drop_index = UINT8_MAX;
 
     if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
-        JkIntVector2 clicked_pos = screen_to_board_pos(&chess->bitmap, chess->input.mouse_pos);
-        if (board_in_bounds(clicked_pos)) {
-            uint8_t clicked_index = board_index_get(clicked_pos);
-            if (available_destinations & (1llu << clicked_index)) {
-                board_move_perform(&chess->board,
-                        (Move){
-                            .src = board_index_get(chess->selected_square), .dest = clicked_index});
+        chess->flags |= FLAG_HOLDING_PIECE;
 
-                chess->selected_square = (JkIntVector2){-1, -1};
-                Team current_team = (chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1l;
-                moves_get(&chess->moves, chess->board, current_team);
-                moves_remove_if_leaves_king_in_check(&chess->moves, chess->board, current_team);
-            } else {
-                chess->selected_square = (JkIntVector2){-1, -1};
-                for (uint8_t i = 0; i < chess->moves.count; i++) {
-                    if (chess->moves.data[i].src == board_index_get(clicked_pos)) {
-                        chess->selected_square = clicked_pos;
-                    }
+        if (mouse_on_destination) {
+            piece_drop_index = mouse_index;
+        } else {
+            chess->selected_square = (JkIntVector2){-1, -1};
+            for (uint8_t i = 0; i < chess->moves.count; i++) {
+                if (chess->moves.data[i].src == mouse_index) {
+                    chess->selected_square = mouse_pos;
                 }
             }
         }
     }
-    if (button_pressed(chess, INPUT_FLAG_CANCEL)) {
+
+    if (!(chess->input.flags & INPUT_FLAG_CONFIRM)) {
+        if (chess->flags & FLAG_HOLDING_PIECE) {
+            chess->flags &= ~FLAG_HOLDING_PIECE;
+
+            if (mouse_on_destination) {
+                piece_drop_index = mouse_index;
+            }
+        }
+    }
+
+    if (piece_drop_index < 64) {
+        board_move_perform(&chess->board,
+                (Move){.src = board_index_get(chess->selected_square), .dest = piece_drop_index});
+
         chess->selected_square = (JkIntVector2){-1, -1};
+        Team current_team = (chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1l;
+        moves_get(&chess->moves, chess->board, current_team);
+        moves_remove_if_leaves_king_in_check(&chess->moves, chess->board, current_team);
     }
 
     audio_write(&chess->audio, (chess->input.flags & INPUT_FLAG_UP) ? 2 : 1);
@@ -683,12 +705,10 @@ static Color blend(Color a, Color b)
 RENDER_FUNCTION(render)
 {
     // Figure out which squares should be highlighted
-    uint64_t highlighted = 0;
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
-    if (selected_index < 64) {
-        highlighted |= 1llu << selected_index;
-    }
-    highlighted |= destinations_get_by_src(chess, selected_index);
+    uint64_t destinations = destinations_get_by_src(chess, selected_index);
+    uint8_t mouse_index =
+            board_index_get_unbounded(screen_to_board_pos(&chess->bitmap, chess->input.mouse_pos));
 
     // uint64_t threatened = board_threatened_squares_get(
     //         chess->board, !((chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1));
@@ -699,19 +719,34 @@ RENDER_FUNCTION(render)
             JkIntVector2 board_pos_pixels = screen_to_board_pos_pixels(&chess->bitmap, pos);
             Color color;
             if (board_pos_pixels_in_bounds(board_pos_pixels)) {
+                JkIntVector2 square_pos =
+                        jk_int_vector_2_remainder(SQUARE_SIDE_LENGTH, board_pos_pixels);
+
                 JkIntVector2 board_pos = board_pos_pixels_to_squares(board_pos_pixels);
                 uint8_t index = board_index_get(board_pos);
                 b32 light = (board_pos_pixels.x / SQUARE_SIDE_LENGTH) % 2
                         == (board_pos_pixels.y / SQUARE_SIDE_LENGTH) % 2;
                 Color background = light ? color_light_squares : color_dark_squares;
-                if (highlighted & (1llu << index)) {
+                if (index == selected_index) {
                     color = blend(color_selection, background);
+                } else if (destinations & (1llu << index)) {
+                    color = blend(color_selection, background);
+                    if (index == mouse_index) {
+                        int32_t x_dist_from_edge = square_pos.x < SQUARE_SIDE_LENGTH / 2
+                                ? square_pos.x
+                                : SQUARE_SIDE_LENGTH - 1 - square_pos.x;
+                        int32_t y_dist_from_edge = square_pos.y < SQUARE_SIDE_LENGTH / 2
+                                ? square_pos.y
+                                : SQUARE_SIDE_LENGTH - 1 - square_pos.y;
+                        if ((x_dist_from_edge >= 4 && y_dist_from_edge >= 4)
+                                && (x_dist_from_edge < 8 || y_dist_from_edge < 8)) {
+                            color = background;
+                        }
+                    }
                 } else {
                     color = background;
                 }
 
-                JkIntVector2 square_pos =
-                        jk_int_vector_2_remainder(SQUARE_SIDE_LENGTH, board_pos_pixels);
                 Piece piece = board_piece_get(chess->board, board_pos);
                 if (piece.type != NONE) {
                     int32_t tilemap_y_offset = (piece.type - 1) * 112;
@@ -720,13 +755,41 @@ RENDER_FUNCTION(render)
                     int32_t byte_index = pixel_index / 8;
                     uint8_t bit_index = pixel_index % 8;
                     if ((chess->tilemap[byte_index] >> bit_index) & 1) {
-                        color = piece.team ? color_black_pieces : color_white_pieces;
+                        Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
+                        color = index == selected_index && (chess->flags & FLAG_HOLDING_PIECE)
+                                ? blend(color_piece, color)
+                                : color_piece;
                     }
                 }
             } else {
                 color = color_background;
             }
             chess->bitmap.memory[pos.y * chess->bitmap.width + pos.x] = color;
+        }
+    }
+
+    if ((chess->flags & FLAG_HOLDING_PIECE) && selected_index < 64) {
+        Piece piece = board_piece_get_index(chess->board, selected_index);
+        if (piece.type != NONE) {
+            JkIntVector2 held_piece_offset = jk_int_vector_2_sub(chess->input.mouse_pos,
+                    (JkIntVector2){SQUARE_SIDE_LENGTH / 2, SQUARE_SIDE_LENGTH / 2});
+            for (pos.y = 0; pos.y < SQUARE_SIDE_LENGTH; pos.y++) {
+                for (pos.x = 0; pos.x < SQUARE_SIDE_LENGTH; pos.x++) {
+                    int32_t tilemap_y_offset = (piece.type - 1) * 112;
+                    int32_t pixel_index = SQUARE_SIDE_LENGTH * (pos.y + tilemap_y_offset) + pos.x;
+                    int32_t byte_index = pixel_index / 8;
+                    uint8_t bit_index = pixel_index % 8;
+                    if ((chess->tilemap[byte_index] >> bit_index) & 1) {
+                        Color color = piece.team ? color_black_pieces : color_white_pieces;
+                        JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
+                        if (screen_in_bounds(&chess->bitmap, screen_pos)) {
+                            chess->bitmap
+                                    .memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
+                                    color;
+                        }
+                    }
+                }
+            }
         }
     }
 }

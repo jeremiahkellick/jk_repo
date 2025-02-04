@@ -103,9 +103,11 @@ typedef struct Board {
 
 typedef enum FlagIndex {
     FLAG_INDEX_INITIALIZED,
+    FLAG_INDEX_HOLDING_PIECE,
 } FlagIndex;
 
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
+#define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
 
 typedef struct Chess {
     uint64_t flags;
