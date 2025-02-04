@@ -659,24 +659,26 @@ UPDATE_FUNCTION(update)
     chess->input_prev = chess->input;
 }
 
-Color background = {0x24, 0x29, 0x25};
+Color color_background = {0x24, 0x29, 0x25};
 
 // Color light_squares = {0xde, 0xe2, 0xde};
 // Color dark_squares = {0x39, 0x41, 0x3a};
 
-Color light_squares = {0xe9, 0xe2, 0xd7};
-Color dark_squares = {0x50, 0x41, 0x2b};
+Color color_light_squares = {0xe9, 0xe2, 0xd7};
+Color color_dark_squares = {0x50, 0x41, 0x2b};
 
 // Blended halfway between the base square colors and #E26D5C
-Color light_squares_selected = {0xa3, 0xa8, 0xdd};
-Color dark_squares_selected = {0x56, 0x57, 0x87};
 
-// Color light_squares_threatened = {0xdf, 0xdd, 0xec};
-// Color dark_squares_threatened = {0x38, 0x33, 0x5b};
+Color color_selection = {0x5c, 0x6d, 0xe2};
 
 // Color white = {0x8e, 0x8e, 0x8e};
-Color white = {0x82, 0x92, 0x85};
-Color black = {0xff, 0x73, 0xa2};
+Color color_white_pieces = {0x82, 0x92, 0x85};
+Color color_black_pieces = {0xff, 0x73, 0xa2};
+
+static Color blend(Color a, Color b)
+{
+    return (Color){.r = a.r / 2 + b.r / 2, .g = a.g / 2 + b.g / 2, .b = a.b / 2 + b.b / 2};
+}
 
 RENDER_FUNCTION(render)
 {
@@ -701,14 +703,11 @@ RENDER_FUNCTION(render)
                 uint8_t index = board_index_get(board_pos);
                 b32 light = (board_pos_pixels.x / SQUARE_SIDE_LENGTH) % 2
                         == (board_pos_pixels.y / SQUARE_SIDE_LENGTH) % 2;
+                Color background = light ? color_light_squares : color_dark_squares;
                 if (highlighted & (1llu << index)) {
-                    color = light ? light_squares_selected : dark_squares_selected;
+                    color = blend(color_selection, background);
                 } else {
-                    // if (threatened & (1llu << index)) {
-                    //     color = light ? light_squares_threatened : dark_squares_threatened;
-                    // } else {
-                    color = light ? light_squares : dark_squares;
-                    // }
+                    color = background;
                 }
 
                 JkIntVector2 square_pos =
@@ -721,11 +720,11 @@ RENDER_FUNCTION(render)
                     int32_t byte_index = pixel_index / 8;
                     uint8_t bit_index = pixel_index % 8;
                     if ((chess->tilemap[byte_index] >> bit_index) & 1) {
-                        color = piece.team ? black : white;
+                        color = piece.team ? color_black_pieces : color_white_pieces;
                     }
                 }
             } else {
-                color = background;
+                color = color_background;
             }
             chess->bitmap.memory[pos.y * chess->bitmap.width + pos.x] = color;
         }

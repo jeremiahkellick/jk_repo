@@ -37,6 +37,7 @@ typedef enum Key {
     KEY_A,
     KEY_D,
     KEY_R,
+    KEY_C,
     KEY_ENTER,
     KEY_SPACE,
     KEY_ESCAPE,
@@ -51,6 +52,7 @@ typedef enum Key {
 #define KEY_FLAG_A (1 << KEY_A)
 #define KEY_FLAG_D (1 << KEY_D)
 #define KEY_FLAG_R (1 << KEY_R)
+#define KEY_FLAG_C (1 << KEY_C)
 #define KEY_FLAG_ENTER (1 << KEY_ENTER)
 #define KEY_FLAG_SPACE (1 << KEY_SPACE)
 #define KEY_FLAG_ESCAPE (1 << KEY_ESCAPE)
@@ -161,6 +163,10 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
             flag = KEY_FLAG_R;
         } break;
 
+        case 'C': {
+            flag = KEY_FLAG_C;
+        } break;
+
         case VK_RETURN: {
             flag = KEY_FLAG_ENTER;
         } break;
@@ -206,6 +212,18 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 
     return result;
 }
+
+typedef enum RecordState {
+    RECORD_STATE_NONE,
+    RECORD_STATE_RECORDING,
+    RECORD_STATE_PLAYING,
+    RECORD_STATE_COUNT,
+} RecordState;
+
+static RecordState record_state;
+static uint64_t recorded_inputs_count;
+static Input recorded_inputs[1024];
+static Chess recorded_game_state;
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
@@ -392,6 +410,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             uint64_t counter_previous = jk_platform_os_timer_get();
             uint64_t target_flip_time = counter_previous + ticks_per_frame;
             b32 reset_audio_position = TRUE;
+            uint64_t prev_keys = 0;
             while (global_running) {
                 // Hot reloading
                 WIN32_FILE_ATTRIBUTE_DATA chess_dll_info;
@@ -526,6 +545,54 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     }
                 }
 
+                if ((global_keys_down & KEY_FLAG_C) && !(prev_keys & KEY_FLAG_C)) {
+                    record_state = (record_state + 1) % RECORD_STATE_COUNT;
+                    switch (record_state) {
+                    case RECORD_STATE_NONE: {
+                    } break;
+
+                    case RECORD_STATE_RECORDING: {
+                        recorded_game_state = global_chess;
+                    } break;
+
+                    case RECORD_STATE_PLAYING: {
+                        recorded_inputs_count = global_chess.time - recorded_game_state.time;
+                        global_chess = recorded_game_state;
+                    } break;
+
+                    case RECORD_STATE_COUNT:
+                    default: {
+                        OutputDebugStringA("Invalid RecordState\n");
+                    } break;
+                    }
+                }
+
+                switch (record_state) {
+                case RECORD_STATE_NONE: {
+                } break;
+
+                case RECORD_STATE_RECORDING: {
+                    uint64_t i = (global_chess.time - recorded_game_state.time)
+                            % JK_ARRAY_COUNT(recorded_inputs);
+                    recorded_inputs[i] = global_chess.input;
+                } break;
+
+                case RECORD_STATE_PLAYING: {
+                    if ((global_chess.time - recorded_game_state.time) > recorded_inputs_count) {
+                        global_chess = recorded_game_state;
+                    }
+
+                    uint64_t i = (global_chess.time - recorded_game_state.time)
+                            % JK_ARRAY_COUNT(recorded_inputs);
+                    global_chess.input = recorded_inputs[i];
+                } break;
+
+                case RECORD_STATE_COUNT:
+                default: {
+                    OutputDebugStringA("Invalid RecordState\n");
+                } break;
+                }
+
                 update(&global_chess);
 
                 // Write audio to buffer
@@ -615,6 +682,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
                 counter_previous = counter_current;
                 target_flip_time += ticks_per_frame;
+                prev_keys = global_keys_down;
             }
 
             snprintf(global_string_buffer,

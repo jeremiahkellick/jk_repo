@@ -114,7 +114,7 @@ typedef struct Chess {
     Input input_prev;
     Audio audio;
     Bitmap bitmap;
-    int64_t time;
+    uint64_t time;
     Board board;
     uint8_t tilemap[SQUARE_SIDE_LENGTH * SQUARE_SIDE_LENGTH * 6];
     MoveArray moves;
