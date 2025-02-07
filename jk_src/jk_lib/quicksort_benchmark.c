@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include <jk_gen/jk_lib/quicksort_benchmark.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>

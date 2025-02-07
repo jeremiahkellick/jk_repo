@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <jk_gen/jk_lib/jk_lib_test.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>

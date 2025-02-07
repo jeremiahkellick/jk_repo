@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_gen/perfaware/part3/pmcs_test.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build nasm jk_src/perfaware/part3/pmcs_test.asm
 

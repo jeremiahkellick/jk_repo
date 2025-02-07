@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <jk_gen/perfaware/part3/windows_non_temporal.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build nasm jk_src/perfaware/part3/windows_non_temporal.asm
 

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include <jk_gen/perfaware/part3/conditional_nop.stu.h>
+// #jk_build single_translation_unit
 
 // #jk_build nasm jk_src/perfaware/part3/conditional_nop.asm
 
