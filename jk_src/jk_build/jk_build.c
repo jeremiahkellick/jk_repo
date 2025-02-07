@@ -38,6 +38,7 @@ typedef enum Compiler {
     COMPILER_GCC,
     COMPILER_MSVC,
     COMPILER_TCC,
+    COMPILER_CLANG,
 } Compiler;
 
 /** argv[0] */
@@ -300,6 +301,9 @@ static void ensure_directory_exists(char *directory_path)
 
     size_t length = strlen(directory_path);
     size_t i = 0;
+    if (directory_path[i] == '/') {
+        i++; // Skip leading slash which indicates an absolute path
+    }
     while (i < length) {
         while (i < length && directory_path[i] != '/') {
             i++;
@@ -307,11 +311,11 @@ static void ensure_directory_exists(char *directory_path)
         memcpy(buffer, directory_path, i);
         buffer[i] = '\0';
 
-        if (mkdir(buffer, 0775) == -1 && errno != EEXIST) {
+        if (mkdir(buffer, 0755) == -1 && errno != EEXIST) {
             fprintf(stderr,
                     "%s: Failed to create \"%s\": %s\n",
                     program_name,
-                    directory_path,
+                    buffer,
                     strerror(errno));
             exit(1);
         }
@@ -325,7 +329,6 @@ static void ensure_directory_exists(char *directory_path)
 
 static char const jk_build_string[] = "jk_build";
 static char const jk_src_string[] = JK_SRC_STRING_LITERAL;
-static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
 
 static bool parse_files(char *root_file_path,
         StringArray *dependencies,
@@ -679,6 +682,8 @@ int main(int argc, char **argv)
                         compiler = COMPILER_MSVC;
                     } else if (compare_case_insensitive(compiler_string, "tcc")) {
                         compiler = COMPILER_TCC;
+                    } else if (compare_case_insensitive(compiler_string, "clang")) {
+                        compiler = COMPILER_CLANG;
                     } else {
                         fprintf(stderr,
                                 "%s: Option '-c, --compiler' given invalid argument '%s'\n",
@@ -728,8 +733,10 @@ int main(int argc, char **argv)
         if (compiler == COMPILER_NONE) {
 #ifdef _WIN32
             compiler = COMPILER_MSVC; // Default to MSVC on Windows
+#elif __linux__
+            compiler = COMPILER_GCC; // Default to GCC on Linux
 #else
-            compiler = COMPILER_GCC; // Default to GCC on non-Windows platforms
+            compiler = COMPILER_CLANG; // Default to clang on macOS
 #endif
         }
     }
@@ -821,7 +828,6 @@ int main(int argc, char **argv)
         array_append(&command, "-std=c11");
         array_append(&command, "-pedantic");
         array_append(&command, "-g");
-        array_append(&command, "-pipe");
         array_append(&command, "-Wall");
         array_append(&command, "-Wextra");
         array_append(&command, "-fstack-protector");
@@ -855,11 +861,40 @@ int main(int argc, char **argv)
         array_append(&command, "-std=c11");
         array_append(&command, "-Wall");
         array_append(&command, "-g");
+
+        size_t basename_length = strlen(basename);
+        if (basename[basename_length = 1] != 'm') { // If this is not an Objective-C file
+            array_append(&command, "-std=c11");
+        }
+
         if (!single_translation_unit) {
             array_append(&command, "-D", "JK_PUBLIC=");
         }
         if (optimize) {
             array_append(&command, "-D", "NDEBUG");
+        }
+        if (no_profile) {
+            array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
+        }
+        array_append(&command, "-I", root_path);
+    } break;
+
+    case COMPILER_CLANG: {
+        array_append(&command, "clang");
+        array_append(&command, "-o", basename);
+        array_append(&command, "-Wall", "-Wextra", "-Wpedantic");
+        array_append(&command, "-g");
+        if (single_translation_unit) {
+            array_append(&command, "-Wno-unused-function");
+        } else {
+            array_append(&command, "-D", "JK_PUBLIC=");
+        }
+        if (optimize) {
+            array_append(&command, "-O3");
+            array_append(&command, "-flto");
+            array_append(&command, "-D", "NDEBUG");
+        } else {
+            array_append(&command, "-Og");
         }
         if (no_profile) {
             array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
@@ -962,6 +997,9 @@ int main(int argc, char **argv)
 #ifndef _WIN32
         array_append(&command, "-lm");
 #endif
+    } break;
+
+    case COMPILER_CLANG: {
     } break;
 
     case COMPILER_NONE: {

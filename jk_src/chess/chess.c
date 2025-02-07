@@ -1,6 +1,5 @@
 #include "chess.h"
 
-#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -111,6 +110,10 @@ static void board_piece_set(Board *board, JkIntVector2 pos, Piece piece)
     } else {
         board->bytes[byte_index] = (board->bytes[byte_index] & 0xf0) | bits;
     }
+}
+
+static int32_t abs(int32_t x) {
+    return x < 0 ? -x : x;
 }
 
 static JkIntVector2 all_directions[8] = {
