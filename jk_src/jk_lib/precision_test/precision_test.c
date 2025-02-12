@@ -1,4 +1,6 @@
 #include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 // #jk_build dependencies_begin
@@ -55,13 +57,16 @@ JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, uint
 }
 
 JK_PUBLIC void jk_precision_test_result(
-        JkPrecisionTest *t, double reference, double value, char *label)
+        JkPrecisionTest *t, double reference, double value, char *label, ...)
 {
     if (t->result_index < JK_ARRAY_COUNT(t->results)) {
         JkPrecisionTestResult *result = t->results + t->result_index++;
 
-        if (result->label[0] != label[0]) {
-            strncpy(result->label, label, JK_ARRAY_COUNT(result->label));
+        if (result->label[0] == '\0') {
+            va_list args;
+            va_start(args, label);
+            vsnprintf(result->label, JK_ARRAY_COUNT(result->label), label, args);
+            va_end(args);
         }
 
         double diff = fabs(reference - value);

@@ -33,7 +33,7 @@ JK_PUBLIC void jk_precision_test_check_reference(char *label,
 JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, uint64_t step_count);
 
 JK_PUBLIC void jk_precision_test_result(
-        JkPrecisionTest *t, double reference, double value, char *label);
+        JkPrecisionTest *t, double reference, double value, char *label, ...);
 
 JK_PUBLIC void jk_precision_test_print(JkPrecisionTest *t);
 

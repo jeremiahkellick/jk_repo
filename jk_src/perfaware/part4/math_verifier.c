@@ -1,9 +1,4 @@
 #include <math.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include "reference_tables.c"
 
 // #jk_build single_translation_unit
 
@@ -16,6 +11,8 @@
 #else
 #include <x86intrin.h>
 #endif
+
+#include "reference_tables.c"
 
 static double identity(double x)
 {
@@ -41,24 +38,24 @@ static double sin_deg_2(double value)
 {
     double sign = value < 0 ? -1.0 : 1.0;
     double x = sign * value;
-    return sign * ((-4.0 / (PI_64 * PI_64)) * x * x + (4.0 / PI_64) * x);
+    return sign * ((-4.0 / (JK_PI * JK_PI)) * x * x + (4.0 / JK_PI) * x);
 }
 
 #define SQRT_OF_2 1.4142135623730950488
-#define A ((8.0 - 8.0 * SQRT_OF_2) / (PI_64 * PI_64))
-#define B ((-2.0 + 4 * SQRT_OF_2) / PI_64)
+#define A ((8.0 - 8.0 * SQRT_OF_2) / (JK_PI * JK_PI))
+#define B ((-2.0 + 4 * SQRT_OF_2) / JK_PI)
 
 static double sin_deg_2_alt(double value)
 {
     double sign = value < 0 ? -1.0 : 1.0;
     double abs = fabs(value);
-    double x = PI_64 / 2.0 - fabs(-PI_64 / 2.0 + abs);
+    double x = JK_PI / 2.0 - fabs(-JK_PI / 2.0 + abs);
     return sign * (A * (x * x) + B * x);
 }
 
 static double cos_deg_2(double value)
 {
-    return sin_deg_2_alt(value + PI_64 / 2.0);
+    return sin_deg_2_alt(value + JK_PI / 2.0);
 }
 
 int main(void)
@@ -70,14 +67,14 @@ int main(void)
 
     JkPrecisionTest test = {0};
 
-    while (jk_precision_test(&test, -PI_64, PI_64, 100000000)) {
+    while (jk_precision_test(&test, -JK_PI, JK_PI, 100000000)) {
         double reference = sin(test.input);
         jk_precision_test_result(&test, reference, identity(test.input), "fake_sin");
         jk_precision_test_result(&test, reference, sin_deg_2(test.input), "sin_deg_2");
         jk_precision_test_result(&test, reference, sin_deg_2_alt(test.input), "sin_deg_2_alt");
     }
 
-    while (jk_precision_test(&test, -PI_64 / 2.0, PI_64 / 2.0, 100000000)) {
+    while (jk_precision_test(&test, -JK_PI / 2.0, JK_PI / 2.0, 100000000)) {
         double reference = cos(test.input);
         jk_precision_test_result(&test, reference, identity(test.input), "fake_cos");
         jk_precision_test_result(&test, reference, cos_deg_2(test.input), "cos_deg_2");
