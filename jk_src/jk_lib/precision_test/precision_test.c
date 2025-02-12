@@ -1,7 +1,6 @@
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <string.h>
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
@@ -69,12 +68,18 @@ JK_PUBLIC void jk_precision_test_result(
             va_end(args);
         }
 
-        double diff = fabs(reference - value);
         result->diff_count++;
-        result->diff_total += diff;
-        if (result->diff_max < diff) {
-            result->diff_max = diff;
+        if (isnan(value)) {
+            result->diff_total = INFINITY;
+            result->diff_max = INFINITY;
             result->input_at_diff_max = t->input;
+        } else {
+            double diff = fabs(reference - value);
+            result->diff_total += diff;
+            if (result->diff_max < diff) {
+                result->diff_max = diff;
+                result->input_at_diff_max = t->input;
+            }
         }
     } else {
         fprintf(stderr, "jk_precision_test_result: Ran out of result slots\n");

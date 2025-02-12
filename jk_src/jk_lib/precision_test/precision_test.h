@@ -13,7 +13,6 @@ typedef struct JkPrecisionTestResult {
     double diff_total;
     double diff_max;
     double input_at_diff_max;
-    double value_at_diff_max;
     char label[64];
 } JkPrecisionTestResult;
 

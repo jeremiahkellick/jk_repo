@@ -6,7 +6,7 @@
 #include <jk_src/jk_lib/precision_test/precision_test.h>
 // #jk_build dependencies_end
 
-#define TERMS_MAX 64
+#define TERMS_MAX 19
 
 // Usage: coefficients[i] where power = 2i + 1
 double coefficients[TERMS_MAX];
@@ -48,10 +48,8 @@ int main(void)
     while (jk_precision_test(&test, -JK_PI, JK_PI, 100000000)) {
         double reference = sin(test.input);
         compute_results(test.input);
-        int i = 0;
-        while (i < TERMS_MAX) {
+        for (int i = 0; i < TERMS_MAX; i++) {
             jk_precision_test_result(&test, reference, results[i], "taylor_sin deg %d", 2 * i + 1);
-            i += i < 7 ? 1 : 8;
         }
     }
 
