@@ -13,15 +13,11 @@
 #ifndef REFERENCE_TABLES_C
 #define REFERENCE_TABLES_C
 
-typedef struct Reference {
-    double input;
-    double output;
-} Reference;
-
+#include <jk_src/jk_lib/precision_test/precision_test.h>
 
 #define PI_64 3.14159265358979323846264338327950288419716939937510582097494459230781640628
 
-Reference ref_table_sin[] =
+JkPrecisionTestReference ref_table_sin[] =
 {
     {-3.141592653589793238,  0},
     { 3.141592653589793238,  0},
@@ -44,7 +40,7 @@ Reference ref_table_sin[] =
     {-1.105406126779538090, -0.8936465229822790287280586176037410660825031944311385937539764263220},
 };
 
-Reference ref_table_cos[] =
+JkPrecisionTestReference ref_table_cos[] =
 {
     {-1.570796326794896619, 0},
     { 1.570796326794896619, 0},
@@ -67,7 +63,7 @@ Reference ref_table_cos[] =
     {-1.561169615584349746, 0.00962656252095535020891250646271243500632300907783533748027223867848},
 };
 
-Reference ref_table_asin[] =
+JkPrecisionTestReference ref_table_asin[] =
 {
     {                   0, 0},
     {                   1, 1.570796326794896619231321691639751442098584699687552910487472296153908},
@@ -89,7 +85,7 @@ Reference ref_table_asin[] =
     {0.423156465269428794, 0.436926237167066484203993966795465052697108833823576633183973280019322},
 };
 
-Reference ref_table_sqrt[] =
+JkPrecisionTestReference ref_table_sqrt[] =
 {
     {                   0, 0},
     {                   1, 1},
