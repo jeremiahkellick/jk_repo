@@ -23,11 +23,6 @@ typedef enum PieceType {
     PAWN,
 } PieceType;
 
-typedef enum Team {
-    WHITE,
-    BLACK,
-} Team;
-
 typedef enum Column {
     A,
     B,
@@ -112,7 +107,8 @@ static void board_piece_set(Board *board, JkIntVector2 pos, Piece piece)
     }
 }
 
-static int32_t abs(int32_t x) {
+static int32_t absolute_value(int32_t x)
+{
     return x < 0 ? -x : x;
 }
 
@@ -338,7 +334,7 @@ static void board_move_perform(Board *board, Move move)
     if (piece.type == KING) {
         board->flags |= board_flag_king_moved_get(team);
 
-        if (abs(delta_x) == 2) {
+        if (absolute_value(delta_x) == 2) {
             int32_t rook_from_x, rook_to_x;
             if (delta_x > 0) {
                 rook_from_x = 7;
@@ -486,7 +482,7 @@ static void moves_get(MoveArray *moves, Board board, Team current_team)
     }
 
     // En-passant
-    if (abs((int32_t)board.move_prev.src - (int32_t)board.move_prev.dest) == 16) {
+    if (absolute_value((int32_t)board.move_prev.src - (int32_t)board.move_prev.dest) == 16) {
         Piece move_prev_piece = board_piece_get_index(board, board.move_prev.dest);
         if (move_prev_piece.type == PAWN) {
             JkIntVector2 pos = board_index_to_vector_2(board.move_prev.dest);
@@ -615,10 +611,9 @@ UPDATE_FUNCTION(update)
     }
 
     if (!(chess->flags & FLAG_INITIALIZED)) {
-        chess->flags |= FLAG_INITIALIZED;
-
-        chess->board.flags &= ~BOARD_FLAG_CURRENT_PLAYER;
+        chess->flags = FLAG_INITIALIZED;
         chess->selected_square = (JkIntVector2){-1, -1};
+        chess->result = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board, WHITE);
         moves_remove_if_leaves_king_in_check(&chess->moves, chess->board, WHITE);
@@ -640,7 +635,7 @@ UPDATE_FUNCTION(update)
     JkIntVector2 mouse_pos = screen_to_board_pos(&chess->bitmap, chess->input.mouse_pos);
     uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
     b32 mouse_on_destination = mouse_index < 64 && (available_destinations & (1llu << mouse_index));
-    uint64_t piece_drop_index = UINT8_MAX;
+    uint8_t piece_drop_index = UINT8_MAX;
 
     if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
         chess->flags |= FLAG_HOLDING_PIECE;
@@ -669,12 +664,29 @@ UPDATE_FUNCTION(update)
 
     if (piece_drop_index < 64) {
         board_move_perform(&chess->board,
-                (Move){.src = board_index_get(chess->selected_square), .dest = piece_drop_index});
+                (Move){.src = board_index_get(chess->selected_square),
+                    .dest = (uint8_t)piece_drop_index});
 
         chess->selected_square = (JkIntVector2){-1, -1};
         Team current_team = (chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1l;
         moves_get(&chess->moves, chess->board, current_team);
         moves_remove_if_leaves_king_in_check(&chess->moves, chess->board, current_team);
+
+        if (!chess->moves.count) {
+            chess->victor = !current_team;
+
+            uint64_t threatened = board_threatened_squares_get(chess->board, chess->victor);
+            uint8_t king_index = 0;
+            for (uint8_t square_index = 0; square_index < 64; square_index++) {
+                Piece piece = board_piece_get_index(chess->board, square_index);
+                if (piece.type == KING && piece.team == current_team) {
+                    king_index = square_index;
+                    break;
+                }
+            }
+
+            chess->result = (threatened >> king_index) & 1 ? RESULT_CHECKMATE : RESULT_STALEMATE;
+        }
     }
 
     audio_write(&chess->audio, (chess->input.flags & INPUT_FLAG_UP) ? 2 : 1);
@@ -684,7 +696,7 @@ UPDATE_FUNCTION(update)
     chess->input_prev = chess->input;
 }
 
-Color color_background = {0x24, 0x29, 0x25};
+Color color_background = {0x27, 0x20, 0x16};
 
 // Color light_squares = {0xde, 0xe2, 0xde};
 // Color dark_squares = {0x39, 0x41, 0x3a};
@@ -792,6 +804,23 @@ RENDER_FUNCTION(render)
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (chess->result) {
+        for (pos.y = 0; pos.y < SQUARE_SIDE_LENGTH * 2; pos.y++) {
+            for (pos.x = 0; pos.x < SQUARE_SIDE_LENGTH * 4; pos.x++) {
+                int32_t result_offset = 0;
+                if (chess->result == RESULT_CHECKMATE) {
+                    result_offset = (chess->board.flags & BOARD_FLAG_CURRENT_PLAYER ? 1 : 2)
+                            * SQUARE_SIDE_LENGTH * 2;
+                }
+                JkIntVector2 screen_pos = jk_int_vector_2_add(
+                        jk_int_vector_2_add(screen_board_origin_get(&chess->bitmap), pos),
+                        (JkIntVector2){SQUARE_SIDE_LENGTH * 2, SQUARE_SIDE_LENGTH * 3});
+                chess->bitmap.memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
+                        chess->atlas[(pos.y + result_offset) * SQUARE_SIDE_LENGTH * 4 + pos.x];
             }
         }
     }

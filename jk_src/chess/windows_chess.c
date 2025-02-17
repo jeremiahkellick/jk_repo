@@ -27,6 +27,15 @@ typedef struct AudioBufferRegion {
     void *data;
 } AudioBufferRegion;
 
+#pragma pack(push, 1)
+typedef struct BitmapHeader {
+    uint16_t identifier;
+    uint32_t size;
+    uint32_t reserved;
+    uint32_t offset;
+} BitmapHeader;
+#pragma pack(pop)
+
 typedef enum Key {
     KEY_UP,
     KEY_DOWN,
@@ -278,11 +287,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_chess.audio.sample_buffer = memory->audio;
     global_chess.bitmap.memory = (Color *)memory->video;
 
+    // Load image data
     JkPlatformArena storage;
     if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
         JkBuffer image_file = jk_platform_file_read_full("chess_tilemap.bmp", &storage);
         if (image_file.size) {
-            uint32_t *colors = (uint32_t *)(image_file.data + 0x46);
+            BitmapHeader *header = (BitmapHeader *)image_file.data;
+            uint32_t *colors = (uint32_t *)(image_file.data + header->offset);
             for (int32_t y = 0; y < SQUARE_SIDE_LENGTH * 6; y++) {
                 int32_t tilemap_y = SQUARE_SIDE_LENGTH * 6 - y - 1;
                 for (int32_t x = 0; x < SQUARE_SIDE_LENGTH; x += 8) {
@@ -298,6 +309,18 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         } else {
             OutputDebugStringA("Failed to load king.bmp\n");
         }
+
+        JkBuffer atlas_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
+        if (atlas_file.size) {
+            BitmapHeader *header = (BitmapHeader *)atlas_file.data;
+            for (uint64_t y = 0; y < ATLAS_HEIGHT; y++) {
+                uint64_t atlas_y = ATLAS_HEIGHT - y - 1;
+                memcpy(global_chess.atlas + ATLAS_WIDTH * y,
+                        (Color *)(atlas_file.data + header->offset) + ATLAS_WIDTH * atlas_y,
+                        ATLAS_WIDTH * sizeof(Color));
+            }
+        }
+
         jk_platform_arena_terminate(&storage);
     }
 

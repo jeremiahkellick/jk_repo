@@ -109,6 +109,20 @@ typedef enum FlagIndex {
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
 #define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
 
+#define ATLAS_WIDTH (SQUARE_SIDE_LENGTH * 4llu)
+#define ATLAS_HEIGHT (SQUARE_SIDE_LENGTH * 2llu * 3)
+
+typedef enum Result {
+    RESULT_NONE,
+    RESULT_STALEMATE,
+    RESULT_CHECKMATE,
+} Result;
+
+typedef enum Team {
+    WHITE,
+    BLACK,
+} Team;
+
 typedef struct Chess {
     uint64_t flags;
     JkIntVector2 selected_square;
@@ -119,7 +133,10 @@ typedef struct Chess {
     uint64_t time;
     Board board;
     uint8_t tilemap[SQUARE_SIDE_LENGTH * SQUARE_SIDE_LENGTH * 6];
+    Color atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
     MoveArray moves;
+    Result result;
+    Team victor;
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)
