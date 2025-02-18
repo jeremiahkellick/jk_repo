@@ -223,7 +223,7 @@ static uint64_t board_flag_rook_moved_get(Team team, uint8_t is_right)
 }
 
 static uint64_t threats_in_direction_until_stopped(
-        Board board, Team team, JkIntVector2 src, JkIntVector2 direction)
+        Board board, JkIntVector2 src, JkIntVector2 direction)
 {
     uint64_t result = 0;
     JkIntVector2 dest = src;
@@ -265,22 +265,19 @@ static uint64_t board_threatened_squares_get(Board board, Team team)
 
                 case QUEEN: {
                     for (int32_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
-                        result |= threats_in_direction_until_stopped(
-                                board, team, src, all_directions[i]);
+                        result |= threats_in_direction_until_stopped(board, src, all_directions[i]);
                     }
                 } break;
 
                 case ROOK: {
                     for (int32_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
-                        result |=
-                                threats_in_direction_until_stopped(board, team, src, straights[i]);
+                        result |= threats_in_direction_until_stopped(board, src, straights[i]);
                     }
                 } break;
 
                 case BISHOP: {
                     for (int32_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
-                        result |=
-                                threats_in_direction_until_stopped(board, team, src, diagonals[i]);
+                        result |= threats_in_direction_until_stopped(board, src, diagonals[i]);
                     }
                 } break;
 
@@ -527,7 +524,7 @@ static void moves_remove_if_leaves_king_in_check(MoveArray *moves, Board board, 
     }
 }
 
-static void audio_write(Audio *audio, int32_t pitch_multiplier)
+static void audio_write(Audio *audio)
 {
     for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
         for (int channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
@@ -689,7 +686,7 @@ UPDATE_FUNCTION(update)
         }
     }
 
-    audio_write(&chess->audio, (chess->input.flags & INPUT_FLAG_UP) ? 2 : 1);
+    audio_write(&chess->audio);
 
     chess->time++;
 
@@ -715,6 +712,26 @@ Color color_black_pieces = {0xff, 0x73, 0xa2};
 static Color blend(Color a, Color b)
 {
     return (Color){.r = a.r / 2 + b.r / 2, .g = a.g / 2 + b.g / 2, .b = a.b / 2 + b.b / 2};
+}
+
+static Color blend_alpha(Color foreground, Color background, uint8_t alpha)
+{
+    Color result = {0, 0, 0, 255};
+    for (uint8_t i = 0; i < 3; i++) {
+        result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
+                              + background.v[i] * (255 - (int32_t)alpha))
+                / 255;
+    }
+    return result;
+}
+
+static uint8_t atlas_piece_get_alpha(uint8_t *atlas, PieceType piece_type, JkIntVector2 pos)
+{
+    JK_DEBUG_ASSERT(!(
+            pos.x >= 0 && pos.x < SQUARE_SIDE_LENGTH && pos.y >= 0 && pos.y < SQUARE_SIDE_LENGTH));
+
+    int32_t y_offset = (piece_type - 1) * 112;
+    return atlas[(pos.y + y_offset) * ATLAS_WIDTH + pos.x];
 }
 
 RENDER_FUNCTION(render)
@@ -764,17 +781,12 @@ RENDER_FUNCTION(render)
 
                 Piece piece = board_piece_get(chess->board, board_pos);
                 if (piece.type != NONE) {
-                    int32_t tilemap_y_offset = (piece.type - 1) * 112;
-                    int32_t pixel_index =
-                            SQUARE_SIDE_LENGTH * (square_pos.y + tilemap_y_offset) + square_pos.x;
-                    int32_t byte_index = pixel_index / 8;
-                    uint8_t bit_index = pixel_index % 8;
-                    if ((chess->tilemap[byte_index] >> bit_index) & 1) {
-                        Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
-                        color = index == selected_index && (chess->flags & FLAG_HOLDING_PIECE)
-                                ? blend(color_piece, color)
-                                : color_piece;
+                    Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
+                    uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, square_pos);
+                    if (index == selected_index && (chess->flags & FLAG_HOLDING_PIECE)) {
+                        alpha /= 2;
                     }
+                    color = blend_alpha(color_piece, color, alpha);
                 }
             } else {
                 color = color_background;
@@ -790,18 +802,13 @@ RENDER_FUNCTION(render)
                     (JkIntVector2){SQUARE_SIDE_LENGTH / 2, SQUARE_SIDE_LENGTH / 2});
             for (pos.y = 0; pos.y < SQUARE_SIDE_LENGTH; pos.y++) {
                 for (pos.x = 0; pos.x < SQUARE_SIDE_LENGTH; pos.x++) {
-                    int32_t tilemap_y_offset = (piece.type - 1) * 112;
-                    int32_t pixel_index = SQUARE_SIDE_LENGTH * (pos.y + tilemap_y_offset) + pos.x;
-                    int32_t byte_index = pixel_index / 8;
-                    uint8_t bit_index = pixel_index % 8;
-                    if ((chess->tilemap[byte_index] >> bit_index) & 1) {
-                        Color color = piece.team ? color_black_pieces : color_white_pieces;
-                        JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
-                        if (screen_in_bounds(&chess->bitmap, screen_pos)) {
-                            chess->bitmap
-                                    .memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
-                                    color;
-                        }
+                    JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
+                    if (screen_in_bounds(&chess->bitmap, screen_pos)) {
+                        int32_t index = screen_pos.y * chess->bitmap.width + screen_pos.x;
+                        Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
+                        Color color_bg = chess->bitmap.memory[index];
+                        uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, pos);
+                        chess->bitmap.memory[index] = blend_alpha(color_piece, color_bg, alpha);
                     }
                 }
             }
@@ -819,8 +826,12 @@ RENDER_FUNCTION(render)
                 JkIntVector2 screen_pos = jk_int_vector_2_add(
                         jk_int_vector_2_add(screen_board_origin_get(&chess->bitmap), pos),
                         (JkIntVector2){SQUARE_SIDE_LENGTH * 2, SQUARE_SIDE_LENGTH * 3});
-                chess->bitmap.memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
-                        chess->atlas[(pos.y + result_offset) * SQUARE_SIDE_LENGTH * 4 + pos.x];
+                if (screen_in_bounds(&chess->bitmap, screen_pos)) {
+                    uint8_t alpha = chess->atlas[(pos.y + result_offset) * ATLAS_WIDTH + pos.x
+                            + SQUARE_SIDE_LENGTH];
+                    chess->bitmap.memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
+                            blend_alpha((Color){255, 255, 255}, color_background, alpha);
+                }
             }
         }
     }

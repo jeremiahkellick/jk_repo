@@ -33,10 +33,15 @@ typedef struct Input {
 } Input;
 
 typedef struct Color {
-    uint8_t b;
-    uint8_t g;
-    uint8_t r;
-    uint8_t padding[1];
+    union {
+        struct {
+            uint8_t b;
+            uint8_t g;
+            uint8_t r;
+            uint8_t a;
+        };
+        uint8_t v[4];
+    };
 } Color;
 
 typedef enum AudioChannel {
@@ -109,8 +114,8 @@ typedef enum FlagIndex {
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
 #define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
 
-#define ATLAS_WIDTH (SQUARE_SIDE_LENGTH * 4llu)
-#define ATLAS_HEIGHT (SQUARE_SIDE_LENGTH * 2llu * 3)
+#define ATLAS_WIDTH (SQUARE_SIDE_LENGTH * 5llu)
+#define ATLAS_HEIGHT (SQUARE_SIDE_LENGTH * 6llu)
 
 typedef enum Result {
     RESULT_NONE,
@@ -132,8 +137,7 @@ typedef struct Chess {
     Bitmap bitmap;
     uint64_t time;
     Board board;
-    uint8_t tilemap[SQUARE_SIDE_LENGTH * SQUARE_SIDE_LENGTH * 6];
-    Color atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
+    uint8_t atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
     MoveArray moves;
     Result result;
     Team victor;

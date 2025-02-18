@@ -290,35 +290,18 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     // Load image data
     JkPlatformArena storage;
     if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
-        JkBuffer image_file = jk_platform_file_read_full("chess_tilemap.bmp", &storage);
+        JkBuffer image_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
         if (image_file.size) {
             BitmapHeader *header = (BitmapHeader *)image_file.data;
-            uint32_t *colors = (uint32_t *)(image_file.data + header->offset);
-            for (int32_t y = 0; y < SQUARE_SIDE_LENGTH * 6; y++) {
-                int32_t tilemap_y = SQUARE_SIDE_LENGTH * 6 - y - 1;
-                for (int32_t x = 0; x < SQUARE_SIDE_LENGTH; x += 8) {
-                    uint8_t bits = 0;
-                    for (uint8_t bit_index = 0; bit_index < 8; bit_index++) {
-                        if (colors[SQUARE_SIDE_LENGTH * y + x + bit_index]) {
-                            bits |= 1 << bit_index;
-                        }
-                    }
-                    global_chess.tilemap[(SQUARE_SIDE_LENGTH * tilemap_y + x) / 8] = bits;
+            Color *pixels = (Color *)(image_file.data + header->offset);
+            for (int32_t y = 0; y < ATLAS_HEIGHT; y++) {
+                int32_t atlas_y = ATLAS_HEIGHT - y - 1;
+                for (int32_t x = 0; x < ATLAS_WIDTH; x++) {
+                    global_chess.atlas[atlas_y * ATLAS_WIDTH + x] = pixels[y * ATLAS_WIDTH + x].a;
                 }
             }
         } else {
-            OutputDebugStringA("Failed to load king.bmp\n");
-        }
-
-        JkBuffer atlas_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
-        if (atlas_file.size) {
-            BitmapHeader *header = (BitmapHeader *)atlas_file.data;
-            for (uint64_t y = 0; y < ATLAS_HEIGHT; y++) {
-                uint64_t atlas_y = ATLAS_HEIGHT - y - 1;
-                memcpy(global_chess.atlas + ATLAS_WIDTH * y,
-                        (Color *)(atlas_file.data + header->offset) + ATLAS_WIDTH * atlas_y,
-                        ATLAS_WIDTH * sizeof(Color));
-            }
+            OutputDebugStringA("Failed to load chess_atlas.bmp\n");
         }
 
         jk_platform_arena_terminate(&storage);
