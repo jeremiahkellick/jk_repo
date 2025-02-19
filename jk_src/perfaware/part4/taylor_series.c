@@ -1,3 +1,4 @@
+#include <emmintrin.h>
 #include <math.h>
 
 // #jk_build single_translation_unit
@@ -5,6 +6,12 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/precision_test/precision_test.h>
 // #jk_build dependencies_end
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
 
 #define TERMS_MAX 16
 
@@ -46,9 +53,30 @@ double taylor_sin_horners(double x, int term_index)
     double result = coefficients[term_index];
     double x_squared = x * x;
     while (term_index) {
-        result = coefficients[--term_index] + x_squared * result;
+        result = result * x_squared + coefficients[--term_index];
     }
-    return x * result;
+    return result * x;
+}
+
+double taylor_sin_fma(double x, int term_index)
+{
+    double result = coefficients[term_index];
+    double x_squared = x * x;
+    while (term_index) {
+        result = fma(result, x_squared, coefficients[--term_index]);
+    }
+    return result * x;
+}
+
+double taylor_sin_fma_i(double x, int term_index)
+{
+    __m128d result = _mm_set_sd(coefficients[term_index]);
+    double x_squared = x * x;
+    while (term_index) {
+        result =
+                _mm_fmadd_sd(result, _mm_set_sd(x_squared), _mm_set_sd(coefficients[--term_index]));
+    }
+    return _mm_cvtsd_f64(result) * x;
 }
 
 int main(void)
@@ -66,6 +94,16 @@ int main(void)
                     reference,
                     taylor_sin_horners(test.input, i),
                     "taylor_sin_horners deg %d",
+                    2 * i + 1);
+            jk_precision_test_result(&test,
+                    reference,
+                    taylor_sin_fma(test.input, i),
+                    "taylor_sin_fma deg %d",
+                    2 * i + 1);
+            jk_precision_test_result(&test,
+                    reference,
+                    taylor_sin_fma_i(test.input, i),
+                    "taylor_sin_fma_i deg %d",
                     2 * i + 1);
         }
     }
