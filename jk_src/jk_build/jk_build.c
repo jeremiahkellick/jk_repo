@@ -863,7 +863,7 @@ int main(int argc, char **argv)
         array_append(&command, "-g");
 
         size_t basename_length = strlen(basename);
-        if (basename[basename_length = 1] != 'm') { // If this is not an Objective-C file
+        if (basename[basename_length - 1] != 'm') { // If this is not an Objective-C file
             array_append(&command, "-std=c11");
         }
 

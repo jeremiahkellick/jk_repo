@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdlib.h>
 
 // #jk_build single_translation_unit
@@ -90,7 +91,7 @@ int main(int argc, char **argv)
     }
     JK_PLATFORM_PROFILE_ZONE_END(sum);
 
-    printf("Pair count: %zu\n", context.pair_count);
+    printf("Pair count: %llu\n", context.pair_count);
     printf("Haversine sum: %.16f\n", sum);
 
     if (context.answers) {
