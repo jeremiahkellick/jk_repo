@@ -725,13 +725,13 @@ static Color blend_alpha(Color foreground, Color background, uint8_t alpha)
     return result;
 }
 
-static uint8_t atlas_piece_get_alpha(uint8_t *atlas, PieceType piece_type, JkIntVector2 pos)
+static uint8_t atlas_piece_get_alpha(Chess *chess, PieceType piece_type, JkIntVector2 pos)
 {
     JK_DEBUG_ASSERT(!(
             pos.x >= 0 && pos.x < SQUARE_SIDE_LENGTH && pos.y >= 0 && pos.y < SQUARE_SIDE_LENGTH));
 
     int32_t y_offset = (piece_type - 1) * 112;
-    return atlas[(pos.y + y_offset) * ATLAS_WIDTH + pos.x];
+    return chess->atlas[(pos.y + y_offset) * chess->atlas_width + pos.x];
 }
 
 RENDER_FUNCTION(render)
@@ -782,7 +782,7 @@ RENDER_FUNCTION(render)
                 Piece piece = board_piece_get(chess->board, board_pos);
                 if (piece.type != NONE) {
                     Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
-                    uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, square_pos);
+                    uint8_t alpha = atlas_piece_get_alpha(chess, piece.type, square_pos);
                     if (index == selected_index && (chess->flags & FLAG_HOLDING_PIECE)) {
                         alpha /= 2;
                     }
@@ -807,7 +807,7 @@ RENDER_FUNCTION(render)
                         int32_t index = screen_pos.y * chess->bitmap.width + screen_pos.x;
                         Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
                         Color color_bg = chess->bitmap.memory[index];
-                        uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, pos);
+                        uint8_t alpha = atlas_piece_get_alpha(chess, piece.type, pos);
                         chess->bitmap.memory[index] = blend_alpha(color_piece, color_bg, alpha);
                     }
                 }
@@ -827,8 +827,8 @@ RENDER_FUNCTION(render)
                         jk_int_vector_2_add(screen_board_origin_get(&chess->bitmap), pos),
                         (JkIntVector2){SQUARE_SIDE_LENGTH * 2, SQUARE_SIDE_LENGTH * 3});
                 if (screen_in_bounds(&chess->bitmap, screen_pos)) {
-                    uint8_t alpha = chess->atlas[(pos.y + result_offset) * ATLAS_WIDTH + pos.x
-                            + SQUARE_SIDE_LENGTH];
+                    uint8_t alpha = chess->atlas[(pos.y + result_offset) * chess->atlas_width
+                            + pos.x + SQUARE_SIDE_LENGTH];
                     chess->bitmap.memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
                             blend_alpha((Color){255, 255, 255}, color_background, alpha);
                 }

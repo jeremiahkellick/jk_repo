@@ -1,3 +1,5 @@
+#include "chess_atlas.c"
+
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
 #include <dsound.h>
@@ -26,15 +28,6 @@ typedef struct AudioBufferRegion {
     DWORD size;
     void *data;
 } AudioBufferRegion;
-
-#pragma pack(push, 1)
-typedef struct BitmapHeader {
-    uint16_t identifier;
-    uint32_t size;
-    uint32_t reserved;
-    uint32_t offset;
-} BitmapHeader;
-#pragma pack(pop)
 
 typedef enum Key {
     KEY_UP,
@@ -286,26 +279,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
     global_chess.audio.sample_buffer = memory->audio;
     global_chess.bitmap.memory = (Color *)memory->video;
-
-    // Load image data
-    JkPlatformArena storage;
-    if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
-        JkBuffer image_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
-        if (image_file.size) {
-            BitmapHeader *header = (BitmapHeader *)image_file.data;
-            Color *pixels = (Color *)(image_file.data + header->offset);
-            for (int32_t y = 0; y < ATLAS_HEIGHT; y++) {
-                int32_t atlas_y = ATLAS_HEIGHT - y - 1;
-                for (int32_t x = 0; x < ATLAS_WIDTH; x++) {
-                    global_chess.atlas[atlas_y * ATLAS_WIDTH + x] = pixels[y * ATLAS_WIDTH + x].a;
-                }
-            }
-        } else {
-            OutputDebugStringA("Failed to load chess_atlas.bmp\n");
-        }
-
-        jk_platform_arena_terminate(&storage);
-    }
+    global_chess.atlas_width = CHESS_ATLAS_WIDTH;
+    global_chess.atlas_height = CHESS_ATLAS_HEIGHT;
+    global_chess.atlas = chess_atlas;
 
     if (global_chess.bitmap.memory) {
         WNDCLASSA window_class = {

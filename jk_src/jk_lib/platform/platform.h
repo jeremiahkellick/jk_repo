@@ -122,6 +122,24 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void);
 
 // ---- Compiler functions end -------------------------------------------------
 
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct BitmapHeader {
+#else
+typedef struct __attribute__((packed)) BitmapHeader {
+#endif
+    uint16_t identifier;
+    uint32_t size;
+    uint32_t reserved;
+    uint32_t offset;
+    uint32_t info_header_size;
+    uint32_t width;
+    uint32_t height;
+} BitmapHeader;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
 // ---- Arena begin ------------------------------------------------------------
 
 typedef struct JkPlatformArena {
