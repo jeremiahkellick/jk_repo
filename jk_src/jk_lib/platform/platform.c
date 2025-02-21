@@ -1,3 +1,5 @@
+#include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 
 // #jk_build dependencies_begin

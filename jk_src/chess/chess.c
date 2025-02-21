@@ -255,7 +255,7 @@ static uint64_t board_threatened_squares_get(Board board, Team team)
                 } break;
 
                 case KING: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
                         if (board_in_bounds(dest)) {
                             result |= 1llu << board_index_get(dest);
@@ -264,25 +264,25 @@ static uint64_t board_threatened_squares_get(Board board, Team team)
                 } break;
 
                 case QUEEN: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         result |= threats_in_direction_until_stopped(board, src, all_directions[i]);
                     }
                 } break;
 
                 case ROOK: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
                         result |= threats_in_direction_until_stopped(board, src, straights[i]);
                     }
                 } break;
 
                 case BISHOP: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
                         result |= threats_in_direction_until_stopped(board, src, diagonals[i]);
                     }
                 } break;
 
                 case KNIGHT: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
                         if (board_in_bounds(dest)) {
                             result |= 1llu << board_index_get(dest);
@@ -369,7 +369,7 @@ static void moves_get(MoveArray *moves, Board board, Team current_team)
                 } break;
 
                 case KING: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
                         if (square_available(board, current_team, dest)) {
                             moves_append(moves, src, dest);
@@ -413,28 +413,28 @@ static void moves_get(MoveArray *moves, Board board, Team current_team)
                 } break;
 
                 case QUEEN: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         moves_append_in_direction_until_stopped(
                                 moves, board, current_team, src, all_directions[i]);
                     }
                 } break;
 
                 case ROOK: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
                         moves_append_in_direction_until_stopped(
                                 moves, board, current_team, src, straights[i]);
                     }
                 } break;
 
                 case BISHOP: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
                         moves_append_in_direction_until_stopped(
                                 moves, board, current_team, src, diagonals[i]);
                     }
                 } break;
 
                 case KNIGHT: {
-                    for (int32_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
+                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
                         if (square_available(board, current_team, dest)) {
                             moves_append(moves, src, dest);

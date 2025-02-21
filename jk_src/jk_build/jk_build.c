@@ -753,6 +753,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    size_t source_file_path_length = strlen(source_file_path);
+    uint8_t is_objective_c_file = source_file_path[source_file_path_length - 1] == 'm';
+
     StringArray dependencies = {0};
     StringArray nasm_files = {0};
     StringArray compiler_arguments = {0};
@@ -862,11 +865,6 @@ int main(int argc, char **argv)
         array_append(&command, "-Wall");
         array_append(&command, "-g");
 
-        size_t basename_length = strlen(basename);
-        if (basename[basename_length - 1] != 'm') { // If this is not an Objective-C file
-            array_append(&command, "-std=c11");
-        }
-
         if (!single_translation_unit) {
             array_append(&command, "-D", "JK_PUBLIC=");
         }
@@ -882,8 +880,16 @@ int main(int argc, char **argv)
     case COMPILER_CLANG: {
         array_append(&command, "clang");
         array_append(&command, "-o", basename);
-        array_append(&command, "-Wall", "-Wextra", "-Wpedantic");
+        array_append(&command,
+                "-Wall",
+                "-Wextra",
+                "-Wpedantic",
+                "-Wno-missing-braces",
+                "-Wno-missing-field-initializers");
         array_append(&command, "-g");
+        if (!is_objective_c_file) {
+            array_append(&command, "-std=c11");
+        }
         if (single_translation_unit) {
             array_append(&command, "-Wno-unused-function");
         } else {
@@ -923,8 +929,7 @@ int main(int argc, char **argv)
             memcpy(jk_src, JK_GEN_STRING_LITERAL, sizeof(JK_GEN_STRING_LITERAL) - 1);
 
             uint64_t length = strlen(source_file_path);
-            char extension[] = "stu.c";
-            memcpy(stu_file_path + length - 1, extension, sizeof(extension));
+            memcpy(stu_file_path + length - 1, is_objective_c_file ? "stu.m" : "stu.c", 5);
         }
 
         // Get the directory
