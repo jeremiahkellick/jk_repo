@@ -222,6 +222,11 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return result;
 }
 
+static void debug_print(char *string)
+{
+    OutputDebugStringA(string);
+}
+
 typedef enum RecordState {
     RECORD_STATE_NONE,
     RECORD_STATE_RECORDING,
@@ -286,6 +291,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
     global_chess.audio.sample_buffer = memory->audio;
     global_chess.bitmap.memory = (Color *)memory->video;
+    global_chess.debug_print = debug_print;
 
     // Load image data
     JkPlatformArena storage;

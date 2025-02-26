@@ -141,6 +141,7 @@ typedef struct Chess {
     MoveArray moves;
     Result result;
     Team victor;
+    void (*debug_print)(char *);
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)

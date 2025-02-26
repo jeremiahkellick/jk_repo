@@ -21,6 +21,7 @@ typedef enum PieceType {
     BISHOP,
     KNIGHT,
     PAWN,
+    PIECE_TYPE_COUNT,
 } PieceType;
 
 typedef enum Column {
@@ -256,7 +257,8 @@ static uint64_t board_threatened_squares_get(Board board, Team threatened_by)
             Piece piece = board_piece_get(board, src);
             if (piece.team == threatened_by) {
                 switch (piece.type) {
-                case NONE: {
+                case NONE:
+                case PIECE_TYPE_COUNT: {
                 } break;
 
                 case KING: {
@@ -374,7 +376,8 @@ static void moves_get(MoveArray *moves, Board board)
             Piece piece = board_piece_get(board, src);
             if (piece.team == current_team) {
                 switch (piece.type) {
-                case NONE: {
+                case NONE:
+                case PIECE_TYPE_COUNT: {
                 } break;
 
                 case KING: {
@@ -505,10 +508,8 @@ static void moves_get(MoveArray *moves, Board board)
             }
         }
     }
-}
 
-static void moves_remove_if_leaves_king_in_check(MoveArray *moves, Board board)
-{
+    // Remove moves that leave king in check
     uint8_t move_index = 0;
     while (move_index < moves->count) {
         Board hypothetical = board_move_perform(board, moves->data[move_index]);
@@ -516,19 +517,96 @@ static void moves_remove_if_leaves_king_in_check(MoveArray *moves, Board board)
         uint8_t king_index = 0;
         for (uint8_t square_index = 0; square_index < 64; square_index++) {
             Piece piece = board_piece_get_index(hypothetical, square_index);
-            if (piece.type == KING && piece.team == board_current_team_get(board)) {
+            if (piece.type == KING && piece.team == current_team) {
                 king_index = square_index;
             }
         }
 
-        uint64_t threatened =
-                board_threatened_squares_get(hypothetical, board_current_team_get(hypothetical));
+        uint64_t threatened = board_threatened_squares_get(hypothetical, !current_team);
         if (threatened & (1llu << king_index)) {
             moves->data[move_index] = moves->data[--moves->count];
         } else {
             move_index++;
         }
     }
+}
+
+#define MAX_DEPTH 3
+static int32_t team_multiplier[2] = {1, -1};
+static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
+
+static int32_t board_score(Board board)
+{
+    Team current_team = board_current_team_get(board);
+    int32_t score = 0;
+    uint8_t king_index = UINT8_MAX;
+    for (uint8_t i = 0; i < 64; i++) {
+        Piece piece = board_piece_get_index(board, i);
+        score += team_multiplier[piece.team] * piece_value[piece.type];
+        if (piece.type == KING && piece.team == current_team) {
+            king_index = i;
+        }
+    }
+
+    JK_ASSERT(king_index < 64);
+    MoveArray moves = {0};
+    moves_get(&moves, board);
+
+    if (!moves.count) {
+        uint64_t threatened = board_threatened_squares_get(board, !current_team);
+        if ((threatened >> king_index) & 1) {
+            score -= team_multiplier[current_team] * 1000;
+        }
+    }
+
+    return score;
+}
+
+int32_t ai_score_get(Board board, int32_t depth)
+{
+    if (!(depth < MAX_DEPTH)) {
+        return board_score(board);
+    }
+
+    MoveArray moves;
+    moves_get(&moves, board);
+
+    if (moves.count) {
+        int32_t max_score = INT32_MIN;
+        Move best_move;
+        for (int32_t i = 0; i < moves.count; i++) {
+            int32_t score = team_multiplier[board_current_team_get(board)]
+                    * ai_score_get(board_move_perform(board, moves.data[i]), depth + 1);
+            if (max_score < score) {
+                max_score = score;
+                best_move = moves.data[i];
+            }
+        }
+
+        return team_multiplier[board_current_team_get(board)] * max_score;
+    } else {
+        return board_score(board);
+    }
+}
+
+Move ai_move_get(Board board)
+{
+    MoveArray moves;
+    moves_get(&moves, board);
+    JK_ASSERT(moves.count);
+
+    int32_t max_score = INT32_MIN;
+    Move best_move = {0};
+    for (int32_t i = 0; i < moves.count; i++) {
+        int32_t score = team_multiplier[board_current_team_get(board)]
+                * ai_score_get(board_move_perform(board, moves.data[i]), 0);
+        if (max_score < score) {
+            max_score = score;
+            best_move = moves.data[i];
+        }
+    }
+
+    return best_move;
 }
 
 static void audio_write(Audio *audio)
@@ -620,7 +698,6 @@ UPDATE_FUNCTION(update)
         chess->result = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board);
-        moves_remove_if_leaves_king_in_check(&chess->moves, chess->board);
 
         JK_DEBUG_ASSERT(board_flag_king_moved_get(WHITE) == BOARD_FLAG_WHITE_KING_MOVED);
         JK_DEBUG_ASSERT(board_flag_king_moved_get(BLACK) == BOARD_FLAG_BLACK_KING_MOVED);
@@ -670,11 +747,11 @@ UPDATE_FUNCTION(update)
         chess->board = board_move_perform(chess->board,
                 (Move){.src = board_index_get(chess->selected_square),
                     .dest = (uint8_t)piece_drop_index});
+        chess->board = board_move_perform(chess->board, ai_move_get(chess->board));
 
         chess->selected_square = (JkIntVector2){-1, -1};
         Team current_team = board_current_team_get(chess->board);
         moves_get(&chess->moves, chess->board);
-        moves_remove_if_leaves_king_in_check(&chess->moves, chess->board);
 
         if (!chess->moves.count) {
             chess->victor = !current_team;
