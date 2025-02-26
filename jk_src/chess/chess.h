@@ -141,6 +141,10 @@ typedef struct Chess {
     MoveArray moves;
     Result result;
     Team victor;
+    JkBuffer move_pool_memory;
+    void (*debug_print)(char *string);
+    uint64_t (*cpu_time)(void);
+    uint64_t cpu_frequency;
 } Chess;
 
 #define UPDATE_FUNCTION(name) void name(Chess *chess)

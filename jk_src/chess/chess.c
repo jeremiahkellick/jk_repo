@@ -1,6 +1,7 @@
 #include "chess.h"
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // #jk_build compiler_arguments /LD
@@ -524,6 +525,89 @@ static void moves_remove_if_leaves_king_in_check(MoveArray *moves, Board board, 
     }
 }
 
+// ---- AI begin ---------------------------------------------------------------
+
+#define MAX_DEPTH 5
+
+typedef struct MoveNode {
+    Move move;
+    struct MoveNode *next_sibling;
+    struct MoveNode *first_child;
+} MoveNode;
+
+typedef struct MovePool {
+    uint64_t max_count;
+    uint64_t free_count;
+    uint64_t allocated_count;
+    MoveNode **free_pointers;
+    MoveNode *allocated;
+} MovePool;
+
+void move_pool_init(MovePool *pool, JkBuffer memory)
+{
+    uint64_t bytes_for_free_pointers =
+            memory.size * sizeof(MoveNode *) / (sizeof(MoveNode) + sizeof(MoveNode *));
+
+    pool->max_count = bytes_for_free_pointers / sizeof(MoveNode *);
+    pool->free_count = 0;
+    pool->allocated_count = 0;
+    pool->free_pointers = (MoveNode **)memory.data;
+    pool->allocated = (MoveNode *)(memory.data + pool->max_count * sizeof(MoveNode *));
+}
+
+MoveNode *move_pool_alloc(MovePool *pool)
+{
+    MoveNode *result;
+    if (pool->free_count) {
+        result = pool->free_pointers[--pool->free_count];
+    } else {
+        JK_ASSERT(pool->allocated_count < pool->max_count);
+        result = pool->allocated + pool->allocated_count++;
+    }
+    *result = (MoveNode){0};
+    return result;
+}
+
+void move_pool_free(MovePool *pool, MoveNode *node)
+{
+    JK_DEBUG_ASSERT(pool->free_count < pool->max_count);
+    pool->free_pointers[pool->free_count++] = node;
+}
+
+MovePool move_pool;
+MoveArray moves_tmp;
+
+void explore_tree(Board board, MoveNode *node, uint64_t depth, Team current_team)
+{
+    if (!(depth < MAX_DEPTH)) {
+        return;
+    }
+
+    moves_get(&moves_tmp, board, current_team);
+    MoveNode *current_child = 0;
+    for (int i = 0; i < moves_tmp.count; i++) {
+        if (current_child) {
+            MoveNode *next_child = move_pool_alloc(&move_pool);
+            current_child->next_sibling = next_child;
+            current_child = next_child;
+        } else {
+            current_child = move_pool_alloc(&move_pool);
+            node->first_child = current_child;
+        }
+        current_child->move = moves_tmp.data[i];
+    }
+
+    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+        Board child_board = board;
+        board_move_perform(&child_board, child->move);
+        explore_tree(child_board, child, depth + 1, !current_team);
+    }
+
+    return;
+}
+
+// ---- AI end -----------------------------------------------------------------
+
 static void audio_write(Audio *audio)
 {
     for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
@@ -600,6 +684,28 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
+char string_buf[512];
+void print_move_tree(void (*debug_print)(char *), MoveNode *node, uint64_t depth)
+{
+    JkIntVector2 dest = board_index_to_vector_2(node->move.dest);
+    JkIntVector2 src = board_index_to_vector_2(node->move.src);
+    snprintf(string_buf,
+            sizeof(string_buf),
+            "%c%c <- %c%c\n",
+            'a' + dest.x,
+            '1' + dest.y,
+            'a' + src.x,
+            '1' + src.y);
+    for (int i = 0; i < depth; i++) {
+        debug_print("  ");
+    }
+    debug_print(string_buf);
+
+    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+        print_move_tree(debug_print, child, depth + 1);
+    }
+}
+
 UPDATE_FUNCTION(update)
 {
     // Debug reset
@@ -621,6 +727,25 @@ UPDATE_FUNCTION(update)
         JK_DEBUG_ASSERT(board_flag_rook_moved_get(WHITE, 1) == BOARD_FLAG_H1_ROOK_MOVED);
         JK_DEBUG_ASSERT(board_flag_rook_moved_get(BLACK, 0) == BOARD_FLAG_A8_ROOK_MOVED);
         JK_DEBUG_ASSERT(board_flag_rook_moved_get(BLACK, 1) == BOARD_FLAG_H8_ROOK_MOVED);
+
+        move_pool_init(&move_pool, chess->move_pool_memory);
+        MoveNode root = {0};
+
+        uint64_t time_start = chess->cpu_time();
+        explore_tree(chess->board, &root, 0, WHITE);
+        snprintf(string_buf,
+                sizeof(string_buf),
+                "%.0fms\n",
+                (double)(chess->cpu_time() - time_start) / (double)chess->cpu_frequency * 1000.0);
+        chess->debug_print(string_buf);
+
+        /*
+        MoveNode *node = root.first_child;
+        for (int i = 0; i < 2; i++) {
+            print_move_tree(chess->debug_print, node, 0);
+            node = node->next_sibling;
+        }
+        */
     }
 
     if (button_pressed(chess, INPUT_FLAG_CANCEL)) {

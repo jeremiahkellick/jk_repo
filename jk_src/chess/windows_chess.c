@@ -2,6 +2,7 @@
 
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
+#include <stdalign.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <windows.h>
@@ -69,8 +70,8 @@ typedef enum Key {
 #define AUDIO_DELAY_MS 30
 
 typedef struct Memory {
-    AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
-    uint8_t video[512llu * 1024 * 1024];
+    alignas(64) AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
+    alignas(64) uint8_t video[1llu << 29];
 } Memory;
 
 static Chess global_chess = {0};
@@ -234,6 +235,11 @@ static uint64_t recorded_inputs_count;
 static Input recorded_inputs[1024];
 static Chess recorded_game_state;
 
+void debug_print(char *string)
+{
+    OutputDebugStringA(string);
+}
+
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
     // Set working directory to the directory containing the executable
@@ -284,8 +290,16 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     }
 
     Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
+    JK_ASSERT(memory);
     global_chess.audio.sample_buffer = memory->audio;
     global_chess.bitmap.memory = (Color *)memory->video;
+    global_chess.move_pool_memory.size = 8llu << 30;
+    global_chess.move_pool_memory.data =
+            VirtualAlloc(0, global_chess.move_pool_memory.size, MEM_COMMIT, PAGE_READWRITE);
+    JK_ASSERT(global_chess.move_pool_memory.data);
+    global_chess.debug_print = debug_print;
+    global_chess.cpu_time = jk_platform_cpu_timer_get;
+    global_chess.cpu_frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     // Load image data
     JkPlatformArena storage;
