@@ -162,6 +162,13 @@ static JkIntVector2 pawn_attacks[2][2] = {
     },
 };
 
+static PieceType promo_order[] = {
+    QUEEN,
+    KNIGHT,
+    ROOK,
+    BISHOP,
+};
+
 static b32 square_available(Board board, JkIntVector2 square)
 {
     if (board_in_bounds(square)) {
@@ -712,6 +719,7 @@ UPDATE_FUNCTION(update)
     if (!(chess->flags & FLAG_INITIALIZED)) {
         chess->flags = FLAG_INITIALIZED;
         chess->selected_square = (JkIntVector2){-1, -1};
+        chess->promo_square = (JkIntVector2){-1, -1};
         chess->result = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board);
@@ -726,67 +734,96 @@ UPDATE_FUNCTION(update)
 
     if (button_pressed(chess, INPUT_FLAG_CANCEL)) {
         chess->selected_square = (JkIntVector2){-1, -1};
+        chess->promo_square = (JkIntVector2){-1, -1};
     }
 
-    uint64_t available_destinations =
-            destinations_get_by_src(chess, board_index_get_unbounded(chess->selected_square));
+    // Start at an invalid value. If move.src remains at an invalid value, we should ignore it.
+    // If move.src becomes valid, we should perform the move.
+    Move move = {.src = UINT8_MAX};
+
     JkIntVector2 mouse_pos = screen_to_board_pos(&chess->bitmap, chess->input.mouse_pos);
-    uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
-    b32 mouse_on_destination = mouse_index < 64 && (available_destinations & (1llu << mouse_index));
-    uint8_t piece_drop_index = UINT8_MAX;
 
-    if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
-        chess->flags |= FLAG_HOLDING_PIECE;
+    if (board_in_bounds(chess->promo_square)) {
+        int32_t dist_from_promo_square = absolute_value(mouse_pos.y - chess->promo_square.y);
+        if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
+            if (mouse_pos.x == chess->promo_square.x
+                    && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                move.src = board_index_get(chess->selected_square);
+                move.dest = board_index_get(chess->promo_square);
+                move.piece.team = board_current_team_get(chess->board);
+                move.piece.type = promo_order[dist_from_promo_square];
+            } else {
+                chess->selected_square = (JkIntVector2){-1, -1};
+                chess->promo_square = (JkIntVector2){-1, -1};
+            }
+        }
+    } else {
+        uint64_t available_destinations =
+                destinations_get_by_src(chess, board_index_get_unbounded(chess->selected_square));
+        uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
+        b32 mouse_on_destination =
+                mouse_index < 64 && (available_destinations & (1llu << mouse_index));
+        uint8_t piece_drop_index = UINT8_MAX;
 
-        if (mouse_on_destination) {
-            piece_drop_index = mouse_index;
-        } else {
-            chess->selected_square = (JkIntVector2){-1, -1};
-            for (uint8_t i = 0; i < chess->moves.count; i++) {
-                Move move = move_unpack(chess->moves.data[i]);
-                if (move.src == mouse_index) {
-                    chess->selected_square = mouse_pos;
+        if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
+            if (mouse_on_destination) {
+                piece_drop_index = mouse_index;
+            } else {
+                chess->selected_square = (JkIntVector2){-1, -1};
+                for (uint8_t i = 0; i < chess->moves.count; i++) {
+                    Move available_move = move_unpack(chess->moves.data[i]);
+                    if (available_move.src == mouse_index) {
+                        chess->flags |= FLAG_HOLDING_PIECE;
+                        chess->selected_square = mouse_pos;
+                    }
                 }
             }
         }
-    }
 
-    if (!(chess->input.flags & INPUT_FLAG_CONFIRM)) {
-        if (chess->flags & FLAG_HOLDING_PIECE) {
+        if (!(chess->input.flags & INPUT_FLAG_CONFIRM) && (chess->flags & FLAG_HOLDING_PIECE)) {
             chess->flags &= ~FLAG_HOLDING_PIECE;
 
             if (mouse_on_destination) {
                 piece_drop_index = mouse_index;
             }
         }
+
+        if (piece_drop_index < 64) {
+            move.src = board_index_get(chess->selected_square);
+            move.dest = (uint8_t)piece_drop_index;
+            move.piece = board_piece_get_index(chess->board, move.src);
+        }
     }
 
-    if (piece_drop_index < 64) { // Make a move
-        Move move;
-        move.src = board_index_get(chess->selected_square);
-        move.dest = (uint8_t)piece_drop_index;
-        move.piece = board_piece_get_index(chess->board, move.src);
-        chess->board = board_move_perform(chess->board, move_pack(move));
-        // chess->board = board_move_perform(chess->board, ai_move_get(chess->board));
+    if (move.src < 64) {
+        JkIntVector2 dest = board_index_to_vector_2(move.dest);
+        if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
+            chess->promo_square = dest;
+        } else { // Make a move
+            chess->board = board_move_perform(chess->board, move_pack(move));
+            // chess->board = board_move_perform(chess->board, ai_move_get(chess->board));
 
-        chess->selected_square = (JkIntVector2){-1, -1};
-        Team current_team = board_current_team_get(chess->board);
-        moves_get(&chess->moves, chess->board);
+            chess->selected_square = (JkIntVector2){-1, -1};
+            chess->promo_square = (JkIntVector2){-1, -1};
+            Team current_team = board_current_team_get(chess->board);
+            moves_get(&chess->moves, chess->board);
 
-        if (!chess->moves.count) {
-            chess->victor = !current_team;
+            if (!chess->moves.count) {
+                chess->victor = !current_team;
 
-            uint64_t threatened = board_threatened_squares_get(chess->board, chess->victor);
-            uint8_t king_index = 0;
-            for (uint8_t square_index = 0; square_index < 64; square_index++) {
-                Piece piece = board_piece_get_index(chess->board, square_index);
-                if (piece.type == KING && piece.team == current_team) {
-                    king_index = square_index;
-                    break;
+                uint64_t threatened = board_threatened_squares_get(chess->board, chess->victor);
+                uint8_t king_index = 0;
+                for (uint8_t square_index = 0; square_index < 64; square_index++) {
+                    Piece piece = board_piece_get_index(chess->board, square_index);
+                    if (piece.type == KING && piece.team == current_team) {
+                        king_index = square_index;
+                        break;
+                    }
                 }
-            }
 
-            chess->result = (threatened >> king_index) & 1 ? RESULT_CHECKMATE : RESULT_STALEMATE;
+                chess->result =
+                        (threatened >> king_index) & 1 ? RESULT_CHECKMATE : RESULT_STALEMATE;
+            }
         }
     }
 
@@ -845,6 +882,7 @@ RENDER_FUNCTION(render)
     uint64_t destinations = destinations_get_by_src(chess, selected_index);
     uint8_t mouse_index =
             board_index_get_unbounded(screen_to_board_pos(&chess->bitmap, chess->input.mouse_pos));
+    b32 promoting = board_in_bounds(chess->promo_square);
 
     // uint64_t threatened = board_threatened_squares_get(
     //         chess->board, !((chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1));
@@ -862,32 +900,44 @@ RENDER_FUNCTION(render)
                 uint8_t index = board_index_get(board_pos);
                 b32 light = (board_pos_pixels.x / SQUARE_SIDE_LENGTH) % 2
                         == (board_pos_pixels.y / SQUARE_SIDE_LENGTH) % 2;
-                Color background = light ? color_light_squares : color_dark_squares;
-                if (index == selected_index) {
-                    color = blend(color_selection, background);
-                } else if (destinations & (1llu << index)) {
-                    color = blend(color_selection, background);
-                    if (index == mouse_index) {
-                        int32_t x_dist_from_edge = square_pos.x < SQUARE_SIDE_LENGTH / 2
-                                ? square_pos.x
-                                : SQUARE_SIDE_LENGTH - 1 - square_pos.x;
-                        int32_t y_dist_from_edge = square_pos.y < SQUARE_SIDE_LENGTH / 2
-                                ? square_pos.y
-                                : SQUARE_SIDE_LENGTH - 1 - square_pos.y;
-                        if ((x_dist_from_edge >= 4 && y_dist_from_edge >= 4)
-                                && (x_dist_from_edge < 8 || y_dist_from_edge < 8)) {
-                            color = background;
-                        }
+                Color square_color = light ? color_light_squares : color_dark_squares;
+                Piece piece = board_piece_get(chess->board, board_pos);
+
+                color = square_color;
+                if (promoting) {
+                    int32_t dist_from_promo_square =
+                            absolute_value(board_pos.y - chess->promo_square.y);
+                    if (board_pos.x == chess->promo_square.x
+                            && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                        color = color_background;
+                        piece.team = board_current_team_get(chess->board);
+                        piece.type = promo_order[dist_from_promo_square];
                     }
                 } else {
-                    color = background;
+                    if (index == selected_index) {
+                        color = blend(color_selection, square_color);
+                    } else if (destinations & (1llu << index)) {
+                        color = blend(color_selection, square_color);
+                        if (index == mouse_index) {
+                            int32_t x_dist_from_edge = square_pos.x < SQUARE_SIDE_LENGTH / 2
+                                    ? square_pos.x
+                                    : SQUARE_SIDE_LENGTH - 1 - square_pos.x;
+                            int32_t y_dist_from_edge = square_pos.y < SQUARE_SIDE_LENGTH / 2
+                                    ? square_pos.y
+                                    : SQUARE_SIDE_LENGTH - 1 - square_pos.y;
+                            if ((x_dist_from_edge >= 4 && y_dist_from_edge >= 4)
+                                    && (x_dist_from_edge < 8 || y_dist_from_edge < 8)) {
+                                color = square_color;
+                            }
+                        }
+                    }
                 }
 
-                Piece piece = board_piece_get(chess->board, board_pos);
                 if (piece.type != NONE) {
                     Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
                     uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, square_pos);
-                    if (index == selected_index && (chess->flags & FLAG_HOLDING_PIECE)) {
+                    if (index == selected_index
+                            && ((chess->flags & FLAG_HOLDING_PIECE) || promoting)) {
                         alpha /= 2;
                     }
                     color = blend_alpha(color_piece, color, alpha);

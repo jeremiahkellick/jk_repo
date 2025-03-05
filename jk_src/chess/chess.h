@@ -152,6 +152,7 @@ typedef enum Result {
 typedef struct Chess {
     uint64_t flags;
     JkIntVector2 selected_square;
+    JkIntVector2 promo_square;
     Input input;
     Input input_prev;
     Audio audio;
