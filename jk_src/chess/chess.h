@@ -70,14 +70,40 @@ typedef struct Bitmap {
     int32_t height;
 } Bitmap;
 
+typedef enum Team {
+    WHITE,
+    BLACK,
+} Team;
+
+typedef enum PieceType {
+    NONE,
+    KING,
+    QUEEN,
+    ROOK,
+    BISHOP,
+    KNIGHT,
+    PAWN,
+    PIECE_TYPE_COUNT,
+} PieceType;
+
+typedef struct Piece {
+    PieceType type;
+    Team team;
+} Piece;
+
+typedef struct MovePacked {
+    uint16_t bits;
+} MovePacked;
+
 typedef struct Move {
     uint8_t src;
     uint8_t dest;
+    Piece piece;
 } Move;
 
 typedef struct MoveArray {
     uint8_t count;
-    Move data[UINT8_MAX];
+    MovePacked data[UINT8_MAX];
 } MoveArray;
 
 typedef enum BoardFlagIndex {
@@ -102,7 +128,7 @@ typedef enum BoardFlagIndex {
 // order bit is the team. Then a board is 4 bits * 64 squares / 8 bits per byte = 32 bytes
 typedef struct Board {
     uint8_t bytes[32];
-    Move move_prev;
+    MovePacked move_prev;
     uint64_t flags;
 } Board;
 
@@ -122,11 +148,6 @@ typedef enum Result {
     RESULT_STALEMATE,
     RESULT_CHECKMATE,
 } Result;
-
-typedef enum Team {
-    WHITE,
-    BLACK,
-} Team;
 
 typedef struct Chess {
     uint64_t flags;
