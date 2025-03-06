@@ -164,6 +164,8 @@ typedef struct Chess {
     MoveArray moves;
     Result result;
     Team victor;
+    uint64_t cpu_timer_frequency;
+    uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
 } Chess;
 

@@ -291,6 +291,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
     global_chess.audio.sample_buffer = memory->audio;
     global_chess.bitmap.memory = (Color *)memory->video;
+    global_chess.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;
 
     // Load image data
@@ -662,7 +664,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                         ticks_remaining = target_flip_time - counter_current;
                     } while (ticks_remaining > 0);
                 } else {
-                    OutputDebugStringA("Missed a frame\n");
+                    // OutputDebugStringA("Missed a frame\n");
 
                     // If we're off by more than half a frame, give up on catching up
                     if (ticks_remaining < -((int64_t)ticks_per_frame / 2)) {

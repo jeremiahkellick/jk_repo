@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // #jk_build compiler_arguments /LD
@@ -931,14 +932,24 @@ static int32_t minimum(int32_t a, int32_t b)
 
 RENDER_FUNCTION(render)
 {
+    static char string_buf[1024];
+
     int32_t scaled_atlas_height = minimum(chess->bitmap.width, chess->bitmap.height);
     int32_t scaled_atlas_width = (scaled_atlas_height * 5) / 6;
+
+    uint64_t time_before_scale = chess->cpu_timer_get();
     scale_alpha_map(chess->scaled_atlas,
             scaled_atlas_width,
             scaled_atlas_height,
             chess->atlas,
             ATLAS_WIDTH,
             ATLAS_HEIGHT);
+    snprintf(string_buf,
+            JK_ARRAY_COUNT(string_buf),
+            "%.0fms\n",
+            (double)(chess->cpu_timer_get() - time_before_scale) * 1000.0
+                    / (double)chess->cpu_timer_frequency);
+    chess->debug_print(string_buf);
 
     JkIntVector2 pos;
     for (pos.y = 0; pos.y < chess->bitmap.height; pos.y++) {
