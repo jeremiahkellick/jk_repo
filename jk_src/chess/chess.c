@@ -1,5 +1,6 @@
 #include "chess.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -875,8 +876,85 @@ static uint8_t atlas_piece_get_alpha(uint8_t *atlas, PieceType piece_type, JkInt
     return atlas[(pos.y + y_offset) * ATLAS_WIDTH + pos.x];
 }
 
+static void scale_alpha_map(uint8_t *dest,
+        int32_t dest_width,
+        int32_t dest_height,
+        uint8_t *src,
+        int32_t src_width,
+        int32_t src_height)
+{
+    float scale_factor = (float)src_width / (float)dest_width;
+    float scale_factor_squared = scale_factor * scale_factor;
+    for (int32_t dy = 0; dy < dest_height; dy++) {
+        for (int32_t dx = 0; dx < dest_width; dx++) {
+            float y1 = (float)dy * scale_factor;
+            float x1 = (float)dx * scale_factor;
+            float y2 = y1 + scale_factor;
+            float x2 = x1 + scale_factor;
+            float min_y = floorf(y1);
+            float min_x = floorf(x1);
+            float max_y = ceilf(y1 + scale_factor);
+            float max_x = ceilf(x1 + scale_factor);
+            float alpha = 0.0;
+            for (int32_t sy = (int32_t)min_y; sy < (int32_t)max_y; sy++) {
+                float height;
+                if (sy == (int32_t)min_y) {
+                    height = 1.0f - (y1 - min_y);
+                } else if (sy == (int32_t)max_y - 1) {
+                    height = 1.0f - (max_y - y2);
+                } else {
+                    height = 1.0f;
+                }
+                for (int32_t sx = (int32_t)min_x; sx < (int32_t)max_x; sx++) {
+                    float width;
+                    if (sx == min_x) {
+                        width = 1.0f - (x1 - min_x);
+                    } else if (sx == (int32_t)max_x - 1) {
+                        width = 1.0f - (max_x - x2);
+                    } else {
+                        width = 1.0f;
+                    }
+
+                    float multiplier = (width * height) / scale_factor_squared;
+                    alpha += multiplier * (float)src[sy * src_width + sx];
+                }
+            }
+            dest[dy * dest_width + dx] = (uint8_t)alpha;
+        }
+    }
+}
+
+static int32_t minimum(int32_t a, int32_t b)
+{
+    return a < b ? a : b;
+}
+
 RENDER_FUNCTION(render)
 {
+    int32_t scaled_atlas_height = minimum(chess->bitmap.width, chess->bitmap.height);
+    int32_t scaled_atlas_width = (scaled_atlas_height * 5) / 6;
+    scale_alpha_map(chess->scaled_atlas,
+            scaled_atlas_width,
+            scaled_atlas_height,
+            chess->atlas,
+            ATLAS_WIDTH,
+            ATLAS_HEIGHT);
+
+    JkIntVector2 pos;
+    for (pos.y = 0; pos.y < chess->bitmap.height; pos.y++) {
+        for (pos.x = 0; pos.x < chess->bitmap.width; pos.x++) {
+            Color color;
+            if (pos.x < scaled_atlas_width && pos.y < scaled_atlas_height) {
+                uint8_t alpha = chess->scaled_atlas[pos.y * scaled_atlas_width + pos.x];
+                color = (Color){alpha, alpha, alpha, alpha};
+            } else {
+                color = (Color){0};
+            }
+            chess->bitmap.memory[pos.y * chess->bitmap.width + pos.x] = color;
+        }
+    }
+
+    /*
     // Figure out which squares should be highlighted
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
     uint64_t destinations = destinations_get_by_src(chess, selected_index);
@@ -989,4 +1067,5 @@ RENDER_FUNCTION(render)
             }
         }
     }
+    */
 }

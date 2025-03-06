@@ -140,8 +140,8 @@ typedef enum FlagIndex {
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
 #define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
 
-#define ATLAS_WIDTH (SQUARE_SIDE_LENGTH * 5llu)
-#define ATLAS_HEIGHT (SQUARE_SIDE_LENGTH * 6llu)
+#define ATLAS_WIDTH 1920
+#define ATLAS_HEIGHT 2304
 
 typedef enum Result {
     RESULT_NONE,
@@ -160,6 +160,7 @@ typedef struct Chess {
     uint64_t time;
     Board board;
     uint8_t atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
+    uint8_t scaled_atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
     MoveArray moves;
     Result result;
     Team victor;
