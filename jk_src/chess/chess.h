@@ -61,9 +61,6 @@ typedef struct Audio {
     double sin_t;
 } Audio;
 
-#define SQUARE_SIDE_LENGTH 112
-#define BOARD_SIDE_LENGTH (SQUARE_SIDE_LENGTH * 8)
-
 typedef struct Bitmap {
     Color *memory;
     int32_t width;

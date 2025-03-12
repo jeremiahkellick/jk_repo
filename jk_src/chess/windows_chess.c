@@ -209,8 +209,8 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         // TODO: render(&global_chess);
 
         PAINTSTRUCT paint;
-        HDC device_context = BeginPaint(window, &paint);
-        copy_bitmap_to_window(device_context, global_chess.bitmap);
+        /* HDC device_context = */BeginPaint(window, &paint);
+        // copy_bitmap_to_window(device_context, global_chess.bitmap);
         EndPaint(window, &paint);
     } break;
 
@@ -239,6 +239,379 @@ static uint64_t recorded_inputs_count;
 static Input recorded_inputs[1024];
 static Chess recorded_game_state;
 
+DWORD game_thread(LPVOID param)
+{
+    HWND window = (HWND)param;
+
+    uint64_t frequency = jk_platform_os_timer_frequency();
+    uint64_t ticks_per_frame = frequency / FRAME_RATE;
+
+    // Set the Windows scheduler granularity to 1ms
+    b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
+
+    uint32_t audio_buffer_seconds = 2;
+    uint32_t audio_buffer_sample_count = SAMPLES_PER_SECOND * audio_buffer_seconds;
+    uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
+    uint32_t audio_position = 0;
+
+    HDC device_context = GetDC(window);
+    update_dimensions(&global_chess.bitmap, window);
+
+    // Initialize DirectSound
+    HINSTANCE direct_sound_library = LoadLibraryA("dsound.dll");
+    if (direct_sound_library) {
+        DirectSoundCreatePointer direct_sound_create =
+                (DirectSoundCreatePointer)GetProcAddress(direct_sound_library, "DirectSoundCreate");
+        LPDIRECTSOUND direct_sound;
+        if (direct_sound_create && (direct_sound_create(0, &direct_sound, 0) == DS_OK)) {
+            WAVEFORMATEX wave_format = {
+                .wFormatTag = WAVE_FORMAT_PCM,
+                .nChannels = AUDIO_CHANNEL_COUNT,
+                .nSamplesPerSec = SAMPLES_PER_SECOND,
+                .wBitsPerSample = 16,
+            };
+            wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
+            wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+            if (direct_sound->lpVtbl->SetCooperativeLevel(direct_sound, window, DSSCL_PRIORITY)
+                    == DS_OK) {
+                DSBUFFERDESC buffer_desciption = {
+                    .dwSize = sizeof(buffer_desciption),
+                    .dwFlags = DSBCAPS_PRIMARYBUFFER,
+                };
+                LPDIRECTSOUNDBUFFER primary_buffer;
+                if (direct_sound->lpVtbl->CreateSoundBuffer(
+                            direct_sound, &buffer_desciption, &primary_buffer, 0)
+                        == DS_OK) {
+                    if (primary_buffer->lpVtbl->SetFormat(primary_buffer, &wave_format) != DS_OK) {
+                        OutputDebugStringA("DirectSound SetFormat on primary buffer failed\n");
+                    }
+                } else {
+                    OutputDebugStringA("Failed to create primary buffer\n");
+                }
+            } else {
+                OutputDebugStringA("DirectSound SetCooperativeLevel failed\n");
+            }
+
+            {
+                DSBUFFERDESC buffer_description = {
+                    .dwSize = sizeof(buffer_description),
+                    .dwBufferBytes = audio_buffer_size,
+                    .lpwfxFormat = &wave_format,
+                };
+                if (direct_sound->lpVtbl->CreateSoundBuffer(
+                            direct_sound, &buffer_description, &global_audio_buffer, 0)
+                        == DS_OK) {
+                    global_audio_buffer->lpVtbl->Play(global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
+                } else {
+                    OutputDebugStringA("Failed to create secondary buffer\n");
+                }
+            }
+        } else {
+            OutputDebugStringA("Failed to create DirectSound\n");
+        }
+    } else {
+        OutputDebugStringA("Failed to load DirectSound\n");
+    }
+
+    UpdateFunction *update = 0;
+    RenderFunction *render = 0;
+    HINSTANCE chess_library = 0;
+    FILETIME chess_dll_last_modified_time = {0};
+
+    global_chess.time = 0;
+    uint64_t work_time_total = 0;
+    uint64_t work_time_min = ULLONG_MAX;
+    uint64_t work_time_max = 0;
+    uint64_t frame_time_total = 0;
+    uint64_t frame_time_min = ULLONG_MAX;
+    uint64_t frame_time_max = 0;
+    uint64_t counter_previous = jk_platform_os_timer_get();
+    uint64_t target_flip_time = counter_previous + ticks_per_frame;
+    b32 reset_audio_position = TRUE;
+    uint64_t prev_keys = 0;
+    while (global_running) {
+        // Hot reloading
+        WIN32_FILE_ATTRIBUTE_DATA chess_dll_info;
+        if (GetFileAttributesExA("chess.dll", GetFileExInfoStandard, &chess_dll_info)) {
+            if (CompareFileTime(&chess_dll_info.ftLastWriteTime, &chess_dll_last_modified_time)
+                    != 0) {
+                chess_dll_last_modified_time = chess_dll_info.ftLastWriteTime;
+                if (chess_library) {
+                    FreeLibrary(chess_library);
+                    update = 0;
+                    render = 0;
+                }
+                if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
+                    OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
+                }
+                chess_library = LoadLibraryA("chess_tmp.dll");
+                if (chess_library) {
+                    update = (UpdateFunction *)GetProcAddress(chess_library, "update");
+                    render = (RenderFunction *)GetProcAddress(chess_library, "render");
+                } else {
+                    OutputDebugStringA("Failed to load chess_tmp.dll\n");
+                }
+            }
+        } else {
+            OutputDebugStringA("Failed to get last modified time of chess.dll\n");
+        }
+
+        global_chess.input.flags = 0;
+
+        // Keyboard input
+        {
+            global_chess.input.flags |=
+                    (((global_keys_down >> KEY_UP) | (global_keys_down >> KEY_W)) & 1) << INPUT_UP;
+            global_chess.input.flags |=
+                    (((global_keys_down >> KEY_DOWN) | (global_keys_down >> KEY_S)) & 1)
+                    << INPUT_DOWN;
+            global_chess.input.flags |=
+                    (((global_keys_down >> KEY_LEFT) | (global_keys_down >> KEY_A)) & 1)
+                    << INPUT_LEFT;
+            global_chess.input.flags |=
+                    (((global_keys_down >> KEY_RIGHT) | (global_keys_down >> KEY_D)) & 1)
+                    << INPUT_RIGHT;
+            global_chess.input.flags |=
+                    (((global_keys_down >> KEY_ENTER) | (global_keys_down >> KEY_SPACE)) & 1)
+                    << INPUT_CONFIRM;
+            global_chess.input.flags |= ((global_keys_down >> KEY_ESCAPE) & 1) << INPUT_CANCEL;
+            global_chess.input.flags |= ((global_keys_down >> KEY_R) & 1) << INPUT_RESET;
+        }
+
+        // Controller input
+        if (xinput_get_state) {
+            for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
+                XINPUT_STATE state;
+                if (xinput_get_state(i, &state) == ERROR_SUCCESS) {
+                    XINPUT_GAMEPAD *pad = &state.Gamepad;
+                    global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
+                            << INPUT_UP;
+                    global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
+                            << INPUT_DOWN;
+                    global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
+                            << INPUT_LEFT;
+                    global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
+                            << INPUT_RIGHT;
+                    global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A)
+                            << INPUT_CONFIRM;
+                    global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B)
+                            << INPUT_CANCEL;
+                }
+            }
+        }
+
+        // Mouse input
+        {
+            POINT mouse_pos;
+            if (GetCursorPos(&mouse_pos)) {
+                if (ScreenToClient(window, &mouse_pos)) {
+                    global_chess.input.mouse_pos.x = mouse_pos.x;
+                    global_chess.input.mouse_pos.y = mouse_pos.y;
+                } else {
+                    OutputDebugStringA("Failed to get mouse position\n");
+                }
+            } else {
+                OutputDebugStringA("Failed to get mouse position\n");
+            }
+
+            global_chess.input.flags |= !!(GetKeyState(VK_LBUTTON) & 0x80) << INPUT_CONFIRM;
+            global_chess.input.flags |= !!(GetKeyState(VK_RBUTTON) & 0x80) << INPUT_CANCEL;
+        }
+
+        // Find necessary audio sample count
+        {
+            DWORD play_cursor;
+            DWORD write_cursor;
+            if (global_audio_buffer->lpVtbl->GetCurrentPosition(
+                        global_audio_buffer, &play_cursor, &write_cursor)
+                    == DS_OK) {
+                uint32_t safe_start_point = (write_cursor
+                                                    + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
+                                                            * sizeof(AudioSample))
+                        % audio_buffer_size;
+                if (reset_audio_position) {
+                    reset_audio_position = FALSE;
+                    audio_position = safe_start_point;
+                }
+                uint32_t end_point = (safe_start_point + SAMPLES_PER_FRAME * sizeof(AudioSample))
+                        % audio_buffer_size;
+                uint32_t size;
+                if (end_point < audio_position) {
+                    size = audio_buffer_size - audio_position + end_point;
+                } else {
+                    size = end_point - audio_position;
+                }
+                global_chess.audio.sample_count = size / sizeof(AudioSample);
+            } else {
+                OutputDebugStringA("Failed to get DirectSound current position\n");
+                global_chess.audio.sample_count = SAMPLES_PER_FRAME * sizeof(AudioSample);
+            }
+        }
+
+        if ((global_keys_down & KEY_FLAG_C) && !(prev_keys & KEY_FLAG_C)) {
+            record_state = (record_state + 1) % RECORD_STATE_COUNT;
+            switch (record_state) {
+            case RECORD_STATE_NONE: {
+            } break;
+
+            case RECORD_STATE_RECORDING: {
+                recorded_game_state = global_chess;
+            } break;
+
+            case RECORD_STATE_PLAYING: {
+                recorded_inputs_count = global_chess.time - recorded_game_state.time;
+                global_chess = recorded_game_state;
+            } break;
+
+            case RECORD_STATE_COUNT:
+            default: {
+                OutputDebugStringA("Invalid RecordState\n");
+            } break;
+            }
+        }
+
+        switch (record_state) {
+        case RECORD_STATE_NONE: {
+        } break;
+
+        case RECORD_STATE_RECORDING: {
+            uint64_t i = (global_chess.time - recorded_game_state.time)
+                    % JK_ARRAY_COUNT(recorded_inputs);
+            recorded_inputs[i] = global_chess.input;
+        } break;
+
+        case RECORD_STATE_PLAYING: {
+            if ((global_chess.time - recorded_game_state.time) > recorded_inputs_count) {
+                global_chess = recorded_game_state;
+            }
+
+            uint64_t i = (global_chess.time - recorded_game_state.time)
+                    % JK_ARRAY_COUNT(recorded_inputs);
+            global_chess.input = recorded_inputs[i];
+        } break;
+
+        case RECORD_STATE_COUNT:
+        default: {
+            OutputDebugStringA("Invalid RecordState\n");
+        } break;
+        }
+
+        update(&global_chess);
+
+        // Write audio to buffer
+        {
+            AudioBufferRegion regions[2] = {0};
+            if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
+                        audio_position,
+                        global_chess.audio.sample_count * sizeof(AudioSample),
+                        &regions[0].data,
+                        &regions[0].size,
+                        &regions[1].data,
+                        &regions[1].size,
+                        0)
+                    == DS_OK) {
+                uint32_t buffer_index = 0;
+                for (int region_index = 0; region_index < 2; region_index++) {
+                    AudioBufferRegion *region = &regions[region_index];
+
+                    AudioSample *region_samples = region->data;
+                    JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
+                    for (DWORD region_offset_index = 0;
+                            region_offset_index < region->size / sizeof(region_samples[0]);
+                            region_offset_index++) {
+                        region_samples[region_offset_index] =
+                                global_chess.audio.sample_buffer[buffer_index++];
+                    }
+                }
+
+                audio_position =
+                        (audio_position + global_chess.audio.sample_count * sizeof(AudioSample))
+                        % audio_buffer_size;
+
+                global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
+                        regions[0].data,
+                        regions[0].size,
+                        regions[1].data,
+                        regions[1].size);
+            }
+        }
+
+        render(&global_chess);
+
+        uint64_t counter_work = jk_platform_os_timer_get();
+        uint64_t counter_current = counter_work;
+        int64_t ticks_remaining = (uint64_t)target_flip_time - (uint64_t)counter_current;
+        if (ticks_remaining > 0) {
+            do {
+                if (can_sleep) {
+                    DWORD sleep_ms = (DWORD)((1000 * ticks_remaining) / frequency);
+                    if (sleep_ms > 0) {
+                        Sleep(sleep_ms);
+                    }
+                }
+                counter_current = jk_platform_os_timer_get();
+                ticks_remaining = target_flip_time - counter_current;
+            } while (ticks_remaining > 0);
+        } else {
+            // OutputDebugStringA("Missed a frame\n");
+
+            // If we're off by more than half a frame, give up on catching up
+            if (ticks_remaining < -((int64_t)ticks_per_frame / 2)) {
+                target_flip_time = counter_current + ticks_per_frame;
+                reset_audio_position = TRUE;
+            }
+        }
+
+        copy_bitmap_to_window(device_context, global_chess.bitmap);
+
+        uint64_t work_time = counter_work - counter_previous;
+        work_time_total += work_time;
+        if (work_time < work_time_min) {
+            work_time_min = work_time;
+        }
+        if (work_time > work_time_max) {
+            work_time_max = work_time;
+        }
+
+        uint64_t frame_time = counter_current - counter_previous;
+        frame_time_total += frame_time;
+        if (frame_time < frame_time_min) {
+            frame_time_min = frame_time;
+        }
+        if (frame_time > frame_time_max) {
+            frame_time_max = frame_time;
+        }
+
+        counter_previous = counter_current;
+        target_flip_time += ticks_per_frame;
+        prev_keys = global_keys_down;
+    }
+
+    snprintf(global_string_buffer,
+            JK_ARRAY_COUNT(global_string_buffer),
+            "\nWork Time\nMin: %.2fms\nMax: %.2fms\nAvg: %.2fms\n",
+            (double)work_time_min / (double)frequency * 1000.0,
+            (double)work_time_max / (double)frequency * 1000.0,
+            ((double)work_time_total / (double)global_chess.time) / (double)frequency * 1000.0);
+    OutputDebugStringA(global_string_buffer);
+    snprintf(global_string_buffer,
+            JK_ARRAY_COUNT(global_string_buffer),
+            "\nFrame Time\nMin: %.2fms\nMax: %.2fms\nAvg: %.2fms\n",
+            (double)frame_time_min / (double)frequency * 1000.0,
+            (double)frame_time_max / (double)frequency * 1000.0,
+            ((double)frame_time_total / (double)global_chess.time) / (double)frequency * 1000.0);
+    OutputDebugStringA(global_string_buffer);
+    snprintf(global_string_buffer,
+            JK_ARRAY_COUNT(global_string_buffer),
+            "\nFPS\nMin: %.2f\nMax: %.2f\nAvg: %.2f\n\n",
+            (double)frequency / (double)frame_time_min,
+            (double)frequency / (double)frame_time_max,
+            ((double)global_chess.time / (double)frame_time_total) * (double)frequency);
+    OutputDebugStringA(global_string_buffer);
+
+    return 0;
+}
+
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
     // Set working directory to the directory containing the executable
@@ -266,13 +639,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             OutputDebugStringA("Failed to set the working directory\n");
         }
     }
-
-    uint64_t frequency = jk_platform_os_timer_frequency();
-    uint64_t ticks_per_frame = frequency / FRAME_RATE;
-
-    // Set the Windows scheduler granularity to 1ms
-    timeBeginPeriod(1);
-    b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
 
     HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
     if (!xinput_library) {
@@ -336,391 +702,23 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
-            uint32_t audio_buffer_seconds = 2;
-            uint32_t audio_buffer_sample_count = SAMPLES_PER_SECOND * audio_buffer_seconds;
-            uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
-            uint32_t audio_position = 0;
-
-            HDC device_context = GetDC(window);
-            update_dimensions(&global_chess.bitmap, window);
-
-            // Initialize DirectSound
-            HINSTANCE direct_sound_library = LoadLibraryA("dsound.dll");
-            if (direct_sound_library) {
-                DirectSoundCreatePointer direct_sound_create =
-                        (DirectSoundCreatePointer)GetProcAddress(
-                                direct_sound_library, "DirectSoundCreate");
-                LPDIRECTSOUND direct_sound;
-                if (direct_sound_create && (direct_sound_create(0, &direct_sound, 0) == DS_OK)) {
-                    WAVEFORMATEX wave_format = {
-                        .wFormatTag = WAVE_FORMAT_PCM,
-                        .nChannels = AUDIO_CHANNEL_COUNT,
-                        .nSamplesPerSec = SAMPLES_PER_SECOND,
-                        .wBitsPerSample = 16,
-                    };
-                    wave_format.nBlockAlign =
-                            (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
-                    wave_format.nAvgBytesPerSec =
-                            wave_format.nSamplesPerSec * wave_format.nBlockAlign;
-                    if (direct_sound->lpVtbl->SetCooperativeLevel(
-                                direct_sound, window, DSSCL_PRIORITY)
-                            == DS_OK) {
-                        DSBUFFERDESC buffer_desciption = {
-                            .dwSize = sizeof(buffer_desciption),
-                            .dwFlags = DSBCAPS_PRIMARYBUFFER,
-                        };
-                        LPDIRECTSOUNDBUFFER primary_buffer;
-                        if (direct_sound->lpVtbl->CreateSoundBuffer(
-                                    direct_sound, &buffer_desciption, &primary_buffer, 0)
-                                == DS_OK) {
-                            if (primary_buffer->lpVtbl->SetFormat(primary_buffer, &wave_format)
-                                    != DS_OK) {
-                                OutputDebugStringA(
-                                        "DirectSound SetFormat on primary buffer failed\n");
-                            }
-                        } else {
-                            OutputDebugStringA("Failed to create primary buffer\n");
+            HANDLE thread = CreateThread(0, 0, game_thread, window, 0, 0);
+            if (thread) {
+                global_running = TRUE;
+                while (global_running) {
+                    MSG message;
+                    while (global_running && PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+                        if (message.message == WM_QUIT) {
+                            global_running = FALSE;
                         }
-                    } else {
-                        OutputDebugStringA("DirectSound SetCooperativeLevel failed\n");
+                        TranslateMessage(&message);
+                        DispatchMessageA(&message);
                     }
-
-                    {
-                        DSBUFFERDESC buffer_description = {
-                            .dwSize = sizeof(buffer_description),
-                            .dwBufferBytes = audio_buffer_size,
-                            .lpwfxFormat = &wave_format,
-                        };
-                        if (direct_sound->lpVtbl->CreateSoundBuffer(
-                                    direct_sound, &buffer_description, &global_audio_buffer, 0)
-                                == DS_OK) {
-                            global_audio_buffer->lpVtbl->Play(
-                                    global_audio_buffer, 0, 0, DSBPLAY_LOOPING);
-                        } else {
-                            OutputDebugStringA("Failed to create secondary buffer\n");
-                        }
-                    }
-                } else {
-                    OutputDebugStringA("Failed to create DirectSound\n");
                 }
+                WaitForSingleObject(thread, INFINITE);
             } else {
-                OutputDebugStringA("Failed to load DirectSound\n");
+                OutputDebugStringA("Failed to launch game thread\n");
             }
-
-            UpdateFunction *update = 0;
-            RenderFunction *render = 0;
-            HINSTANCE chess_library = 0;
-            FILETIME chess_dll_last_modified_time = {0};
-
-            global_chess.time = 0;
-            global_running = TRUE;
-            uint64_t work_time_total = 0;
-            uint64_t work_time_min = ULLONG_MAX;
-            uint64_t work_time_max = 0;
-            uint64_t frame_time_total = 0;
-            uint64_t frame_time_min = ULLONG_MAX;
-            uint64_t frame_time_max = 0;
-            uint64_t counter_previous = jk_platform_os_timer_get();
-            uint64_t target_flip_time = counter_previous + ticks_per_frame;
-            b32 reset_audio_position = TRUE;
-            uint64_t prev_keys = 0;
-            while (global_running) {
-                // Hot reloading
-                WIN32_FILE_ATTRIBUTE_DATA chess_dll_info;
-                if (GetFileAttributesExA("chess.dll", GetFileExInfoStandard, &chess_dll_info)) {
-                    if (CompareFileTime(
-                                &chess_dll_info.ftLastWriteTime, &chess_dll_last_modified_time)
-                            != 0) {
-                        chess_dll_last_modified_time = chess_dll_info.ftLastWriteTime;
-                        if (chess_library) {
-                            FreeLibrary(chess_library);
-                            update = 0;
-                            render = 0;
-                        }
-                        if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
-                            OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
-                        }
-                        chess_library = LoadLibraryA("chess_tmp.dll");
-                        if (chess_library) {
-                            update = (UpdateFunction *)GetProcAddress(chess_library, "update");
-                            render = (RenderFunction *)GetProcAddress(chess_library, "render");
-                        } else {
-                            OutputDebugStringA("Failed to load chess_tmp.dll\n");
-                        }
-                    }
-                } else {
-                    OutputDebugStringA("Failed to get last modified time of chess.dll\n");
-                }
-
-                MSG message;
-                while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-                    if (message.message == WM_QUIT) {
-                        global_running = FALSE;
-                    }
-                    TranslateMessage(&message);
-                    DispatchMessageA(&message);
-                }
-
-                global_chess.input.flags = 0;
-
-                // Keyboard input
-                {
-                    global_chess.input.flags |=
-                            (((global_keys_down >> KEY_UP) | (global_keys_down >> KEY_W)) & 1)
-                            << INPUT_UP;
-                    global_chess.input.flags |=
-                            (((global_keys_down >> KEY_DOWN) | (global_keys_down >> KEY_S)) & 1)
-                            << INPUT_DOWN;
-                    global_chess.input.flags |=
-                            (((global_keys_down >> KEY_LEFT) | (global_keys_down >> KEY_A)) & 1)
-                            << INPUT_LEFT;
-                    global_chess.input.flags |=
-                            (((global_keys_down >> KEY_RIGHT) | (global_keys_down >> KEY_D)) & 1)
-                            << INPUT_RIGHT;
-                    global_chess.input.flags |=
-                            (((global_keys_down >> KEY_ENTER) | (global_keys_down >> KEY_SPACE))
-                                    & 1)
-                            << INPUT_CONFIRM;
-                    global_chess.input.flags |= ((global_keys_down >> KEY_ESCAPE) & 1)
-                            << INPUT_CANCEL;
-                    global_chess.input.flags |= ((global_keys_down >> KEY_R) & 1) << INPUT_RESET;
-                }
-
-                // Controller input
-                if (xinput_get_state) {
-                    for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
-                        XINPUT_STATE state;
-                        if (xinput_get_state(i, &state) == ERROR_SUCCESS) {
-                            XINPUT_GAMEPAD *pad = &state.Gamepad;
-                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP)
-                                    << INPUT_UP;
-                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-                                    << INPUT_DOWN;
-                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-                                    << INPUT_LEFT;
-                            global_chess.input.flags |=
-                                    !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) << INPUT_RIGHT;
-                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A)
-                                    << INPUT_CONFIRM;
-                            global_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B)
-                                    << INPUT_CANCEL;
-                        }
-                    }
-                }
-
-                // Mouse input
-                {
-                    POINT mouse_pos;
-                    if (GetCursorPos(&mouse_pos)) {
-                        if (ScreenToClient(window, &mouse_pos)) {
-                            global_chess.input.mouse_pos.x = mouse_pos.x;
-                            global_chess.input.mouse_pos.y = mouse_pos.y;
-                        } else {
-                            OutputDebugStringA("Failed to get mouse position\n");
-                        }
-                    } else {
-                        OutputDebugStringA("Failed to get mouse position\n");
-                    }
-
-                    global_chess.input.flags |= !!(GetKeyState(VK_LBUTTON) & 0x80) << INPUT_CONFIRM;
-                    global_chess.input.flags |= !!(GetKeyState(VK_RBUTTON) & 0x80) << INPUT_CANCEL;
-                }
-
-                // Find necessary audio sample count
-                {
-                    DWORD play_cursor;
-                    DWORD write_cursor;
-                    if (global_audio_buffer->lpVtbl->GetCurrentPosition(
-                                global_audio_buffer, &play_cursor, &write_cursor)
-                            == DS_OK) {
-                        uint32_t safe_start_point =
-                                (write_cursor
-                                        + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
-                                                * sizeof(AudioSample))
-                                % audio_buffer_size;
-                        if (reset_audio_position) {
-                            reset_audio_position = FALSE;
-                            audio_position = safe_start_point;
-                        }
-                        uint32_t end_point =
-                                (safe_start_point + SAMPLES_PER_FRAME * sizeof(AudioSample))
-                                % audio_buffer_size;
-                        uint32_t size;
-                        if (end_point < audio_position) {
-                            size = audio_buffer_size - audio_position + end_point;
-                        } else {
-                            size = end_point - audio_position;
-                        }
-                        global_chess.audio.sample_count = size / sizeof(AudioSample);
-                    } else {
-                        OutputDebugStringA("Failed to get DirectSound current position\n");
-                        global_chess.audio.sample_count = SAMPLES_PER_FRAME * sizeof(AudioSample);
-                    }
-                }
-
-                if ((global_keys_down & KEY_FLAG_C) && !(prev_keys & KEY_FLAG_C)) {
-                    record_state = (record_state + 1) % RECORD_STATE_COUNT;
-                    switch (record_state) {
-                    case RECORD_STATE_NONE: {
-                    } break;
-
-                    case RECORD_STATE_RECORDING: {
-                        recorded_game_state = global_chess;
-                    } break;
-
-                    case RECORD_STATE_PLAYING: {
-                        recorded_inputs_count = global_chess.time - recorded_game_state.time;
-                        global_chess = recorded_game_state;
-                    } break;
-
-                    case RECORD_STATE_COUNT:
-                    default: {
-                        OutputDebugStringA("Invalid RecordState\n");
-                    } break;
-                    }
-                }
-
-                switch (record_state) {
-                case RECORD_STATE_NONE: {
-                } break;
-
-                case RECORD_STATE_RECORDING: {
-                    uint64_t i = (global_chess.time - recorded_game_state.time)
-                            % JK_ARRAY_COUNT(recorded_inputs);
-                    recorded_inputs[i] = global_chess.input;
-                } break;
-
-                case RECORD_STATE_PLAYING: {
-                    if ((global_chess.time - recorded_game_state.time) > recorded_inputs_count) {
-                        global_chess = recorded_game_state;
-                    }
-
-                    uint64_t i = (global_chess.time - recorded_game_state.time)
-                            % JK_ARRAY_COUNT(recorded_inputs);
-                    global_chess.input = recorded_inputs[i];
-                } break;
-
-                case RECORD_STATE_COUNT:
-                default: {
-                    OutputDebugStringA("Invalid RecordState\n");
-                } break;
-                }
-
-                update(&global_chess);
-
-                // Write audio to buffer
-                {
-                    AudioBufferRegion regions[2] = {0};
-                    if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
-                                audio_position,
-                                global_chess.audio.sample_count * sizeof(AudioSample),
-                                &regions[0].data,
-                                &regions[0].size,
-                                &regions[1].data,
-                                &regions[1].size,
-                                0)
-                            == DS_OK) {
-                        uint32_t buffer_index = 0;
-                        for (int region_index = 0; region_index < 2; region_index++) {
-                            AudioBufferRegion *region = &regions[region_index];
-
-                            AudioSample *region_samples = region->data;
-                            JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
-                            for (DWORD region_offset_index = 0;
-                                    region_offset_index < region->size / sizeof(region_samples[0]);
-                                    region_offset_index++) {
-                                region_samples[region_offset_index] =
-                                        global_chess.audio.sample_buffer[buffer_index++];
-                            }
-                        }
-
-                        audio_position =
-                                (audio_position
-                                        + global_chess.audio.sample_count * sizeof(AudioSample))
-                                % audio_buffer_size;
-
-                        global_audio_buffer->lpVtbl->Unlock(global_audio_buffer,
-                                regions[0].data,
-                                regions[0].size,
-                                regions[1].data,
-                                regions[1].size);
-                    }
-                }
-
-                render(&global_chess);
-
-                uint64_t counter_work = jk_platform_os_timer_get();
-                uint64_t counter_current = counter_work;
-                int64_t ticks_remaining = (uint64_t)target_flip_time - (uint64_t)counter_current;
-                if (ticks_remaining > 0) {
-                    do {
-                        if (can_sleep) {
-                            DWORD sleep_ms = (DWORD)((1000 * ticks_remaining) / frequency);
-                            if (sleep_ms > 0) {
-                                Sleep(sleep_ms);
-                            }
-                        }
-                        counter_current = jk_platform_os_timer_get();
-                        ticks_remaining = target_flip_time - counter_current;
-                    } while (ticks_remaining > 0);
-                } else {
-                    // OutputDebugStringA("Missed a frame\n");
-
-                    // If we're off by more than half a frame, give up on catching up
-                    if (ticks_remaining < -((int64_t)ticks_per_frame / 2)) {
-                        target_flip_time = counter_current + ticks_per_frame;
-                        reset_audio_position = TRUE;
-                    }
-                }
-
-                copy_bitmap_to_window(device_context, global_chess.bitmap);
-
-                uint64_t work_time = counter_work - counter_previous;
-                work_time_total += work_time;
-                if (work_time < work_time_min) {
-                    work_time_min = work_time;
-                }
-                if (work_time > work_time_max) {
-                    work_time_max = work_time;
-                }
-
-                uint64_t frame_time = counter_current - counter_previous;
-                frame_time_total += frame_time;
-                if (frame_time < frame_time_min) {
-                    frame_time_min = frame_time;
-                }
-                if (frame_time > frame_time_max) {
-                    frame_time_max = frame_time;
-                }
-
-                counter_previous = counter_current;
-                target_flip_time += ticks_per_frame;
-                prev_keys = global_keys_down;
-            }
-
-            snprintf(global_string_buffer,
-                    JK_ARRAY_COUNT(global_string_buffer),
-                    "\nWork Time\nMin: %.2fms\nMax: %.2fms\nAvg: %.2fms\n",
-                    (double)work_time_min / (double)frequency * 1000.0,
-                    (double)work_time_max / (double)frequency * 1000.0,
-                    ((double)work_time_total / (double)global_chess.time) / (double)frequency
-                            * 1000.0);
-            OutputDebugStringA(global_string_buffer);
-            snprintf(global_string_buffer,
-                    JK_ARRAY_COUNT(global_string_buffer),
-                    "\nFrame Time\nMin: %.2fms\nMax: %.2fms\nAvg: %.2fms\n",
-                    (double)frame_time_min / (double)frequency * 1000.0,
-                    (double)frame_time_max / (double)frequency * 1000.0,
-                    ((double)frame_time_total / (double)global_chess.time) / (double)frequency
-                            * 1000.0);
-            OutputDebugStringA(global_string_buffer);
-            snprintf(global_string_buffer,
-                    JK_ARRAY_COUNT(global_string_buffer),
-                    "\nFPS\nMin: %.2f\nMax: %.2f\nAvg: %.2f\n\n",
-                    (double)frequency / (double)frame_time_min,
-                    (double)frequency / (double)frame_time_max,
-                    ((double)global_chess.time / (double)frame_time_total) * (double)frequency);
-            OutputDebugStringA(global_string_buffer);
         } else {
             OutputDebugStringA("CreateWindowExA failed\n");
         }

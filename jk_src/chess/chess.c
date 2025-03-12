@@ -644,12 +644,23 @@ static void audio_write(Audio *audio)
     }
 }
 
+static int32_t minimum(int32_t a, int32_t b)
+{
+    return a < b ? a : b;
+}
+
+static int32_t square_side_length_get(Bitmap *bitmap)
+{
+    return minimum(bitmap->width, bitmap->height) / 8;
+}
+
 static JkIntVector2 screen_board_origin_get(Bitmap *bitmap)
 {
     JkIntVector2 result = {0};
 
-    int32_t x = (bitmap->width - BOARD_SIDE_LENGTH) / 2;
-    int32_t y = (bitmap->height - BOARD_SIDE_LENGTH) / 2;
+    int32_t board_side_length = square_side_length_get(bitmap) * 8;
+    int32_t x = (bitmap->width - board_side_length) / 2;
+    int32_t y = (bitmap->height - board_side_length) / 2;
     if (x >= 0) {
         result.x = x;
     }
@@ -671,18 +682,20 @@ static b32 screen_in_bounds(Bitmap *bitmap, JkIntVector2 screen_pos)
             && screen_pos.y < bitmap->height;
 }
 
-static b32 board_pos_pixels_in_bounds(JkIntVector2 board_pos_pixels)
+static b32 board_pos_pixels_in_bounds(Bitmap *bitmap, JkIntVector2 board_pos_pixels)
 {
-    return board_pos_pixels.x >= 0 && board_pos_pixels.x < BOARD_SIDE_LENGTH
-            && board_pos_pixels.y >= 0 && board_pos_pixels.y < BOARD_SIDE_LENGTH;
+    int32_t board_side_length = square_side_length_get(bitmap) * 8;
+    return board_pos_pixels.x >= 0 && board_pos_pixels.x < board_side_length
+            && board_pos_pixels.y >= 0 && board_pos_pixels.y < board_side_length;
 }
 
-static JkIntVector2 board_pos_pixels_to_squares(JkIntVector2 board_pos_pixels)
+static JkIntVector2 board_pos_pixels_to_squares(Bitmap *bitmap, JkIntVector2 board_pos_pixels)
 {
-    if (board_pos_pixels_in_bounds(board_pos_pixels)) {
+    int32_t square_side_length = square_side_length_get(bitmap);
+    if (board_pos_pixels_in_bounds(bitmap, board_pos_pixels)) {
         return (JkIntVector2){
-            .x = board_pos_pixels.x / SQUARE_SIDE_LENGTH,
-            .y = 7 - board_pos_pixels.y / SQUARE_SIDE_LENGTH,
+            .x = board_pos_pixels.x / square_side_length,
+            .y = 7 - board_pos_pixels.y / square_side_length,
         };
     } else {
         return (JkIntVector2){-1, -1};
@@ -691,7 +704,7 @@ static JkIntVector2 board_pos_pixels_to_squares(JkIntVector2 board_pos_pixels)
 
 static JkIntVector2 screen_to_board_pos(Bitmap *bitmap, JkIntVector2 screen_pos)
 {
-    return board_pos_pixels_to_squares(screen_to_board_pos_pixels(bitmap, screen_pos));
+    return board_pos_pixels_to_squares(bitmap, screen_to_board_pos_pixels(bitmap, screen_pos));
 }
 
 static b32 button_pressed(Chess *chess, uint64_t flag)
@@ -868,13 +881,11 @@ static Color blend_alpha(Color foreground, Color background, uint8_t alpha)
     return result;
 }
 
-static uint8_t atlas_piece_get_alpha(uint8_t *atlas, PieceType piece_type, JkIntVector2 pos)
+static uint8_t atlas_piece_get_alpha(
+        uint8_t *atlas, int32_t square_side_length, PieceType piece_type, JkIntVector2 pos)
 {
-    JK_DEBUG_ASSERT(
-            pos.x >= 0 && pos.x < SQUARE_SIDE_LENGTH && pos.y >= 0 && pos.y < SQUARE_SIDE_LENGTH);
-
-    int32_t y_offset = (piece_type - 1) * 112;
-    return atlas[(pos.y + y_offset) * ATLAS_WIDTH + pos.x];
+    int32_t y_offset = (piece_type - 1) * square_side_length;
+    return atlas[(pos.y + y_offset) * square_side_length * 5 + pos.x];
 }
 
 static void scale_alpha_map(uint8_t *dest,
@@ -894,8 +905,8 @@ static void scale_alpha_map(uint8_t *dest,
             float x2 = x1 + scale_factor;
             float min_y = floorf(y1);
             float min_x = floorf(x1);
-            float max_y = ceilf(y1 + scale_factor);
-            float max_x = ceilf(x1 + scale_factor);
+            float max_y = ceilf(y2);
+            float max_x = ceilf(x2);
             float alpha = 0.0;
             for (int32_t sy = (int32_t)min_y; sy < (int32_t)max_y; sy++) {
                 float height;
@@ -925,47 +936,28 @@ static void scale_alpha_map(uint8_t *dest,
     }
 }
 
-static int32_t minimum(int32_t a, int32_t b)
-{
-    return a < b ? a : b;
-}
-
 RENDER_FUNCTION(render)
 {
     static char string_buf[1024];
 
-    int32_t scaled_atlas_height = minimum(chess->bitmap.width, chess->bitmap.height);
-    int32_t scaled_atlas_width = (scaled_atlas_height * 5) / 6;
+    int32_t square_side_length = square_side_length_get(&chess->bitmap);
+    int32_t scaled_atlas_height = square_side_length * 6;
+    int32_t scaled_atlas_width = square_side_length * 5;
 
-    uint64_t time_before_scale = chess->cpu_timer_get();
+    // uint64_t time_before_scale = chess->cpu_timer_get();
     scale_alpha_map(chess->scaled_atlas,
             scaled_atlas_width,
             scaled_atlas_height,
             chess->atlas,
             ATLAS_WIDTH,
             ATLAS_HEIGHT);
-    snprintf(string_buf,
-            JK_ARRAY_COUNT(string_buf),
-            "%.0fms\n",
-            (double)(chess->cpu_timer_get() - time_before_scale) * 1000.0
-                    / (double)chess->cpu_timer_frequency);
-    chess->debug_print(string_buf);
+    // snprintf(string_buf,
+    //         JK_ARRAY_COUNT(string_buf),
+    //         "%.0fms\n",
+    //         (double)(chess->cpu_timer_get() - time_before_scale) * 1000.0
+    //                 / (double)chess->cpu_timer_frequency);
+    // chess->debug_print(string_buf);
 
-    JkIntVector2 pos;
-    for (pos.y = 0; pos.y < chess->bitmap.height; pos.y++) {
-        for (pos.x = 0; pos.x < chess->bitmap.width; pos.x++) {
-            Color color;
-            if (pos.x < scaled_atlas_width && pos.y < scaled_atlas_height) {
-                uint8_t alpha = chess->scaled_atlas[pos.y * scaled_atlas_width + pos.x];
-                color = (Color){alpha, alpha, alpha, alpha};
-            } else {
-                color = (Color){0};
-            }
-            chess->bitmap.memory[pos.y * chess->bitmap.width + pos.x] = color;
-        }
-    }
-
-    /*
     // Figure out which squares should be highlighted
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
     uint64_t destinations = destinations_get_by_src(chess, selected_index);
@@ -981,14 +973,15 @@ RENDER_FUNCTION(render)
         for (pos.x = 0; pos.x < chess->bitmap.width; pos.x++) {
             JkIntVector2 board_pos_pixels = screen_to_board_pos_pixels(&chess->bitmap, pos);
             Color color;
-            if (board_pos_pixels_in_bounds(board_pos_pixels)) {
+            if (board_pos_pixels_in_bounds(&chess->bitmap, board_pos_pixels)) {
                 JkIntVector2 square_pos =
-                        jk_int_vector_2_remainder(SQUARE_SIDE_LENGTH, board_pos_pixels);
+                        jk_int_vector_2_remainder(square_side_length, board_pos_pixels);
 
-                JkIntVector2 board_pos = board_pos_pixels_to_squares(board_pos_pixels);
+                JkIntVector2 board_pos =
+                        board_pos_pixels_to_squares(&chess->bitmap, board_pos_pixels);
                 uint8_t index = board_index_get(board_pos);
-                b32 light = (board_pos_pixels.x / SQUARE_SIDE_LENGTH) % 2
-                        == (board_pos_pixels.y / SQUARE_SIDE_LENGTH) % 2;
+                b32 light = (board_pos_pixels.x / square_side_length) % 2
+                        == (board_pos_pixels.y / square_side_length) % 2;
                 Color square_color = light ? color_light_squares : color_dark_squares;
                 Piece piece = board_piece_get(chess->board, board_pos);
 
@@ -1008,12 +1001,12 @@ RENDER_FUNCTION(render)
                     } else if (destinations & (1llu << index)) {
                         color = blend(color_selection, square_color);
                         if (index == mouse_index) {
-                            int32_t x_dist_from_edge = square_pos.x < SQUARE_SIDE_LENGTH / 2
+                            int32_t x_dist_from_edge = square_pos.x < square_side_length / 2
                                     ? square_pos.x
-                                    : SQUARE_SIDE_LENGTH - 1 - square_pos.x;
-                            int32_t y_dist_from_edge = square_pos.y < SQUARE_SIDE_LENGTH / 2
+                                    : square_side_length - 1 - square_pos.x;
+                            int32_t y_dist_from_edge = square_pos.y < square_side_length / 2
                                     ? square_pos.y
-                                    : SQUARE_SIDE_LENGTH - 1 - square_pos.y;
+                                    : square_side_length - 1 - square_pos.y;
                             if ((x_dist_from_edge >= 4 && y_dist_from_edge >= 4)
                                     && (x_dist_from_edge < 8 || y_dist_from_edge < 8)) {
                                 color = square_color;
@@ -1024,7 +1017,8 @@ RENDER_FUNCTION(render)
 
                 if (piece.type != NONE) {
                     Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
-                    uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, square_pos);
+                    uint8_t alpha = atlas_piece_get_alpha(
+                            chess->scaled_atlas, square_side_length, piece.type, square_pos);
                     if (index == selected_index
                             && ((chess->flags & FLAG_HOLDING_PIECE) || promoting)) {
                         alpha /= 2;
@@ -1042,15 +1036,16 @@ RENDER_FUNCTION(render)
         Piece piece = board_piece_get_index(chess->board, selected_index);
         if (piece.type != NONE) {
             JkIntVector2 held_piece_offset = jk_int_vector_2_sub(chess->input.mouse_pos,
-                    (JkIntVector2){SQUARE_SIDE_LENGTH / 2, SQUARE_SIDE_LENGTH / 2});
-            for (pos.y = 0; pos.y < SQUARE_SIDE_LENGTH; pos.y++) {
-                for (pos.x = 0; pos.x < SQUARE_SIDE_LENGTH; pos.x++) {
+                    (JkIntVector2){square_side_length / 2, square_side_length / 2});
+            for (pos.y = 0; pos.y < square_side_length; pos.y++) {
+                for (pos.x = 0; pos.x < square_side_length; pos.x++) {
                     JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
                     if (screen_in_bounds(&chess->bitmap, screen_pos)) {
                         int32_t index = screen_pos.y * chess->bitmap.width + screen_pos.x;
                         Color color_piece = piece.team ? color_black_pieces : color_white_pieces;
                         Color color_bg = chess->bitmap.memory[index];
-                        uint8_t alpha = atlas_piece_get_alpha(chess->atlas, piece.type, pos);
+                        uint8_t alpha = atlas_piece_get_alpha(
+                                chess->scaled_atlas, square_side_length, piece.type, pos);
                         chess->bitmap.memory[index] = blend_alpha(color_piece, color_bg, alpha);
                     }
                 }
@@ -1059,24 +1054,24 @@ RENDER_FUNCTION(render)
     }
 
     if (chess->result) {
-        for (pos.y = 0; pos.y < SQUARE_SIDE_LENGTH * 2; pos.y++) {
-            for (pos.x = 0; pos.x < SQUARE_SIDE_LENGTH * 4; pos.x++) {
+        for (pos.y = 0; pos.y < square_side_length * 2; pos.y++) {
+            for (pos.x = 0; pos.x < square_side_length * 4; pos.x++) {
                 int32_t result_offset = 0;
                 if (chess->result == RESULT_CHECKMATE) {
                     result_offset = (chess->board.flags & BOARD_FLAG_CURRENT_PLAYER ? 1 : 2)
-                            * SQUARE_SIDE_LENGTH * 2;
+                            * square_side_length * 2;
                 }
                 JkIntVector2 screen_pos = jk_int_vector_2_add(
                         jk_int_vector_2_add(screen_board_origin_get(&chess->bitmap), pos),
-                        (JkIntVector2){SQUARE_SIDE_LENGTH * 2, SQUARE_SIDE_LENGTH * 3});
+                        (JkIntVector2){square_side_length * 2, square_side_length * 3});
                 if (screen_in_bounds(&chess->bitmap, screen_pos)) {
-                    uint8_t alpha = chess->atlas[(pos.y + result_offset) * ATLAS_WIDTH + pos.x
-                            + SQUARE_SIDE_LENGTH];
+                    uint8_t alpha =
+                            chess->scaled_atlas[(pos.y + result_offset) * square_side_length * 5
+                                    + pos.x + square_side_length];
                     chess->bitmap.memory[screen_pos.y * chess->bitmap.width + screen_pos.x] =
                             blend_alpha((Color){255, 255, 255}, color_background, alpha);
                 }
             }
         }
     }
-    */
 }
