@@ -1,5 +1,6 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
+#include "jk_src/jk_lib/jk_lib.h"
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
 #include <stdint.h>
@@ -70,9 +71,11 @@ typedef enum Key {
 
 typedef struct Memory {
     AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
-    uint8_t video[512llu * 1024 * 1024];
+    uint8_t video[sizeof(Color) * DRAW_BUFFER_WIDTH * DRAW_BUFFER_HEIGHT];
 } Memory;
 
+static int32_t global_window_width;
+static int32_t global_window_height;
 static Chess global_chess = {0};
 
 static b32 global_running;
@@ -80,22 +83,73 @@ static int64_t global_keys_down;
 static LPDIRECTSOUNDBUFFER global_audio_buffer;
 static char global_string_buffer[1024];
 
-static void update_dimensions(Bitmap *bitmap, HWND window)
+static int32_t windows_chess_minimum(int32_t a, int32_t b)
+{
+    return a < b ? a : b;
+}
+
+static Color window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
+
+typedef struct IntArray4 {
+    int32_t a[4];
+} IntArray4;
+
+static int32_t square_side_length_get(IntArray4 dimensions)
+{
+    int32_t min_dimension = INT32_MAX;
+    for (int32_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
+        if (dimensions.a[i] < min_dimension) {
+            min_dimension = dimensions.a[i];
+        }
+    }
+    return min_dimension / 10;
+}
+
+static void update_dimensions(HWND window)
 {
     RECT rect;
     GetClientRect(window, &rect);
-    bitmap->width = rect.right - rect.left;
-    bitmap->height = rect.bottom - rect.top;
+    global_window_width = rect.right - rect.left;
+    global_window_height = rect.bottom - rect.top;
 }
 
-static void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
+static void copy_draw_buffer_to_window(HWND window, HDC device_context)
 {
+    RECT rect;
+    GetClientRect(window, &rect);
+    int32_t screen_width = rect.right - rect.left;
+    int32_t screen_height = rect.bottom - rect.top;
+    int32_t width = windows_chess_minimum(screen_width, global_chess.square_side_length * 10);
+    int32_t height = windows_chess_minimum(screen_height, global_chess.square_side_length * 10);
+
+    HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
+
+    RECT width_fill;
+    width_fill.left = width;
+    width_fill.top = 0;
+    width_fill.right = screen_width;
+    width_fill.bottom = screen_height;
+    if (width_fill.right > width_fill.left) {
+        FillRect(device_context, &width_fill, brush);
+    }
+
+    RECT height_fill;
+    height_fill.left = 0;
+    height_fill.top = height;
+    height_fill.right = screen_width;
+    height_fill.bottom = screen_height;
+    if (height_fill.bottom > height_fill.top) {
+        FillRect(device_context, &height_fill, brush);
+    }
+
+    DeleteObject(brush);
+
     BITMAPINFO bitmap_info = {
         .bmiHeader =
                 {
                     .biSize = sizeof(BITMAPINFOHEADER),
-                    .biWidth = bitmap.width,
-                    .biHeight = -bitmap.height,
+                    .biWidth = DRAW_BUFFER_WIDTH,
+                    .biHeight = -DRAW_BUFFER_HEIGHT,
                     .biPlanes = 1,
                     .biBitCount = 32,
                     .biCompression = BI_RGB,
@@ -104,13 +158,13 @@ static void copy_bitmap_to_window(HDC device_context, Bitmap bitmap)
     StretchDIBits(device_context,
             0,
             0,
-            bitmap.width,
-            bitmap.height,
+            width,
+            height,
             0,
             0,
-            bitmap.width,
-            bitmap.height,
-            bitmap.memory,
+            width,
+            height,
+            global_chess.draw_buffer,
             &bitmap_info,
             DIB_RGB_COLORS,
             SRCCOPY);
@@ -127,7 +181,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     } break;
 
     case WM_SIZE: {
-        update_dimensions(&global_chess.bitmap, window);
+        update_dimensions(window);
     } break;
 
     case WM_SYSKEYDOWN:
@@ -206,11 +260,9 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     } break;
 
     case WM_PAINT: {
-        // TODO: render(&global_chess);
-
         PAINTSTRUCT paint;
-        /* HDC device_context = */BeginPaint(window, &paint);
-        // copy_bitmap_to_window(device_context, global_chess.bitmap);
+        HDC device_context = BeginPaint(window, &paint);
+        copy_draw_buffer_to_window(window, device_context);
         EndPaint(window, &paint);
     } break;
 
@@ -255,7 +307,7 @@ DWORD game_thread(LPVOID param)
     uint32_t audio_position = 0;
 
     HDC device_context = GetDC(window);
-    update_dimensions(&global_chess.bitmap, window);
+    update_dimensions(window);
 
     // Initialize DirectSound
     HINSTANCE direct_sound_library = LoadLibraryA("dsound.dll");
@@ -496,6 +548,9 @@ DWORD game_thread(LPVOID param)
         } break;
         }
 
+        global_chess.square_side_length = square_side_length_get((IntArray4){
+            global_window_width, global_window_height, DRAW_BUFFER_WIDTH, DRAW_BUFFER_HEIGHT});
+
         update(&global_chess);
 
         // Write audio to buffer
@@ -562,7 +617,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        copy_bitmap_to_window(device_context, global_chess.bitmap);
+        copy_draw_buffer_to_window(window, device_context);
 
         uint64_t work_time = counter_work - counter_previous;
         work_time_total += work_time;
@@ -656,7 +711,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
     Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
     global_chess.audio.sample_buffer = memory->audio;
-    global_chess.bitmap.memory = (Color *)memory->video;
+    global_chess.draw_buffer = (Color *)memory->video;
     global_chess.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;
@@ -680,7 +735,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         jk_platform_arena_terminate(&storage);
     }
 
-    if (global_chess.bitmap.memory) {
+    if (memory) {
         WNDCLASSA window_class = {
             .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
             .lpfnWndProc = window_proc,

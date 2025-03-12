@@ -137,8 +137,16 @@ typedef enum FlagIndex {
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
 #define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
 
-#define ATLAS_WIDTH 1920
-#define ATLAS_HEIGHT 2304
+#define ATLAS_SQUARE_SIDE_LENGTH 384
+#define ATLAS_WIDTH (ATLAS_SQUARE_SIDE_LENGTH * 5)
+#define ATLAS_HEIGHT (ATLAS_SQUARE_SIDE_LENGTH * 6)
+
+#define DRAW_BUFFER_WIDTH (ATLAS_SQUARE_SIDE_LENGTH * 8)
+#define DRAW_BUFFER_HEIGHT (ATLAS_SQUARE_SIDE_LENGTH * 8)
+
+#define CLEAR_COLOR_B 0x27
+#define CLEAR_COLOR_G 0x20
+#define CLEAR_COLOR_R 0x16
 
 typedef enum Result {
     RESULT_NONE,
@@ -153,7 +161,8 @@ typedef struct Chess {
     Input input;
     Input input_prev;
     Audio audio;
-    Bitmap bitmap;
+    int32_t square_side_length;
+    Color *draw_buffer;
     uint64_t time;
     Board board;
     uint8_t atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
