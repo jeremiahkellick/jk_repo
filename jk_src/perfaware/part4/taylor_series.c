@@ -1,4 +1,3 @@
-#include <emmintrin.h>
 #include <math.h>
 
 // #jk_build single_translation_unit
