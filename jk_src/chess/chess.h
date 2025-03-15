@@ -162,6 +162,7 @@ typedef struct Chess {
     Input input_prev;
     Audio audio;
     int32_t square_side_length;
+    int32_t square_side_length_prev;
     Color *draw_buffer;
     uint64_t time;
     Board board;

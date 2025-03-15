@@ -924,22 +924,24 @@ RENDER_FUNCTION(render)
 {
     static char string_buf[1024];
 
-    int32_t scaled_atlas_height = chess->square_side_length * 6;
-    int32_t scaled_atlas_width = chess->square_side_length * 5;
+    if (chess->square_side_length_prev != chess->square_side_length) {
+        int32_t scaled_atlas_height = chess->square_side_length * 6;
+        int32_t scaled_atlas_width = chess->square_side_length * 5;
 
-    // uint64_t time_before_scale = chess->cpu_timer_get();
-    scale_alpha_map(chess->scaled_atlas,
-            scaled_atlas_width,
-            scaled_atlas_height,
-            chess->atlas,
-            ATLAS_WIDTH,
-            ATLAS_HEIGHT);
-    // snprintf(string_buf,
-    //         JK_ARRAY_COUNT(string_buf),
-    //         "%.0fms\n",
-    //         (double)(chess->cpu_timer_get() - time_before_scale) * 1000.0
-    //                 / (double)chess->cpu_timer_frequency);
-    // chess->debug_print(string_buf);
+        // uint64_t time_before_scale = chess->cpu_timer_get();
+        scale_alpha_map(chess->scaled_atlas,
+                scaled_atlas_width,
+                scaled_atlas_height,
+                chess->atlas,
+                ATLAS_WIDTH,
+                ATLAS_HEIGHT);
+        // snprintf(string_buf,
+        //         JK_ARRAY_COUNT(string_buf),
+        //         "%.0fms\n",
+        //         (double)(chess->cpu_timer_get() - time_before_scale) * 1000.0
+        //                 / (double)chess->cpu_timer_frequency);
+        // chess->debug_print(string_buf);
+    }
 
     // Figure out which squares should be highlighted
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
@@ -1059,4 +1061,6 @@ RENDER_FUNCTION(render)
             }
         }
     }
+
+    chess->square_side_length_prev = chess->square_side_length;
 }
