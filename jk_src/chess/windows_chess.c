@@ -113,33 +113,48 @@ static void update_dimensions(HWND window)
     global_window_height = rect.bottom - rect.top;
 }
 
+typedef struct Rect {
+    union {
+        struct {
+            LONG left;
+            LONG top;
+            LONG right;
+            LONG bottom;
+        };
+        LONG a[4];
+    };
+} Rect;
+
 static void copy_draw_buffer_to_window(HWND window, HDC device_context)
 {
-    RECT rect;
-    GetClientRect(window, &rect);
-    int32_t screen_width = rect.right - rect.left;
-    int32_t screen_height = rect.bottom - rect.top;
-    int32_t width = windows_chess_minimum(screen_width, global_chess.square_side_length * 10);
-    int32_t height = windows_chess_minimum(screen_height, global_chess.square_side_length * 10);
+    Rect rect;
+    GetClientRect(window, (RECT *)&rect);
+    JkIntVector2 screen_dimensions = (JkIntVector2){rect.right - rect.left, rect.bottom - rect.top};
+    JkIntVector2 draw_dimensions = (JkIntVector2){
+        windows_chess_minimum(screen_dimensions.x, global_chess.square_side_length * 10),
+        windows_chess_minimum(screen_dimensions.y, global_chess.square_side_length * 10)};
+
+    JkIntVector2 offset = {0};
+    int32_t max_dimension_index = screen_dimensions.x < screen_dimensions.y ? 1 : 0;
+    offset.coords[max_dimension_index] = (screen_dimensions.coords[max_dimension_index]
+                                                 - draw_dimensions.coords[max_dimension_index])
+            / 2;
 
     HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
 
-    RECT width_fill;
-    width_fill.left = width;
-    width_fill.top = 0;
-    width_fill.right = screen_width;
-    width_fill.bottom = screen_height;
-    if (width_fill.right > width_fill.left) {
-        FillRect(device_context, &width_fill, brush);
-    }
+    Rect inverse_rect =
+            (Rect){offset.x + draw_dimensions.x, offset.y + draw_dimensions.y, offset.x, offset.y};
 
-    RECT height_fill;
-    height_fill.left = 0;
-    height_fill.top = height;
-    height_fill.right = screen_width;
-    height_fill.bottom = screen_height;
-    if (height_fill.bottom > height_fill.top) {
-        FillRect(device_context, &height_fill, brush);
+    for (int i = 0; i < 4; i++) {
+        Rect clear_rect;
+        clear_rect.left = 0;
+        clear_rect.top = 0;
+        clear_rect.right = screen_dimensions.x;
+        clear_rect.bottom = screen_dimensions.y;
+
+        clear_rect.a[i] = inverse_rect.a[i];
+
+        FillRect(device_context, (RECT *)&clear_rect, brush);
     }
 
     DeleteObject(brush);
@@ -156,14 +171,14 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
                 },
     };
     StretchDIBits(device_context,
+            offset.x,
+            offset.y,
+            draw_dimensions.x,
+            draw_dimensions.y,
             0,
             0,
-            width,
-            height,
-            0,
-            0,
-            width,
-            height,
+            draw_dimensions.x,
+            draw_dimensions.y,
             global_chess.draw_buffer,
             &bitmap_info,
             DIB_RGB_COLORS,
