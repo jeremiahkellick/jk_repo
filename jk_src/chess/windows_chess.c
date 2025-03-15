@@ -74,8 +74,7 @@ typedef struct Memory {
     uint8_t video[sizeof(Color) * DRAW_BUFFER_WIDTH * DRAW_BUFFER_HEIGHT];
 } Memory;
 
-static int32_t global_window_width;
-static int32_t global_window_height;
+static JkIntVector2 global_window_dimensions;
 static Chess global_chess = {0};
 
 static b32 global_running;
@@ -109,11 +108,11 @@ static void update_dimensions(HWND window)
 {
     RECT rect;
     GetClientRect(window, &rect);
-    global_window_width = rect.right - rect.left;
-    global_window_height = rect.bottom - rect.top;
+    global_window_dimensions.x = rect.right - rect.left;
+    global_window_dimensions.y = rect.bottom - rect.top;
 }
 
-typedef struct Rect {
+typedef struct WinRect {
     union {
         struct {
             LONG left;
@@ -123,34 +122,49 @@ typedef struct Rect {
         };
         LONG a[4];
     };
+} WinRect;
+
+typedef struct Rect {
+    union {
+        struct {
+            JkIntVector2 pos;
+            JkIntVector2 dimensions;
+        };
+        int32_t a[4];
+    };
 } Rect;
 
-static void copy_draw_buffer_to_window(HWND window, HDC device_context)
+static Rect draw_rect_get()
 {
-    Rect rect;
-    GetClientRect(window, (RECT *)&rect);
-    JkIntVector2 screen_dimensions = (JkIntVector2){rect.right - rect.left, rect.bottom - rect.top};
-    JkIntVector2 draw_dimensions = (JkIntVector2){
-        windows_chess_minimum(screen_dimensions.x, global_chess.square_side_length * 10),
-        windows_chess_minimum(screen_dimensions.y, global_chess.square_side_length * 10)};
+    Rect result = {0};
 
-    JkIntVector2 offset = {0};
-    int32_t max_dimension_index = screen_dimensions.x < screen_dimensions.y ? 1 : 0;
-    offset.coords[max_dimension_index] = (screen_dimensions.coords[max_dimension_index]
-                                                 - draw_dimensions.coords[max_dimension_index])
+    result.dimensions = (JkIntVector2){
+        windows_chess_minimum(global_window_dimensions.x, global_chess.square_side_length * 10),
+        windows_chess_minimum(global_window_dimensions.y, global_chess.square_side_length * 10)};
+
+    int32_t max_dimension_index = global_window_dimensions.x < global_window_dimensions.y ? 1 : 0;
+    result.pos.coords[max_dimension_index] =
+            (global_window_dimensions.coords[max_dimension_index]
+                    - result.dimensions.coords[max_dimension_index])
             / 2;
 
+    return result;
+}
+
+static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect draw_rect)
+{
     HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
 
-    Rect inverse_rect =
-            (Rect){offset.x + draw_dimensions.x, offset.y + draw_dimensions.y, offset.x, offset.y};
-
+    WinRect inverse_rect = {draw_rect.pos.x + draw_rect.dimensions.x,
+        draw_rect.pos.y + draw_rect.dimensions.y,
+        draw_rect.pos.x,
+        draw_rect.pos.y};
     for (int i = 0; i < 4; i++) {
-        Rect clear_rect;
+        WinRect clear_rect;
         clear_rect.left = 0;
         clear_rect.top = 0;
-        clear_rect.right = screen_dimensions.x;
-        clear_rect.bottom = screen_dimensions.y;
+        clear_rect.right = global_window_dimensions.x;
+        clear_rect.bottom = global_window_dimensions.y;
 
         clear_rect.a[i] = inverse_rect.a[i];
 
@@ -171,14 +185,14 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
                 },
     };
     StretchDIBits(device_context,
-            offset.x,
-            offset.y,
-            draw_dimensions.x,
-            draw_dimensions.y,
+            draw_rect.pos.x,
+            draw_rect.pos.y,
+            draw_rect.dimensions.x,
+            draw_rect.dimensions.y,
             0,
             0,
-            draw_dimensions.x,
-            draw_dimensions.y,
+            draw_rect.dimensions.x,
+            draw_rect.dimensions.y,
             global_chess.draw_buffer,
             &bitmap_info,
             DIB_RGB_COLORS,
@@ -277,7 +291,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     case WM_PAINT: {
         PAINTSTRUCT paint;
         HDC device_context = BeginPaint(window, &paint);
-        copy_draw_buffer_to_window(window, device_context);
+        copy_draw_buffer_to_window(window, device_context, draw_rect_get());
         EndPaint(window, &paint);
     } break;
 
@@ -467,13 +481,20 @@ DWORD game_thread(LPVOID param)
             }
         }
 
+        global_chess.square_side_length =
+                square_side_length_get((IntArray4){global_window_dimensions.x,
+                    global_window_dimensions.y,
+                    DRAW_BUFFER_WIDTH,
+                    DRAW_BUFFER_HEIGHT});
+        Rect draw_rect = draw_rect_get();
+
         // Mouse input
         {
             POINT mouse_pos;
             if (GetCursorPos(&mouse_pos)) {
                 if (ScreenToClient(window, &mouse_pos)) {
-                    global_chess.input.mouse_pos.x = mouse_pos.x;
-                    global_chess.input.mouse_pos.y = mouse_pos.y;
+                    global_chess.input.mouse_pos.x = mouse_pos.x - draw_rect.pos.x;
+                    global_chess.input.mouse_pos.y = mouse_pos.y - draw_rect.pos.y;
                 } else {
                     OutputDebugStringA("Failed to get mouse position\n");
                 }
@@ -563,9 +584,6 @@ DWORD game_thread(LPVOID param)
         } break;
         }
 
-        global_chess.square_side_length = square_side_length_get((IntArray4){
-            global_window_width, global_window_height, DRAW_BUFFER_WIDTH, DRAW_BUFFER_HEIGHT});
-
         update(&global_chess);
 
         // Write audio to buffer
@@ -632,7 +650,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        copy_draw_buffer_to_window(window, device_context);
+        copy_draw_buffer_to_window(window, device_context, draw_rect);
 
         uint64_t work_time = counter_work - counter_previous;
         work_time_total += work_time;
