@@ -556,7 +556,7 @@ static void moves_get(MoveArray *moves, Board board)
     }
 }
 
-#define MAX_DEPTH 3
+#define MAX_DEPTH 4
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
 
@@ -587,49 +587,87 @@ static int32_t board_score(Board board)
     return score;
 }
 
-int32_t ai_score_get(Board board, int32_t depth)
+typedef struct AiScoreResult {
+    int32_t score;
+    MovePacked line[MAX_DEPTH];
+} AiScoreResult;
+
+AiScoreResult ai_score_get(Board board, int32_t depth)
 {
+    AiScoreResult result = {.score = INT32_MIN};
+
     if (!(depth < MAX_DEPTH)) {
-        return board_score(board);
+        result.score = board_score(board);
+        return result;
     }
 
     MoveArray moves;
     moves_get(&moves, board);
 
     if (moves.count) {
-        int32_t max_score = INT32_MIN;
         MovePacked best_move;
         for (int32_t i = 0; i < moves.count; i++) {
-            int32_t score = team_multiplier[board_current_team_get(board)]
-                    * ai_score_get(board_move_perform(board, moves.data[i]), depth + 1);
-            if (max_score < score) {
-                max_score = score;
+            AiScoreResult current =
+                    ai_score_get(board_move_perform(board, moves.data[i]), depth + 1);
+            current.score *= team_multiplier[board_current_team_get(board)];
+            if (result.score < current.score) {
+                result = current;
                 best_move = moves.data[i];
             }
         }
+        result.line[depth] = best_move;
 
-        return team_multiplier[board_current_team_get(board)] * max_score;
+        result.score *= team_multiplier[board_current_team_get(board)];
+        return result;
     } else {
-        return board_score(board);
+        result.score = board_score(board);
+        return result;
     }
 }
 
-MovePacked ai_move_get(Board board)
+void print_pos(void (*print)(char *), JkIntVector2 pos)
+{
+    char string[3];
+    string[0] = 'a' + (char)pos.x;
+    string[1] = '1' + (char)pos.y;
+    string[2] = '\0';
+    print(string);
+}
+
+void print_move(void (*print)(char *), Move move)
+{
+    JkIntVector2 src = board_index_to_vector_2(move.src);
+    JkIntVector2 dest = board_index_to_vector_2(move.dest);
+    print_pos(print, src);
+    print("->");
+    print_pos(print, dest);
+}
+
+MovePacked ai_move_get(Chess *chess)
 {
     MoveArray moves;
-    moves_get(&moves, board);
+    moves_get(&moves, chess->board);
     JK_ASSERT(moves.count);
 
-    int32_t max_score = INT32_MIN;
+    AiScoreResult result = {.score = INT32_MIN};
     MovePacked best_move = {0};
     for (int32_t i = 0; i < moves.count; i++) {
-        int32_t score = team_multiplier[board_current_team_get(board)]
-                * ai_score_get(board_move_perform(board, moves.data[i]), 0);
-        if (max_score < score) {
-            max_score = score;
+        AiScoreResult current = ai_score_get(board_move_perform(chess->board, moves.data[i]), 1);
+        current.score *= team_multiplier[board_current_team_get(chess->board)];
+        if (result.score < current.score) {
+            result = current;
             best_move = moves.data[i];
         }
     }
+    result.line[0] = best_move;
+
+    for (int i = 0; i < MAX_DEPTH; i++) {
+        if (i) {
+            chess->debug_print(", ");
+        }
+        print_move(chess->debug_print, move_unpack(result.line[i]));
+    }
+    chess->debug_print("\n");
 
     return best_move;
 }
@@ -800,7 +838,7 @@ UPDATE_FUNCTION(update)
             chess->promo_square = dest;
         } else { // Make a move
             chess->board = board_move_perform(chess->board, move_pack(move));
-            // chess->board = board_move_perform(chess->board, ai_move_get(chess->board));
+            chess->board = board_move_perform(chess->board, ai_move_get(chess));
 
             chess->selected_square = (JkIntVector2){-1, -1};
             chess->promo_square = (JkIntVector2){-1, -1};
