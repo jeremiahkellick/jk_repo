@@ -132,10 +132,12 @@ typedef struct Board {
 typedef enum FlagIndex {
     FLAG_INDEX_INITIALIZED,
     FLAG_INDEX_HOLDING_PIECE,
+    FLAG_INDEX_REQUEST_AI_MOVE,
 } FlagIndex;
 
 #define FLAG_INITIALIZED (1llu << FLAG_INDEX_INITIALIZED)
 #define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
+#define FLAG_REQUEST_AI_MOVE (1llu << FLAG_INDEX_REQUEST_AI_MOVE)
 
 #define ATLAS_SQUARE_SIDE_LENGTH 384
 #define ATLAS_WIDTH (ATLAS_SQUARE_SIDE_LENGTH * 5)
@@ -148,6 +150,11 @@ typedef enum FlagIndex {
 #define CLEAR_COLOR_G 0x20
 #define CLEAR_COLOR_R 0x16
 
+typedef enum PlayerType {
+    PLAYER_HUMAN,
+    PLAYER_AI,
+} PlayerType;
+
 typedef enum Result {
     RESULT_NONE,
     RESULT_STALEMATE,
@@ -156,6 +163,7 @@ typedef enum Result {
 
 typedef struct Chess {
     uint64_t flags;
+    PlayerType player_types[2];
     JkIntVector2 selected_square;
     JkIntVector2 promo_square;
     Input input;
@@ -169,6 +177,7 @@ typedef struct Chess {
     uint8_t atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
     uint8_t scaled_atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
     MoveArray moves;
+    Move ai_move;
     Result result;
     Team victor;
     uint64_t cpu_timer_frequency;
@@ -176,12 +185,13 @@ typedef struct Chess {
     void (*debug_print)(char *);
 } Chess;
 
-#define UPDATE_FUNCTION(name) void name(Chess *chess)
-typedef UPDATE_FUNCTION(UpdateFunction);
+typedef Move AiMoveGetFunction(Chess *chess);
+AiMoveGetFunction ai_move_get;
+
+typedef void UpdateFunction(Chess *chess);
 UpdateFunction update;
 
-#define RENDER_FUNCTION(name) void name(Chess *chess)
-typedef RENDER_FUNCTION(RenderFunction);
+typedef void RenderFunction(Chess *chess);
 RenderFunction render;
 
 #endif

@@ -6,7 +6,7 @@
 #include <string.h>
 
 // #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render
+// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render /EXPORT:ai_move_get
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
@@ -28,7 +28,7 @@ typedef enum Column {
 
 // clang-format off
 // Byte array encoding the chess starting positions
-Board starting_state = {
+static Board starting_state = {
     0x53, 0x24, 0x41, 0x35,
     0x66, 0x66, 0x66, 0x66,
     0x00, 0x00, 0x00, 0x00,
@@ -592,7 +592,7 @@ typedef struct AiScoreResult {
     MovePacked line[MAX_DEPTH];
 } AiScoreResult;
 
-AiScoreResult ai_score_get(Board board, int32_t depth)
+static AiScoreResult ai_score_get(Board board, int32_t depth)
 {
     AiScoreResult result = {.score = INT32_MIN};
 
@@ -605,7 +605,7 @@ AiScoreResult ai_score_get(Board board, int32_t depth)
     moves_get(&moves, board);
 
     if (moves.count) {
-        MovePacked best_move;
+        MovePacked best_move = {0};
         for (int32_t i = 0; i < moves.count; i++) {
             AiScoreResult current =
                     ai_score_get(board_move_perform(board, moves.data[i]), depth + 1);
@@ -625,7 +625,7 @@ AiScoreResult ai_score_get(Board board, int32_t depth)
     }
 }
 
-void print_pos(void (*print)(char *), JkIntVector2 pos)
+static void print_pos(void (*print)(char *), JkIntVector2 pos)
 {
     char string[3];
     string[0] = 'a' + (char)pos.x;
@@ -634,7 +634,7 @@ void print_pos(void (*print)(char *), JkIntVector2 pos)
     print(string);
 }
 
-void print_move(void (*print)(char *), Move move)
+static void print_move(void (*print)(char *), Move move)
 {
     JkIntVector2 src = board_index_to_vector_2(move.src);
     JkIntVector2 dest = board_index_to_vector_2(move.dest);
@@ -643,7 +643,7 @@ void print_move(void (*print)(char *), Move move)
     print_pos(print, dest);
 }
 
-MovePacked ai_move_get(Chess *chess)
+Move ai_move_get(Chess *chess)
 {
     MoveArray moves;
     moves_get(&moves, chess->board);
@@ -669,7 +669,7 @@ MovePacked ai_move_get(Chess *chess)
     }
     chess->debug_print("\n");
 
-    return best_move;
+    return move_unpack(best_move);
 }
 
 static void audio_write(Audio *audio)
@@ -746,7 +746,7 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-UPDATE_FUNCTION(update)
+void update(Chess *chess)
 {
     // Debug reset
     if (button_pressed(chess, INPUT_FLAG_RESET)) {
@@ -755,8 +755,11 @@ UPDATE_FUNCTION(update)
 
     if (!(chess->flags & FLAG_INITIALIZED)) {
         chess->flags = FLAG_INITIALIZED;
+        chess->player_types[0] = PLAYER_HUMAN;
+        chess->player_types[1] = PLAYER_AI;
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
+        chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board);
@@ -780,55 +783,62 @@ UPDATE_FUNCTION(update)
 
     JkIntVector2 mouse_pos = screen_to_board_pos(chess->square_side_length, chess->input.mouse_pos);
 
-    if (board_in_bounds(chess->promo_square)) {
-        int32_t dist_from_promo_square = absolute_value(mouse_pos.y - chess->promo_square.y);
-        if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
-            if (mouse_pos.x == chess->promo_square.x
-                    && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
-                move.src = board_index_get(chess->selected_square);
-                move.dest = board_index_get(chess->promo_square);
-                move.piece.team = board_current_team_get(chess->board);
-                move.piece.type = promo_order[dist_from_promo_square];
-            } else {
-                chess->selected_square = (JkIntVector2){-1, -1};
-                chess->promo_square = (JkIntVector2){-1, -1};
+    if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
+        if (board_in_bounds(chess->promo_square)) {
+            int32_t dist_from_promo_square = absolute_value(mouse_pos.y - chess->promo_square.y);
+            if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
+                if (mouse_pos.x == chess->promo_square.x
+                        && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                    move.src = board_index_get(chess->selected_square);
+                    move.dest = board_index_get(chess->promo_square);
+                    move.piece.team = board_current_team_get(chess->board);
+                    move.piece.type = promo_order[dist_from_promo_square];
+                } else {
+                    chess->selected_square = (JkIntVector2){-1, -1};
+                    chess->promo_square = (JkIntVector2){-1, -1};
+                }
             }
-        }
-    } else {
-        uint64_t available_destinations =
-                destinations_get_by_src(chess, board_index_get_unbounded(chess->selected_square));
-        uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
-        b32 mouse_on_destination =
-                mouse_index < 64 && (available_destinations & (1llu << mouse_index));
-        uint8_t piece_drop_index = UINT8_MAX;
+        } else {
+            uint64_t available_destinations = destinations_get_by_src(
+                    chess, board_index_get_unbounded(chess->selected_square));
+            uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
+            b32 mouse_on_destination =
+                    mouse_index < 64 && (available_destinations & (1llu << mouse_index));
+            uint8_t piece_drop_index = UINT8_MAX;
 
-        if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
-            if (mouse_on_destination) {
-                piece_drop_index = mouse_index;
-            } else {
-                chess->selected_square = (JkIntVector2){-1, -1};
-                for (uint8_t i = 0; i < chess->moves.count; i++) {
-                    Move available_move = move_unpack(chess->moves.data[i]);
-                    if (available_move.src == mouse_index) {
-                        chess->flags |= FLAG_HOLDING_PIECE;
-                        chess->selected_square = mouse_pos;
+            if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
+                if (mouse_on_destination) {
+                    piece_drop_index = mouse_index;
+                } else {
+                    chess->selected_square = (JkIntVector2){-1, -1};
+                    for (uint8_t i = 0; i < chess->moves.count; i++) {
+                        Move available_move = move_unpack(chess->moves.data[i]);
+                        if (available_move.src == mouse_index) {
+                            chess->flags |= FLAG_HOLDING_PIECE;
+                            chess->selected_square = mouse_pos;
+                        }
                     }
                 }
             }
-        }
 
-        if (!(chess->input.flags & INPUT_FLAG_CONFIRM) && (chess->flags & FLAG_HOLDING_PIECE)) {
-            chess->flags &= ~FLAG_HOLDING_PIECE;
+            if (!(chess->input.flags & INPUT_FLAG_CONFIRM) && (chess->flags & FLAG_HOLDING_PIECE)) {
+                chess->flags &= ~FLAG_HOLDING_PIECE;
 
-            if (mouse_on_destination) {
-                piece_drop_index = mouse_index;
+                if (mouse_on_destination) {
+                    piece_drop_index = mouse_index;
+                }
+            }
+
+            if (piece_drop_index < 64) {
+                move.src = board_index_get(chess->selected_square);
+                move.dest = (uint8_t)piece_drop_index;
+                move.piece = board_piece_get_index(chess->board, move.src);
             }
         }
-
-        if (piece_drop_index < 64) {
-            move.src = board_index_get(chess->selected_square);
-            move.dest = (uint8_t)piece_drop_index;
-            move.piece = board_piece_get_index(chess->board, move.src);
+    } else { // Current player is an AI
+        if (chess->ai_move.src < 64) {
+            move = chess->ai_move;
+            chess->ai_move.src = UINT8_MAX;
         }
     }
 
@@ -838,7 +848,9 @@ UPDATE_FUNCTION(update)
             chess->promo_square = dest;
         } else { // Make a move
             chess->board = board_move_perform(chess->board, move_pack(move));
-            chess->board = board_move_perform(chess->board, ai_move_get(chess));
+            if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
+                chess->flags |= FLAG_REQUEST_AI_MOVE;
+            }
 
             chess->selected_square = (JkIntVector2){-1, -1};
             chess->promo_square = (JkIntVector2){-1, -1};
@@ -958,7 +970,7 @@ static void scale_alpha_map(uint8_t *dest,
     }
 }
 
-RENDER_FUNCTION(render)
+void render(Chess *chess)
 {
     static char string_buf[1024];
 

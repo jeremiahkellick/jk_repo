@@ -82,6 +82,15 @@ static int64_t global_keys_down;
 static LPDIRECTSOUNDBUFFER global_audio_buffer;
 static char global_string_buffer[1024];
 
+static SRWLOCK global_dll_lock = SRWLOCK_INIT;
+static HANDLE global_board_lock;
+static SRWLOCK global_move_lock = SRWLOCK_INIT;
+static Move global_move = {.src = UINT8_MAX};
+
+static AiMoveGetFunction *global_ai_move_get = 0;
+static UpdateFunction *global_update = 0;
+static RenderFunction *global_render = 0;
+
 static int32_t windows_chess_minimum(int32_t a, int32_t b)
 {
     return a < b ? a : b;
@@ -315,10 +324,10 @@ typedef enum RecordState {
     RECORD_STATE_COUNT,
 } RecordState;
 
-static RecordState record_state;
-static uint64_t recorded_inputs_count;
-static Input recorded_inputs[1024];
-static Chess recorded_game_state;
+static RecordState global_record_state;
+static uint64_t global_recorded_inputs_count;
+static Input global_recorded_inputs[1024];
+static Chess global_recorded_game_state;
 
 DWORD game_thread(LPVOID param)
 {
@@ -394,8 +403,6 @@ DWORD game_thread(LPVOID param)
         OutputDebugStringA("Failed to load DirectSound\n");
     }
 
-    UpdateFunction *update = 0;
-    RenderFunction *render = 0;
     HINSTANCE chess_library = 0;
     FILETIME chess_dll_last_modified_time = {0};
 
@@ -416,22 +423,27 @@ DWORD game_thread(LPVOID param)
         if (GetFileAttributesExA("chess.dll", GetFileExInfoStandard, &chess_dll_info)) {
             if (CompareFileTime(&chess_dll_info.ftLastWriteTime, &chess_dll_last_modified_time)
                     != 0) {
+                AcquireSRWLockExclusive(&global_dll_lock);
                 chess_dll_last_modified_time = chess_dll_info.ftLastWriteTime;
                 if (chess_library) {
                     FreeLibrary(chess_library);
-                    update = 0;
-                    render = 0;
+                    global_ai_move_get = 0;
+                    global_update = 0;
+                    global_render = 0;
                 }
                 if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
                     OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
                 }
                 chess_library = LoadLibraryA("chess_tmp.dll");
                 if (chess_library) {
-                    update = (UpdateFunction *)GetProcAddress(chess_library, "update");
-                    render = (RenderFunction *)GetProcAddress(chess_library, "render");
+                    global_ai_move_get =
+                            (AiMoveGetFunction *)GetProcAddress(chess_library, "ai_move_get");
+                    global_update = (UpdateFunction *)GetProcAddress(chess_library, "update");
+                    global_render = (RenderFunction *)GetProcAddress(chess_library, "render");
                 } else {
                     OutputDebugStringA("Failed to load chess_tmp.dll\n");
                 }
+                ReleaseSRWLockExclusive(&global_dll_lock);
             }
         } else {
             OutputDebugStringA("Failed to get last modified time of chess.dll\n");
@@ -537,18 +549,18 @@ DWORD game_thread(LPVOID param)
         }
 
         if ((global_keys_down & KEY_FLAG_C) && !(prev_keys & KEY_FLAG_C)) {
-            record_state = (record_state + 1) % RECORD_STATE_COUNT;
-            switch (record_state) {
+            global_record_state = (global_record_state + 1) % RECORD_STATE_COUNT;
+            switch (global_record_state) {
             case RECORD_STATE_NONE: {
             } break;
 
             case RECORD_STATE_RECORDING: {
-                recorded_game_state = global_chess;
+                global_recorded_game_state = global_chess;
             } break;
 
             case RECORD_STATE_PLAYING: {
-                recorded_inputs_count = global_chess.time - recorded_game_state.time;
-                global_chess = recorded_game_state;
+                global_recorded_inputs_count = global_chess.time - global_recorded_game_state.time;
+                global_chess = global_recorded_game_state;
             } break;
 
             case RECORD_STATE_COUNT:
@@ -558,24 +570,25 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        switch (record_state) {
+        switch (global_record_state) {
         case RECORD_STATE_NONE: {
         } break;
 
         case RECORD_STATE_RECORDING: {
-            uint64_t i = (global_chess.time - recorded_game_state.time)
-                    % JK_ARRAY_COUNT(recorded_inputs);
-            recorded_inputs[i] = global_chess.input;
+            uint64_t i = (global_chess.time - global_recorded_game_state.time)
+                    % JK_ARRAY_COUNT(global_recorded_inputs);
+            global_recorded_inputs[i] = global_chess.input;
         } break;
 
         case RECORD_STATE_PLAYING: {
-            if ((global_chess.time - recorded_game_state.time) > recorded_inputs_count) {
-                global_chess = recorded_game_state;
+            if ((global_chess.time - global_recorded_game_state.time)
+                    > global_recorded_inputs_count) {
+                global_chess = global_recorded_game_state;
             }
 
-            uint64_t i = (global_chess.time - recorded_game_state.time)
-                    % JK_ARRAY_COUNT(recorded_inputs);
-            global_chess.input = recorded_inputs[i];
+            uint64_t i = (global_chess.time - global_recorded_game_state.time)
+                    % JK_ARRAY_COUNT(global_recorded_inputs);
+            global_chess.input = global_recorded_inputs[i];
         } break;
 
         case RECORD_STATE_COUNT:
@@ -584,7 +597,19 @@ DWORD game_thread(LPVOID param)
         } break;
         }
 
-        update(&global_chess);
+        AcquireSRWLockExclusive(&global_move_lock);
+        if (global_move.src < 64) {
+            global_chess.ai_move = global_move;
+            global_move.src = UINT8_MAX;
+        }
+        ReleaseSRWLockExclusive(&global_move_lock);
+
+        global_update(&global_chess);
+
+        if (global_chess.flags & FLAG_REQUEST_AI_MOVE) {
+            global_chess.flags &= ~FLAG_REQUEST_AI_MOVE;
+            ReleaseSemaphore(global_board_lock, 1, 0);
+        }
 
         // Write audio to buffer
         {
@@ -624,7 +649,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        render(&global_chess);
+        global_render(&global_chess);
 
         uint64_t counter_work = jk_platform_os_timer_get();
         uint64_t counter_current = counter_work;
@@ -700,6 +725,23 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
+DWORD ai_thread(LPVOID param)
+{
+    while (global_running) {
+        WaitForSingleObject(global_board_lock, INFINITE);
+
+        AcquireSRWLockShared(&global_dll_lock);
+        Move move = global_ai_move_get(&global_chess);
+        ReleaseSRWLockShared(&global_dll_lock);
+
+        AcquireSRWLockExclusive(&global_move_lock);
+        global_move = move;
+        ReleaseSRWLockExclusive(&global_move_lock);
+    }
+
+    return 0;
+}
+
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
     // Set working directory to the directory containing the executable
@@ -768,6 +810,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         jk_platform_arena_terminate(&storage);
     }
 
+    global_board_lock = CreateSemaphoreA(0, 0, 1, 0);
+
     if (memory) {
         WNDCLASSA window_class = {
             .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
@@ -790,8 +834,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 instance,
                 0);
         if (window) {
-            HANDLE thread = CreateThread(0, 0, game_thread, window, 0, 0);
-            if (thread) {
+            HANDLE ai_thread_handle = CreateThread(0, 0, ai_thread, 0, 0, 0);
+            if (!ai_thread_handle) {
+                OutputDebugStringA("Failed to launch AI thread\n");
+            }
+            HANDLE game_thread_handle = CreateThread(0, 0, game_thread, window, 0, 0);
+            if (game_thread_handle) {
                 global_running = TRUE;
                 while (global_running) {
                     MSG message;
@@ -803,7 +851,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                         DispatchMessageA(&message);
                     }
                 }
-                WaitForSingleObject(thread, INFINITE);
+                WaitForSingleObject(game_thread_handle, INFINITE);
             } else {
                 OutputDebugStringA("Failed to launch game thread\n");
             }
