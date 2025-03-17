@@ -587,44 +587,6 @@ static int32_t board_score(Board board)
     return score;
 }
 
-typedef struct AiScoreResult {
-    int32_t score;
-    MovePacked line[MAX_DEPTH];
-} AiScoreResult;
-
-AiScoreResult ai_score_get(Board board, int32_t depth)
-{
-    AiScoreResult result = {.score = INT32_MIN};
-
-    if (!(depth < MAX_DEPTH)) {
-        result.score = board_score(board);
-        return result;
-    }
-
-    MoveArray moves;
-    moves_get(&moves, board);
-
-    if (moves.count) {
-        MovePacked best_move;
-        for (int32_t i = 0; i < moves.count; i++) {
-            AiScoreResult current =
-                    ai_score_get(board_move_perform(board, moves.data[i]), depth + 1);
-            current.score *= team_multiplier[board_current_team_get(board)];
-            if (result.score < current.score) {
-                result = current;
-                best_move = moves.data[i];
-            }
-        }
-        result.line[depth] = best_move;
-
-        result.score *= team_multiplier[board_current_team_get(board)];
-        return result;
-    } else {
-        result.score = board_score(board);
-        return result;
-    }
-}
-
 void print_pos(void (*print)(char *), JkIntVector2 pos)
 {
     char string[3];
@@ -643,6 +605,76 @@ void print_move(void (*print)(char *), Move move)
     print_pos(print, dest);
 }
 
+void print_line(void (*print)(char *), MovePacked *line)
+{
+    for (int i = 0; i < MAX_DEPTH; i++) {
+        Move move = move_unpack(line[i]);
+        if (move.src || move.dest) {
+            if (i) {
+                print(", ");
+            }
+            print_move(print, move_unpack(line[i]));
+        }
+    }
+    print("\n");
+}
+
+typedef struct AiScoreResult {
+    int32_t score;
+    MovePacked line[MAX_DEPTH];
+} AiScoreResult;
+
+AiScoreResult ai_score_get(Board board, int32_t depth, void (*print)(char *))
+{
+    char buf[32];
+
+    AiScoreResult result = {.score = INT32_MIN};
+
+    if (!(depth < MAX_DEPTH)) {
+        result.score = board_score(board);
+        return result;
+    }
+
+    MoveArray moves;
+    moves_get(&moves, board);
+
+    if (moves.count) {
+        MovePacked best_move = {0};
+        for (int32_t i = 0; i < moves.count; i++) {
+            AiScoreResult current =
+                    ai_score_get(board_move_perform(board, moves.data[i]), depth + 1, print);
+            current.score *= team_multiplier[board_current_team_get(board)];
+            Move move_prev = move_unpack(board.move_prev);
+            Move move = move_unpack(moves.data[i]);
+            if (depth == 1 && move_prev.src == 33 && move_prev.dest == 26) {
+                if (move.src == 19 && move.dest == 26) {
+                    snprintf(buf, 32, "Expected line (%d)\n", current.score);
+                    print(buf);
+                    current.line[depth] = moves.data[i];
+                    print_line(print, current.line);
+                }
+                if (move.src == 0 && move.dest == 24) {
+                    snprintf(buf, 32, "Actual line (%d)\n", current.score);
+                    print(buf);
+                    current.line[depth] = moves.data[i];
+                    print_line(print, current.line);
+                }
+            }
+            if (result.score < current.score) {
+                result = current;
+                best_move = moves.data[i];
+            }
+        }
+        result.line[depth] = best_move;
+
+        result.score *= team_multiplier[board_current_team_get(board)];
+        return result;
+    } else {
+        result.score = board_score(board);
+        return result;
+    }
+}
+
 MovePacked ai_move_get(Chess *chess)
 {
     MoveArray moves;
@@ -652,7 +684,8 @@ MovePacked ai_move_get(Chess *chess)
     AiScoreResult result = {.score = INT32_MIN};
     MovePacked best_move = {0};
     for (int32_t i = 0; i < moves.count; i++) {
-        AiScoreResult current = ai_score_get(board_move_perform(chess->board, moves.data[i]), 1);
+        AiScoreResult current = ai_score_get(
+                board_move_perform(chess->board, moves.data[i]), 1, chess->debug_print);
         current.score *= team_multiplier[board_current_team_get(chess->board)];
         if (result.score < current.score) {
             result = current;
@@ -661,13 +694,10 @@ MovePacked ai_move_get(Chess *chess)
     }
     result.line[0] = best_move;
 
-    for (int i = 0; i < MAX_DEPTH; i++) {
-        if (i) {
-            chess->debug_print(", ");
-        }
-        print_move(chess->debug_print, move_unpack(result.line[i]));
-    }
-    chess->debug_print("\n");
+    char buf[32];
+    snprintf(buf, 32, "Line (%d)\n", result.score);
+    chess->debug_print(buf);
+    print_line(chess->debug_print, result.line);
 
     return best_move;
 }
