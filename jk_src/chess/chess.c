@@ -658,7 +658,6 @@ Move ai_move_get(Chess *chess)
 {
     MoveArray moves;
     moves_get(&moves, chess->board);
-    JK_ASSERT(moves.count);
     moves_shuffle(&moves);
 
     AiScoreResult result = {.score = INT32_MIN};
@@ -862,16 +861,17 @@ void update(Chess *chess)
             chess->promo_square = dest;
         } else { // Make a move
             chess->board = board_move_perform(chess->board, move_pack(move));
-            if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
-                chess->flags |= FLAG_REQUEST_AI_MOVE;
-            }
 
             chess->selected_square = (JkIntVector2){-1, -1};
             chess->promo_square = (JkIntVector2){-1, -1};
             Team current_team = board_current_team_get(chess->board);
             moves_get(&chess->moves, chess->board);
 
-            if (!chess->moves.count) {
+            if (chess->moves.count) {
+                if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
+                    chess->flags |= FLAG_REQUEST_AI_MOVE;
+                }
+            } else {
                 chess->victor = !current_team;
 
                 uint64_t threatened = board_threatened_squares_get(chess->board, chess->victor);
