@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // #jk_build compiler_arguments /LD
@@ -643,11 +644,22 @@ static void print_move(void (*print)(char *), Move move)
     print_pos(print, dest);
 }
 
+static void moves_shuffle(MoveArray *moves)
+{
+    for (int32_t i = 0; i < moves->count; i++) {
+        int32_t swap_index = i + rand() % (moves->count - i);
+        MovePacked tmp = moves->data[swap_index];
+        moves->data[swap_index] = moves->data[i];
+        moves->data[i] = tmp;
+    }
+}
+
 Move ai_move_get(Chess *chess)
 {
     MoveArray moves;
     moves_get(&moves, chess->board);
     JK_ASSERT(moves.count);
+    moves_shuffle(&moves);
 
     AiScoreResult result = {.score = INT32_MIN};
     MovePacked best_move = {0};
@@ -763,6 +775,8 @@ void update(Chess *chess)
         chess->result = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board);
+
+        srand(0xd5717cc6);
 
         JK_DEBUG_ASSERT(board_flag_king_moved_get(WHITE) == BOARD_FLAG_WHITE_KING_MOVED);
         JK_DEBUG_ASSERT(board_flag_king_moved_get(BLACK) == BOARD_FLAG_BLACK_KING_MOVED);
