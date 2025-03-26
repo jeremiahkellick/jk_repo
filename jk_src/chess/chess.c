@@ -683,19 +683,34 @@ Move ai_move_get(Chess *chess)
     return move_unpack(best_move);
 }
 
+typedef struct Sound {
+    int64_t size;
+    int64_t offset;
+} Sound;
+
+static Sound sounds[SOUND_COUNT] = {
+    {.size = 0, .offset = 0}, // SOUND_NONE
+    {.size = 31920, .offset = 0},
+    {.size = 21718, .offset = 31920},
+};
+
 static void audio_write(Audio *audio)
 {
-    for (uint32_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
-        for (int32_t channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
-            audio->sample_buffer[sample_index].channels[channel_index] = 0;
-        }
-        audio->audio_time++;
-    }
-}
+    int64_t samples_since_sound_started = audio->time - audio->sound_started_time;
+    int64_t sound_samples_remaining = sounds[audio->sound].size - samples_since_sound_started;
 
-static int32_t minimum(int32_t a, int32_t b)
-{
-    return a < b ? a : b;
+    for (int64_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
+        for (int64_t channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
+            if (sample_index < sound_samples_remaining) {
+                audio->sample_buffer[sample_index].channels[channel_index] =
+                        audio->asset_data[sounds[audio->sound].offset + samples_since_sound_started
+                                + sample_index];
+            } else {
+                audio->sample_buffer[sample_index].channels[channel_index] = 0;
+            }
+        }
+        audio->time++;
+    }
 }
 
 static JkIntVector2 screen_board_origin_get(int32_t square_side_length)
@@ -774,6 +789,13 @@ void update(Chess *chess)
         chess->result = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board);
+        if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
+            chess->flags |= FLAG_REQUEST_AI_MOVE;
+        }
+
+        chess->audio.time = 0;
+        chess->audio.sound = 0;
+        chess->audio.sound_started_time = 0;
 
         srand(0xd5717cc6);
 
@@ -861,6 +883,9 @@ void update(Chess *chess)
             chess->promo_square = dest;
         } else { // Make a move
             chess->board = board_move_perform(chess->board, move_pack(move));
+
+            chess->audio.sound = SOUND_MOVE;
+            chess->audio.sound_started_time = chess->audio.time;
 
             chess->selected_square = (JkIntVector2){-1, -1};
             chess->promo_square = (JkIntVector2){-1, -1};

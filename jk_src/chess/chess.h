@@ -54,11 +54,23 @@ typedef struct AudioSample {
     int16_t channels[AUDIO_CHANNEL_COUNT];
 } AudioSample;
 
+typedef enum SoundIndex {
+    SOUND_NONE,
+    SOUND_MOVE,
+    SOUND_CAPTURE,
+    SOUND_COUNT,
+} SoundIndex;
+
 typedef struct Audio {
-    uint32_t sample_count;
+    // Read-only
+    int64_t sample_count;
     AudioSample *sample_buffer;
-    uint32_t audio_time;
-    double sin_t;
+    int16_t asset_data[128llu * 1024];
+
+    // Read-write
+    int64_t time;
+    SoundIndex sound;
+    int64_t sound_started_time;
 } Audio;
 
 typedef struct Bitmap {

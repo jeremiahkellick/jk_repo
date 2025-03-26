@@ -1,10 +1,10 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
-#include "jk_src/jk_lib/jk_lib.h"
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <windows.h>
 #include <xinput.h>
 
@@ -28,14 +28,69 @@ typedef struct AudioBufferRegion {
     void *data;
 } AudioBufferRegion;
 
+// ---- File formats begin -----------------------------------------------------
+
 #pragma pack(push, 1)
+
 typedef struct BitmapHeader {
     uint16_t identifier;
     uint32_t size;
     uint32_t reserved;
     uint32_t offset;
 } BitmapHeader;
+
+typedef struct RiffChunk {
+    uint32_t id;
+    uint32_t size;
+    uint8_t data[];
+} RiffChunk;
+
+typedef struct RiffChunkMain {
+    uint32_t id;
+    uint32_t size;
+    uint32_t form_type;
+    uint8_t chunk_first[];
+} RiffChunkMain;
+
+typedef struct WavFormat {
+    uint16_t format_tag;
+    uint16_t channel_count;
+    uint32_t samples_per_second;
+    uint32_t average_bytes_per_second;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+    uint16_t size;
+    uint16_t valid_bits_per_sample;
+    uint32_t channel_mask;
+    uint8_t sub_format[16];
+} WavFormat;
+
 #pragma pack(pop)
+
+#define RIFF_ID(c0, c1, c2, c3)                                             \
+    (((uint32_t)(c0) << 0) | ((uint32_t)(c1) << 8) | ((uint32_t)(c2) << 16) \
+            | ((uint32_t)(c3) << 24))
+
+typedef enum RiffId {
+    RIFF_ID_RIFF = RIFF_ID('R', 'I', 'F', 'F'),
+    RIFF_ID_WAV = RIFF_ID('W', 'A', 'V', 'E'),
+    RIFF_ID_FMT = RIFF_ID('f', 'm', 't', ' '),
+    RIFF_ID_DATA = RIFF_ID('d', 'a', 't', 'a'),
+} RiffId;
+
+#define WAV_FORMAT_PCM 0x1
+
+b32 riff_chunk_valid(RiffChunkMain *chunk_main, RiffChunk *chunk)
+{
+    return ((uint8_t *)chunk - (uint8_t *)&chunk_main->form_type) < chunk_main->size;
+}
+
+RiffChunk *riff_chunk_next(RiffChunk *chunk)
+{
+    return (RiffChunk *)(chunk->data + ((chunk->size + 1) & ~1));
+}
+
+// ---- File formats end -------------------------------------------------------
 
 typedef enum Key {
     KEY_UP,
@@ -91,11 +146,6 @@ static AiMoveGetFunction *global_ai_move_get = 0;
 static UpdateFunction *global_update = 0;
 static RenderFunction *global_render = 0;
 
-static int32_t windows_chess_minimum(int32_t a, int32_t b)
-{
-    return a < b ? a : b;
-}
-
 static Color window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
 typedef struct IntArray4 {
@@ -148,8 +198,9 @@ static Rect draw_rect_get()
     Rect result = {0};
 
     result.dimensions = (JkIntVector2){
-        windows_chess_minimum(global_window_dimensions.x, global_chess.square_side_length * 10),
-        windows_chess_minimum(global_window_dimensions.y, global_chess.square_side_length * 10)};
+        JK_MIN(global_window_dimensions.x, global_chess.square_side_length * 10),
+        JK_MIN(global_window_dimensions.y, global_chess.square_side_length * 10),
+    };
 
     int32_t max_dimension_index = global_window_dimensions.x < global_window_dimensions.y ? 1 : 0;
     result.pos.coords[max_dimension_index] =
@@ -616,7 +667,7 @@ DWORD game_thread(LPVOID param)
             AudioBufferRegion regions[2] = {0};
             if (global_audio_buffer->lpVtbl->Lock(global_audio_buffer,
                         audio_position,
-                        global_chess.audio.sample_count * sizeof(AudioSample),
+                        (DWORD)global_chess.audio.sample_count * sizeof(AudioSample),
                         &regions[0].data,
                         &regions[0].size,
                         &regions[1].data,
@@ -791,9 +842,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;
 
-    // Load image data
     JkPlatformArena storage;
     if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
+        // Load image data
         JkBuffer image_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
         if (image_file.size) {
             BitmapHeader *header = (BitmapHeader *)image_file.data;
@@ -807,6 +858,47 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         } else {
             OutputDebugStringA("Failed to load chess_atlas.bmp\n");
         }
+
+        storage.pos = 0;
+
+        // Load audio data
+        JkBuffer audio_file = jk_platform_file_read_full("chess_audio.wav", &storage);
+        if (audio_file.size) {
+            b32 error = 0;
+            RiffChunkMain *chunk_main = (RiffChunkMain *)audio_file.data;
+            if (chunk_main->id == RIFF_ID_RIFF && chunk_main->form_type == RIFF_ID_WAV) {
+                for (RiffChunk *chunk = (RiffChunk *)chunk_main->chunk_first;
+                        riff_chunk_valid(chunk_main, chunk);
+                        chunk = riff_chunk_next(chunk)) {
+                    switch (chunk->id) {
+                    case RIFF_ID_FMT: {
+                        WavFormat *format = (WavFormat *)chunk->data;
+                        if (format->format_tag != WAV_FORMAT_PCM || format->channel_count != 1
+                                || format->samples_per_second != 48000
+                                || format->bits_per_sample != 16) {
+                            error = 1;
+                        }
+                    } break;
+
+                    case RIFF_ID_DATA: {
+                        memcpy(global_chess.audio.asset_data, chunk->data, chunk->size);
+                        error = 1;
+                    } break;
+
+                    default: {
+                    } break;
+                    }
+                }
+            } else {
+                error = 1;
+            }
+            if (error) {
+                OutputDebugStringA("Something's wrong with the contents of chess_audio.wav\n");
+            }
+        } else {
+            OutputDebugStringA("Failed to load chess_audio.wav\n");
+        }
+
         jk_platform_arena_terminate(&storage);
     }
 
