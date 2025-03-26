@@ -27,19 +27,21 @@ typedef enum Column {
     H,
 } Column;
 
-// clang-format off
-// Byte array encoding the chess starting positions
 static Board starting_state = {
-    0x53, 0x24, 0x41, 0x35,
-    0x66, 0x66, 0x66, 0x66,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0xEE, 0xEE, 0xEE, 0xEE,
-    0xDB, 0xAC, 0xC9, 0xBD,
+    // clang-format off
+    // Byte array encoding the chess starting positions
+    .bytes = {
+        0x53, 0x24, 0x41, 0x35,
+        0x66, 0x66, 0x66, 0x66,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0xEE, 0xEE, 0xEE, 0xEE,
+        0xDB, 0xAC, 0xC9, 0xBD,
+    },
+    // clang-format on
 };
-// clang-format on
 
 static Team board_current_team_get(Board board)
 {
@@ -933,6 +935,7 @@ static Color color_dark_squares = {0x50, 0x41, 0x2b};
 // Blended halfway between the base square colors and #E26D5C
 
 static Color color_selection = {0x5c, 0x6d, 0xe2};
+static Color color_move_prev = {0x2b, 0xa6, 0xff};
 
 // Color white = {0x8e, 0x8e, 0x8e};
 static Color color_white_pieces = {0x82, 0x92, 0x85};
@@ -1042,6 +1045,8 @@ void render(Chess *chess)
     // uint64_t threatened = board_threatened_squares_get(
     //         chess->board, !((chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1));
 
+    Move move_prev = move_unpack(chess->board.move_prev);
+
     JkIntVector2 pos;
     for (pos.y = 0; pos.y < chess->square_side_length * 10; pos.y++) {
         for (pos.x = 0; pos.x < chess->square_side_length * 10; pos.x++) {
@@ -1078,36 +1083,34 @@ void render(Chess *chess)
                     Color square_color = light ? color_light_squares : color_dark_squares;
                     Piece piece = board_piece_get(chess->board, board_pos);
 
-                    color = square_color;
-                    if (promoting) {
-                        int32_t dist_from_promo_square =
-                                absolute_value(board_pos.y - chess->promo_square.y);
-                        if (board_pos.x == chess->promo_square.x
-                                && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
-                            color = color_background;
-                            piece.team = board_current_team_get(chess->board);
-                            piece.type = promo_order[dist_from_promo_square];
-                        }
-                    } else {
-                        if (index == selected_index) {
-                            color = blend(color_selection, square_color);
-                        } else if (destinations & (1llu << index)) {
-                            color = blend(color_selection, square_color);
-                            if (index == mouse_index) {
-                                int32_t x_dist_from_edge =
-                                        square_pos.x < chess->square_side_length / 2
-                                        ? square_pos.x
-                                        : chess->square_side_length - 1 - square_pos.x;
-                                int32_t y_dist_from_edge =
-                                        square_pos.y < chess->square_side_length / 2
-                                        ? square_pos.y
-                                        : chess->square_side_length - 1 - square_pos.y;
-                                if ((x_dist_from_edge >= 4 && y_dist_from_edge >= 4)
-                                        && (x_dist_from_edge < 8 || y_dist_from_edge < 8)) {
-                                    color = square_color;
-                                }
+                    int32_t dist_from_promo_square =
+                            absolute_value(board_pos.y - chess->promo_square.y);
+                    if (promoting && board_pos.x == chess->promo_square.x
+                            && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                        color = color_background;
+                        piece.team = board_current_team_get(chess->board);
+                        piece.type = promo_order[dist_from_promo_square];
+                    } else if (index == selected_index) {
+                        color = blend(color_selection, square_color);
+                    } else if (destinations & (1llu << index)) {
+                        color = blend(color_selection, square_color);
+                        if (index == mouse_index) {
+                            int32_t x_dist_from_edge = square_pos.x < chess->square_side_length / 2
+                                    ? square_pos.x
+                                    : chess->square_side_length - 1 - square_pos.x;
+                            int32_t y_dist_from_edge = square_pos.y < chess->square_side_length / 2
+                                    ? square_pos.y
+                                    : chess->square_side_length - 1 - square_pos.y;
+                            if ((x_dist_from_edge >= 4 && y_dist_from_edge >= 4)
+                                    && (x_dist_from_edge < 8 || y_dist_from_edge < 8)) {
+                                color = square_color;
                             }
                         }
+                    } else if ((move_prev.src || move_prev.dest)
+                            && (index == move_prev.src || index == move_prev.dest)) {
+                        color = blend(color_move_prev, square_color);
+                    } else {
+                        color = square_color;
                     }
 
                     if (piece.type != NONE) {
