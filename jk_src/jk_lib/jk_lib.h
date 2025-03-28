@@ -159,7 +159,7 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
-JK_PUBLIC b32 jk_is_power_of_two(size_t x);
+JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
 
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 

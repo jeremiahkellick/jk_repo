@@ -388,9 +388,9 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     return x;
 }
 
-JK_PUBLIC b32 jk_is_power_of_two(size_t x)
+JK_PUBLIC b32 jk_is_power_of_two(uint64_t x)
 {
-    return (x & (x - 1)) == 0;
+    return x && (x & (x - 1)) == 0;
 }
 
 JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)
