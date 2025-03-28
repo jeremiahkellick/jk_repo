@@ -16,9 +16,12 @@ typedef struct Heap {
 } Heap;
 
 // Buffer should have at least sizeof(Element) * capcapity bytes
-static Heap heap_create(uint64_t capacity, Element **buffer)
+static Heap heap_create(JkBuffer memory)
 {
-    return (Heap){.capacity = capacity, .elements = buffer};
+    return (Heap){
+        .capacity = memory.size / sizeof(Element),
+        .elements = (Element **)memory.data,
+    };
 }
 
 static uint64_t heap_parent_get(uint64_t i)
@@ -60,6 +63,12 @@ static void heapify_down(Heap *heap, uint64_t i)
         heap_swap(heap, i, min_child);
         heapify_down(heap, min_child);
     }
+}
+
+static void reheapify(Heap *heap, uint64_t i)
+{
+    heapify_up(heap, i);
+    heapify_down(heap, i);
 }
 
 // Returns nonzero on success, zero on failure
@@ -124,7 +133,7 @@ int main(void)
     };
 
     Element *buffer[1024];
-    Heap heap = heap_create(JK_ARRAY_COUNT(buffer), buffer);
+    Heap heap = heap_create((JkBuffer){.size = sizeof(buffer), .data = (uint8_t *)buffer});
 
     // Insert first 6 test elements
     for (int i = 0; i < 6; i++) {
@@ -152,13 +161,22 @@ int main(void)
     heap_verify(&heap);
     JK_ASSERT(heap_pop(&heap)->score == 28);
     heap_verify(&heap);
-    JK_ASSERT(heap_pop(&heap)->score == 46);
+
+    test_elements[4].score = 21;
+    reheapify(&heap, test_elements[4].heap_index);
+    heap_verify(&heap);
+
+    test_elements[8].score = 86;
+    reheapify(&heap, test_elements[8].heap_index);
+    heap_verify(&heap);
+
+    JK_ASSERT(heap_pop(&heap)->score == 21);
     heap_verify(&heap);
     JK_ASSERT(heap_pop(&heap)->score == 48);
     heap_verify(&heap);
-    JK_ASSERT(heap_pop(&heap)->score == 63);
-    heap_verify(&heap);
     JK_ASSERT(heap_pop(&heap)->score == 85);
+    heap_verify(&heap);
+    JK_ASSERT(heap_pop(&heap)->score == 86);
     heap_verify(&heap);
     JK_ASSERT(heap_pop(&heap)->score == 87);
     heap_verify(&heap);
