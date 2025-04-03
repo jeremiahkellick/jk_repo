@@ -565,6 +565,7 @@ static void moves_get(MoveArray *moves, Board board)
 
 typedef struct MoveNode {
     uint32_t depth;
+    b32 expanded;
     MovePacked move;
     struct MoveNode *parent;
     struct MoveNode *next_sibling;
@@ -756,44 +757,54 @@ typedef struct Scores {
     int32_t a[2];
 } Scores;
 
-void update_search_scores(MoveNode *node, Team team, Scores scores)
+typedef struct Target {
+    Team assisting_team;
+    int32_t score;
+} Target;
+
+uint32_t distance_from_target(int32_t score, Target target)
+{
+    switch (target.assisting_team) {
+    case WHITE: { // White wants higher scores
+        return target.score < score ? 0 : target.score - score + 1;
+    } break;
+
+    case BLACK: { // Black wants lower scores
+        return score < target.score ? 0 : score - target.score + 1;
+    } break;
+
+    default: {
+        JK_ASSERT(0 && "invalid target.comparison");
+        return 0;
+    } break;
+    }
+}
+
+void update_search_scores(MoveNode *node, Team team, Target target)
 {
     if (node->first_child) {
-        int32_t score = team_multiplier[team] * scores.a[team];
-        MoveNode *favorite_child = 0;
-        for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-            int32_t child_score = team_multiplier[team] * child->score;
-            if (score < child_score) {
-                score = child_score;
-                favorite_child = child;
+        if (team == target.assisting_team) {
+            node->search_score = UINT32_MAX;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                update_search_scores(child, !team, target);
+                if (child->search_score < node->search_score) {
+                    node->search_score = child->search_score;
+                }
             }
-        }
-
-        Scores new_scores = scores;
-        new_scores.a[team] = team_multiplier[team] * score;
-        for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-            if (child == favorite_child) {
-                update_search_scores(child, !team, scores);
-            } else {
-                update_search_scores(child, !team, new_scores);
+        } else {
+            node->search_score = 0;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                update_search_scores(child, !team, target);
+                node->search_score += child->search_score;
             }
         }
     } else {
-        // If score changes to be greater than scores.a[WHITE] and less than scores.a[BLACK], then
-        // the AI will change its decision. Therefore, the closer the score is to this range, the
-        // more we will prioritize the node.
-        if (scores.a[WHITE] + 1 < scores.a[BLACK]) {
-            if (node->score < scores.a[WHITE] + 1) {
-                node->search_score = (scores.a[WHITE] + 1) - node->score;
-            } else if (scores.a[BLACK] - 1 < node->score) {
-                node->search_score = node->score - (scores.a[BLACK] - 1);
-            } else {
-                node->search_score = 0;
-            }
-        } else {
-            // There's no room between scores.a[WHITE] and scores.a[BLACK] so it's impossible for
-            // this node to be relevant. It only has a chance to become relevant again after we've
-            // explored other nodes' futures.
+        node->search_score = distance_from_target(node->score, target);
+        if (node->expanded && node->search_score) {
+            // If the node has no children after it's been expanded, then it marks the end of the
+            // game (checkmate or stalemate). Therefore, if the score does not already satisfy the
+            // target, we assign maximum search score, because it's impossible for this node to ever
+            // satisfy the target.
             node->search_score = UINT32_MAX;
         }
     }
@@ -812,18 +823,23 @@ void update_search_scores_root(MoveNode *root, Team team)
             favorite_child = child;
         }
     }
+    // If this assert fires it means that there's only one legal move, in which case the AI should
+    // just choose that move before it even gets this far.
+    JK_ASSERT(second_highest_score != INT32_MIN);
 
-    Scores scores = {INT32_MIN, INT32_MAX};
-    scores.a[team] = team_multiplier[team] * score;
+    Target target = {
+        .assisting_team = team,
+        .score = team_multiplier[team] * score,
+    };
     for (MoveNode *child = root->first_child; child; child = child->next_sibling) {
         if (child == favorite_child) {
-            Scores favorite_scores = {INT32_MIN, INT32_MAX};
-            if (second_highest_score != INT32_MIN) {
-                favorite_scores.a[!team] = team_multiplier[team] * second_highest_score;
-            }
-            update_search_scores(child, !team, favorite_scores);
+            Target favorite_target = {
+                .assisting_team = !team,
+                .score = team_multiplier[team] * second_highest_score,
+            };
+            update_search_scores(child, !team, favorite_target);
         } else {
-            update_search_scores(child, !team, scores);
+            update_search_scores(child, !team, target);
         }
     }
 }
@@ -1105,7 +1121,12 @@ void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
     for (uint32_t i = 0; i < depth; i++) {
         print(" ");
     }
-    snprintf(buffer, JK_ARRAY_COUNT(buffer), "%u, %d\n", node->heap_index, node->score);
+    snprintf(buffer,
+            JK_ARRAY_COUNT(buffer),
+            "%u, %d, %u\n",
+            node->heap_index,
+            node->score,
+            node->search_score);
     print(buffer);
     for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
         print_nodes(print, child, depth + 1);
@@ -1121,39 +1142,37 @@ void update(Chess *chess)
 
     if (!(chess->flags & FLAG_INITIALIZED)) {
         // Test search score calculation
-        MoveNode nodes[13] = {
-            {.score = 4},
-            {.score = 2},
-            {.score = 4},
-            {.score = 2},
-            {.score = 9},
-            {.score = 4},
-            {.score = 6},
-            {.score = 1},
-            {.score = 2},
+        MoveNode nodes[15] = {
             {.score = 3},
-            {.score = 4},
-            {.score = 5},
+            {.score = -1},
+            {.score = 3},
+            {.score = 3},
+            {.score = -1},
+            {.score = 3},
+            {.score = 11},
+            {.score = 3},
+            {.score = 1},
+            {.score = -1},
+            {.score = -4},
+            {.score = 0},
+            {.score = 3},
+            {.score = 11},
             {.score = 6},
         };
         for (int i = 0; i < JK_ARRAY_COUNT(nodes); i++) {
             nodes[i].heap_index = i;
+            if (i) {
+                if (i % 2 == 0) {
+                    nodes[i - 1].next_sibling = nodes + i;
+                } else {
+                    nodes[i / 2].first_child = nodes + i;
+                }
+            }
         }
-        nodes[0].first_child = nodes + 1;
-        nodes[1].next_sibling = nodes + 2;
-        nodes[1].first_child = nodes + 3;
-        nodes[3].next_sibling = nodes + 4;
-        nodes[2].first_child = nodes + 5;
-        nodes[5].next_sibling = nodes + 6;
-        nodes[3].first_child = nodes + 7;
-        nodes[7].next_sibling = nodes + 8;
-        nodes[5].first_child = nodes + 9;
-        nodes[9].next_sibling = nodes + 10;
-        nodes[6].first_child = nodes + 11;
-        nodes[11].next_sibling = nodes + 12;
-        print_nodes(chess->debug_print, nodes, 0);
         update_search_scores_root(nodes, WHITE);
-        JK_ASSERT(nodes[7].search_score == 4);
+        JK_ASSERT(nodes[1].search_score == 6);
+        JK_ASSERT(nodes[2].search_score == 7);
+        print_nodes(chess->debug_print, nodes, 0);
 
         chess->flags = FLAG_INITIALIZED;
         chess->player_types[0] = PLAYER_HUMAN;
