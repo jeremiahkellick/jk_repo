@@ -842,6 +842,11 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;
 
+    global_chess.ai_memory.size = 8llu << 30;
+    global_chess.ai_memory.data =
+            VirtualAlloc(0, global_chess.ai_memory.size, MEM_COMMIT, PAGE_READWRITE);
+    JK_ASSERT(global_chess.ai_memory.data);
+
     JkPlatformArena storage;
     if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
         // Load image data
