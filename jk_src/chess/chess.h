@@ -188,6 +188,7 @@ typedef struct Chess {
     Board board;
     uint8_t atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
     uint8_t scaled_atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
+    JkBuffer ai_memory;
     MoveArray moves;
     Move ai_move;
     Result result;
