@@ -561,8 +561,6 @@ static void moves_get(MoveArray *moves, Board board)
 
 // ---- AI begin ---------------------------------------------------------------
 
-#define MAX_DEPTH 4
-
 typedef struct MoveNode {
     b32 expanded;
     MovePacked move;
@@ -572,147 +570,38 @@ typedef struct MoveNode {
 
     int32_t score;
     uint32_t search_score;
-    uint32_t heap_index;
 } MoveNode;
 
-typedef struct MovePool {
-    uint64_t max_count;
-    uint64_t free_count;
-    uint64_t allocated_count;
-    MoveNode **free_pointers;
-    MoveNode *allocated;
-} MovePool;
+// -------- Arena begin ---------------------------------------------------------
 
-static MovePool move_pool_create(JkBuffer memory)
+typedef struct Arena {
+    JkBuffer memory;
+    uint64_t pos;
+} Arena;
+
+void *arena_alloc(Arena *arena, uint64_t byte_count)
 {
-    MovePool result;
-    result.max_count = memory.size / (sizeof(MoveNode *) + sizeof(MoveNode));
-    result.free_count = 0;
-    result.allocated_count = 0;
-    result.free_pointers = (MoveNode **)memory.data;
-    result.allocated = (MoveNode *)(memory.data + result.max_count * sizeof(MoveNode *));
-    return result;
-}
-
-static MoveNode *move_pool_alloc(MovePool *pool)
-{
-    MoveNode *result;
-    if (pool->free_count) {
-        result = pool->free_pointers[--pool->free_count];
-    } else {
-        JK_ASSERT(pool->allocated_count < pool->max_count);
-        result = pool->allocated + pool->allocated_count++;
-    }
-    *result = (MoveNode){0};
-    return result;
-}
-
-static void move_pool_free(MovePool *pool, MoveNode *node)
-{
-    JK_DEBUG_ASSERT(pool->free_count < pool->max_count);
-    pool->free_pointers[pool->free_count++] = node;
-}
-
-// -------- Heap begin ---------------------------------------------------------
-
-typedef struct Heap {
-    uint32_t capacity;
-    uint32_t count;
-    MoveNode **elements;
-} Heap;
-
-// Buffer should have at least sizeof(Element) * capcapity bytes
-static Heap heap_create(JkBuffer memory)
-{
-    return (Heap){
-        .capacity = (uint32_t)(memory.size / sizeof(MoveNode)),
-        .elements = (MoveNode **)memory.data,
-    };
-}
-
-static uint32_t heap_parent_get(uint32_t i)
-{
-    return (i - 1) / 2;
-}
-
-static void heap_swap(Heap *heap, uint32_t a, uint32_t b)
-{
-    MoveNode *tmp = heap->elements[a];
-    heap->elements[a] = heap->elements[b];
-    heap->elements[b] = tmp;
-    heap->elements[a]->heap_index = a;
-    heap->elements[b]->heap_index = b;
-}
-
-static void heapify_up(Heap *heap, uint32_t i)
-{
-    if (i) {
-        uint32_t parent = heap_parent_get(i);
-        if (heap->elements[i]->search_score < heap->elements[parent]->search_score) {
-            heap_swap(heap, i, parent);
-            heapify_up(heap, parent);
-        }
-    }
-}
-
-static void heapify_down(Heap *heap, uint32_t i)
-{
-    uint32_t min_child_score = UINT64_MAX;
-    uint32_t min_child = UINT64_MAX;
-    for (uint32_t child = 2 * i + 1; child <= 2 * i + 2 && child < heap->count; child++) {
-        if (heap->elements[child]->search_score < min_child_score) {
-            min_child_score = heap->elements[child]->search_score;
-            min_child = child;
-        }
-    }
-    if (min_child != UINT32_MAX
-            && heap->elements[min_child]->search_score < heap->elements[i]->search_score) {
-        heap_swap(heap, i, min_child);
-        heapify_down(heap, min_child);
-    }
-}
-
-static void reheapify(Heap *heap, uint32_t i)
-{
-    heapify_up(heap, i);
-    heapify_down(heap, i);
-}
-
-// Returns nonzero on success, zero on failure
-static b32 heap_insert(Heap *heap, MoveNode *element)
-{
-    if (heap->count < heap->capacity) {
-        element->heap_index = heap->count++;
-        heap->elements[element->heap_index] = element;
-        heapify_up(heap, element->heap_index);
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-static MoveNode *heap_pop(Heap *heap)
-{
-    if (heap->count) {
-        MoveNode *result = heap->elements[0];
-        heap->elements[0] = heap->elements[--heap->count];
-        heapify_down(heap, 0);
+    uint64_t new_pos = arena->pos + byte_count;
+    if (new_pos <= arena->memory.size) {
+        void *result = arena->memory.data + arena->pos;
+        arena->pos = new_pos;
         return result;
     } else {
         return 0;
     }
 }
 
-static MoveNode *heap_peek_min(Heap *heap)
+void *arena_pointer_get(Arena *arena)
 {
-    if (heap->count) {
-        return heap->elements[0];
-    } else {
-        return 0;
-    }
+    return arena->memory.data + arena->pos;
 }
 
-// -------- Heap end -----------------------------------------------------------
+void arena_pointer_set(Arena *arena, void *pointer)
+{
+    arena->pos = (uint8_t *)pointer - arena->memory.data;
+}
+
+// -------- Arena end -----------------------------------------------------------
 
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
@@ -751,7 +640,7 @@ typedef struct Target {
 
 typedef struct AiContext {
     Board board;
-    MovePool pool;
+    Arena arena;
     MoveNode *root;
     Target targets[256];
     uint64_t time_started;
@@ -863,119 +752,113 @@ static void moves_shuffle(MoveArray *moves)
     }
 }
 
-static void expand_node(AiContext *ctx, MoveNode *node, b32 shuffle)
+static b32 expand_node(AiContext *ctx, MoveNode *node, b32 shuffle)
 {
-    int32_t ancestors_count = 0;
-    MoveNode *ancestors[256];
-    for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-        ancestors[ancestors_count++] = ancestor;
+    MovePacked *prev_moves = arena_pointer_get(&ctx->arena);
+    for (MoveNode *ancestor = node; ancestor && ancestor->parent; ancestor = ancestor->parent) {
+        MovePacked *move = arena_alloc(&ctx->arena, sizeof(*move));
+        if (!move) {
+            return 0;
+        }
+        *move = ancestor->move;
     }
+    int64_t move_count = (MovePacked *)arena_pointer_get(&ctx->arena) - prev_moves;
+
     Board node_board_state = ctx->board;
-    for (int32_t i = ancestors_count - 2; i >= 0; i--) {
-        node_board_state = board_move_perform(node_board_state, ancestors[i]->move);
+    for (int64_t i = move_count - 1; i >= 0; i--) {
+        node_board_state = board_move_perform(node_board_state, prev_moves[i]);
     }
+
+    arena_pointer_set(&ctx->arena, prev_moves);
 
     MoveArray moves;
     moves_get(&moves, node_board_state);
     if (shuffle) {
         moves_shuffle(&moves);
     }
-    MoveNode *current_child = 0;
+    MoveNode *prev_child = 0;
+    MoveNode *first_child = 0;
     for (int32_t i = 0; i < moves.count; i++) {
-        if (current_child) {
-            MoveNode *next_child = move_pool_alloc(&ctx->pool);
-            current_child->next_sibling = next_child;
-            current_child = next_child;
-        } else {
-            current_child = move_pool_alloc(&ctx->pool);
-            node->first_child = current_child;
+        MoveNode *new_child = arena_alloc(&ctx->arena, sizeof(*new_child));
+        if (!new_child) {
+            return 0;
         }
-        current_child->move = moves.data[i];
-        current_child->parent = node;
-        current_child->score = board_score(board_move_perform(node_board_state, moves.data[i]));
-        current_child->search_score = UINT32_MAX;
+        new_child->expanded = 0;
+        new_child->move = moves.data[i];
+        new_child->parent = node;
+        new_child->next_sibling = 0;
+        new_child->first_child = 0;
+        new_child->score = board_score(board_move_perform(node_board_state, moves.data[i]));
+        new_child->search_score = UINT32_MAX;
+
+        if (prev_child) {
+            prev_child->next_sibling = new_child;
+        } else {
+            first_child = new_child;
+        }
+        prev_child = new_child;
     }
+    node->first_child = first_child;
+    node->expanded = 1;
 
     // TODO: We probably only need to look at all the children for node. For the ancestors, we
     // can probably compare node's score with their score to see if it would be an improvement.
     Team team = board_current_team_get(node_board_state);
-    for (int32_t i = 0; i < ancestors_count; i++, team = !team) {
-        if (ancestors[i]->first_child) {
-            ancestors[i]->score = INT32_MIN;
-            for (MoveNode *child = ancestors[i]->first_child; child; child = child->next_sibling) {
+    for (MoveNode *ancestor = node; ancestor && ancestor->parent;
+            ancestor = ancestor->parent, team = !team) {
+        if (ancestor->first_child) {
+            ancestor->score = INT32_MIN;
+            for (MoveNode *child = ancestor->first_child; child; child = child->next_sibling) {
                 int32_t score = team_multiplier[team] * child->score;
-                if (ancestors[i]->score < score) {
-                    ancestors[i]->score = score;
+                if (ancestor->score < score) {
+                    ancestor->score = score;
                 }
             }
-            ancestors[i]->score *= team_multiplier[team];
+            ancestor->score *= team_multiplier[team];
         }
     }
 
     update_search_scores_root(ctx);
+
+    return 1;
 }
 
-static void explore_tree(AiContext *ctx)
+typedef struct DepthStats {
+    uint64_t leaf_count;
+    uint64_t depth_sum;
+    uint64_t min_depth;
+    uint64_t max_depth;
+} DepthStats;
+
+void depth_stats_calculate(DepthStats *stats, MoveNode *node, uint64_t depth)
 {
-    while (ctx->time_current_get() - ctx->time_started < ctx->time_limit) {
-        MoveNode *node = 0;
-        { // Find the node with the best search score
-            Target target = {0};
-            {
-                uint32_t min_search_score = UINT32_MAX;
-                int32_t i = 0;
-                for (MoveNode *root_child = ctx->root->first_child; root_child;
-                        root_child = root_child->next_sibling, i++) {
-                    if (root_child->search_score < min_search_score) {
-                        node = root_child;
-                        target = ctx->targets[i];
-                        min_search_score = root_child->search_score;
-                    }
-                }
-            }
-            JK_ASSERT(node);
-
-            {
-                Team team = !board_current_team_get(ctx->board);
-                uint32_t min_search_score = UINT32_MAX;
-                while (node->first_child) {
-                    min_search_score = UINT32_MAX;
-                    MoveNode *min_child = 0;
-                    uint32_t max_search_score = 0;
-                    MoveNode *max_child = 0;
-                    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                        if (child->search_score < min_search_score) {
-                            min_search_score = child->search_score;
-                            min_child = child;
-                        }
-                        if (max_search_score < child->search_score) {
-                            max_search_score = child->search_score;
-                            max_child = child;
-                        }
-                    }
-                    JK_ASSERT(min_child && max_child);
-                    node = team == target.assisting_team ? min_child : max_child;
-                    team = !team;
-                }
-            }
+    if (node->first_child) {
+        for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+            depth_stats_calculate(stats, child, depth + 1);
         }
-
-        expand_node(ctx, node, 0);
+    } else if (!node->expanded) {
+        stats->leaf_count++;
+        stats->depth_sum += depth;
+        if (depth < stats->min_depth) {
+            stats->min_depth = depth;
+        }
+        if (stats->max_depth < depth) {
+            stats->max_depth = depth;
+        }
     }
-
-    return;
 }
 
 Move ai_move_get(Chess *chess)
 {
     AiContext ctx = {
         .board = chess->board,
-        .pool = move_pool_create(chess->ai_memory),
+        .arena = {.memory = chess->ai_memory},
         .time_started = chess->cpu_timer_get(),
-        .time_limit = chess->cpu_timer_frequency,
+        .time_limit = chess->cpu_timer_frequency * 10,
         .time_current_get = chess->cpu_timer_get,
     };
-    ctx.root = move_pool_alloc(&ctx.pool);
+    ctx.root = arena_alloc(&ctx.arena, sizeof(*ctx.root));
+    memset(ctx.root, 0, sizeof(*ctx.root));
     expand_node(&ctx, ctx.root, 1);
 
     if (ctx.root->first_child) {
@@ -987,7 +870,67 @@ Move ai_move_get(Chess *chess)
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
     }
 
-    explore_tree(&ctx);
+    // Explore tree
+    while (ctx.time_current_get() - ctx.time_started < ctx.time_limit) {
+        MoveNode *node = 0;
+        { // Find the node with the best search score
+            Target target = {0};
+            {
+                uint32_t min_search_score = UINT32_MAX;
+                int32_t i = 0;
+                for (MoveNode *root_child = ctx.root->first_child; root_child;
+                        root_child = root_child->next_sibling, i++) {
+                    if (root_child->search_score < min_search_score) {
+                        node = root_child;
+                        target = ctx.targets[i];
+                        min_search_score = root_child->search_score;
+                    }
+                }
+            }
+            JK_ASSERT(node);
+
+            {
+                Team team = !board_current_team_get(ctx.board);
+                uint32_t min_search_score = UINT32_MAX;
+                while (node->first_child) {
+                    min_search_score = UINT32_MAX;
+                    MoveNode *min_child = 0;
+                    uint32_t max_search_score = 0;
+                    MoveNode *max_child = 0;
+                    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                        if (child->search_score <= min_search_score) {
+                            min_search_score = child->search_score;
+                            min_child = child;
+                        }
+                        if (max_search_score <= child->search_score) {
+                            max_search_score = child->search_score;
+                            max_child = child;
+                        }
+                    }
+                    JK_ASSERT(min_child && max_child);
+                    node = team == target.assisting_team ? min_child : max_child;
+                    team = !team;
+                }
+            }
+        }
+
+        if (!expand_node(&ctx, node, 0)) {
+            chess->debug_print("Out of AI memory\n");
+            break;
+        }
+    }
+
+    // Print min and max depth
+    DepthStats depth_stats = {.min_depth = UINT64_MAX};
+    depth_stats_calculate(&depth_stats, ctx.root, 0);
+    char buffer[1024];
+    snprintf(buffer,
+            JK_ARRAY_COUNT(buffer),
+            "depth_min\t%llu\ndepth_avg\t%llu\ndepth_max\t%llu\n",
+            depth_stats.min_depth,
+            depth_stats.depth_sum / depth_stats.leaf_count,
+            depth_stats.max_depth);
+    chess->debug_print(buffer);
 
     // Pick move with the best score
     Team team = board_current_team_get(ctx.board);
@@ -1101,12 +1044,7 @@ void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
     for (uint32_t i = 0; i < depth; i++) {
         print(" ");
     }
-    snprintf(buffer,
-            JK_ARRAY_COUNT(buffer),
-            "%u, %d, %u\n",
-            node->heap_index,
-            node->score,
-            node->search_score);
+    snprintf(buffer, JK_ARRAY_COUNT(buffer), "%d, %u\n", node->score, node->search_score);
     print(buffer);
     for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
         print_nodes(print, child, depth + 1);
