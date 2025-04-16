@@ -1,6 +1,7 @@
 #include "chess.h"
 
 #include <math.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,61 @@ static Board starting_state = {
     },
     // clang-format on
 };
+
+static Board puzzle_state = {
+    // clang-format off
+    // Byte array encoding the chess starting positions
+    .bytes = {
+        0x00, 0x00, 0x00, 0x30,
+        0x66, 0x16, 0x00, 0x00,
+        0x00, 0x05, 0x00, 0x00,
+        0x00, 0x50, 0x06, 0x00,
+        0x00, 0x00, 0x00, 0xE6,
+        0x00, 0xE0, 0x00, 0x00,
+        0xEE, 0xAE, 0x2C, 0x00,
+        0x00, 0x90, 0x00, 0x0B,
+    },
+    // clang-format on
+};
+
+static Board bug_state = {
+    // clang-format off
+    // Byte array encoding the chess starting positions
+    .bytes = {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0xD0, 0xB0, 0x00,
+        0x00, 0x00, 0x00, 0x16,
+        0x60, 0x00, 0x00, 0x00,
+        0xE0, 0x00, 0xE0, 0x00,
+        0x00, 0x00, 0x09, 0xE0,
+        0x00, 0x00, 0x00, 0x00,
+    },
+    // clang-format on
+    .flags = 0x7e,
+};
+
+static char debug_print_buffer[1024];
+
+static int debug_printf(void (*debug_print)(char *), char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
+    va_end(args);
+    debug_print(debug_print_buffer);
+    return result;
+}
+
+static Chess debug_chess;
+
+static Color debug_draw_buffer[DRAW_BUFFER_WIDTH * DRAW_BUFFER_HEIGHT];
+
+static void debug_render(Board board)
+{
+    debug_chess.board = board;
+    render(&debug_chess);
+}
 
 static Team board_current_team_get(Board board)
 {
@@ -568,8 +624,12 @@ typedef struct MoveNode {
     struct MoveNode *next_sibling;
     struct MoveNode *first_child;
 
+    int32_t board_score;
     int32_t score;
     uint32_t search_score;
+    uint8_t top_level_index;
+
+    uint64_t depth;
 } MoveNode;
 
 // -------- Arena begin ---------------------------------------------------------
@@ -606,7 +666,7 @@ void arena_pointer_set(Arena *arena, void *pointer)
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
 
-static int32_t board_score(Board board)
+static int32_t board_score(Board board, uint64_t depth)
 {
     Team current_team = board_current_team_get(board);
     int32_t score = 0;
@@ -625,8 +685,10 @@ static int32_t board_score(Board board)
 
     if (!moves.count) {
         uint64_t threatened = board_threatened_squares_get(board, !current_team);
-        if ((threatened >> king_index) & 1) {
-            score -= team_multiplier[current_team] * 1000;
+        if ((threatened >> king_index) & 1) { // Checkmate
+            score -= team_multiplier[current_team] * (1000 - (uint32_t)depth);
+        } else { // Stalemate
+            score = score > 0 ? -500 : (score < 0 ? 500 : 0);
         }
     }
 
@@ -641,11 +703,13 @@ typedef struct Target {
 typedef struct AiContext {
     Board board;
     Arena arena;
-    MoveNode *root;
+    uint8_t top_level_node_count;
+    MoveNode top_level_nodes[256];
     Target targets[256];
     uint64_t time_started;
     uint64_t time_limit;
     uint64_t (*time_current_get)(void);
+    void (*debug_print)(char *);
 } AiContext;
 
 typedef struct Scores {
@@ -656,11 +720,11 @@ static uint32_t distance_from_target(int32_t score, Target target)
 {
     switch (target.assisting_team) {
     case WHITE: { // White wants higher scores
-        return target.score < score ? 0 : target.score - score + 1;
+        return score < target.score ? target.score - score : 0;
     } break;
 
     case BLACK: { // Black wants lower scores
-        return score < target.score ? 0 : score - target.score + 1;
+        return target.score < score ? score - target.score : 0;
     } break;
 
     default: {
@@ -670,75 +734,155 @@ static uint32_t distance_from_target(int32_t score, Target target)
     }
 }
 
-static void update_search_scores(MoveNode *node, Team team, Target target)
+static uint32_t search_score_get(AiContext *ctx, MoveNode *node, Team team)
 {
+    Target target = ctx->targets[node->top_level_index];
+    uint32_t search_score;
     if (node->first_child) {
         if (team == target.assisting_team) {
-            node->search_score = UINT32_MAX;
+            search_score = UINT32_MAX;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                update_search_scores(child, !team, target);
-                if (child->search_score < node->search_score) {
-                    node->search_score = child->search_score;
+                uint32_t child_search_score = child->search_score * 2;
+                if (child_search_score < search_score) {
+                    search_score = child_search_score;
                 }
             }
         } else {
-            node->search_score = 0;
+            search_score = 0;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                update_search_scores(child, !team, target);
-                node->search_score += child->search_score;
+                search_score += child->search_score * 2;
             }
         }
     } else {
-        node->search_score = distance_from_target(node->score, target);
-        if (node->expanded && node->search_score) {
+        search_score = distance_from_target(node->score, target);
+        if (node->expanded && search_score) {
             // If the node has no children after it's been expanded, then it marks the end of the
             // game (checkmate or stalemate). Therefore, if the score does not already satisfy the
             // target, we assign maximum search score, because it's impossible for this node to ever
             // satisfy the target.
-            node->search_score = UINT32_MAX;
+            search_score = UINT32_MAX;
         }
+    }
+    return search_score;
+}
+
+uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
+
+#define MAX_STAGNATION 9
+
+#pragma optimize("", off)
+
+static void update_search_scores(AiContext *ctx, MoveNode *node, Team team, b32 verify)
+{
+    if (0 && node->move.bits == max_line[0] && node->depth == JK_ARRAY_COUNT(max_line)) {
+        b32 is_max_line = 1;
+        {
+            MoveNode *ancestor = node->parent;
+            for (int32_t i = 1; ancestor && i < JK_ARRAY_COUNT(max_line);
+                    ancestor = ancestor->parent, i++) {
+                if (ancestor->move.bits != max_line[i]) {
+                    is_max_line = 0;
+                    break;
+                }
+            }
+        }
+        if (is_max_line) {
+            debug_printf(ctx->debug_print, "depth: %llu\n", node->depth);
+            MoveArray moves = {0};
+            for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
+                moves.data[moves.count++] = ancestor->move;
+            }
+            Board board = ctx->board;
+            for (int32_t i = moves.count - 1; i >= 0; i--) {
+                board = board_move_perform(board, moves.data[i]);
+                debug_render(board);
+            }
+        }
+    }
+
+    Target target = ctx->targets[node->top_level_index];
+    uint32_t search_score;
+    if (node->first_child) {
+        if (team == target.assisting_team) {
+            search_score = UINT32_MAX;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                update_search_scores(ctx, child, !team, verify);
+                uint32_t child_search_score = child->search_score * 2;
+                if (child_search_score < search_score) {
+                    search_score = child_search_score;
+                }
+            }
+        } else {
+            search_score = 0;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                update_search_scores(ctx, child, !team, verify);
+                search_score += child->search_score * 2;
+            }
+        }
+    } else {
+        search_score = distance_from_target(node->score, target);
+        if (node->expanded && search_score) {
+            // If the node has no children after it's been expanded, then it marks the end of the
+            // game (checkmate or stalemate). Therefore, if the score does not already satisfy the
+            // target, we assign maximum search score, because it's impossible for this node to ever
+            // satisfy the target.
+            search_score = UINT32_MAX;
+        }
+    }
+    if (verify) {
+        JK_ASSERT(search_score == node->search_score);
+    } else {
+        node->search_score = search_score;
     }
 }
 
-static void update_search_scores_root(AiContext *ctx)
+#pragma optimize("", on)
+
+typedef struct ScoreIndexPair {
+    int32_t index;
+    int32_t score;
+} ScoreIndexPair;
+
+static int score_index_pair_compare(void *a, void *b)
+{
+    return ((ScoreIndexPair *)a)->score - ((ScoreIndexPair *)b)->score;
+}
+
+static void update_search_scores_root(AiContext *ctx, b32 verify)
 {
     Team team = board_current_team_get(ctx->board);
 
-    int32_t score = INT32_MIN;
-    MoveNode *favorite_child = 0;
-    int32_t second_highest_score = INT32_MIN;
-    for (MoveNode *child = ctx->root->first_child; child; child = child->next_sibling) {
-        int32_t child_score = team_multiplier[team] * child->score;
-        if (score < child_score) {
-            second_highest_score = score;
-            score = child_score;
-            if (second_highest_score == INT32_MIN) {
-                second_highest_score = score;
+    ScoreIndexPair top_two_pairs[2] = {{.score = INT32_MIN}, {.score = INT32_MIN}};
+    for (int32_t i = 0; i < ctx->top_level_node_count; i++) {
+        int32_t score = team_multiplier[team] * ctx->top_level_nodes[i].score;
+        if (top_two_pairs[0].score < score) {
+            top_two_pairs[0].score = score;
+            top_two_pairs[0].index = i;
+            if (top_two_pairs[1].score < top_two_pairs[0].score) {
+                ScoreIndexPair tmp = top_two_pairs[1];
+                top_two_pairs[1] = top_two_pairs[0];
+                top_two_pairs[0] = tmp;
             }
-            favorite_child = child;
         }
     }
-    // If this assert fires it means that there's only one legal move, in which case the AI should
-    // just choose that move before it even gets this far.
-    JK_ASSERT(second_highest_score != INT32_MIN);
 
+    int32_t favorite_child_index = top_two_pairs[1].index;
+    Target favorite_target = {
+        .assisting_team = !team,
+        .score = team_multiplier[team] * (top_two_pairs[0].score - 1),
+    };
     Target target = {
         .assisting_team = team,
-        .score = team_multiplier[team] * score,
+        .score = team_multiplier[team] * (top_two_pairs[1].score + 1),
     };
-    int32_t i = 0;
-    for (MoveNode *child = ctx->root->first_child; child; child = child->next_sibling, i++) {
-        if (child == favorite_child) {
-            Target favorite_target = {
-                .assisting_team = !team,
-                .score = team_multiplier[team] * second_highest_score,
-            };
+    for (int32_t i = 0; i < ctx->top_level_node_count; i++) {
+        if (i == favorite_child_index) {
             ctx->targets[i] = favorite_target;
-            update_search_scores(child, !team, favorite_target);
         } else {
             ctx->targets[i] = target;
-            update_search_scores(child, !team, target);
         }
+        update_search_scores(ctx, ctx->top_level_nodes + i, !team, verify);
+        JK_ASSERT(ctx->top_level_nodes[i].search_score > 0);
     }
 }
 
@@ -752,44 +896,51 @@ static void moves_shuffle(MoveArray *moves)
     }
 }
 
-static b32 expand_node(AiContext *ctx, MoveNode *node, b32 shuffle)
+static uint64_t debug_nodes_found;
+
+#pragma optimize("", off)
+static b32 expand_node(AiContext *ctx, MoveNode *node)
 {
-    MovePacked *prev_moves = arena_pointer_get(&ctx->arena);
-    for (MoveNode *ancestor = node; ancestor && ancestor->parent; ancestor = ancestor->parent) {
-        MovePacked *move = arena_alloc(&ctx->arena, sizeof(*move));
-        if (!move) {
-            return 0;
-        }
-        *move = ancestor->move;
-    }
-    int64_t move_count = (MovePacked *)arena_pointer_get(&ctx->arena) - prev_moves;
-
     Board node_board_state = ctx->board;
-    for (int64_t i = move_count - 1; i >= 0; i--) {
-        node_board_state = board_move_perform(node_board_state, prev_moves[i]);
-    }
+    {
+        MovePacked *prev_moves = arena_pointer_get(&ctx->arena);
+        for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
+            MovePacked *move = arena_alloc(&ctx->arena, sizeof(*move));
+            if (!move) {
+                return 0;
+            }
+            *move = ancestor->move;
+        }
+        int64_t move_count = (MovePacked *)arena_pointer_get(&ctx->arena) - prev_moves;
 
-    arena_pointer_set(&ctx->arena, prev_moves);
+        for (int64_t i = move_count - 1; i >= 0; i--) {
+            node_board_state = board_move_perform(node_board_state, prev_moves[i]);
+        }
+
+        arena_pointer_set(&ctx->arena, prev_moves);
+    }
 
     MoveArray moves;
     moves_get(&moves, node_board_state);
-    if (shuffle) {
-        moves_shuffle(&moves);
-    }
     MoveNode *prev_child = 0;
     MoveNode *first_child = 0;
-    for (int32_t i = 0; i < moves.count; i++) {
+    debug_nodes_found += moves.count;
+    for (uint8_t i = 0; i < moves.count; i++) {
         MoveNode *new_child = arena_alloc(&ctx->arena, sizeof(*new_child));
         if (!new_child) {
             return 0;
         }
+        new_child->depth = node->depth + 1;
         new_child->expanded = 0;
         new_child->move = moves.data[i];
         new_child->parent = node;
         new_child->next_sibling = 0;
         new_child->first_child = 0;
-        new_child->score = board_score(board_move_perform(node_board_state, moves.data[i]));
+        new_child->board_score =
+                board_score(board_move_perform(node_board_state, moves.data[i]), new_child->depth);
+        new_child->score = new_child->board_score;
         new_child->search_score = UINT32_MAX;
+        new_child->top_level_index = node->top_level_index;
 
         if (prev_child) {
             prev_child->next_sibling = new_child;
@@ -800,75 +951,168 @@ static b32 expand_node(AiContext *ctx, MoveNode *node, b32 shuffle)
     }
     node->first_child = first_child;
     node->expanded = 1;
+    if (!node->first_child) {
+        node->search_score = UINT32_MAX;
+    }
 
     // TODO: We probably only need to look at all the children for node. For the ancestors, we
     // can probably compare node's score with their score to see if it would be an improvement.
     Team team = board_current_team_get(node_board_state);
-    for (MoveNode *ancestor = node; ancestor && ancestor->parent;
-            ancestor = ancestor->parent, team = !team) {
+    MoveNode *ancestor;
+    b32 top_level_score_changed = 0;
+    for (ancestor = node; ancestor; ancestor = ancestor->parent, team = !team) {
         if (ancestor->first_child) {
-            ancestor->score = INT32_MIN;
+            int32_t score = INT32_MIN;
             for (MoveNode *child = ancestor->first_child; child; child = child->next_sibling) {
-                int32_t score = team_multiplier[team] * child->score;
-                if (ancestor->score < score) {
-                    ancestor->score = score;
+                int32_t child_score = team_multiplier[team] * child->score;
+                if (score < child_score) {
+                    score = child_score;
                 }
             }
-            ancestor->score *= team_multiplier[team];
+            score *= team_multiplier[team];
+            if (ancestor->score == score) {
+                break;
+            } else {
+                ancestor->score = score;
+                if (!ancestor->parent) {
+                    top_level_score_changed = 1;
+                }
+            }
         }
     }
 
-    update_search_scores_root(ctx);
+    if (top_level_score_changed) {
+        update_search_scores_root(ctx, 0);
+    } else {
+        team = board_current_team_get(node_board_state);
+        for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+            child->search_score = search_score_get(ctx, child, !team);
+        }
+        for (ancestor = node; ancestor; ancestor = ancestor->parent, team = !team) {
+            uint32_t search_score = search_score_get(ctx, ancestor, team);
+            if (search_score == ancestor->search_score) {
+                break;
+            } else {
+                ancestor->search_score = search_score;
+            }
+        }
+    }
+
+    // update_search_scores_root(ctx, 1);
+
+    // TODO: Find search score differences in updating only a subtree vs updating from the root
+
+    // TODO: What happens if the AI runs out of moves to look at? E.g. all paths end in checkmate
 
     return 1;
 }
+#pragma optimize("", on)
 
-typedef struct DepthStats {
+typedef struct MoveTreeStats {
+    uint64_t node_count;
     uint64_t leaf_count;
     uint64_t depth_sum;
     uint64_t min_depth;
     uint64_t max_depth;
-} DepthStats;
+    MoveArray min_line;
+    MovePacked *max_line;
+} MoveTreeStats;
 
-void depth_stats_calculate(DepthStats *stats, MoveNode *node, uint64_t depth)
+void move_tree_stats_calculate(Arena *arena, MoveTreeStats *stats, MoveNode *node, uint64_t depth)
 {
+    stats->node_count++;
     if (node->first_child) {
         for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-            depth_stats_calculate(stats, child, depth + 1);
+            move_tree_stats_calculate(arena, stats, child, depth + 1);
         }
     } else if (!node->expanded) {
         stats->leaf_count++;
         stats->depth_sum += depth;
         if (depth < stats->min_depth) {
+            JK_ASSERT(depth < 256);
             stats->min_depth = depth;
+
+            stats->min_line.count = 0;
+            for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
+                stats->min_line.data[stats->min_line.count++] = ancestor->move;
+            }
         }
         if (stats->max_depth < depth) {
             stats->max_depth = depth;
+
+            if (stats->max_line) {
+                arena_pointer_set(arena, stats->max_line);
+            }
+            stats->max_line = arena_pointer_get(arena);
+            for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
+                MovePacked *move = arena_alloc(arena, sizeof(stats->max_line[0]));
+                *move = ancestor->move;
+            }
         }
     }
 }
 
+static uint64_t debug_time_current_get(void)
+{
+    return debug_nodes_found;
+}
+
 Move ai_move_get(Chess *chess)
 {
+
     AiContext ctx = {
         .board = chess->board,
         .arena = {.memory = chess->ai_memory},
+
         .time_started = chess->cpu_timer_get(),
         .time_limit = chess->cpu_timer_frequency * 10,
         .time_current_get = chess->cpu_timer_get,
-    };
-    ctx.root = arena_alloc(&ctx.arena, sizeof(*ctx.root));
-    memset(ctx.root, 0, sizeof(*ctx.root));
-    expand_node(&ctx, ctx.root, 1);
 
-    if (ctx.root->first_child) {
-        if (!ctx.root->first_child->next_sibling) {
-            // If there's only one legal move, take it
-            return move_unpack(ctx.root->first_child->move);
-        }
-    } else {
+        .debug_print = chess->debug_print,
+    };
+
+    MoveArray moves;
+    moves_get(&moves, chess->board);
+
+    if (!moves.count) {
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
+    } else if (moves.count == 1) {
+        // If there's only one legal move, take it
+        return move_unpack(moves.data[1]);
     }
+
+    ctx.top_level_node_count = moves.count;
+    moves_shuffle(&moves);
+    MoveNode *prev_child = 0;
+    for (uint8_t i = 0; i < moves.count; i++) {
+        MoveNode *new_child = ctx.top_level_nodes + i;
+
+        new_child->depth = 1;
+        new_child->expanded = 0;
+        new_child->move = moves.data[i];
+        new_child->parent = 0;
+        new_child->next_sibling = 0;
+        new_child->first_child = 0;
+        new_child->board_score =
+                board_score(board_move_perform(chess->board, moves.data[i]), new_child->depth);
+        new_child->score = new_child->board_score;
+        new_child->search_score = UINT32_MAX;
+        new_child->top_level_index = i;
+
+        if (i) {
+            prev_child->next_sibling = new_child;
+        }
+
+        prev_child = new_child;
+    }
+
+    update_search_scores_root(&ctx, 0);
+
+    debug_nodes_found = 0;
+
+    /*ctx.time_started = 0;
+    ctx.time_limit = 235302;
+    ctx.time_current_get = debug_time_current_get;*/
 
     // Explore tree
     while (ctx.time_current_get() - ctx.time_started < ctx.time_limit) {
@@ -877,13 +1121,11 @@ Move ai_move_get(Chess *chess)
             Target target = {0};
             {
                 uint32_t min_search_score = UINT32_MAX;
-                int32_t i = 0;
-                for (MoveNode *root_child = ctx.root->first_child; root_child;
-                        root_child = root_child->next_sibling, i++) {
-                    if (root_child->search_score < min_search_score) {
-                        node = root_child;
+                for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
+                    if (ctx.top_level_nodes[i].search_score < min_search_score) {
+                        node = ctx.top_level_nodes + i;
                         target = ctx.targets[i];
-                        min_search_score = root_child->search_score;
+                        min_search_score = ctx.top_level_nodes[i].search_score;
                     }
                 }
             }
@@ -895,52 +1137,112 @@ Move ai_move_get(Chess *chess)
                 while (node->first_child) {
                     min_search_score = UINT32_MAX;
                     MoveNode *min_child = 0;
-                    uint32_t max_search_score = 0;
-                    MoveNode *max_child = 0;
+                    uint32_t max_dist_from_target = 0;
+                    MoveNode *max_dist_from_target_child = 0;
                     for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                        if (child->search_score <= min_search_score) {
-                            min_search_score = child->search_score;
-                            min_child = child;
-                        }
-                        if (max_search_score <= child->search_score) {
-                            max_search_score = child->search_score;
-                            max_child = child;
+                        if (child->first_child || !child->expanded) {
+                            if (child->search_score <= min_search_score) {
+                                min_search_score = child->search_score;
+                                min_child = child;
+                            }
+                            uint32_t dist_from_target = distance_from_target(child->score, target);
+                            if (max_dist_from_target <= dist_from_target) {
+                                max_dist_from_target = dist_from_target;
+                                max_dist_from_target_child = child;
+                            }
                         }
                     }
-                    JK_ASSERT(min_child && max_child);
-                    node = team == target.assisting_team ? min_child : max_child;
+                    JK_ASSERT(min_child && max_dist_from_target_child);
+                    node = team == target.assisting_team ? min_child : max_dist_from_target_child;
                     team = !team;
                 }
             }
         }
 
-        if (!expand_node(&ctx, node, 0)) {
+        if (!expand_node(&ctx, node)) {
             chess->debug_print("Out of AI memory\n");
             break;
         }
     }
 
     // Print min and max depth
-    DepthStats depth_stats = {.min_depth = UINT64_MAX};
-    depth_stats_calculate(&depth_stats, ctx.root, 0);
-    char buffer[1024];
-    snprintf(buffer,
-            JK_ARRAY_COUNT(buffer),
-            "depth_min\t%llu\ndepth_avg\t%llu\ndepth_max\t%llu\n",
-            depth_stats.min_depth,
-            depth_stats.depth_sum / depth_stats.leaf_count,
-            depth_stats.max_depth);
-    chess->debug_print(buffer);
+    MoveTreeStats stats = {.min_depth = UINT64_MAX};
+    for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
+        move_tree_stats_calculate(&ctx.arena, &stats, ctx.top_level_nodes + i, 1);
+    }
 
-    // Pick move with the best score
-    Team team = board_current_team_get(ctx.board);
-    int32_t max_score = INT32_MIN;
+    int32_t max_score_i = 0;
     MovePacked move = {0};
-    for (MoveNode *child = ctx.root->first_child; child; child = child->next_sibling) {
-        int32_t score = team_multiplier[team] * child->score;
-        if (max_score < score) {
-            max_score = score;
-            move = child->move;
+    {
+        // Pick move with the best score
+        Team team = board_current_team_get(ctx.board);
+        int32_t max_score = INT32_MIN;
+        for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
+            int32_t score = team_multiplier[team] * ctx.top_level_nodes[i].score;
+            if (max_score < score) {
+                max_score_i = i;
+                max_score = score;
+                move = ctx.top_level_nodes[i].move;
+            }
+        }
+    }
+
+    if (stats.max_depth < 300) {
+        uint64_t max_score_depth = 0;
+        {
+            Team team = board_current_team_get(ctx.board);
+            Board board = chess->board;
+            MoveNode *node = ctx.top_level_nodes + max_score_i;
+            while (node) {
+                max_score_depth++;
+                board = board_move_perform(board, node->move);
+                debug_render(board);
+                team = !team;
+                int32_t max_score = INT32_MIN;
+                MoveNode *max_score_node = 0;
+                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                    int32_t score = team_multiplier[team] * child->score;
+                    if (max_score < score) {
+                        max_score = score;
+                        max_score_node = child;
+                    }
+                }
+                node = max_score_node;
+            }
+        }
+
+        debug_printf(chess->debug_print,
+                "node_count\t%llu\nleaf_count\t%llu\nmin_depth\t%llu\navg_depth\t%llu\nmax_depth\t%"
+                "llu\nmax_score_depth\t%llu\n",
+                stats.node_count,
+                stats.leaf_count,
+                stats.min_depth,
+                stats.depth_sum / stats.leaf_count,
+                stats.max_depth,
+                max_score_depth);
+
+        debug_printf(chess->debug_print, "max_line:\n");
+        for (int32_t i = 0; i < stats.max_depth; i++) {
+            debug_printf(chess->debug_print, "\t0x%x\n", (uint32_t)stats.max_line[i].bits);
+        }
+
+        {
+            Board board = chess->board;
+            for (int32_t i = stats.min_line.count - 1; i >= 0; i--) {
+                board = board_move_perform(board, stats.min_line.data[i]);
+                debug_render(board);
+            }
+        }
+
+        {
+            Board board = chess->board;
+            for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
+                board = board_move_perform(board, stats.max_line[i]);
+                debug_printf(chess->debug_print,
+                        "score: %d\n",
+                        board_score(board, stats.max_depth - 1 - i));
+                debug_render(board);
+            }
         }
     }
 
@@ -1051,6 +1353,14 @@ void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
     }
 }
 
+void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
+{
+    node->top_level_index = top_level_index;
+    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+        debug_set_top_level_index(child, top_level_index);
+    }
+}
+
 void update(Chess *chess)
 {
     // Debug reset
@@ -1059,6 +1369,50 @@ void update(Chess *chess)
     }
 
     if (!(chess->flags & FLAG_INITIALIZED)) {
+        memset(&debug_chess, 0, sizeof(debug_chess));
+        memcpy(debug_chess.atlas, chess->atlas, sizeof(debug_chess.atlas));
+        debug_chess.square_side_length = 64;
+        debug_chess.selected_square = (JkIntVector2){-1, -1};
+        debug_chess.promo_square = (JkIntVector2){-1, -1};
+        debug_chess.draw_buffer = debug_draw_buffer;
+
+        // Test search score calculation
+        AiContext ctx = {
+            .top_level_node_count = 2,
+            .top_level_nodes =
+                    {
+                        {.score = -1},
+                        {.score = 3},
+                        {.score = 3},
+                        {.score = -1},
+                        {.score = 3},
+                        {.score = 11},
+                        {.score = 3},
+                        {.score = 1},
+                        {.score = -1},
+                        {.score = -4},
+                        {.score = 0},
+                        {.score = 3},
+                        {.score = 11},
+                        {.score = 6},
+                    },
+        };
+        for (int32_t i = 0; i < 14; i++) {
+            if (i % 2 == 0 && i) {
+                ctx.top_level_nodes[i / 2 - 1].first_child = ctx.top_level_nodes + i;
+            } else {
+                ctx.top_level_nodes[i - 1].next_sibling = ctx.top_level_nodes + i;
+            }
+        }
+        for (uint8_t i = 0; i < ctx.top_level_node_count; i++) {
+            debug_set_top_level_index(ctx.top_level_nodes + i, i);
+        }
+        update_search_scores_root(&ctx, WHITE);
+        // JK_ASSERT(ctx.top_level_nodes[0].search_score == 6);
+        // JK_ASSERT(ctx.top_level_nodes[1].search_score == 7);
+        print_nodes(chess->debug_print, ctx.top_level_nodes, 0);
+        print_nodes(chess->debug_print, ctx.top_level_nodes + 1, 0);
+
         chess->flags = FLAG_INITIALIZED;
         chess->player_types[0] = PLAYER_HUMAN;
         chess->player_types[1] = PLAYER_AI;
@@ -1066,7 +1420,7 @@ void update(Chess *chess)
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
-        memcpy(&chess->board, &starting_state, sizeof(chess->board));
+        memcpy(&chess->board, &bug_state, sizeof(chess->board));
         moves_get(&chess->moves, chess->board);
         if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
             chess->flags |= FLAG_REQUEST_AI_MOVE;
@@ -1405,6 +1759,7 @@ void render(Chess *chess)
                 } else {
                     color = color_background;
                 }
+                color.a = 255;
                 chess->draw_buffer[pos.y * DRAW_BUFFER_WIDTH + pos.x] = color;
             }
         }
