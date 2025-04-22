@@ -1,5 +1,6 @@
 #include "chess.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -74,8 +75,18 @@ static Board bug_state = {
         0x00, 0x00, 0x00, 0x00,
     },
     // clang-format on
-    .flags = 0x7e,
+    .flags = 0x1e,
 };
+
+static char *puzzle_fen = "8/1bp1rkp1/p4p2/1p1p1QPR/3q3P/8/5PK1/8 b - - 0 1";
+
+static char *wtf_fen = "rnb1kbnr/pppp1ppp/5q2/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b - - 0 1";
+
+static char *wtf2_fen = "1nb1k1nr/r2p1qp1/1pp3B1/3pP1Qp/p4p2/2N2N2/PPP2PPP/R4RK1 b k - 1 1";
+
+static char *wtf5_fen = "r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2K1 b kq - 4 3";
+
+static char *wtf9_fen = "r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2";
 
 static char debug_print_buffer[1024];
 
@@ -260,6 +271,108 @@ static Move move_unpack(MovePacked move_packed)
     };
 }
 
+static Board parse_fen(JkBuffer fen)
+{
+    // We'll start with no castling rights. (Flag set mean disallowed, clear means allowed).
+    Board board = {.flags = BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS
+                | BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS
+                | BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS
+                | BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS};
+    uint64_t i = 0;
+    JkIntVector2 pos = {0, 7};
+
+    while (isspace(fen.data[i])) {
+        i++;
+    }
+
+    // Parse piece positions
+    for (; i < fen.size && !isspace(fen.data[i]); i++) {
+        uint8_t c = fen.data[i];
+        Team team = WHITE;
+        if (c >= 'a') {
+            team = BLACK;
+            c -= 'a' - 'A';
+        }
+
+        if (c == 'K') {
+            board_piece_set(&board, pos, (Piece){KING, team});
+            pos.x++;
+        } else if (c == 'Q') {
+            board_piece_set(&board, pos, (Piece){QUEEN, team});
+            pos.x++;
+        } else if (c == 'R') {
+            board_piece_set(&board, pos, (Piece){ROOK, team});
+            pos.x++;
+        } else if (c == 'B') {
+            board_piece_set(&board, pos, (Piece){BISHOP, team});
+            pos.x++;
+        } else if (c == 'N') {
+            board_piece_set(&board, pos, (Piece){KNIGHT, team});
+            pos.x++;
+        } else if (c == 'P') {
+            board_piece_set(&board, pos, (Piece){PAWN, team});
+            pos.x++;
+        } else if (c >= '1' && c <= '8') {
+            pos.x += c - '0';
+        }
+
+        if (!(pos.x < 8)) {
+            pos.y--;
+            pos.x = pos.x % 8;
+        }
+    }
+
+    while (isspace(fen.data[i])) {
+        i++;
+    }
+
+    // Parse current player
+    if (tolower(fen.data[i++]) == 'b') {
+        board.flags |= BOARD_FLAG_CURRENT_PLAYER;
+    }
+
+    while (isspace(fen.data[i])) {
+        i++;
+    }
+
+    // Parse castling rights. Flag set means disallowed.
+    uint8_t c;
+    while (!isspace(c = fen.data[i++])) {
+        if (c == 'Q') {
+            board.flags &= ~BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS;
+        } else if (c == 'K') {
+            board.flags &= ~BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS;
+        } else if (c == 'q') {
+            board.flags &= ~BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS;
+        } else if (c == 'k') {
+            board.flags &= ~BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS;
+        }
+    }
+
+    while (isspace(fen.data[i])) {
+        i++;
+    }
+
+    uint8_t column_char = fen.data[i++];
+    uint8_t row_char = fen.data[i++];
+    JkIntVector2 en_passant_pos = {-1, -1};
+    if (column_char >= 'a' && column_char <= 'h') {
+        en_passant_pos.x = column_char - 'a';
+    }
+    if (row_char >= '1' && row_char <= '8') {
+        en_passant_pos.y = row_char - '1';
+    }
+    if (board_in_bounds(en_passant_pos)) {
+        Move move_prev = {.piece = {.type = PAWN, .team = !board_current_team_get(board)}};
+        JkIntVector2 forward = {0, move_prev.piece.team == WHITE ? 1 : -1};
+        move_prev.src = board_index_get(jk_int_vector_2_sub(en_passant_pos, forward));
+        move_prev.dest = board_index_get(jk_int_vector_2_add(en_passant_pos, forward));
+        board.move_prev = move_pack(move_prev);
+    }
+
+    return board;
+}
+
 static void moves_append(MoveArray *moves, JkIntVector2 src, JkIntVector2 dest, Piece piece)
 {
     moves->data[moves->count++] = move_pack(
@@ -288,38 +401,48 @@ static void moves_append_in_direction_until_stopped(
     }
 }
 
-static uint64_t board_flag_king_moved_get(Team team)
+static uint8_t board_castling_rights_get(Board board, Team team)
 {
-    return 1llu << (1 + team);
+    return (board.flags >> (1 + team * 2)) & 0x3;
 }
 
-static uint64_t board_flag_rook_moved_get(Team team, uint8_t is_right)
+static uint64_t board_castling_rights_flag_get(Team team, b32 king_side)
 {
-    return 1llu << (3 + ((team << 1) | is_right));
+    return 1llu << (1 + team * 2 + !!king_side);
 }
 
-static uint64_t threats_in_direction_until_stopped(
-        Board board, JkIntVector2 src, JkIntVector2 direction)
+typedef struct Threats {
+    uint64_t bitfield;
+    int32_t count;
+} Threats;
+
+static void add_threat(Threats *threats, uint64_t index)
 {
-    uint64_t result = 0;
+    threats->bitfield |= 1llu << index;
+    threats->count++;
+}
+
+static void threats_in_direction_until_stopped(
+        Board board, Threats *threats, JkIntVector2 src, JkIntVector2 direction)
+{
     JkIntVector2 dest = src;
     for (;;) {
         dest = jk_int_vector_2_add(dest, direction);
         if (board_in_bounds(dest)) {
             uint8_t index = board_index_get(dest);
-            result |= 1llu << index;
+            add_threat(threats, index);
             if (board_piece_get_index(board, index).type != NONE) {
-                return result;
+                return;
             }
         } else {
-            return result;
+            return;
         }
     }
 }
 
-static uint64_t board_threatened_squares_get(Board board, Team threatened_by)
+static Threats board_threats_get(Board board, Team threatened_by)
 {
-    uint64_t result = 0;
+    Threats result = {0};
 
     JkIntVector2 src;
     for (src.y = 0; src.y < 8; src.y++) {
@@ -335,26 +458,26 @@ static uint64_t board_threatened_squares_get(Board board, Team threatened_by)
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
                         if (board_in_bounds(dest)) {
-                            result |= 1llu << board_index_get(dest);
+                            add_threat(&result, board_index_get(dest));
                         }
                     }
                 } break;
 
                 case QUEEN: {
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
-                        result |= threats_in_direction_until_stopped(board, src, all_directions[i]);
+                        threats_in_direction_until_stopped(board, &result, src, all_directions[i]);
                     }
                 } break;
 
                 case ROOK: {
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
-                        result |= threats_in_direction_until_stopped(board, src, straights[i]);
+                        threats_in_direction_until_stopped(board, &result, src, straights[i]);
                     }
                 } break;
 
                 case BISHOP: {
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
-                        result |= threats_in_direction_until_stopped(board, src, diagonals[i]);
+                        threats_in_direction_until_stopped(board, &result, src, diagonals[i]);
                     }
                 } break;
 
@@ -362,7 +485,7 @@ static uint64_t board_threatened_squares_get(Board board, Team threatened_by)
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
                         if (board_in_bounds(dest)) {
-                            result |= 1llu << board_index_get(dest);
+                            add_threat(&result, board_index_get(dest));
                         }
                     }
                 } break;
@@ -373,7 +496,7 @@ static uint64_t board_threatened_squares_get(Board board, Team threatened_by)
                         JkIntVector2 dest =
                                 jk_int_vector_2_add(src, pawn_attacks[threatened_by][i]);
                         if (board_in_bounds(dest)) {
-                            result |= 1llu << board_index_get(dest);
+                            add_threat(&result, board_index_get(dest));
                         }
                     }
                 } break;
@@ -402,10 +525,11 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     // Castling handling
     int32_t delta_x = dest.x - src.x;
     if (move.piece.type == ROOK && src.y == (team ? 7 : 0) && (src.x == 0 || src.x == 7)) {
-        board.flags |= board_flag_rook_moved_get(team, src.x == 7);
+        board.flags |= board_castling_rights_flag_get(team, src.x == 7);
     }
     if (move.piece.type == KING) {
-        board.flags |= board_flag_king_moved_get(team);
+        board.flags |= board_castling_rights_flag_get(team, 0);
+        board.flags |= board_castling_rights_flag_get(team, 1);
 
         if (absolute_value(delta_x) == 2) {
             int32_t rook_from_x, rook_to_x;
@@ -469,13 +593,14 @@ static void moves_get(MoveArray *moves, Board board)
                         }
                     }
 
-                    if (!(board.flags & board_flag_king_moved_get(current_team))) {
+                    uint8_t castling_rights = board_castling_rights_get(board, current_team);
+                    if (castling_rights != 0x3) {
                         uint64_t threatened_squares =
-                                board_threatened_squares_get(board, !current_team);
-                        for (uint8_t right = 0; right < 2; right++) {
-                            if (!(board.flags & board_flag_rook_moved_get(current_team, right))) {
+                                board_threats_get(board, !current_team).bitfield;
+                        for (b32 king_side = 0; king_side < 2; king_side++) {
+                            if (!((castling_rights >> king_side) & 1)) {
                                 // Find out whether any of the castling spaces are threatened
-                                uint8_t step = right ? 1 : UINT8_MAX;
+                                uint8_t step = king_side ? 1 : UINT8_MAX;
                                 uint8_t index = board_index_get(src);
                                 uint64_t threat_check_mask = (1llu << index)
                                         | (1llu << (index + step))
@@ -484,8 +609,8 @@ static void moves_get(MoveArray *moves, Board board)
 
                                 // Find out whether any of the castling spaces are blocked
                                 b32 blocked = 0;
-                                int32_t x_step = right ? 1 : -1;
-                                uint8_t empty_space_count = right ? 2 : 3;
+                                int32_t x_step = king_side ? 1 : -1;
+                                uint8_t empty_space_count = king_side ? 2 : 3;
                                 JkIntVector2 pos = src;
                                 for (uint8_t i = 0; i < empty_space_count; i++) {
                                     pos.x += x_step;
@@ -606,7 +731,7 @@ static void moves_get(MoveArray *moves, Board board)
             }
         }
 
-        uint64_t threatened = board_threatened_squares_get(hypothetical, !current_team);
+        uint64_t threatened = board_threats_get(hypothetical, !current_team).bitfield;
         if (threatened & (1llu << king_index)) {
             moves->data[move_index] = moves->data[--moves->count];
         } else {
@@ -673,10 +798,27 @@ static int32_t board_score(Board board, uint64_t depth)
     uint8_t king_index = UINT8_MAX;
     for (uint8_t i = 0; i < 64; i++) {
         Piece piece = board_piece_get_index(board, i);
-        score += team_multiplier[piece.team] * piece_value[piece.type];
+        score += team_multiplier[piece.team] * piece_value[piece.type] * 100;
+
         if (piece.type == KING && piece.team == current_team) {
             king_index = i;
         }
+
+        if (piece.type == PAWN) { // Add points based on how far pawn is from promotion
+            JkIntVector2 pos = board_index_to_vector_2(i);
+            if (piece.team == WHITE) {
+                score += (pos.y - 1) * 2;
+            } else {
+                score -= (6 - pos.y) * 2;
+            }
+        }
+    }
+
+    // Add points for the number of threatened squares
+    Threats threats[2];
+    for (Team team = 0; team < 2; team++) {
+        threats[team] = board_threats_get(board, team);
+        score += team_multiplier[team] * threats[team].count;
     }
 
     JK_ASSERT(king_index < 64);
@@ -684,11 +826,10 @@ static int32_t board_score(Board board, uint64_t depth)
     moves_get(&moves, board);
 
     if (!moves.count) {
-        uint64_t threatened = board_threatened_squares_get(board, !current_team);
-        if ((threatened >> king_index) & 1) { // Checkmate
-            score -= team_multiplier[current_team] * (1000 - (uint32_t)depth);
+        if ((threats[!current_team].bitfield >> king_index) & 1) { // Checkmate
+            score = team_multiplier[!current_team] * (100000 - (uint32_t)depth);
         } else { // Stalemate
-            score = score > 0 ? -500 : (score < 0 ? 500 : 0);
+            score = (score > 0 ? -1 : 1) * (50000 - (uint32_t)depth);
         }
     }
 
@@ -742,7 +883,7 @@ static uint32_t search_score_get(AiContext *ctx, MoveNode *node, Team team)
         if (team == target.assisting_team) {
             search_score = UINT32_MAX;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                uint32_t child_search_score = child->search_score * 2;
+                uint32_t child_search_score = (child->search_score * 3) / 2;
                 if (child_search_score < search_score) {
                     search_score = child_search_score;
                 }
@@ -750,7 +891,7 @@ static uint32_t search_score_get(AiContext *ctx, MoveNode *node, Team team)
         } else {
             search_score = 0;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                search_score += child->search_score * 2;
+                search_score += (child->search_score * 3) / 2;
             }
         }
     } else {
@@ -774,32 +915,6 @@ uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
 
 static void update_search_scores(AiContext *ctx, MoveNode *node, Team team, b32 verify)
 {
-    if (0 && node->move.bits == max_line[0] && node->depth == JK_ARRAY_COUNT(max_line)) {
-        b32 is_max_line = 1;
-        {
-            MoveNode *ancestor = node->parent;
-            for (int32_t i = 1; ancestor && i < JK_ARRAY_COUNT(max_line);
-                    ancestor = ancestor->parent, i++) {
-                if (ancestor->move.bits != max_line[i]) {
-                    is_max_line = 0;
-                    break;
-                }
-            }
-        }
-        if (is_max_line) {
-            debug_printf(ctx->debug_print, "depth: %llu\n", node->depth);
-            MoveArray moves = {0};
-            for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-                moves.data[moves.count++] = ancestor->move;
-            }
-            Board board = ctx->board;
-            for (int32_t i = moves.count - 1; i >= 0; i--) {
-                board = board_move_perform(board, moves.data[i]);
-                debug_render(board);
-            }
-        }
-    }
-
     Target target = ctx->targets[node->top_level_index];
     uint32_t search_score;
     if (node->first_child) {
@@ -807,7 +922,7 @@ static void update_search_scores(AiContext *ctx, MoveNode *node, Team team, b32 
             search_score = UINT32_MAX;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
                 update_search_scores(ctx, child, !team, verify);
-                uint32_t child_search_score = child->search_score * 2;
+                uint32_t child_search_score = (child->search_score * 3) / 2;
                 if (child_search_score < search_score) {
                     search_score = child_search_score;
                 }
@@ -816,7 +931,7 @@ static void update_search_scores(AiContext *ctx, MoveNode *node, Team team, b32 
             search_score = 0;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
                 update_search_scores(ctx, child, !team, verify);
-                search_score += child->search_score * 2;
+                search_score += (child->search_score * 3) / 2;
             }
         }
     } else {
@@ -898,7 +1013,6 @@ static void moves_shuffle(MoveArray *moves)
 
 static uint64_t debug_nodes_found;
 
-#pragma optimize("", off)
 static b32 expand_node(AiContext *ctx, MoveNode *node)
 {
     Board node_board_state = ctx->board;
@@ -1078,7 +1192,7 @@ Move ai_move_get(Chess *chess)
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
     } else if (moves.count == 1) {
         // If there's only one legal move, take it
-        return move_unpack(moves.data[1]);
+        return move_unpack(moves.data[0]);
     }
 
     ctx.top_level_node_count = moves.count;
@@ -1110,9 +1224,9 @@ Move ai_move_get(Chess *chess)
 
     debug_nodes_found = 0;
 
-    /*ctx.time_started = 0;
-    ctx.time_limit = 235302;
-    ctx.time_current_get = debug_time_current_get;*/
+    /* ctx.time_started = 0;
+    ctx.time_limit = 298441;
+    ctx.time_current_get = debug_time_current_get; */
 
     // Explore tree
     while (ctx.time_current_get() - ctx.time_started < ctx.time_limit) {
@@ -1246,7 +1360,8 @@ Move ai_move_get(Chess *chess)
         }
     }
 
-    return move_unpack(move);
+    Move result = move_unpack(move);
+    return result;
 }
 
 // ---- AI end -----------------------------------------------------------------
@@ -1420,7 +1535,8 @@ void update(Chess *chess)
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
-        memcpy(&chess->board, &bug_state, sizeof(chess->board));
+        memcpy(&chess->board, &starting_state, sizeof(chess->board));
+        // chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
         moves_get(&chess->moves, chess->board);
         if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
             chess->flags |= FLAG_REQUEST_AI_MOVE;
@@ -1432,12 +1548,14 @@ void update(Chess *chess)
 
         srand(0xd5717cc6);
 
-        JK_DEBUG_ASSERT(board_flag_king_moved_get(WHITE) == BOARD_FLAG_WHITE_KING_MOVED);
-        JK_DEBUG_ASSERT(board_flag_king_moved_get(BLACK) == BOARD_FLAG_BLACK_KING_MOVED);
-        JK_DEBUG_ASSERT(board_flag_rook_moved_get(WHITE, 0) == BOARD_FLAG_A1_ROOK_MOVED);
-        JK_DEBUG_ASSERT(board_flag_rook_moved_get(WHITE, 1) == BOARD_FLAG_H1_ROOK_MOVED);
-        JK_DEBUG_ASSERT(board_flag_rook_moved_get(BLACK, 0) == BOARD_FLAG_A8_ROOK_MOVED);
-        JK_DEBUG_ASSERT(board_flag_rook_moved_get(BLACK, 1) == BOARD_FLAG_H8_ROOK_MOVED);
+        JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 0)
+                == BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS);
+        JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 1)
+                == BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS);
+        JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 0)
+                == BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS);
+        JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 1)
+                == BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS);
     }
 
     if (button_pressed(chess, INPUT_FLAG_CANCEL)) {
@@ -1516,6 +1634,8 @@ void update(Chess *chess)
             chess->promo_square = dest;
         } else { // Make a move
             chess->board = board_move_perform(chess->board, move_pack(move));
+            debug_printf(chess->debug_print, "move.bits: %x\n", (uint32_t)move_pack(move).bits);
+            debug_printf(chess->debug_print, "score: %d\n", board_score(chess->board, 0));
 
             chess->audio.sound = SOUND_MOVE;
             chess->audio.sound_started_time = chess->audio.time;
@@ -1526,13 +1646,13 @@ void update(Chess *chess)
             moves_get(&chess->moves, chess->board);
 
             if (chess->moves.count) {
-                if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
+                if (chess->player_types[current_team] == PLAYER_AI) {
                     chess->flags |= FLAG_REQUEST_AI_MOVE;
                 }
             } else {
                 chess->victor = !current_team;
 
-                uint64_t threatened = board_threatened_squares_get(chess->board, chess->victor);
+                uint64_t threatened = board_threats_get(chess->board, chess->victor).bitfield;
                 uint8_t king_index = 0;
                 for (uint8_t square_index = 0; square_index < 64; square_index++) {
                     Piece piece = board_piece_get_index(chess->board, square_index);
