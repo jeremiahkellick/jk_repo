@@ -4,25 +4,10 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/precision_test/precision_test.h>
+#include <jk_src/perfaware/part4/compute_polynomial.h>
 // #jk_build dependencies_end
 
-#ifdef _MSC_VER
-#include <intrin.h>
-#else
-#include <x86intrin.h>
-#endif
-
 #include "listing_0184_sine_coefficients.c"
-
-double compute_polynomial(double x, double *coefficients, uint64_t coefficient_count)
-{
-    __m128d x_squared = _mm_set_sd(x * x);
-    __m128d result = _mm_set_sd(coefficients[--coefficient_count]);
-    while (coefficient_count) {
-        result = _mm_fmadd_sd(result, x_squared, _mm_set_sd(coefficients[--coefficient_count]));
-    }
-    return _mm_cvtsd_f64(result) * x;
-}
 
 double sin_mftwp_unrolled(double x)
 {
