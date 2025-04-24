@@ -61,13 +61,19 @@ typedef enum SoundIndex {
     SOUND_COUNT,
 } SoundIndex;
 
+typedef struct Sound {
+    int64_t size;
+    int64_t offset;
+} Sound;
+
 typedef struct Audio {
-    // Read-only
+    // Platform read-write, game read-only
     int64_t sample_count;
     AudioSample *sample_buffer;
-    int16_t asset_data[128llu * 1024];
+    int16_t *asset_data;
+    Sound sounds[SOUND_COUNT];
 
-    // Read-write
+    // Platform doesn't access, game read-write
     int64_t time;
     SoundIndex sound;
     int64_t sound_started_time;

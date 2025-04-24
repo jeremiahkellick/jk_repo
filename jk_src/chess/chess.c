@@ -1279,12 +1279,6 @@ Move ai_move_get(Chess *chess)
         }
     }
 
-    // Print min and max depth
-    MoveTreeStats stats = {.min_depth = UINT64_MAX};
-    for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
-        move_tree_stats_calculate(&ctx.arena, &stats, ctx.top_level_nodes + i, 1);
-    }
-
     int32_t max_score_i = 0;
     MovePacked move = {0};
     {
@@ -1300,6 +1294,21 @@ Move ai_move_get(Chess *chess)
             }
         }
     }
+
+    uint64_t time_elapsed = chess->cpu_timer_get() - ctx.time_started;
+    double seconds_elapsed = (double)time_elapsed / (double)chess->cpu_timer_frequency;
+
+    // Print min and max depth
+    MoveTreeStats stats = {.min_depth = UINT64_MAX};
+    for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
+        move_tree_stats_calculate(&ctx.arena, &stats, ctx.top_level_nodes + i, 1);
+    }
+
+    debug_printf(chess->debug_print, "node_count: %llu\n", stats.node_count);
+    debug_printf(chess->debug_print, "seconds_elapsed: %.1f\n", seconds_elapsed);
+    debug_printf(chess->debug_print,
+            "%.4f Mn/s\n",
+            ((double)stats.node_count / 1000000.0) / seconds_elapsed);
 
     if (stats.max_depth < 300) {
         uint64_t max_score_depth = 0;
@@ -1366,28 +1375,18 @@ Move ai_move_get(Chess *chess)
 
 // ---- AI end -----------------------------------------------------------------
 
-typedef struct Sound {
-    int64_t size;
-    int64_t offset;
-} Sound;
-
-static Sound sounds[SOUND_COUNT] = {
-    {.size = 0, .offset = 0}, // SOUND_NONE
-    {.size = 31920, .offset = 0},
-    {.size = 21718, .offset = 31920},
-};
-
 static void audio_write(Audio *audio)
 {
     int64_t samples_since_sound_started = audio->time - audio->sound_started_time;
-    int64_t sound_samples_remaining = sounds[audio->sound].size - samples_since_sound_started;
+    int64_t sound_samples_remaining =
+            audio->sounds[audio->sound].size - samples_since_sound_started;
 
     for (int64_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
         for (int64_t channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
             if (sample_index < sound_samples_remaining) {
                 audio->sample_buffer[sample_index].channels[channel_index] =
-                        audio->asset_data[sounds[audio->sound].offset + samples_since_sound_started
-                                + sample_index];
+                        audio->asset_data[audio->sounds[audio->sound].offset
+                                + samples_since_sound_started + sample_index];
             } else {
                 audio->sample_buffer[sample_index].channels[channel_index] = 0;
             }
@@ -1530,7 +1529,7 @@ void update(Chess *chess)
 
         chess->flags = FLAG_INITIALIZED;
         chess->player_types[0] = PLAYER_HUMAN;
-        chess->player_types[1] = PLAYER_AI;
+        chess->player_types[1] = PLAYER_HUMAN;
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
@@ -1633,12 +1632,14 @@ void update(Chess *chess)
         if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
             chess->promo_square = dest;
         } else { // Make a move
+            chess->audio.sound = board_piece_get_index(chess->board, move.dest).type == NONE
+                    ? SOUND_MOVE
+                    : SOUND_CAPTURE;
+            chess->audio.sound_started_time = chess->audio.time;
+
             chess->board = board_move_perform(chess->board, move_pack(move));
             debug_printf(chess->debug_print, "move.bits: %x\n", (uint32_t)move_pack(move).bits);
             debug_printf(chess->debug_print, "score: %d\n", board_score(chess->board, 0));
-
-            chess->audio.sound = SOUND_MOVE;
-            chess->audio.sound_started_time = chess->audio.time;
 
             chess->selected_square = (JkIntVector2){-1, -1};
             chess->promo_square = (JkIntVector2){-1, -1};

@@ -2,6 +2,7 @@
 
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -27,6 +28,12 @@ typedef struct AudioBufferRegion {
     DWORD size;
     void *data;
 } AudioBufferRegion;
+
+char *sound_file_paths[SOUND_COUNT] = {
+    0, // SOUND_NONE
+    "chess_move.wav",
+    "chess_capture.wav",
+};
 
 // ---- File formats begin -----------------------------------------------------
 
@@ -128,6 +135,18 @@ typedef struct Memory {
     AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
     uint8_t video[sizeof(Color) * DRAW_BUFFER_WIDTH * DRAW_BUFFER_HEIGHT];
 } Memory;
+
+static char debug_print_buffer[4096];
+
+static int win32_debug_printf(char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int result = vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
+    va_end(args);
+    OutputDebugStringA(debug_print_buffer);
+    return result;
+}
 
 static JkIntVector2 global_window_dimensions;
 static Chess global_chess = {0};
@@ -866,42 +885,73 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
         storage.pos = 0;
 
-        // Load audio data
-        JkBuffer audio_file = jk_platform_file_read_full("chess_audio.wav", &storage);
-        if (audio_file.size) {
-            b32 error = 0;
-            RiffChunkMain *chunk_main = (RiffChunkMain *)audio_file.data;
-            if (chunk_main->id == RIFF_ID_RIFF && chunk_main->form_type == RIFF_ID_WAV) {
-                for (RiffChunk *chunk = (RiffChunk *)chunk_main->chunk_first;
-                        riff_chunk_valid(chunk_main, chunk);
-                        chunk = riff_chunk_next(chunk)) {
-                    switch (chunk->id) {
-                    case RIFF_ID_FMT: {
-                        WavFormat *format = (WavFormat *)chunk->data;
-                        if (format->format_tag != WAV_FORMAT_PCM || format->channel_count != 1
-                                || format->samples_per_second != 48000
-                                || format->bits_per_sample != 16) {
-                            error = 1;
+        uint64_t total_asset_data_size = 0;
+        JkBuffer sound_data[SOUND_COUNT] = {0};
+
+        // Load sounds
+        for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
+            if (sound_file_paths[i]) {
+                JkBuffer audio_file = jk_platform_file_read_full(sound_file_paths[i], &storage);
+                if (audio_file.size) {
+                    b32 error = 0;
+                    RiffChunkMain *chunk_main = (RiffChunkMain *)audio_file.data;
+                    if (chunk_main->id == RIFF_ID_RIFF && chunk_main->form_type == RIFF_ID_WAV) {
+                        for (RiffChunk *chunk = (RiffChunk *)chunk_main->chunk_first;
+                                riff_chunk_valid(chunk_main, chunk);
+                                chunk = riff_chunk_next(chunk)) {
+                            switch (chunk->id) {
+                            case RIFF_ID_FMT: {
+                                WavFormat *format = (WavFormat *)chunk->data;
+                                if (format->format_tag != WAV_FORMAT_PCM
+                                        || format->channel_count != 1
+                                        || format->samples_per_second != 48000
+                                        || format->bits_per_sample != 16) {
+                                    error = 1;
+                                }
+                            } break;
+
+                            case RIFF_ID_DATA: {
+                                sound_data[i].size = chunk->size;
+                                sound_data[i].data = chunk->data;
+                                total_asset_data_size += chunk->size;
+                            } break;
+
+                            default: {
+                            } break;
+                            }
                         }
-                    } break;
-
-                    case RIFF_ID_DATA: {
-                        memcpy(global_chess.audio.asset_data, chunk->data, chunk->size);
+                    } else {
                         error = 1;
-                    } break;
+                    }
+                    if (error) {
+                        win32_debug_printf(
+                                "Something's wrong with the contents of %s\n", sound_file_paths[i]);
+                    }
+                } else {
+                    win32_debug_printf("Failed to load %s\n", sound_file_paths[i]);
+                }
+            }
+        }
 
-                    default: {
-                    } break;
+        if (total_asset_data_size) {
+            global_chess.audio.asset_data =
+                    VirtualAlloc(0, total_asset_data_size, MEM_COMMIT, PAGE_READWRITE);
+            if (global_chess.audio.asset_data) {
+                uint64_t cursor = 0;
+                for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
+                    if (sound_data[i].size) {
+                        memcpy(global_chess.audio.asset_data + cursor,
+                                sound_data[i].data,
+                                sound_data[i].size);
+                        uint64_t sample_count = sound_data[i].size / sizeof(uint16_t);
+                        global_chess.audio.sounds[i].size = sample_count;
+                        global_chess.audio.sounds[i].offset = cursor;
+                        cursor += sample_count;
                     }
                 }
             } else {
-                error = 1;
+                OutputDebugStringA("Failed to allocate memory for audio data\n");
             }
-            if (error) {
-                OutputDebugStringA("Something's wrong with the contents of chess_audio.wav\n");
-            }
-        } else {
-            OutputDebugStringA("Failed to load chess_audio.wav\n");
         }
 
         jk_platform_arena_terminate(&storage);
