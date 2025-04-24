@@ -221,6 +221,9 @@ JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing);
 
 JK_PUBLIC void jk_platform_profile_begin(void);
 
+JK_PUBLIC void jk_platform_profile_end_and_print_custom(
+        void (*print)(void *data, char *format, ...), void *data);
+
 JK_PUBLIC void jk_platform_profile_end_and_print(void);
 
 typedef enum JkPlatformRepetitionTestState {

@@ -13,7 +13,7 @@
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
 _Static_assert(sizeof(Color) == 4, "Color must be 4 bytes");
@@ -88,7 +88,7 @@ static char *wtf5_fen = "r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2K1 b kq 
 
 static char *wtf9_fen = "r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2";
 
-static char debug_print_buffer[1024];
+static char debug_print_buffer[4096];
 
 static int debug_printf(void (*debug_print)(char *), char *format, ...)
 {
@@ -442,6 +442,8 @@ static void threats_in_direction_until_stopped(
 
 static Threats board_threats_get(Board board, Team threatened_by)
 {
+    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(threats_get);
+
     Threats result = {0};
 
     JkIntVector2 src;
@@ -505,6 +507,7 @@ static Threats board_threats_get(Board board, Team threatened_by)
         }
     }
 
+    JK_PLATFORM_PROFILE_ZONE_END(threats_get);
     return result;
 }
 
@@ -572,6 +575,8 @@ static void moves_append_with_promo_potential(
 // Returns the number of moves written to the buffer
 static void moves_get(MoveArray *moves, Board board)
 {
+    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(moves_get);
+
     moves->count = 0;
 
     Team current_team = board_current_team_get(board);
@@ -738,6 +743,8 @@ static void moves_get(MoveArray *moves, Board board)
             move_index++;
         }
     }
+
+    JK_PLATFORM_PROFILE_ZONE_END(moves_get);
 }
 
 // ---- AI begin ---------------------------------------------------------------
@@ -1171,8 +1178,19 @@ static uint64_t debug_time_current_get(void)
     return debug_nodes_found;
 }
 
+static void custom_profile_print(void *data, char *format, ...)
+{
+    void (*print)(char *) = (void (*)(char *))data;
+    va_list args;
+    va_start(args, format);
+    vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
+    va_end(args);
+    print(debug_print_buffer);
+}
+
 Move ai_move_get(Chess *chess)
 {
+    jk_platform_profile_begin();
 
     AiContext ctx = {
         .board = chess->board,
@@ -1370,6 +1388,8 @@ Move ai_move_get(Chess *chess)
     }
 
     Move result = move_unpack(move);
+
+    jk_platform_profile_end_and_print_custom(custom_profile_print, (void *)chess->debug_print);
     return result;
 }
 
@@ -1529,13 +1549,13 @@ void update(Chess *chess)
 
         chess->flags = FLAG_INITIALIZED;
         chess->player_types[0] = PLAYER_HUMAN;
-        chess->player_types[1] = PLAYER_HUMAN;
+        chess->player_types[1] = PLAYER_AI;
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
-        memcpy(&chess->board, &starting_state, sizeof(chess->board));
-        // chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
+        // memcpy(&chess->board, &starting_state, sizeof(chess->board));
+        chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
         moves_get(&chess->moves, chess->board);
         if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
             chess->flags |= FLAG_REQUEST_AI_MOVE;

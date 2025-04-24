@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -708,11 +709,13 @@ JK_PUBLIC void jk_platform_profile_begin(void)
     jk_platform_profile.start = jk_platform_cpu_timer_get();
 }
 
-JK_PUBLIC void jk_platform_profile_end_and_print(void)
+JK_PUBLIC void jk_platform_profile_end_and_print_custom(
+        void (*print)(void *data, char *format, ...), void *data)
 {
     uint64_t total = jk_platform_cpu_timer_get() - jk_platform_profile.start;
     uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
-    printf("Total time: %.4fms (CPU freq %llu)\n",
+    print(data,
+            "Total time: %.4fms (CPU freq %llu)\n",
             1000.0 * (double)total / (double)frequency,
             (long long)frequency);
 
@@ -725,31 +728,46 @@ JK_PUBLIC void jk_platform_profile_end_and_print(void)
                    "jk_platform_profile_zone_end");
 
         for (uint64_t j = 0; j < entry->depth; j++) {
-            printf("\t");
+            print(data, "\t");
         }
-        printf("\t%s[%llu]: %llu (%.2f%%",
+        print(data,
+                "\t%s[%llu]: %llu (%.2f%%",
                 entry->name,
                 (long long)entry->hit_count,
                 (long long)entry->elapsed_exclusive,
                 (double)entry->elapsed_exclusive / (double)total * 100.0);
         if (entry->elapsed_inclusive != entry->elapsed_exclusive) {
-            printf(", %.2f%% w/ children",
+            print(data,
+                    ", %.2f%% w/ children",
                     (double)entry->elapsed_inclusive / (double)total * 100.0);
         }
-        printf(")");
+        print(data, ")");
 
         if (entry->byte_count) {
             double seconds = (double)entry->elapsed_inclusive / (double)frequency;
-            printf(" ");
+            print(data, " ");
             jk_print_bytes_uint64(stdout, "%.3f", entry->byte_count);
-            printf(" at ");
+            print(data, " at ");
             jk_print_bytes_double(stdout, "%.3f", (double)entry->byte_count / seconds);
-            printf("/s");
+            print(data, "/s");
         }
 
-        printf("\n");
+        print(data, "\n");
     }
 #endif
+}
+
+static void jk_platform_profile_printf(void *data, char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+}
+
+JK_PUBLIC void jk_platform_profile_end_and_print(void)
+{
+    jk_platform_profile_end_and_print_custom(jk_platform_profile_printf, 0);
 }
 
 #if !JK_PLATFORM_PROFILE_DISABLE
