@@ -28,6 +28,8 @@ typedef struct Bitmap {
 #define CLEAR_COLOR_R 0x16
 
 #define DRAW_BUFFER_SIDE_LENGTH 3072
+#define DRAW_BUFFER_WIDTH DRAW_BUFFER_SIDE_LENGTH
+#define DRAW_BUFFER_HEIGHT DRAW_BUFFER_SIDE_LENGTH
 
 typedef struct Bezier {
     uint64_t time;
@@ -36,6 +38,7 @@ typedef struct Bezier {
     uint64_t cpu_timer_frequency;
     uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
+    uint8_t memory[1024 * 1024];
 } Bezier;
 
 typedef void RenderFunction(Bezier *chess);

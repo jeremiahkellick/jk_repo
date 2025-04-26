@@ -1,8 +1,10 @@
 #include "bezier.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 // #jk_build compiler_arguments /LD
 // #jk_build linker_arguments /OUT:bezier.dll /EXPORT:render
@@ -25,6 +27,37 @@ static int debug_printf(void (*debug_print)(char *), char *format, ...)
     debug_print(debug_print_buffer);
     return result;
 }
+
+// -------- Arena begin ---------------------------------------------------------
+
+typedef struct Arena {
+    JkBuffer memory;
+    uint64_t pos;
+} Arena;
+
+void *arena_alloc(Arena *arena, uint64_t byte_count)
+{
+    uint64_t new_pos = arena->pos + byte_count;
+    if (new_pos <= arena->memory.size) {
+        void *result = arena->memory.data + arena->pos;
+        arena->pos = new_pos;
+        return result;
+    } else {
+        return 0;
+    }
+}
+
+void *arena_pointer_get(Arena *arena)
+{
+    return arena->memory.data + arena->pos;
+}
+
+void arena_pointer_set(Arena *arena, void *pointer)
+{
+    arena->pos = (uint8_t *)pointer - arena->memory.data;
+}
+
+// -------- Arena end -----------------------------------------------------------
 
 static Color color_background = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
@@ -59,12 +92,167 @@ static Color blend_alpha(Color foreground, Color background, uint8_t alpha)
     return result;
 }
 
+typedef struct Edge {
+    float x0;
+    float y0;
+    float x1;
+    float y1;
+} Edge;
+
+typedef struct ActiveEdge {
+    struct ActiveEdge *next;
+    float fx;
+    float fdx;
+    float fdy;
+    float direction;
+    float y_start;
+    float y_end;
+} ActiveEdge;
+
+static float scanline_data[DRAW_BUFFER_WIDTH * 2 + 1];
+
+#define EDGE_COUNT 3
+
+static float sized_trapezoid_area(float height, float top_width, float bottom_width)
+{
+    JK_ASSERT(top_width >= 0);
+    JK_ASSERT(bottom_width >= 0);
+    return (top_width + bottom_width) / 2.0f * height;
+}
+
+static float position_trapezoid_area(float height, float tx0, float tx1, float bx0, float bx1)
+{
+    return sized_trapezoid_area(height, tx1 - tx0, bx1 - bx0);
+}
+
 void render(Bezier *bezier)
 {
-    for (int32_t y = 0; y < bezier->draw_square_side_length; y++) {
-        for (int32_t x = 0; x < bezier->draw_square_side_length; x++) {
-            bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] =
-                    (Color){.r = (uint8_t)x, .b = (uint8_t)y};
+    Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
+
+    int32_t width = bezier->draw_square_side_length;
+    int32_t height = bezier->draw_square_side_length;
+
+    Edge edges[EDGE_COUNT] = {
+        {0.1f, 0.1f, 0.1f, 0.9f},
+        {0.1f, 0.1f, 0.9f, 0.9f},
+        {0.1f, 0.9f, 0.9f, 0.9f},
+    };
+
+    ActiveEdge *active_edges_head = 0;
+    float *scanline = scanline_data;
+    float *scanline2 = scanline_data + width;
+
+    int32_t y = 0;
+    while (y < height) {
+        float scan_y_top = y + 0.0f;
+        float scan_y_bottom = y + 1.0f;
+
+        memset(scanline_data, 0, sizeof(scanline_data[0]) * (width * 2 + 1));
+
+        // Remove all active edges that terminate before the top of this scanline
+        ActiveEdge **step = &active_edges_head;
+        while (*step) {
+            ActiveEdge *active_edge = *step;
+            if (active_edge->y_end <= scan_y_top) {
+                *step = active_edge->next;
+                // JK_ASSERT(node->direction);
+                // node->direction = 0;
+                // allocator_free(node);
+            } else {
+                step = &active_edge->next;
+            }
+        }
+
+        for (int32_t i = 0; i < EDGE_COUNT && edges[i].y0 <= scan_y_bottom; i++) {
+            if (edges[i].y0 != edges[i].y1) {
+                // Create new active edge
+                ActiveEdge *active_edge = arena_alloc(&arena, sizeof(*active_edge));
+                JK_ASSERT(active_edge);
+                float dxdy = (edges[i].x1 - edges[i].x0) / (edges[i].y1 - edges[i].y0);
+                active_edge->fdx = dxdy;
+                active_edge->fdy = dxdy != 0.0f ? (1.0f / dxdy) : 0.0f;
+                active_edge->fx = edges[i].x0 + dxdy * (scan_y_top - edges[i].y0);
+                // active_edge->direction = edges[i].invert ? 1.0f : -1.0f;
+                active_edge->y_start = edges[i].y0;
+                active_edge->y_end = edges[i].y1;
+                active_edge->next = 0;
+
+                // if (j == 0 && off_y != 0) { ... }
+
+                JK_ASSERT(scan_y_top <= active_edge->y_end);
+
+                // Insert at front
+                active_edge->next = active_edges_head;
+                active_edges_head = active_edge;
+            }
+        }
+
+        // Fill active edges
+        for (ActiveEdge *active_edge = active_edges_head; active_edge;
+                active_edge = active_edge->next) {
+            JK_ASSERT(scan_y_top <= active_edge->y_end);
+
+            if (active_edge->fdx == 0.0f) {
+            } else {
+                float x0 = active_edge->fx;
+                float dx = active_edge->fdx;
+                float xb = x0 + dx;
+                float dy = active_edge->fdy;
+                JK_ASSERT(
+                        active_edge->y_start <= scan_y_bottom && scan_y_top <= active_edge->y_end);
+
+                float x_top;
+                float x_bottom;
+                float sy0;
+                float sy1;
+
+                // Compute endpoints of line segment clipped to this scanline
+                if (scan_y_top < active_edge->y_start) {
+                    x_top = x0 + dx * (active_edge->y_start - scan_y_top);
+                    sy0 = active_edge->y_start;
+                } else {
+                    x_top = x0;
+                    sy0 = scan_y_top;
+                }
+                if (active_edge->y_end < scan_y_bottom) {
+                    x_bottom = x0 + dx * (active_edge->y_end - scan_y_top);
+                    sy1 = active_edge->y_end;
+                } else {
+                    x_bottom = xb;
+                    sy1 = scan_y_bottom;
+                }
+
+                if (0 <= x_top && 0 <= x_bottom && x_top < width && x_bottom < width) {
+                    if ((int32_t)x_top == (int32_t)x_bottom) {
+                        // Only spans one pixel
+                        float height;
+                        int32_t x = (int32_t)x_top;
+                        height = (sy1 - sy0) * active_edge->direction;
+                        JK_ASSERT(0 <= x && x < width);
+                        scanline[x] += position_trapezoid_area(
+                                height, x_top, x + 1.0f, x_bottom, x + 1.0f);
+                        scanline2[x] += height; // Everything right of this pixel is filled
+                    }
+                }
+            }
+        }
+
+        {
+            float sum = 0.0f;
+            for (int32_t i = 0; i < width; i++) {
+                sum += scanline2[i];
+                float k = scanline[i] + sum;
+                k = fabsf(k) * 255.0f + 0.5f;
+                int32_t m = JK_MIN((int32_t)k, 255);
+                uint8_t value = (uint8_t)m;
+                bezier->draw_buffer[y * DRAW_BUFFER_WIDTH + i] = (Color){value, value, value};
+            }
+        }
+
+        // Advance all the active edges
+        for (ActiveEdge *active_edge = active_edges_head; active_edge;
+                active_edge = active_edge->next) {
+            active_edge->fx += active_edge->fdx;
         }
     }
 }
