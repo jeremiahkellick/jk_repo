@@ -1,5 +1,6 @@
 #include "bezier.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -25,6 +26,37 @@ static int debug_printf(void (*debug_print)(char *), char *format, ...)
     debug_print(debug_print_buffer);
     return result;
 }
+
+// -------- Arena begin ---------------------------------------------------------
+
+typedef struct Arena {
+    JkBuffer memory;
+    uint64_t pos;
+} Arena;
+
+void *arena_alloc(Arena *arena, uint64_t byte_count)
+{
+    uint64_t new_pos = arena->pos + byte_count;
+    if (new_pos <= arena->memory.size) {
+        void *result = arena->memory.data + arena->pos;
+        arena->pos = new_pos;
+        return result;
+    } else {
+        return 0;
+    }
+}
+
+void *arena_pointer_get(Arena *arena)
+{
+    return arena->memory.data + arena->pos;
+}
+
+void arena_pointer_set(Arena *arena, void *pointer)
+{
+    arena->pos = (uint8_t *)pointer - arena->memory.data;
+}
+
+// -------- Arena end -----------------------------------------------------------
 
 static Color color_background = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
@@ -59,12 +91,64 @@ static Color blend_alpha(Color foreground, Color background, uint8_t alpha)
     return result;
 }
 
+typedef union Segment {
+    JkVector2 endpoints[2];
+    struct {
+        JkVector2 p1;
+        JkVector2 p2;
+    };
+} Segment;
+
+#define EDGE_COUNT 3
+
+// No bounds checking so returns the scanline intersection as if the segment was an infinite line
+static float segment_scanline_intersection(Segment segment, float scanline_y)
+{
+    float delta_y = segment.p2.y - segment.p1.y;
+    JK_ASSERT(delta_y != 0);
+    return ((segment.p2.x - segment.p1.x) / delta_y) * (scanline_y - segment.p1.y) + segment.p1.x;
+}
+
 void render(Bezier *bezier)
 {
-    for (int32_t y = 0; y < bezier->draw_square_side_length; y++) {
-        for (int32_t x = 0; x < bezier->draw_square_side_length; x++) {
-            bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] =
-                    (Color){.r = (uint8_t)x, .b = (uint8_t)y};
+    Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
+
+    Segment edges[EDGE_COUNT] = {
+        {.p1 = {0.1f, 0.01f}, .p2 = {0.01f, 0.99f}},
+        {.p1 = {0.1f, 0.01f}, .p2 = {0.99f, 0.99f}},
+        {.p1 = {0.01f, 0.99f}, .p2 = {0.99f, 0.99f}},
+    };
+    for (int32_t i = 0; i < EDGE_COUNT; i++) {
+        for (int32_t j = 0; j < 2; j++) {
+            for (int32_t k = 0; k < 2; k++) {
+                edges[i].endpoints[j].coords[k] *= (float)bezier->draw_square_side_length;
+            }
         }
+    }
+
+    for (int32_t y = 0; y < bezier->draw_square_side_length; y++) {
+        float yf = y + 0.5f;
+        float *intersections = arena_pointer_get(&arena);
+        for (int32_t i = 0; i < EDGE_COUNT; i++) {
+            if (edges[i].p1.y <= yf && yf < edges[i].p2.y) {
+                float delta_y = edges[i].p2.y - edges[i].p1.y;
+                JK_ASSERT(delta_y != 0);
+                *(float *)arena_alloc(&arena, sizeof(float)) =
+                        segment_scanline_intersection(edges[i], yf);
+            }
+        }
+        uint64_t intersections_count = (float *)arena_pointer_get(&arena) - intersections;
+        jk_quicksort_floats(intersections, (int)intersections_count);
+        uint64_t intersection_index = 0;
+        for (int32_t x = 0; x < bezier->draw_square_side_length; x++) {
+            float xf = x + 0.5f;
+            while (intersection_index < intersections_count
+                    && intersections[intersection_index] < xf) {
+                intersection_index++;
+            }
+            bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] =
+                    intersection_index % 2 == 0 ? color_background : color_light_squares;
+        }
+        arena_pointer_set(&arena, intersections);
     }
 }

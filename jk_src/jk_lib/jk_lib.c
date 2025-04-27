@@ -320,6 +320,18 @@ JK_PUBLIC void jk_quicksort_ints(int *array, int length)
     jk_quicksort(array, length, sizeof(int), &tmp, jk_int_compare);
 }
 
+static int jk_float_compare(void *a, void *b)
+{
+    float delta = *(float *)a - *(float *)b;
+    return delta == 0.0f ? 0 : (delta < 0.0f ? -1 : 1);
+}
+
+JK_PUBLIC void jk_quicksort_floats(float *array, int length)
+{
+    float tmp;
+    jk_quicksort(array, length, sizeof(float), &tmp, jk_float_compare);
+}
+
 static int jk_string_compare(void *a, void *b)
 {
     return strcmp(*(char **)a, *(char **)b);
@@ -365,7 +377,26 @@ JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 v
     return (JkIntVector2){.x = vector.x % divisor, .y = vector.y % divisor};
 }
 
-// ---- IntVector2 end ---------------------------------------------------------
+// ---- JkIntVector2 end -------------------------------------------------------
+
+// ---- JkVector2 begin --------------------------------------------------------
+
+JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b)
+{
+    return (JkVector2){.x = a.x + b.x, .y = a.y + b.y};
+}
+
+JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
+{
+    return (JkVector2){.x = scalar * vector.x, .y = scalar * vector.y};
+}
+
+// ---- JkVector2 end ----------------------------------------------------------
 
 JK_PUBLIC void jk_assert(char *message, char *file, int64_t line)
 {

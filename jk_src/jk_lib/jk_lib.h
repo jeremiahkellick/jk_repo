@@ -111,19 +111,19 @@ JK_PUBLIC void jk_quicksort(void *array,
 
 JK_PUBLIC void jk_quicksort_ints(int *array, int length);
 
+JK_PUBLIC void jk_quicksort_floats(float *array, int length);
+
 JK_PUBLIC void jk_quicksort_strings(char **array, int length);
 
 // ---- Quicksort end ----------------------------------------------------------
 
 // ---- JkIntVector2 begin -------------------------------------------------------
 
-typedef struct JkIntVector2 {
-    union {
-        int32_t coords[2];
-        struct {
-            int32_t x;
-            int32_t y;
-        };
+typedef union JkIntVector2 {
+    int32_t coords[2];
+    struct {
+        int32_t x;
+        int32_t y;
     };
 } JkIntVector2;
 
@@ -133,7 +133,29 @@ JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b);
 
 JK_PUBLIC JkIntVector2 jk_int_vector_2_sub(JkIntVector2 a, JkIntVector2 b);
 
+JK_PUBLIC JkIntVector2 jk_int_vector_2_mul(int32_t scalar, JkIntVector2 vector);
+
+JK_PUBLIC JkIntVector2 jk_int_vector_2_div(int32_t divisor, JkIntVector2 vector);
+
 JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 vector);
+
+// ---- IntVector2 end ---------------------------------------------------------
+
+// ---- JkVector2 begin -------------------------------------------------------
+
+typedef union JkVector2 {
+    float coords[2];
+    struct {
+        float x;
+        float y;
+    };
+} JkVector2;
+
+JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance);
+
+JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b);
+
+JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector);
 
 // ---- IntVector2 end ---------------------------------------------------------
 

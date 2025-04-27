@@ -253,6 +253,7 @@ DWORD game_thread(LPVOID param)
         Rect draw_rect = draw_rect_get();
 
         global_render(&global_bezier);
+        global_bezier.time++;
 
         uint64_t counter_work = jk_platform_os_timer_get();
         uint64_t counter_current = counter_work;
