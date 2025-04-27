@@ -99,7 +99,10 @@ typedef union Segment {
     };
 } Segment;
 
-#define EDGE_COUNT 3
+typedef struct Edge {
+    Segment segment;
+    float direction;
+} Edge;
 
 // No bounds checking so returns the scanline intersection as if the segment was an infinite line
 static float segment_scanline_intersection(Segment segment, float scanline_y)
@@ -111,30 +114,45 @@ static float segment_scanline_intersection(Segment segment, float scanline_y)
 
 void render(Bezier *bezier)
 {
+    float scale = (float)bezier->draw_square_side_length;
+
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
 
-    Segment edges[EDGE_COUNT] = {
-        {.p1 = {0.1f, 0.01f}, .p2 = {0.01f, 0.99f}},
-        {.p1 = {0.1f, 0.01f}, .p2 = {0.99f, 0.99f}},
-        {.p1 = {0.01f, 0.99f}, .p2 = {0.99f, 0.99f}},
+    JkVector2 points[] = {
+        {0.1f, 0.01f},
+        {0.99f, 0.99f},
+        {0.01f, 0.99f},
     };
-    for (int32_t i = 0; i < EDGE_COUNT; i++) {
-        for (int32_t j = 0; j < 2; j++) {
-            for (int32_t k = 0; k < 2; k++) {
-                edges[i].endpoints[j].coords[k] *= (float)bezier->draw_square_side_length;
+
+    Edge *edges = arena_pointer_get(&arena);
+    {
+        int32_t j = JK_ARRAY_COUNT(points) - 1;
+        for (int32_t k = 0; k < JK_ARRAY_COUNT(points); j = k++) {
+            if (points[j].y != points[k].y) {
+                Edge *edge = arena_alloc(&arena, sizeof(*edge));
+                if (points[j].y < points[k].y) {
+                    edge->segment.p1 = jk_vector_2_mul(scale, points[j]);
+                    edge->segment.p2 = jk_vector_2_mul(scale, points[k]);
+                    edge->direction = -1.0f;
+                } else {
+                    edge->segment.p1 = jk_vector_2_mul(scale, points[k]);
+                    edge->segment.p2 = jk_vector_2_mul(scale, points[j]);
+                    edge->direction = 1.0f;
+                }
             }
         }
     }
+    uint64_t edge_count = (Edge *)arena_pointer_get(&arena) - edges;
 
     for (int32_t y = 0; y < bezier->draw_square_side_length; y++) {
         float yf = y + 0.5f;
         float *intersections = arena_pointer_get(&arena);
-        for (int32_t i = 0; i < EDGE_COUNT; i++) {
-            if (edges[i].p1.y <= yf && yf < edges[i].p2.y) {
-                float delta_y = edges[i].p2.y - edges[i].p1.y;
+        for (int32_t i = 0; i < edge_count; i++) {
+            if (edges[i].segment.p1.y <= yf && yf < edges[i].segment.p2.y) {
+                float delta_y = edges[i].segment.p2.y - edges[i].segment.p1.y;
                 JK_ASSERT(delta_y != 0);
                 *(float *)arena_alloc(&arena, sizeof(float)) =
-                        segment_scanline_intersection(edges[i], yf);
+                        segment_scanline_intersection(edges[i].segment, yf);
             }
         }
         uint64_t intersections_count = (float *)arena_pointer_get(&arena) - intersections;
