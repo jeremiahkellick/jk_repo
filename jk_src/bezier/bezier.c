@@ -121,6 +121,14 @@ static float segment_x_intersection(Segment segment, float x)
     return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
 }
 
+static JkVector2 point_on_circle(float t, float radius)
+{
+    float angle = t * 2.0f * (float)JK_PI;
+    return (JkVector2){radius * cosf(angle), radius * sinf(angle)};
+}
+
+#define POINT_COUNT 128
+
 void render(Bezier *bezier)
 {
     int32_t bitmap_width = bezier->draw_square_side_length;
@@ -129,11 +137,11 @@ void render(Bezier *bezier)
 
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
 
-    JkVector2 points[] = {
-        {0.1f, 0.01f},
-        {0.99f, 0.99f},
-        {0.01f, 0.99f},
-    };
+    JkVector2 points[POINT_COUNT];
+    for (int32_t i = 0; i < POINT_COUNT; i++) {
+        points[i] = jk_vector_2_add(
+                (JkVector2){0.5f, 0.5f}, point_on_circle((1.0f / POINT_COUNT) * i, 0.4f));
+    }
 
     Edge *edges = arena_pointer_get(&arena);
     {
@@ -246,7 +254,7 @@ void render(Bezier *bezier)
                 value = 255;
             }
             bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] =
-                    blend_alpha(color_light_squares, color_background, value);
+                    blend_alpha(color_light_squares, color_background, (uint8_t)value);
         }
     }
 }
