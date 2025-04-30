@@ -92,6 +92,24 @@ static Color blend_alpha(Color foreground, Color background, uint8_t alpha)
     return result;
 }
 
+static JkVector2 vector_average(JkVector2 a, JkVector2 b)
+{
+    return jk_vector_2_mul(0.5f, jk_vector_2_add(a, b));
+}
+
+static float vector_distance_squared(JkVector2 a, JkVector2 b)
+{
+    float dx = b.x - a.x;
+    float dy = b.y - a.y;
+    return dx * dx + dy * dy;
+}
+
+typedef struct PointListNode {
+    struct PointListNode *next;
+    JkVector2 point;
+    float t;
+} PointListNode;
+
 typedef union Segment {
     JkVector2 endpoints[2];
     struct {
@@ -104,6 +122,11 @@ typedef struct Edge {
     Segment segment;
     float direction;
 } Edge;
+
+typedef struct EdgeArray {
+    uint64_t count;
+    Edge *items;
+} EdgeArray;
 
 typedef enum PenCommandType {
     PEN_COMMAND_MOVE,
@@ -131,11 +154,6 @@ PenCommand heart_shape[] = {
     },
 };
 
-typedef struct EdgeArray {
-    uint64_t count;
-    Edge *items;
-} EdgeArray;
-
 typedef struct Transform {
     JkVector2 position;
     float scale;
@@ -161,8 +179,27 @@ static Edge points_to_edge(JkVector2 a, JkVector2 b)
     return edge;
 }
 
-static EdgeArray shape_edges_get(
-        Arena *arena, PenCommand *commands, uint64_t command_count, Transform transform)
+JkVector2 evaluate_cubic_bezier(float t, JkVector2 p0, JkVector2 p1, JkVector2 p2, JkVector2 p3)
+{
+    float t_squared = t * t;
+    float t_cubed = t_squared * t;
+    float one_minus_t = 1.0f - t;
+    float one_minus_t_squared = one_minus_t * one_minus_t;
+    float one_minus_t_cubed = one_minus_t_squared * one_minus_t;
+
+    JkVector2 result = jk_vector_2_mul(one_minus_t_cubed, p0);
+    result = jk_vector_2_add(result, jk_vector_2_mul(3.0f * one_minus_t_squared * t, p1));
+    result = jk_vector_2_add(result, jk_vector_2_mul(3.0f * one_minus_t * t_squared, p2));
+    result = jk_vector_2_add(result, jk_vector_2_mul(t_cubed, p3));
+    return result;
+}
+
+static EdgeArray shape_edges_get(Arena *arena,
+        Arena *scratch_arena,
+        PenCommand *commands,
+        uint64_t command_count,
+        Transform transform,
+        float tolerance)
 {
     EdgeArray edges = {.items = arena_pointer_get(arena)};
 
@@ -177,12 +214,65 @@ static EdgeArray shape_edges_get(
             JkVector2 prev_cursor = cursor;
             cursor = transform_apply(transform, commands[i].coords[0]);
 
-            Edge *new_edge = arena_alloc(arena, sizeof(*new_edge));
-            *new_edge = points_to_edge(prev_cursor, cursor);
+            if (prev_cursor.y != cursor.y) {
+                Edge *new_edge = arena_alloc(arena, sizeof(*new_edge));
+                *new_edge = points_to_edge(prev_cursor, cursor);
+            }
         } break;
 
         case PEN_COMMAND_CURVE: {
-            // TODO
+            JkVector2 p0 = cursor;
+            JkVector2 p1 = transform_apply(transform, commands[i].coords[0]);
+            JkVector2 p2 = transform_apply(transform, commands[i].coords[1]);
+            JkVector2 p3 = transform_apply(transform, commands[i].coords[2]);
+
+            cursor = p3;
+
+            void *prev_scratch_arena_pointer = arena_pointer_get(scratch_arena);
+
+            PointListNode *end_node = arena_alloc(scratch_arena, sizeof(*end_node));
+            end_node->next = 0;
+            end_node->point = p3;
+            end_node->t = 1.0f;
+            PointListNode *start_node = arena_alloc(scratch_arena, sizeof(*start_node));
+            start_node->next = end_node;
+            start_node->point = p0;
+            start_node->t = 0.0f;
+
+            b32 changed = 1;
+            while (changed) {
+                changed = 0;
+                PointListNode *node = start_node;
+                while (node && node->next) {
+                    PointListNode *next = node->next;
+
+                    JkVector2 approx_point = vector_average(node->point, next->point);
+                    float t = (node->t + next->t) / 2.0f;
+                    JkVector2 true_point = evaluate_cubic_bezier(t, p0, p1, p2, p3);
+
+                    if (tolerance * tolerance < vector_distance_squared(approx_point, true_point)) {
+                        changed = 1;
+
+                        PointListNode *new_node = arena_alloc(scratch_arena, sizeof(*new_node));
+                        new_node->next = next;
+                        new_node->point = true_point;
+                        new_node->t = t;
+
+                        node->next = new_node;
+                    }
+
+                    node = next;
+                }
+            }
+
+            for (PointListNode *node = start_node; node && node->next; node = node->next) {
+                if (node->point.y != node->next->point.y) {
+                    Edge *new_edge = arena_alloc(arena, sizeof(*new_edge));
+                    *new_edge = points_to_edge(node->point, node->next->point);
+                }
+            }
+
+            arena_pointer_set(scratch_arena, prev_scratch_arena_pointer);
         } break;
         }
     }
@@ -220,19 +310,23 @@ void render(Bezier *bezier)
     int32_t bitmap_width = bezier->draw_square_side_length;
     int32_t bitmap_height = bezier->draw_square_side_length;
     Transform transform = {
-        .position = {bitmap_width / 2.0f, bitmap_width / 2.0f},
         .scale = bitmap_width / 64.0f,
     };
 
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
+    Arena scratch_arena = {
+        .memory = {.size = sizeof(bezier->scratch_memory), .data = bezier->scratch_memory}};
 
+    /*
     PenCommand circle[POINT_COUNT];
     for (int32_t i = 0; i < POINT_COUNT; i++) {
         circle[i].type = i ? PEN_COMMAND_LINE : PEN_COMMAND_MOVE;
         circle[i].coords[0] = point_on_circle((1.0f / (POINT_COUNT - 1)) * i, 26.0f);
     }
+    */
 
-    EdgeArray edges = shape_edges_get(&arena, circle, JK_ARRAY_COUNT(circle), transform);
+    EdgeArray edges = shape_edges_get(
+            &arena, &scratch_arena, heart_shape, JK_ARRAY_COUNT(heart_shape), transform, 0.25f);
 
     uint64_t coverage_size = sizeof(float) * (bitmap_width + 1) * 2;
     float *coverage = arena_alloc(&arena, coverage_size);
