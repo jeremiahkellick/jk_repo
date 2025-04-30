@@ -105,6 +105,92 @@ typedef struct Edge {
     float direction;
 } Edge;
 
+typedef enum PenCommandType {
+    PEN_COMMAND_MOVE,
+    PEN_COMMAND_LINE,
+    PEN_COMMAND_CURVE,
+} PenCommandType;
+
+typedef struct PenCommand {
+    PenCommandType type;
+    JkVector2 coords[3];
+} PenCommand;
+
+PenCommand heart_shape[] = {
+    {
+        .type = PEN_COMMAND_MOVE,
+        .coords = {{32.0f, 18.271853f}},
+    },
+    {
+        .type = PEN_COMMAND_CURVE,
+        .coords = {{73.16706f, -22.895207f}, {64.066076f, 49.679774f}, {32.0f, 58.271853f}},
+    },
+    {
+        .type = PEN_COMMAND_CURVE,
+        .coords = {{0.34020372f, 49.788636f}, {-9.1743855f, -22.902532f}, {32.0f, 18.271853f}},
+    },
+};
+
+typedef struct EdgeArray {
+    uint64_t count;
+    Edge *items;
+} EdgeArray;
+
+typedef struct Transform {
+    JkVector2 position;
+    float scale;
+} Transform;
+
+static JkVector2 transform_apply(Transform transform, JkVector2 point)
+{
+    return jk_vector_2_add(transform.position, jk_vector_2_mul(transform.scale, point));
+}
+
+static Edge points_to_edge(JkVector2 a, JkVector2 b)
+{
+    Edge edge;
+    if (a.y < b.y) {
+        edge.segment.p1 = a;
+        edge.segment.p2 = b;
+        edge.direction = -1.0f;
+    } else {
+        edge.segment.p1 = b;
+        edge.segment.p2 = a;
+        edge.direction = 1.0f;
+    }
+    return edge;
+}
+
+static EdgeArray shape_edges_get(
+        Arena *arena, PenCommand *commands, uint64_t command_count, Transform transform)
+{
+    EdgeArray edges = {.items = arena_pointer_get(arena)};
+
+    JkVector2 cursor = {0};
+    for (int32_t i = 0; i < command_count; i++) {
+        switch (commands[i].type) {
+        case PEN_COMMAND_MOVE: {
+            cursor = transform_apply(transform, commands[i].coords[0]);
+        } break;
+
+        case PEN_COMMAND_LINE: {
+            JkVector2 prev_cursor = cursor;
+            cursor = transform_apply(transform, commands[i].coords[0]);
+
+            Edge *new_edge = arena_alloc(arena, sizeof(*new_edge));
+            *new_edge = points_to_edge(prev_cursor, cursor);
+        } break;
+
+        case PEN_COMMAND_CURVE: {
+            // TODO
+        } break;
+        }
+    }
+
+    edges.count = (Edge *)arena_pointer_get(arena) - edges.items;
+    return edges;
+}
+
 // No bounds checking so they return the intersection as if the segment was an infinite line
 
 static float segment_y_intersection(Segment segment, float y)
@@ -127,41 +213,26 @@ static JkVector2 point_on_circle(float t, float radius)
     return (JkVector2){radius * cosf(angle), radius * sinf(angle)};
 }
 
-#define POINT_COUNT 128
+#define POINT_COUNT 129
 
 void render(Bezier *bezier)
 {
     int32_t bitmap_width = bezier->draw_square_side_length;
     int32_t bitmap_height = bezier->draw_square_side_length;
-    float scale = (float)bezier->draw_square_side_length;
+    Transform transform = {
+        .position = {bitmap_width / 2.0f, bitmap_width / 2.0f},
+        .scale = bitmap_width / 64.0f,
+    };
 
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
 
-    JkVector2 points[POINT_COUNT];
+    PenCommand circle[POINT_COUNT];
     for (int32_t i = 0; i < POINT_COUNT; i++) {
-        points[i] = jk_vector_2_add(
-                (JkVector2){0.5f, 0.5f}, point_on_circle((1.0f / POINT_COUNT) * i, 0.4f));
+        circle[i].type = i ? PEN_COMMAND_LINE : PEN_COMMAND_MOVE;
+        circle[i].coords[0] = point_on_circle((1.0f / (POINT_COUNT - 1)) * i, 26.0f);
     }
 
-    Edge *edges = arena_pointer_get(&arena);
-    {
-        int32_t j = JK_ARRAY_COUNT(points) - 1;
-        for (int32_t k = 0; k < JK_ARRAY_COUNT(points); j = k++) {
-            if (points[j].y != points[k].y) {
-                Edge *edge = arena_alloc(&arena, sizeof(*edge));
-                if (points[j].y < points[k].y) {
-                    edge->segment.p1 = jk_vector_2_mul(scale, points[j]);
-                    edge->segment.p2 = jk_vector_2_mul(scale, points[k]);
-                    edge->direction = -1.0f;
-                } else {
-                    edge->segment.p1 = jk_vector_2_mul(scale, points[k]);
-                    edge->segment.p2 = jk_vector_2_mul(scale, points[j]);
-                    edge->direction = 1.0f;
-                }
-            }
-        }
-    }
-    uint64_t edge_count = (Edge *)arena_pointer_get(&arena) - edges;
+    EdgeArray edges = shape_edges_get(&arena, circle, JK_ARRAY_COUNT(circle), transform);
 
     uint64_t coverage_size = sizeof(float) * (bitmap_width + 1) * 2;
     float *coverage = arena_alloc(&arena, coverage_size);
@@ -173,13 +244,13 @@ void render(Bezier *bezier)
 
         float scan_y_top = (float)y;
         float scan_y_bottom = scan_y_top + 1.0f;
-        for (int32_t i = 0; i < edge_count; i++) {
-            float y_top = JK_MAX(edges[i].segment.p1.y, scan_y_top);
-            float y_bottom = JK_MIN(edges[i].segment.p2.y, scan_y_bottom);
+        for (int32_t i = 0; i < edges.count; i++) {
+            float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
+            float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
             if (y_top < y_bottom) {
                 float height = y_bottom - y_top;
-                float x_top = segment_y_intersection(edges[i].segment, y_top);
-                float x_bottom = segment_y_intersection(edges[i].segment, y_bottom);
+                float x_top = segment_y_intersection(edges.items[i].segment, y_top);
+                float x_bottom = segment_y_intersection(edges.items[i].segment, y_bottom);
 
                 float y_start;
                 float y_end;
@@ -207,29 +278,29 @@ void render(Bezier *bezier)
                     float top_width = first_pixel_right - x_top;
                     float bottom_width = first_pixel_right - x_bottom;
                     float area = (top_width + bottom_width) / 2.0f * height;
-                    coverage[first_pixel_index] += edges[i].direction * area;
+                    coverage[first_pixel_index] += edges.items[i].direction * area;
 
                     // Fill everything to the right with height
-                    fill[first_pixel_index + 1] += edges[i].direction * height;
+                    fill[first_pixel_index + 1] += edges.items[i].direction * height;
                 } else {
                     // Edge covers multiple pixels
-                    float delta_y = (edges[i].segment.p2.y - edges[i].segment.p1.y)
-                            / (edges[i].segment.p2.x - edges[i].segment.p1.x);
+                    float delta_y = (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
+                            / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
 
                     // Handle first pixel
                     float first_x_intersection =
-                            segment_x_intersection(edges[i].segment, first_pixel_right);
+                            segment_x_intersection(edges.items[i].segment, first_pixel_right);
                     float first_pixel_y_offset = first_x_intersection - y_start;
                     float first_pixel_area =
                             (first_pixel_right - x_start) * fabsf(first_pixel_y_offset) / 2.0f;
-                    coverage[first_pixel_index] += edges[i].direction * first_pixel_area;
+                    coverage[first_pixel_index] += edges.items[i].direction * first_pixel_area;
 
                     // Handle middle pixels (if there are any)
                     float y_offset = first_pixel_y_offset;
                     int32_t pixel_index = first_pixel_index + 1;
                     for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
                         coverage[pixel_index] +=
-                                edges[i].direction * fabsf(y_offset + delta_y / 2.0f);
+                                edges.items[i].direction * fabsf(y_offset + delta_y / 2.0f);
                         y_offset += delta_y;
                     }
 
@@ -237,10 +308,11 @@ void render(Bezier *bezier)
                     float last_x_intersection = y_start + y_offset;
                     float uncovered_triangle = fabsf(y_end - last_x_intersection)
                             * (x_end - (float)pixel_index) / 2.0f;
-                    coverage[pixel_index] += edges[i].direction * (height - uncovered_triangle);
+                    coverage[pixel_index] +=
+                            edges.items[i].direction * (height - uncovered_triangle);
 
                     // Fill everything to the right with height
-                    fill[pixel_index + 1] += edges[i].direction * height;
+                    fill[pixel_index + 1] += edges.items[i].direction * height;
                 }
             }
         }
