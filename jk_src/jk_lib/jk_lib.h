@@ -111,6 +111,8 @@ JK_PUBLIC void jk_quicksort(void *array,
 
 JK_PUBLIC void jk_quicksort_ints(int *array, int length);
 
+JK_PUBLIC int jk_float_compare(float a, float b);
+
 JK_PUBLIC void jk_quicksort_floats(float *array, int length);
 
 JK_PUBLIC void jk_quicksort_strings(char **array, int length);

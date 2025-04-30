@@ -320,16 +320,21 @@ JK_PUBLIC void jk_quicksort_ints(int *array, int length)
     jk_quicksort(array, length, sizeof(int), &tmp, jk_int_compare);
 }
 
-static int jk_float_compare(void *a, void *b)
+JK_PUBLIC int jk_float_compare(float a, float b)
 {
-    float delta = *(float *)a - *(float *)b;
+    float delta = a - b;
     return delta == 0.0f ? 0 : (delta < 0.0f ? -1 : 1);
+}
+
+static int jk_float_compare_void_pointers(void *a, void *b)
+{
+    return jk_float_compare(*(float *)a, *(float *)b);
 }
 
 JK_PUBLIC void jk_quicksort_floats(float *array, int length)
 {
     float tmp;
-    jk_quicksort(array, length, sizeof(float), &tmp, jk_float_compare);
+    jk_quicksort(array, length, sizeof(float), &tmp, jk_float_compare_void_pointers);
 }
 
 static int jk_string_compare(void *a, void *b)

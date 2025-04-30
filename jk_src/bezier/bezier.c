@@ -105,6 +105,22 @@ typedef struct Edge {
     float direction;
 } Edge;
 
+typedef struct ActiveEdge {
+    struct ActiveEdge *next;
+    Edge edge;
+} ActiveEdge;
+
+static int edge_compare(void *a, void *b)
+{
+    return jk_float_compare(((Edge *)a)->segment.p1.y, ((Edge *)b)->segment.p1.y);
+}
+
+static void edge_sort(Edge *array, int length)
+{
+    Edge tmp;
+    jk_quicksort(array, length, sizeof(Edge), &tmp, edge_compare);
+}
+
 // No bounds checking so they return the intersection as if the segment was an infinite line
 
 static float segment_y_intersection(Segment segment, float y)
@@ -163,6 +179,12 @@ void render(Bezier *bezier)
     }
     uint64_t edge_count = (Edge *)arena_pointer_get(&arena) - edges;
 
+    // Sort edges by p1.y
+    edge_sort(edges, (int)edge_count);
+
+    uint64_t edge_index = 0;
+    ActiveEdge *active_edges = 0;
+
     uint64_t coverage_size = sizeof(float) * (bitmap_width + 1) * 2;
     float *coverage = arena_alloc(&arena, coverage_size);
 
@@ -173,13 +195,24 @@ void render(Bezier *bezier)
 
         float scan_y_top = (float)y;
         float scan_y_bottom = scan_y_top + 1.0f;
-        for (int32_t i = 0; i < edge_count; i++) {
-            float y_top = JK_MAX(edges[i].segment.p1.y, scan_y_top);
-            float y_bottom = JK_MIN(edges[i].segment.p2.y, scan_y_bottom);
+
+        // Activate relevant edges
+        while (edge_index < edge_count && edges[edge_index].segment.p1.y < scan_y_bottom) {
+            ActiveEdge *new_active_edge = arena_alloc(&arena, sizeof(*new_active_edge));
+            new_active_edge->next = active_edges;
+            new_active_edge->edge = edges[edge_index];
+            active_edges = new_active_edge;
+            edge_index++;
+        }
+
+        for (ActiveEdge *active_edge = active_edges; active_edge; active_edge = active_edge->next) {
+            Edge edge = active_edge->edge;
+            float y_top = JK_MAX(edge.segment.p1.y, scan_y_top);
+            float y_bottom = JK_MIN(edge.segment.p2.y, scan_y_bottom);
             if (y_top < y_bottom) {
                 float height = y_bottom - y_top;
-                float x_top = segment_y_intersection(edges[i].segment, y_top);
-                float x_bottom = segment_y_intersection(edges[i].segment, y_bottom);
+                float x_top = segment_y_intersection(edge.segment, y_top);
+                float x_bottom = segment_y_intersection(edge.segment, y_bottom);
 
                 float y_start;
                 float y_end;
@@ -207,29 +240,28 @@ void render(Bezier *bezier)
                     float top_width = first_pixel_right - x_top;
                     float bottom_width = first_pixel_right - x_bottom;
                     float area = (top_width + bottom_width) / 2.0f * height;
-                    coverage[first_pixel_index] += edges[i].direction * area;
+                    coverage[first_pixel_index] += edge.direction * area;
 
                     // Fill everything to the right with height
-                    fill[first_pixel_index + 1] += edges[i].direction * height;
+                    fill[first_pixel_index + 1] += edge.direction * height;
                 } else {
                     // Edge covers multiple pixels
-                    float delta_y = (edges[i].segment.p2.y - edges[i].segment.p1.y)
-                            / (edges[i].segment.p2.x - edges[i].segment.p1.x);
+                    float delta_y = (edge.segment.p2.y - edge.segment.p1.y)
+                            / (edge.segment.p2.x - edge.segment.p1.x);
 
                     // Handle first pixel
                     float first_x_intersection =
-                            segment_x_intersection(edges[i].segment, first_pixel_right);
+                            segment_x_intersection(edge.segment, first_pixel_right);
                     float first_pixel_y_offset = first_x_intersection - y_start;
                     float first_pixel_area =
                             (first_pixel_right - x_start) * fabsf(first_pixel_y_offset) / 2.0f;
-                    coverage[first_pixel_index] += edges[i].direction * first_pixel_area;
+                    coverage[first_pixel_index] += edge.direction * first_pixel_area;
 
                     // Handle middle pixels (if there are any)
                     float y_offset = first_pixel_y_offset;
                     int32_t pixel_index = first_pixel_index + 1;
                     for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
-                        coverage[pixel_index] +=
-                                edges[i].direction * fabsf(y_offset + delta_y / 2.0f);
+                        coverage[pixel_index] += edge.direction * fabsf(y_offset + delta_y / 2.0f);
                         y_offset += delta_y;
                     }
 
@@ -237,10 +269,10 @@ void render(Bezier *bezier)
                     float last_x_intersection = y_start + y_offset;
                     float uncovered_triangle = fabsf(y_end - last_x_intersection)
                             * (x_end - (float)pixel_index) / 2.0f;
-                    coverage[pixel_index] += edges[i].direction * (height - uncovered_triangle);
+                    coverage[pixel_index] += edge.direction * (height - uncovered_triangle);
 
                     // Fill everything to the right with height
-                    fill[pixel_index + 1] += edges[i].direction * height;
+                    fill[pixel_index + 1] += edge.direction * height;
                 }
             }
         }
@@ -255,6 +287,17 @@ void render(Bezier *bezier)
             }
             bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] =
                     blend_alpha(color_light_squares, color_background, (uint8_t)value);
+        }
+
+        // Deactivate edges that are no longer relevant
+        ActiveEdge **stride = &active_edges;
+        while (*stride) {
+            ActiveEdge *active_edge = *stride;
+            if (active_edge->edge.segment.p2.y < scan_y_top) {
+                *stride = active_edge->next;
+            } else {
+                stride = &active_edge->next;
+            }
         }
     }
 }
