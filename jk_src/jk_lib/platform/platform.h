@@ -58,6 +58,8 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void);
 
 JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
 
+JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void);
+
 // -------- Performance-monitoring counters begin ------------------------------
 
 #define JK_PLATFORM_PMC_SOURCES_MAX 8
@@ -151,6 +153,10 @@ typedef enum JkPlatformArenaPopResult {
 } JkPlatformArenaPopResult;
 
 JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, size_t size);
+
+JK_PUBLIC void *jk_platform_arena_pointer_get(JkPlatformArena *arena);
+
+JK_PUBLIC void jk_platform_arena_pointer_set(JkPlatformArena *arena, void *pointer);
 
 // ---- Arena end --------------------------------------------------------------
 

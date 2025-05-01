@@ -153,10 +153,10 @@ int main(void)
     print_buffer(JKS("Hello, world!\n"));
     print_buffer(buffer);
 
-    JkBufferPointer pointer = {.buffer = buffer, .index = 5};
-    printf("Character in bounds: %d\n", jk_buffer_character_next(&pointer));
-    pointer.index = 9001;
-    printf("Character out of bounds: %d\n", jk_buffer_character_next(&pointer));
+    uint64_t pos = 5;
+    printf("Character in bounds: %d\n", jk_buffer_character_next(buffer, &pos));
+    pos = 9001;
+    printf("Character out of bounds: %d\n", jk_buffer_character_next(buffer, &pos));
 
     // ---- Buffer end ---------------------------------------------------------
 

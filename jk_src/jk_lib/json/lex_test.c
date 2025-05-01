@@ -19,11 +19,11 @@ int main(int argc, char **argv)
     jk_platform_arena_init(&storage, (size_t)1 << 36);
 
     JkBuffer text = jk_platform_file_read_full("./lex_test.json", &storage);
-    JkBufferPointer text_pointer = {.buffer = text, .index = 0};
+    uint64_t pos = 0;
 
     JkJsonToken token;
     do {
-        token = jk_json_lex(&text_pointer, &storage);
+        token = jk_json_lex(text, &pos, &storage);
         if (token.type == JK_JSON_INVALID) {
             fprintf(stderr, "%s: Invalid JSON\n", argv[0]);
             exit(1);

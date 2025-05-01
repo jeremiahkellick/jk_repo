@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,15 +13,15 @@ JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
     return buffer;
 }
 
-JK_PUBLIC int jk_buffer_character_peek(JkBufferPointer *pointer)
+JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
 {
-    return pointer->index < pointer->buffer.size ? pointer->buffer.data[pointer->index] : EOF;
+    return pos < buffer.size ? buffer.data[pos] : EOF;
 }
 
-JK_PUBLIC int jk_buffer_character_next(JkBufferPointer *pointer)
+JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
 {
-    int c = jk_buffer_character_peek(pointer);
-    pointer->index++;
+    int c = jk_buffer_character_get(buffer, *pos);
+    (*pos)++;
     return c;
 }
 
@@ -53,20 +54,19 @@ JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte)
 }
 
 JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
-        JkBufferPointer *cursor, JkUtf8Codepoint *codepoint)
+        JkBuffer buffer, uint64_t *pos, JkUtf8Codepoint *codepoint)
 {
-    if (cursor->index >= cursor->buffer.size) {
+    if (*pos >= buffer.size) {
         return JK_UTF8_CODEPOINT_GET_EOF;
     }
-    if (jk_utf8_byte_is_continuation(cursor->buffer.data[cursor->index])) {
+    if (jk_utf8_byte_is_continuation(buffer.data[*pos])) {
         return JK_UTF8_CODEPOINT_GET_UNEXPECTED_BYTE;
     }
-    codepoint->b[0] = cursor->buffer.data[cursor->index++];
+    codepoint->b[0] = buffer.data[(*pos)++];
     int i;
-    for (i = 0; i < 3 && cursor->index < cursor->buffer.size
-            && jk_utf8_byte_is_continuation(cursor->buffer.data[cursor->index]);
+    for (i = 0; i < 3 && *pos < buffer.size && jk_utf8_byte_is_continuation(buffer.data[*pos]);
             i++) {
-        codepoint->b[0] = cursor->buffer.data[cursor->index++];
+        codepoint->b[0] = buffer.data[(*pos)++];
     }
     if (i < 4) {
         codepoint->b[i] = '\0';
@@ -242,6 +242,69 @@ JK_PUBLIC int jk_parse_positive_integer(char *string)
         }
     }
     return result;
+}
+
+JK_PUBLIC double jk_parse_double(JkBuffer number_string)
+{
+    double significand_sign = 1.0;
+    double significand = 0.0;
+    double exponent_sign = 1.0;
+    double exponent = 0.0;
+
+    uint64_t pos = 0;
+    int c = jk_buffer_character_next(number_string, &pos);
+
+    if (c == '-') {
+        significand_sign = -1.0;
+
+        c = jk_buffer_character_next(number_string, &pos);
+
+        if (!isdigit(c)) {
+            return NAN;
+        }
+    }
+
+    // Parse integer
+    do {
+        significand = (significand * 10.0) + (c - '0');
+    } while (isdigit((c = jk_buffer_character_next(number_string, &pos))));
+
+    // Parse fraction if there is one
+    if (c == '.') {
+        c = jk_buffer_character_next(number_string, &pos);
+
+        if (!isdigit(c)) {
+            return NAN;
+        }
+
+        double multiplier = 0.1;
+        do {
+            significand += (c - '0') * multiplier;
+            multiplier /= 10.0;
+        } while (isdigit((c = jk_buffer_character_next(number_string, &pos))));
+    }
+
+    // Parse exponent if there is one
+    if (c == 'e' || c == 'E') {
+        c = jk_buffer_character_next(number_string, &pos);
+
+        if ((c == '-' || c == '+')) {
+            if (c == '-') {
+                exponent_sign = -1.0;
+            }
+            c = jk_buffer_character_next(number_string, &pos);
+        }
+
+        if (!isdigit(c)) {
+            return NAN;
+        }
+
+        do {
+            exponent = (exponent * 10.0) + (c - '0');
+        } while (isdigit((c = jk_buffer_character_next(number_string, &pos))));
+    }
+
+    return significand_sign * significand * pow(10.0, exponent_sign * exponent);
 }
 
 // ---- Command line arguments parsing end -------------------------------------

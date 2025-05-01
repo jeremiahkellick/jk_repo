@@ -50,13 +50,11 @@ JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkPlatformAre
 
 JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkPlatformArena *storage);
 
-JK_PUBLIC JkJsonToken jk_json_lex(JkBufferPointer *text_pointer, JkPlatformArena *storage);
+JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena *storage);
 
 JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkPlatformArena *storage);
 
 JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkPlatformArena *storage);
-
-JK_PUBLIC double jk_json_parse_number(JkBuffer json_number_value);
 
 JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name);
 

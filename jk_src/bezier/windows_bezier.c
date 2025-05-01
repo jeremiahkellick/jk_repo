@@ -1,11 +1,14 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <windows.h>
 
 #include "bezier.h"
+#include "jk_src/jk_lib/jk_lib.h"
 
 // #jk_build single_translation_unit
 
@@ -318,34 +321,50 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+static char *shape_string_data =
+        "M 32,9.2226562 C 28.491821,9.2226562 25.446533,10.884042 24.488281,14.761719 "
+        "23.804009,17.946959 24.60016,20.870505 26.490234,22.148438 19.810658,25.985418 "
+        "27.057768,25.543324 28.042969,25.599609 L 28.050781,25.962891 C 28.308198,32.248929 "
+        "23.849484,32.246524 23.126953,43.076172 18.921981,44.38133 11.312719,50.206349 "
+        "14.154297,59.197266 H 49.845703 C 52.687281,50.206349 45.078019,44.38133 "
+        "40.873047,43.076172 40.150516,32.246524 35.691802,32.248929 35.949219,25.962891 L "
+        "35.957031,25.599609 C 36.942232,25.543324 44.189342,25.985418 37.509766,22.148438 "
+        "39.39984,20.870505 40.195991,17.946959 39.511719,14.761719 38.553467,10.884042 "
+        "35.508179,9.2226562 32,9.2226562";
+
+typedef struct FloatArray {
+    uint64_t count;
+    float *items;
+} FloatArray;
+
+static FloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string, uint64_t *pos)
 {
-    // Set working directory to the directory containing the executable
-    {
-        // Load executable file name into buffer
-        char buffer[MAX_PATH];
-        DWORD file_name_length = GetModuleFileNameA(0, buffer, MAX_PATH);
-        if (file_name_length > 0) {
-            OutputDebugStringA(buffer);
-            OutputDebugStringA("\n");
-        } else {
-            OutputDebugStringA("Failed to find the path of this executable\n");
-        }
-
-        // Truncate file name at last component to convert it the containing directory name
-        uint64_t last_slash = 0;
-        for (uint64_t i = 0; buffer[i]; i++) {
-            if (buffer[i] == '/' || buffer[i] == '\\') {
-                last_slash = i;
-            }
-        }
-        buffer[last_slash + 1] = '\0';
-
-        if (!SetCurrentDirectoryA(buffer)) {
-            OutputDebugStringA("Failed to set the working directory\n");
+    FloatArray result = {.items = jk_platform_arena_pointer_get(arena)};
+    int c;
+    while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
+            && (isdigit(c) || isspace(c) || c == ',')) {
+        if (isdigit(c)) {
+            uint64_t start = *pos - 1;
+            do {
+                c = jk_buffer_character_next(shape_string, pos);
+            } while (isdigit(c) || c == '.');
+            JkBuffer number_string = {
+                .size = (*pos - 1) - start,
+                .data = shape_string.data + start,
+            };
+            float *new_number = jk_platform_arena_push(arena, sizeof(*new_number));
+            *new_number = (float)jk_parse_double(number_string);
         }
     }
+    result.count = (float *)jk_platform_arena_pointer_get(arena) - result.items;
+    if (c != EOF) {
+        (*pos)--;
+    }
+    return result;
+}
 
+int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+{
     global_bezier.draw_buffer = VirtualAlloc(0,
             sizeof(Color) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
@@ -353,6 +372,80 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_bezier.cpu_timer_get = jk_platform_cpu_timer_get;
     global_bezier.debug_print = debug_print;
+
+    JkPlatformArena storage;
+    jk_platform_arena_init(&storage, 5llu * 1024 * 1024 * 1024);
+
+    { // Parse shape string
+        JkPlatformArena scratch_arena;
+        jk_platform_arena_init(&scratch_arena, 5llu * 1024 * 1024 * 1024);
+
+        JkBuffer shape_string = {
+            .size = strlen(shape_string_data),
+            .data = (uint8_t *)shape_string_data,
+        };
+
+        PenCommandArray shape = {.items = jk_platform_arena_pointer_get(&storage)};
+        JkVector2 prev_pos = {0};
+
+        uint64_t pos = 0;
+        int c;
+        while ((c = jk_buffer_character_next(shape_string, &pos)) != EOF) {
+            switch (c) {
+            case 'M':
+            case 'L': {
+                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                JK_ASSERT(numbers.count && numbers.count % 2 == 0);
+                for (int32_t i = 0; i < numbers.count; i += 2) {
+                    PenCommand *new_command =
+                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                    new_command->type = c == 'M' ? PEN_COMMAND_MOVE : PEN_COMMAND_LINE;
+                    new_command->coords[0] = (JkVector2){numbers.items[i], numbers.items[i + 1]};
+                    prev_pos = new_command->coords[0];
+                }
+            } break;
+
+            case 'H':
+            case 'V': {
+                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                JK_ASSERT(numbers.count);
+                for (int32_t i = 0; i < numbers.count; i++) {
+                    PenCommand *new_command =
+                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                    new_command->type = PEN_COMMAND_LINE;
+                    new_command->coords[0] = c == 'H' ? (JkVector2){numbers.items[i], prev_pos.y}
+                                                      : (JkVector2){prev_pos.x, numbers.items[i]};
+                    prev_pos = new_command->coords[0];
+                }
+            } break;
+
+            case 'C': {
+                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                JK_ASSERT(numbers.count && numbers.count % 6 == 0);
+                for (int32_t i = 0; i < numbers.count; i += 6) {
+                    PenCommand *new_command =
+                            jk_platform_arena_push(&storage, sizeof(*new_command));
+                    new_command->type = PEN_COMMAND_CURVE;
+                    for (int32_t j = 0; j < 3; j++) {
+                        new_command->coords[j] = (JkVector2){
+                            numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
+                    }
+                    prev_pos = new_command->coords[2];
+                }
+            } break;
+
+            default: {
+                pos++;
+            } break;
+            }
+        }
+
+        shape.count = (PenCommand *)jk_platform_arena_pointer_get(&storage) - shape.items;
+
+        global_bezier.shape = shape;
+
+        jk_platform_arena_terminate(&scratch_arena);
+    }
 
     if (global_bezier.draw_buffer) {
         WNDCLASSA window_class = {

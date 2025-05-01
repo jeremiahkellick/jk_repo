@@ -10,14 +10,9 @@ typedef uint32_t b32;
 // ---- Buffer begin -----------------------------------------------------------
 
 typedef struct JkBuffer {
-    size_t size;
+    uint64_t size;
     uint8_t *data;
 } JkBuffer;
-
-typedef struct JkBufferPointer {
-    JkBuffer buffer;
-    size_t index;
-} JkBufferPointer;
 
 #define JK_STRING(string_literal) \
     ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
@@ -26,9 +21,9 @@ typedef struct JkBufferPointer {
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
-JK_PUBLIC int jk_buffer_character_peek(JkBufferPointer *pointer);
+JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
 
-JK_PUBLIC int jk_buffer_character_next(JkBufferPointer *pointer);
+JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
 // ---- Buffer end -------------------------------------------------------------
 
@@ -49,7 +44,7 @@ typedef enum JkUtf8CodepointGetResult {
 } JkUtf8CodepointGetResult;
 
 JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
-        JkBufferPointer *cursor, JkUtf8Codepoint *codepoint);
+        JkBuffer buffer, uint64_t *pos, JkUtf8Codepoint *codepoint);
 
 // ---- UTF-8 end --------------------------------------------------------------
 
@@ -98,6 +93,8 @@ JK_PUBLIC void jk_options_parse(int argc,
 JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count);
 
 JK_PUBLIC int jk_parse_positive_integer(char *string);
+
+JK_PUBLIC double jk_parse_double(JkBuffer number_string);
 
 // ---- Command line arguments parsing end -------------------------------------
 

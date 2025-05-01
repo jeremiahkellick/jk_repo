@@ -128,32 +128,6 @@ typedef struct EdgeArray {
     Edge *items;
 } EdgeArray;
 
-typedef enum PenCommandType {
-    PEN_COMMAND_MOVE,
-    PEN_COMMAND_LINE,
-    PEN_COMMAND_CURVE,
-} PenCommandType;
-
-typedef struct PenCommand {
-    PenCommandType type;
-    JkVector2 coords[3];
-} PenCommand;
-
-PenCommand heart_shape[] = {
-    {
-        .type = PEN_COMMAND_MOVE,
-        .coords = {{32.0f, 18.271853f}},
-    },
-    {
-        .type = PEN_COMMAND_CURVE,
-        .coords = {{73.16706f, -22.895207f}, {64.066076f, 49.679774f}, {32.0f, 58.271853f}},
-    },
-    {
-        .type = PEN_COMMAND_CURVE,
-        .coords = {{0.34020372f, 49.788636f}, {-9.1743855f, -22.902532f}, {32.0f, 18.271853f}},
-    },
-};
-
 typedef struct Transform {
     JkVector2 position;
     float scale;
@@ -170,11 +144,11 @@ static Edge points_to_edge(JkVector2 a, JkVector2 b)
     if (a.y < b.y) {
         edge.segment.p1 = a;
         edge.segment.p2 = b;
-        edge.direction = -1.0f;
+        edge.direction = 1.0f;
     } else {
         edge.segment.p1 = b;
         edge.segment.p2 = a;
-        edge.direction = 1.0f;
+        edge.direction = -1.0f;
     }
     return edge;
 }
@@ -196,23 +170,22 @@ JkVector2 evaluate_cubic_bezier(float t, JkVector2 p0, JkVector2 p1, JkVector2 p
 
 static EdgeArray shape_edges_get(Arena *arena,
         Arena *scratch_arena,
-        PenCommand *commands,
-        uint64_t command_count,
+        PenCommandArray commands,
         Transform transform,
         float tolerance)
 {
     EdgeArray edges = {.items = arena_pointer_get(arena)};
 
     JkVector2 cursor = {0};
-    for (int32_t i = 0; i < command_count; i++) {
-        switch (commands[i].type) {
+    for (int32_t i = 0; i < commands.count; i++) {
+        switch (commands.items[i].type) {
         case PEN_COMMAND_MOVE: {
-            cursor = transform_apply(transform, commands[i].coords[0]);
+            cursor = transform_apply(transform, commands.items[i].coords[0]);
         } break;
 
         case PEN_COMMAND_LINE: {
             JkVector2 prev_cursor = cursor;
-            cursor = transform_apply(transform, commands[i].coords[0]);
+            cursor = transform_apply(transform, commands.items[i].coords[0]);
 
             if (prev_cursor.y != cursor.y) {
                 Edge *new_edge = arena_alloc(arena, sizeof(*new_edge));
@@ -222,9 +195,9 @@ static EdgeArray shape_edges_get(Arena *arena,
 
         case PEN_COMMAND_CURVE: {
             JkVector2 p0 = cursor;
-            JkVector2 p1 = transform_apply(transform, commands[i].coords[0]);
-            JkVector2 p2 = transform_apply(transform, commands[i].coords[1]);
-            JkVector2 p3 = transform_apply(transform, commands[i].coords[2]);
+            JkVector2 p1 = transform_apply(transform, commands.items[i].coords[0]);
+            JkVector2 p2 = transform_apply(transform, commands.items[i].coords[1]);
+            JkVector2 p3 = transform_apply(transform, commands.items[i].coords[2]);
 
             cursor = p3;
 
@@ -297,12 +270,6 @@ static float segment_x_intersection(Segment segment, float x)
     return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
 }
 
-static JkVector2 point_on_circle(float t, float radius)
-{
-    float angle = t * 2.0f * (float)JK_PI;
-    return (JkVector2){radius * cosf(angle), radius * sinf(angle)};
-}
-
 #define POINT_COUNT 129
 
 void render(Bezier *bezier)
@@ -317,16 +284,7 @@ void render(Bezier *bezier)
     Arena scratch_arena = {
         .memory = {.size = sizeof(bezier->scratch_memory), .data = bezier->scratch_memory}};
 
-    /*
-    PenCommand circle[POINT_COUNT];
-    for (int32_t i = 0; i < POINT_COUNT; i++) {
-        circle[i].type = i ? PEN_COMMAND_LINE : PEN_COMMAND_MOVE;
-        circle[i].coords[0] = point_on_circle((1.0f / (POINT_COUNT - 1)) * i, 26.0f);
-    }
-    */
-
-    EdgeArray edges = shape_edges_get(
-            &arena, &scratch_arena, heart_shape, JK_ARRAY_COUNT(heart_shape), transform, 0.25f);
+    EdgeArray edges = shape_edges_get(&arena, &scratch_arena, bezier->shape, transform, 0.25f);
 
     uint64_t coverage_size = sizeof(float) * (bitmap_width + 1) * 2;
     float *coverage = arena_alloc(&arena, coverage_size);

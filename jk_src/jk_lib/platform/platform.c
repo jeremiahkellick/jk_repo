@@ -178,6 +178,29 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
     return freq.QuadPart;
 }
 
+JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
+{
+    // Load executable file name into buffer
+    char buffer[MAX_PATH];
+    DWORD file_name_length = GetModuleFileNameA(0, buffer, MAX_PATH);
+    if (file_name_length <= 0) {
+        OutputDebugStringA("Failed to find the path of this executable\n");
+    }
+
+    // Truncate file name at last component to convert it the containing directory name
+    uint64_t last_slash = 0;
+    for (uint64_t i = 0; buffer[i]; i++) {
+        if (buffer[i] == '/' || buffer[i] == '\\') {
+            last_slash = i;
+        }
+    }
+    buffer[last_slash + 1] = '\0';
+
+    if (!SetCurrentDirectoryA(buffer)) {
+        OutputDebugStringA("Failed to set the working directory\n");
+    }
+}
+
 // ---- Performance-monitoring counters begin ----------------------------------
 
 static char global_jk_platform_pmc_trace_name[] = "jk_platform_pmc_trace";
@@ -685,6 +708,16 @@ JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena,
 JK_PUBLIC void jk_platform_arena_clear(JkPlatformArena *arena)
 {
     arena->pos = 0;
+}
+
+JK_PUBLIC void *jk_platform_arena_pointer_get(JkPlatformArena *arena)
+{
+    return arena->address + arena->pos;
+}
+
+JK_PUBLIC void jk_platform_arena_pointer_set(JkPlatformArena *arena, void *pointer)
+{
+    arena->pos = (uint8_t *)pointer - arena->address;
 }
 
 // ---- Arena end --------------------------------------------------------------

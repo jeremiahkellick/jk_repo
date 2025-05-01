@@ -814,31 +814,7 @@ DWORD ai_thread(LPVOID param)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    // Set working directory to the directory containing the executable
-    {
-        // Load executable file name into buffer
-        char buffer[MAX_PATH];
-        DWORD file_name_length = GetModuleFileNameA(0, buffer, MAX_PATH);
-        if (file_name_length > 0) {
-            OutputDebugStringA(buffer);
-            OutputDebugStringA("\n");
-        } else {
-            OutputDebugStringA("Failed to find the path of this executable\n");
-        }
-
-        // Truncate file name at last component to convert it the containing directory name
-        uint64_t last_slash = 0;
-        for (uint64_t i = 0; buffer[i]; i++) {
-            if (buffer[i] == '/' || buffer[i] == '\\') {
-                last_slash = i;
-            }
-        }
-        buffer[last_slash + 1] = '\0';
-
-        if (!SetCurrentDirectoryA(buffer)) {
-            OutputDebugStringA("Failed to set the working directory\n");
-        }
-    }
+    jk_platform_set_working_directory_to_executable_directory();
 
     HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
     if (!xinput_library) {

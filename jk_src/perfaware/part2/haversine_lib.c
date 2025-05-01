@@ -133,7 +133,7 @@ JK_PUBLIC HaversineContext haversine_setup(
                 uint8_t zero_or_one = coord_json->name.data[1] - '0';
                 uint8_t j = (zero_or_one << 1) | x_or_y;
                 if (x_or_y < 2 && zero_or_one < 2) {
-                    context.pairs[i].v[j] = jk_json_parse_number(coord_json->value);
+                    context.pairs[i].v[j] = jk_parse_double(coord_json->value);
                 }
             }
         }

@@ -1,9 +1,26 @@
 #ifndef BEZIER_H
 #define BEZIER_H
 
+#include <jk_src/jk_lib/jk_lib.h>
 #include <stdint.h>
 
 #define FRAME_RATE 60
+
+typedef enum PenCommandType {
+    PEN_COMMAND_MOVE,
+    PEN_COMMAND_LINE,
+    PEN_COMMAND_CURVE,
+} PenCommandType;
+
+typedef struct PenCommand {
+    PenCommandType type;
+    JkVector2 coords[3];
+} PenCommand;
+
+typedef struct PenCommandArray {
+    uint64_t count;
+    PenCommand *items;
+} PenCommandArray;
 
 typedef struct Color {
     union {
@@ -38,6 +55,7 @@ typedef struct Bezier {
     void (*debug_print)(char *);
     uint8_t memory[512llu * 1024 * 1024];
     uint8_t scratch_memory[512llu * 1024 * 1024];
+    PenCommandArray shape;
 } Bezier;
 
 typedef void RenderFunction(Bezier *chess);
