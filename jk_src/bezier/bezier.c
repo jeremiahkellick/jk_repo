@@ -144,11 +144,11 @@ static Edge points_to_edge(JkVector2 a, JkVector2 b)
     if (a.y < b.y) {
         edge.segment.p1 = a;
         edge.segment.p2 = b;
-        edge.direction = 1.0f;
+        edge.direction = -1.0f;
     } else {
         edge.segment.p1 = b;
         edge.segment.p2 = a;
-        edge.direction = -1.0f;
+        edge.direction = 1.0f;
     }
     return edge;
 }
@@ -277,7 +277,7 @@ void render(Bezier *bezier)
     int32_t bitmap_width = bezier->draw_square_side_length;
     int32_t bitmap_height = bezier->draw_square_side_length;
     Transform transform = {
-        .scale = bitmap_width / 64.0f,
+        .scale = bitmap_width / 1000.0f,
     };
 
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
@@ -373,7 +373,7 @@ void render(Bezier *bezier)
         float acc = 0.0f;
         for (int32_t x = 0; x < bitmap_width; x++) {
             acc += fill[x];
-            int32_t value = (int32_t)((coverage[x] + acc) * 255.0f);
+            int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
             if (255 < value) {
                 value = 255;
             }
