@@ -836,6 +836,7 @@ int main(int argc, char **argv)
         array_append(&command, "-Wall");
         array_append(&command, "-Wextra");
         array_append(&command, "-fstack-protector");
+        array_append(&command, "-fzero-init-padding-bits=all");
         array_append(&command, "-Werror=vla");
         array_append(&command, "-Wno-missing-braces");
         if (single_translation_unit) {
