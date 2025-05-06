@@ -9,20 +9,15 @@
 
 #include "listing_0184_sine_coefficients.c"
 
-double sin_mftwp_unrolled(double x)
+static double compute_sin_from_table(double x, double *coefficients, uint64_t coefficient_count)
 {
-    double x_squared = x * x;
+    double sign = x < 0.0 ? -1.0 : 1.0;
+    x = fabs(x);
+    x = JK_PI / 2.0 - fabs(JK_PI / 2.0 - x);
 
-    double result = fma(0x1.883c1c5deffbep-49, x_squared, -0x1.ae43dc9bf8ba7p-41);
-    result = fma(result, x_squared, 0x1.6123ce513b09fp-33);
-    result = fma(result, x_squared, -0x1.ae6454d960ac4p-26);
-    result = fma(result, x_squared, 0x1.71de3a52aab96p-19);
-    result = fma(result, x_squared, -0x1.a01a01a014eb6p-13);
-    result = fma(result, x_squared, 0x1.11111111110c9p-7);
-    result = fma(result, x_squared, -0x1.5555555555555p-3);
-    result = fma(result, x_squared, 0x1p0);
+    double result = compute_polynomial(x, coefficients, coefficient_count);
 
-    return result * x;
+    return sign * result;
 }
 
 int main(void)
@@ -31,13 +26,11 @@ int main(void)
 
     while (jk_precision_test(&test, -JK_PI, JK_PI, 100000000)) {
         double reference = sin(test.input);
-        jk_precision_test_result(
-                &test, reference, sin_mftwp_unrolled(test.input), "sin_mftwp_unrolled");
         for (int coefficient_count = 2; coefficient_count < JK_ARRAY_COUNT(SineRadiansC_Taylor);
                 coefficient_count++) {
             jk_precision_test_result(&test,
                     reference,
-                    compute_polynomial(test.input, SineRadiansC_Taylor, coefficient_count),
+                    compute_sin_from_table(test.input, SineRadiansC_Taylor, coefficient_count),
                     "sin_taylor %d",
                     coefficient_count);
         }
@@ -45,7 +38,7 @@ int main(void)
                 coefficient_count++) {
             jk_precision_test_result(&test,
                     reference,
-                    compute_polynomial(
+                    compute_sin_from_table(
                             test.input, SineRadiansC_MFTWP[coefficient_count], coefficient_count),
                     "sin_mftwp %d",
                     coefficient_count);

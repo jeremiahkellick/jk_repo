@@ -167,9 +167,9 @@ int main(int argc, char **argv)
         }
         if (opt_results[OPT_HELP].present || opts_parse.usage_error) {
             printf("NAME\n"
-                   "\thaversine_sum_benchmark - benchmarks different haversine sum loops\n\n"
+                   "\thaversine_sum_ranges - finds the ranges of values used in math functions\n\n"
                    "SYNOPSIS\n"
-                   "\thaversine_sum_benchmark JSON_FILE [ANSWER_FILE]\n\n");
+                   "\thaversine_sum_ranges JSON_FILE [ANSWER_FILE]\n\n");
             jk_options_print_help(stdout, opts, OPT_COUNT);
             exit(opts_parse.usage_error);
         }

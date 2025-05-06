@@ -831,6 +831,7 @@ int main(int argc, char **argv)
         array_append(&command, "-o", basename);
         array_append(&command, "-std=c11");
         array_append(&command, "-pedantic");
+        array_append(&command, "-mfma");
         array_append(&command, "-g");
         array_append(&command, "-Wall");
         array_append(&command, "-Wextra");
@@ -881,6 +882,7 @@ int main(int argc, char **argv)
     case COMPILER_CLANG: {
         array_append(&command, "clang");
         array_append(&command, "-o", basename);
+        array_append(&command, "-mfma");
         array_append(&command,
                 "-Wall",
                 "-Wextra",

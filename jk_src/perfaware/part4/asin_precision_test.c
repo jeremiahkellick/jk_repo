@@ -9,21 +9,29 @@
 
 #include "listing_0187_arcsine_coefficients.c"
 
-double inv_sqrt_2;
+static double compute_asin_from_table(double x, double *coefficients, uint64_t coefficient_count)
+{
+    b32 in_standard_range = x <= JK_INV_SQRT_2;
+    if (!in_standard_range) {
+        x = sqrt(1.0 - x * x);
+    }
+
+    double result = compute_polynomial(x, coefficients, coefficient_count);
+
+    return in_standard_range ? result : (JK_PI / 2.0) - result;
+}
 
 int main(void)
 {
-    inv_sqrt_2 = 1.0 / sqrt(2.0);
-
     JkPrecisionTest test = {0};
 
-    while (jk_precision_test(&test, 0.0, inv_sqrt_2, 100000000)) {
+    while (jk_precision_test(&test, 0.0, 1.0, 100000000)) {
         double reference = asin(test.input);
         for (int coefficient_count = 2; coefficient_count < JK_ARRAY_COUNT(ArcsineRadiansC_Taylor);
                 coefficient_count++) {
             jk_precision_test_result(&test,
                     reference,
-                    compute_polynomial(test.input, ArcsineRadiansC_Taylor, coefficient_count),
+                    compute_asin_from_table(test.input, ArcsineRadiansC_Taylor, coefficient_count),
                     "asin_taylor %d",
                     coefficient_count);
         }
@@ -31,7 +39,7 @@ int main(void)
                 coefficient_count++) {
             jk_precision_test_result(&test,
                     reference,
-                    compute_polynomial(test.input,
+                    compute_asin_from_table(test.input,
                             ArcsineRadiansC_MFTWP[coefficient_count],
                             coefficient_count),
                     "asin_mftwp %d",
