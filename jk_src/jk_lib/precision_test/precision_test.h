@@ -9,7 +9,7 @@ typedef struct JkPrecisionTestReference {
 } JkPrecisionTestReference;
 
 typedef struct JkPrecisionTestResult {
-    double diff_count;
+    uint64_t diff_count;
     double diff_total;
     double diff_max;
     double input_at_diff_max;

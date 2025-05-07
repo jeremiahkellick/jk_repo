@@ -3,6 +3,7 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/json/json.h>
+#include <jk_src/perfaware/part4/custom_math_functions.h>
 // #jk_build dependencies_end
 
 #include "haversine_lib.h"
@@ -68,6 +69,55 @@ JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context)
         if (!approximately_equal(context.answers[i],
                     haversine_reference(
                             pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS))) {
+            error_count++;
+        }
+    }
+
+    return error_count;
+}
+
+JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double EarthRadius)
+{
+    double lat1 = Y0;
+    double lat2 = Y1;
+    double lon1 = X0;
+    double lon2 = X1;
+
+    double dLat = radians_from_degrees(lat2 - lat1);
+    double dLon = radians_from_degrees(lon2 - lon1);
+    lat1 = radians_from_degrees(lat1);
+    lat2 = radians_from_degrees(lat2);
+
+    double a = square(jk_sin(dLat / 2.0)) + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2));
+    double c = 2.0 * jk_asin(jk_sqrt(a));
+
+    double Result = EarthRadius * c;
+
+    return Result;
+}
+
+JK_PUBLIC double haversine_sum(HaversineContext context)
+{
+    double sum = 0.0;
+    double sum_coefficient = 1.0 / (double)context.pair_count;
+
+    for (uint64_t i = 0; i < context.pair_count; i++) {
+        HaversinePair pair = context.pairs[i];
+        sum += sum_coefficient
+                * haversine(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS);
+    }
+
+    return sum;
+}
+
+JK_PUBLIC uint64_t haversine_verify(HaversineContext context)
+{
+    uint64_t error_count = 0;
+
+    for (uint64_t i = 0; i < context.pair_count; i++) {
+        HaversinePair pair = context.pairs[i];
+        if (!approximately_equal(context.answers[i],
+                    haversine(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS))) {
             error_count++;
         }
     }

@@ -39,6 +39,12 @@ JK_PUBLIC double haversine_reference_sum(HaversineContext context);
 
 JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context);
 
+JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double EarthRadius);
+
+JK_PUBLIC double haversine_sum(HaversineContext context);
+
+JK_PUBLIC uint64_t haversine_verify(HaversineContext context);
+
 JK_PUBLIC HaversineContext haversine_setup(
         char *json_file_name, char *answers_file_name, JkPlatformArena *storage);
 
