@@ -385,8 +385,14 @@ static FloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string, u
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
+    jk_platform_set_working_directory_to_executable_directory();
+
     global_bezier.draw_buffer = VirtualAlloc(0,
             sizeof(Color) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
+            MEM_COMMIT,
+            PAGE_READWRITE);
+    global_bezier.shape_memory = VirtualAlloc(0,
+            1024 * 1024 * 1024,
             MEM_COMMIT,
             PAGE_READWRITE);
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
@@ -479,6 +485,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         global_bezier.shape = shape;
 
         jk_platform_arena_terminate(&scratch_arena);
+    }
+
+    char *ttf_file_name = "AmiriQuran-Regular.ttf";
+    global_bezier.ttf_file = jk_platform_file_read_full(ttf_file_name, &storage);
+    if (!global_bezier.ttf_file.size) {
+        win32_debug_printf("Failed to read file '%s'\n", ttf_file_name);
     }
 
     if (global_bezier.draw_buffer) {

@@ -12,6 +12,7 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
 
 _Static_assert(sizeof(Color) == 4, "Color must be 4 bytes");
@@ -130,12 +131,13 @@ typedef struct EdgeArray {
 
 typedef struct Transform {
     JkVector2 position;
-    float scale;
+    JkVector2 scale;
 } Transform;
 
 static JkVector2 transform_apply(Transform transform, JkVector2 point)
 {
-    return jk_vector_2_add(transform.position, jk_vector_2_mul(transform.scale, point));
+    return jk_vector_2_add(transform.position,
+            (JkVector2){transform.scale.x * point.x, transform.scale.y * point.y});
 }
 
 static Edge points_to_edge(JkVector2 a, JkVector2 b)
@@ -274,17 +276,128 @@ static float segment_x_intersection(Segment segment, float x)
 
 void render(Bezier *bezier)
 {
+    if (!bezier->initialized) {
+        bezier->initialized = 1;
+        stbtt_InitFont(&bezier->font,
+                bezier->ttf_file.data,
+                stbtt_GetFontOffsetForIndex(bezier->ttf_file.data, 0));
+
+        bezier->font_y0_min = INT32_MAX;
+        bezier->font_y1_max = INT32_MIN;
+        for (int32_t codepoint = 33; codepoint < 127; codepoint++) {
+            int32_t x0, y0, x1, y1;
+            stbtt_GetCodepointBox(&bezier->font, codepoint, &x0, &y0, &x1, &y1);
+            if (y0 < bezier->font_y0_min) {
+                bezier->font_y0_min = y0;
+            }
+            if (bezier->font_y1_max < y1) {
+                bezier->font_y1_max = y1;
+            }
+        }
+
+        int32_t codepoint = 'h';
+
+        stbtt_GetCodepointBox(&bezier->font,
+                codepoint,
+                &bezier->character.x0,
+                &bezier->character.y0,
+                &bezier->character.x1,
+                &bezier->character.y1);
+
+        stbtt_vertex *verticies;
+        bezier->character.shape.count =
+                stbtt_GetCodepointShape(&bezier->font, codepoint, &verticies);
+        bezier->character.shape.items = bezier->shape_memory;
+        for (int32_t i = 0; i < bezier->character.shape.count; i++) {
+            switch (verticies[i].type) {
+            case STBTT_vmove:
+            case STBTT_vline: {
+                bezier->character.shape.items[i].type =
+                        verticies[i].type == STBTT_vmove ? PEN_COMMAND_MOVE : PEN_COMMAND_LINE;
+                bezier->character.shape.items[i].coords[0].x = verticies[i].x;
+                bezier->character.shape.items[i].coords[0].y = verticies[i].y;
+            } break;
+
+            case STBTT_vcurve: {
+                bezier->character.shape.items[i].type = PEN_COMMAND_CURVE;
+                bezier->character.shape.items[i].coords[0].x = verticies[i].cx;
+                bezier->character.shape.items[i].coords[0].y = verticies[i].cy;
+                bezier->character.shape.items[i].coords[1].x = verticies[i].x;
+                bezier->character.shape.items[i].coords[1].y = verticies[i].y;
+                bezier->character.shape.items[i].coords[2].x = verticies[i].x;
+                bezier->character.shape.items[i].coords[2].y = verticies[i].y;
+            } break;
+
+            case STBTT_vcubic: {
+                bezier->character.shape.items[i].type = PEN_COMMAND_CURVE;
+                bezier->character.shape.items[i].coords[0].x = verticies[i].cx;
+                bezier->character.shape.items[i].coords[0].y = verticies[i].cy;
+                bezier->character.shape.items[i].coords[1].x = verticies[i].cx1;
+                bezier->character.shape.items[i].coords[1].y = verticies[i].cy1;
+                bezier->character.shape.items[i].coords[2].x = verticies[i].x;
+                bezier->character.shape.items[i].coords[2].y = verticies[i].y;
+            } break;
+
+            default: {
+                JK_ASSERT(0 && "Unsupported vertex type");
+            } break;
+            }
+        }
+    }
+
     int32_t bitmap_width = bezier->draw_square_side_length;
     int32_t bitmap_height = bezier->draw_square_side_length;
-    Transform transform = {
-        .scale = bitmap_width / 1000.0f,
-    };
+
+    /*
+    uint8_t codepoint = 'h';
+
+    int32_t character_y1;
+    {
+        int32_t x0, y0, x1;
+        stbtt_GetCodepointBox(&bezier->font, codepoint, &x0, &y0, &x1, &character_y1);
+    }
+
+    float scale = (float)bitmap_height / (float)(bezier->font_y1_max - bezier->font_y0_min);
+    stbtt_MakeCodepointBitmap(&bezier->font,
+            bezier->memory,
+            bitmap_width,
+            bitmap_height,
+            bitmap_width,
+            scale,
+            scale,
+            codepoint);
+
+    int32_t y_offset = (int32_t)(scale * (bezier->font_y1_max - character_y1));
+    for (int32_t y = 0; y < bitmap_height; y++) {
+        int32_t cy = y - y_offset;
+        for (int32_t x = 0; x < bitmap_width; x++) {
+            Color color;
+            if (0 <= cy && cy < bitmap_height) {
+                color = blend_alpha(color_light_squares,
+                        color_dark_squares,
+                        bezier->memory[cy * bitmap_width + x]);
+            } else {
+                color = color_dark_squares;
+            }
+            bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = color;
+        }
+    }
+    */
+
+    int32_t max_dimension = JK_MAX(bezier->character.x1 - bezier->character.x0,
+            bezier->character.y1 - bezier->character.y0);
+    float scale = (float)bezier->draw_square_side_length / (float)max_dimension;
+    Transform transform;
+    transform.scale.x = scale;
+    transform.scale.y = -scale;
+    transform.position = (JkVector2){scale * -bezier->character.x0, scale * bezier->character.y1};
 
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
     Arena scratch_arena = {
         .memory = {.size = sizeof(bezier->scratch_memory), .data = bezier->scratch_memory}};
 
-    EdgeArray edges = shape_edges_get(&arena, &scratch_arena, bezier->shape, transform, 0.25f);
+    EdgeArray edges =
+            shape_edges_get(&arena, &scratch_arena, bezier->character.shape, transform, 0.25f);
 
     uint64_t coverage_size = sizeof(float) * (bitmap_width + 1) * 2;
     float *coverage = arena_alloc(&arena, coverage_size);
