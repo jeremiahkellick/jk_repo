@@ -369,8 +369,7 @@ JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkPlatformAr
                     }
                     unicode32 = unicode32 * 0x10 + digit_value;
                 }
-                JkUtf8Codepoint utf8 = {0};
-                jk_utf8_codepoint_encode(unicode32, &utf8);
+                JkUtf8Codepoint utf8 = jk_utf8_codepoint_encode(unicode32);
                 *storage_pointer = utf8.b[0];
                 for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
                     storage_pointer = jk_platform_arena_push(storage, 1);
