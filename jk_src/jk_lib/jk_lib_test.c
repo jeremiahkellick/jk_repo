@@ -12,6 +12,16 @@
 static char string1[] = "memcpy_test1\n";
 static char string2[] = "memcpy_test2\n";
 
+static int32_t unicode_codepoints[] = {
+    0x0024,
+    0x00A3,
+    0x0418,
+    0x0939,
+    0x20AC,
+    0xD55C,
+    0x10348,
+};
+
 static void print_buffer(JkBuffer buffer)
 {
     for (size_t i = 0; i < buffer.size; i++) {
@@ -21,10 +31,9 @@ static void print_buffer(JkBuffer buffer)
 
 static void print_unicode(uint32_t codepoint32)
 {
-    JkUtf8Codepoint codepoint = {0};
     char null_terminated_codepoint[5] = {0};
 
-    jk_utf8_codepoint_encode(codepoint32, &codepoint);
+    JkUtf8Codepoint codepoint = jk_utf8_codepoint_encode(codepoint32);
     memcpy(null_terminated_codepoint, codepoint.b, 4);
 
     printf("U+%04X: %s\n", codepoint32, null_terminated_codepoint);
@@ -163,13 +172,12 @@ int main(void)
     // ---- UTF-8 begin --------------------------------------------------------
     printf("\nUTF-8\n");
 
-    print_unicode(0x0024);
-    print_unicode(0x00A3);
-    print_unicode(0x0418);
-    print_unicode(0x0939);
-    print_unicode(0x20AC);
-    print_unicode(0xD55C);
-    print_unicode(0x10348);
+    for (int32_t i = 0; i < JK_ARRAY_COUNT(unicode_codepoints); i++) {
+        print_unicode(unicode_codepoints[i]);
+
+        JkUtf8Codepoint utf8 = jk_utf8_codepoint_encode(unicode_codepoints[i]);
+        JK_ASSERT(jk_utf8_codepoint_decode(utf8) == unicode_codepoints[i]);
+    }
     // ---- UTF-8 end ----------------------------------------------------------
 
     // ---- Quicksort begin ----------------------------------------------------

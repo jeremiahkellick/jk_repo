@@ -33,7 +33,9 @@ typedef struct JkUtf8Codepoint {
     uint8_t b[4];
 } JkUtf8Codepoint;
 
-JK_PUBLIC void jk_utf8_codepoint_encode(uint32_t codepoint32, JkUtf8Codepoint *codepoint);
+JK_PUBLIC JkUtf8Codepoint jk_utf8_codepoint_encode(uint32_t codepoint32);
+
+JK_PUBLIC int32_t jk_utf8_codepoint_decode(JkUtf8Codepoint codepoint);
 
 JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte);
 

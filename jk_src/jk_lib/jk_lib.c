@@ -29,22 +29,39 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
-JK_PUBLIC void jk_utf8_codepoint_encode(uint32_t codepoint32, JkUtf8Codepoint *codepoint)
+JK_PUBLIC JkUtf8Codepoint jk_utf8_codepoint_encode(uint32_t codepoint32)
 {
+    JkUtf8Codepoint result = {0};
     if (codepoint32 < 0x80) {
-        codepoint->b[0] = (unsigned char)codepoint32;
+        result.b[0] = (unsigned char)codepoint32;
     } else if (codepoint32 < 0x800) {
-        codepoint->b[0] = (unsigned char)(0xc0 | (codepoint32 >> 6));
-        codepoint->b[1] = (unsigned char)(0x80 | (codepoint32 & 0x3f));
+        result.b[0] = (unsigned char)(0xc0 | (codepoint32 >> 6));
+        result.b[1] = (unsigned char)(0x80 | (codepoint32 & 0x3f));
     } else if (codepoint32 < 0x10000) {
-        codepoint->b[0] = (unsigned char)(0xe0 | (codepoint32 >> 12));
-        codepoint->b[1] = (unsigned char)(0x80 | ((codepoint32 >> 6) & 0x3f));
-        codepoint->b[2] = (unsigned char)(0x80 | (codepoint32 & 0x3f));
+        result.b[0] = (unsigned char)(0xe0 | (codepoint32 >> 12));
+        result.b[1] = (unsigned char)(0x80 | ((codepoint32 >> 6) & 0x3f));
+        result.b[2] = (unsigned char)(0x80 | (codepoint32 & 0x3f));
     } else {
-        codepoint->b[0] = (unsigned char)(0xf0 | (codepoint32 >> 18));
-        codepoint->b[1] = (unsigned char)(0x80 | ((codepoint32 >> 12) & 0x3f));
-        codepoint->b[2] = (unsigned char)(0x80 | ((codepoint32 >> 6) & 0x3f));
-        codepoint->b[3] = (unsigned char)(0x80 | (codepoint32 & 0x3f));
+        result.b[0] = (unsigned char)(0xf0 | (codepoint32 >> 18));
+        result.b[1] = (unsigned char)(0x80 | ((codepoint32 >> 12) & 0x3f));
+        result.b[2] = (unsigned char)(0x80 | ((codepoint32 >> 6) & 0x3f));
+        result.b[3] = (unsigned char)(0x80 | (codepoint32 & 0x3f));
+    }
+    return result;
+}
+
+JK_PUBLIC int32_t jk_utf8_codepoint_decode(JkUtf8Codepoint codepoint)
+{
+    if ((codepoint.b[0] & 0x80) == 0x0) {
+        return codepoint.b[0];
+    } else if ((codepoint.b[0] & 0xe0) == 0xc0) {
+        return (((int32_t)codepoint.b[0] & 0x1f) << 6) | ((int32_t)codepoint.b[1] & 0x3f);
+    } else if ((codepoint.b[0] & 0xf0) == 0xe0) {
+        return (((int32_t)codepoint.b[0] & 0xf) << 12) | (((int32_t)codepoint.b[1] & 0x3f) << 6)
+                | ((int32_t)codepoint.b[2] & 0x3f);
+    } else {
+        return (((int32_t)codepoint.b[0] & 0x7) << 18) | (((int32_t)codepoint.b[1] & 0x3f) << 12)
+                | (((int32_t)codepoint.b[2] & 0x3f) << 6) | ((int32_t)codepoint.b[3] & 0x3f);
     }
 }
 
@@ -56,6 +73,7 @@ JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte)
 JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
         JkBuffer buffer, uint64_t *pos, JkUtf8Codepoint *codepoint)
 {
+    *codepoint = (JkUtf8Codepoint){0};
     if (*pos >= buffer.size) {
         return JK_UTF8_CODEPOINT_GET_EOF;
     }
@@ -63,13 +81,9 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
         return JK_UTF8_CODEPOINT_GET_UNEXPECTED_BYTE;
     }
     codepoint->b[0] = buffer.data[(*pos)++];
-    int i;
-    for (i = 0; i < 3 && *pos < buffer.size && jk_utf8_byte_is_continuation(buffer.data[*pos]);
+    for (int i = 1; i < 4 && *pos < buffer.size && jk_utf8_byte_is_continuation(buffer.data[*pos]);
             i++) {
-        codepoint->b[0] = buffer.data[(*pos)++];
-    }
-    if (i < 4) {
-        codepoint->b[i] = '\0';
+        codepoint->b[i] = buffer.data[(*pos)++];
     }
     return JK_UTF8_CODEPOINT_GET_SUCCESS;
 }
