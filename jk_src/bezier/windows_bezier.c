@@ -391,10 +391,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             sizeof(Color) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
             PAGE_READWRITE);
-    global_bezier.shape_memory = VirtualAlloc(0,
-            1024 * 1024 * 1024,
-            MEM_COMMIT,
-            PAGE_READWRITE);
+    global_bezier.shape_memory = VirtualAlloc(0, 1024 * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_bezier.cpu_timer_get = jk_platform_cpu_timer_get;
     global_bezier.debug_print = debug_print;
@@ -452,13 +449,29 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 scratch_arena.pos = 0;
             } break;
 
+            case 'Q': {
+                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                JK_ASSERT(numbers.count && numbers.count % 4 == 0);
+                for (int32_t i = 0; i < numbers.count; i += 4) {
+                    PenCommand *new_command =
+                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                    new_command->type = PEN_COMMAND_CURVE_QUADRATIC;
+                    for (int32_t j = 0; j < 2; j++) {
+                        new_command->coords[j] = (JkVector2){
+                            numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
+                    }
+                    prev_pos = new_command->coords[1];
+                }
+                scratch_arena.pos = 0;
+            } break;
+
             case 'C': {
                 FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
                 JK_ASSERT(numbers.count && numbers.count % 6 == 0);
                 for (int32_t i = 0; i < numbers.count; i += 6) {
                     PenCommand *new_command =
                             jk_platform_arena_push(&storage, sizeof(*new_command));
-                    new_command->type = PEN_COMMAND_CURVE;
+                    new_command->type = PEN_COMMAND_CURVE_CUBIC;
                     for (int32_t j = 0; j < 3; j++) {
                         new_command->coords[j] = (JkVector2){
                             numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};

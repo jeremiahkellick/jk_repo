@@ -10,7 +10,8 @@
 typedef enum PenCommandType {
     PEN_COMMAND_MOVE,
     PEN_COMMAND_LINE,
-    PEN_COMMAND_CURVE,
+    PEN_COMMAND_CURVE_QUADRATIC,
+    PEN_COMMAND_CURVE_CUBIC,
 } PenCommandType;
 
 typedef struct PenCommand {
@@ -24,7 +25,12 @@ typedef struct PenCommandArray {
 } PenCommandArray;
 
 typedef struct Character {
-    int32_t x0, y0, x1, y1;
+    int32_t x0;
+    int32_t y0;
+    int32_t x1;
+    int32_t y1;
+    int32_t advance_width;
+    int32_t left_side_bearing;
     PenCommandArray shape;
 } Character;
 
@@ -67,8 +73,8 @@ typedef struct Bezier {
     b32 initialized;
     int32_t font_y0_min;
     int32_t font_y1_max;
-    Character character;
-    PenCommand *shape_memory;
+    uint8_t *shape_memory;
+    Character printable_characters[95];
 } Bezier;
 
 typedef void RenderFunction(Bezier *chess);
