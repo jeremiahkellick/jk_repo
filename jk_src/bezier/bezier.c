@@ -353,6 +353,23 @@ typedef struct CharacterDrawCommandArray {
     CharacterDrawCommand *items;
 } CharacterDrawCommandArray;
 
+static int character_draw_command_compare(void *a, void *b)
+{
+    CharacterDrawCommand *x = a;
+    CharacterDrawCommand *y = b;
+    return x->pos.y - y->pos.y;
+}
+
+static void quicksort_character_draw_commands(CharacterDrawCommandArray commands)
+{
+    CharacterDrawCommand tmp;
+    jk_quicksort(commands.items,
+            commands.count,
+            sizeof(commands.items[0]),
+            &tmp,
+            character_draw_command_compare);
+}
+
 void render(Bezier *bezier)
 {
     if (!bezier->initialized) {
@@ -606,21 +623,33 @@ void render(Bezier *bezier)
             current_point.x +=
                     bezier->printable_characters[characters.items[i].index].bitmap.advance_width;
         }
+        quicksort_character_draw_commands(characters);
 
         JkIntVector2 pos;
+        int32_t cs = 0;
+        int32_t ce = 0;
         for (pos.y = 0; pos.y < bezier->draw_square_side_length; pos.y++) {
+            while (ce < characters.count && characters.items[ce].pos.y <= pos.y) {
+                ce++;
+            }
+            while (cs < characters.count
+                    && !(pos.y < (characters.items[cs].pos.y
+                                 + bezier->printable_characters[characters.items[cs].index]
+                                           .bitmap.dimensions.y))) {
+                cs++;
+            }
+
             for (pos.x = 0; pos.x < bezier->draw_square_side_length; pos.x++) {
                 Color color = color_dark_squares;
-                for (int32_t i = 0; i < characters.count; i++) {
+                for (int32_t i = cs; i < ce; i++) {
                     CharacterBitmap *bitmap =
                             &bezier->printable_characters[characters.items[i].index].bitmap;
                     JkIntVector2 bitmap_pos = jk_int_vector_2_sub(pos, characters.items[i].pos);
                     if (0 <= bitmap_pos.x && bitmap_pos.x < bitmap->dimensions.x
-                            && 0 <= bitmap_pos.y && bitmap_pos.y < bitmap->dimensions.y) {
+                            && bitmap_pos.y < bitmap->dimensions.y) {
                         int32_t index = bitmap_pos.y * bitmap->dimensions.x + bitmap_pos.x;
                         color = blend_alpha(
                                 color_light_squares, color_dark_squares, bitmap->data[index]);
-                    } else {
                     }
                 }
                 bezier->draw_buffer[pos.y * DRAW_BUFFER_SIDE_LENGTH + pos.x] = color;
