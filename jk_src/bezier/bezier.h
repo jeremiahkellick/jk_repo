@@ -24,6 +24,14 @@ typedef struct PenCommandArray {
     PenCommand *items;
 } PenCommandArray;
 
+typedef struct CharacterBitmap {
+    b32 up_to_date;
+    int32_t advance_width;
+    JkIntVector2 offset;
+    JkIntVector2 dimensions;
+    uint8_t *data;
+} CharacterBitmap;
+
 typedef struct Character {
     int32_t x0;
     int32_t y0;
@@ -32,6 +40,7 @@ typedef struct Character {
     int32_t advance_width;
     int32_t left_side_bearing;
     PenCommandArray shape;
+    CharacterBitmap bitmap;
 } Character;
 
 typedef struct Color {
@@ -58,6 +67,11 @@ typedef struct Bitmap {
 
 #define DRAW_BUFFER_SIDE_LENGTH 3072
 
+typedef struct Arena {
+    JkBuffer memory;
+    uint64_t pos;
+} Arena;
+
 typedef struct Bezier {
     uint64_t time;
     int32_t draw_square_side_length;
@@ -73,7 +87,9 @@ typedef struct Bezier {
     b32 initialized;
     int32_t font_y0_min;
     int32_t font_y1_max;
-    uint8_t *shape_memory;
+    Arena arena;
+    void *arena_saved_pointer;
+    float prev_scale;
     Character printable_characters[95];
 } Bezier;
 

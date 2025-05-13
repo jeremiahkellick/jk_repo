@@ -391,7 +391,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             sizeof(Color) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
             PAGE_READWRITE);
-    global_bezier.shape_memory = VirtualAlloc(0, 1024 * 1024 * 1024, MEM_COMMIT, PAGE_READWRITE);
+    global_bezier.arena.memory.size = 1024 * 1024 * 1024;
+    global_bezier.arena.memory.data =
+            VirtualAlloc(0, global_bezier.arena.memory.size, MEM_COMMIT, PAGE_READWRITE);
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_bezier.cpu_timer_get = jk_platform_cpu_timer_get;
     global_bezier.debug_print = debug_print;

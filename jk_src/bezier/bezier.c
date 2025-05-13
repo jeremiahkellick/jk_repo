@@ -31,11 +31,6 @@ static int debug_printf(void (*debug_print)(char *), char *format, ...)
 
 // -------- Arena begin ---------------------------------------------------------
 
-typedef struct Arena {
-    JkBuffer memory;
-    uint64_t pos;
-} Arena;
-
 static void *arena_alloc(Arena *arena, uint64_t byte_count)
 {
     uint64_t new_pos = arena->pos + byte_count;
@@ -348,6 +343,16 @@ static float segment_x_intersection(Segment segment, float x)
 
 #define POINT_COUNT 129
 
+typedef struct CharacterDrawCommand {
+    uint8_t index;
+    JkIntVector2 pos;
+} CharacterDrawCommand;
+
+typedef struct CharacterDrawCommandArray {
+    uint64_t count;
+    CharacterDrawCommand *items;
+} CharacterDrawCommandArray;
+
 void render(Bezier *bezier)
 {
     if (!bezier->initialized) {
@@ -358,8 +363,6 @@ void render(Bezier *bezier)
 
         stbtt_GetCodepointHMetrics(
                 &bezier->font, ' ', &bezier->printable_characters[0].advance_width, 0);
-
-        Arena arena = {.memory = {.size = 1024 * 1024 * 1024, .data = bezier->shape_memory}};
 
         bezier->font_y0_min = INT32_MAX;
         bezier->font_y1_max = INT32_MIN;
@@ -396,8 +399,8 @@ void render(Bezier *bezier)
 
             stbtt_vertex *verticies;
             character->shape.count = stbtt_GetCodepointShape(&bezier->font, codepoint, &verticies);
-            character->shape.items =
-                    arena_alloc(&arena, character->shape.count * sizeof(character->shape.items[0]));
+            character->shape.items = arena_alloc(
+                    &bezier->arena, character->shape.count * sizeof(character->shape.items[0]));
             for (int32_t i = 0; i < character->shape.count; i++) {
                 switch (verticies[i].type) {
                 case STBTT_vmove:
@@ -434,18 +437,17 @@ void render(Bezier *bezier)
                 }
             }
         }
-    }
 
-    int32_t bitmap_width = bezier->draw_square_side_length;
-    int32_t bitmap_height = bezier->draw_square_side_length;
+        bezier->arena_saved_pointer = arena_pointer_get(&bezier->arena);
+    }
 
     Arena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
     Arena scratch_arena = {
         .memory = {.size = sizeof(bezier->scratch_memory), .data = bezier->scratch_memory}};
 
-    uint64_t coverage_size = sizeof(float) * (bitmap_width + 1) * 2;
+    uint64_t coverage_size = sizeof(float) * (bezier->draw_square_side_length + 1) * 2;
     float *coverage = arena_alloc(&arena, coverage_size);
-    float *fill = coverage + bitmap_width + 1;
+    float *fill = coverage + bezier->draw_square_side_length + 1;
 
     JkBuffer display_string = JKS("Hello, world!");
     int32_t first_point = -bezier->printable_characters[display_string.data[0] - 32].x0;
@@ -460,111 +462,171 @@ void render(Bezier *bezier)
 
     float scale = (float)bezier->draw_square_side_length / (float)max_dimension;
 
-    EdgeArray edges = {.items = arena_pointer_get(&arena)};
-    float current_point = scale * (float)first_point;
-    float y_point = scale * (float)bezier->font_y1_max;
+    if (!(fabsf(scale - bezier->prev_scale) < 0.0001f)) {
+        for (uint32_t i = 0; i < JK_ARRAY_COUNT(bezier->printable_characters); i++) {
+            bezier->printable_characters[i].bitmap.up_to_date = 0;
+        }
+        arena_pointer_set(&bezier->arena, bezier->arena_saved_pointer);
+    }
+
     for (int32_t character_index = 0; character_index < display_string.size; character_index++) {
         Character *character =
                 bezier->printable_characters + (display_string.data[character_index] - 32);
 
-        Transform transform;
-        transform.scale.x = scale;
-        transform.scale.y = -scale;
-        transform.position = (JkVector2){current_point, y_point};
-        current_point += scale * (float)character->advance_width;
+        if (!character->bitmap.up_to_date) {
+            character->bitmap.up_to_date = 1;
+            character->bitmap.advance_width = (int32_t)(scale * (float)character->advance_width);
+            character->bitmap.offset.x = (int32_t)(scale * (float)character->x0);
+            character->bitmap.offset.y = (int32_t)(-scale * (float)character->y1);
+            character->bitmap.dimensions.x =
+                    (uint32_t)(scale * (float)(character->x1 - character->x0)) + 1;
+            character->bitmap.dimensions.y =
+                    (uint32_t)(scale * (float)(character->y1 - character->y0)) + 1;
+            character->bitmap.data = arena_alloc(&bezier->arena,
+                    character->bitmap.dimensions.x * character->bitmap.dimensions.y
+                            * sizeof(character->bitmap.data[0]));
 
-        edges.count +=
-                shape_edges_get(&arena, &scratch_arena, character->shape, transform, 0.25f).count;
-    }
+            Transform transform;
+            transform.scale.x = scale;
+            transform.scale.y = -scale;
+            transform.position = (JkVector2){scale * -character->x0, scale * character->y1};
 
-    for (int32_t y = 0; y < bitmap_height; y++) {
-        memset(coverage, 0, coverage_size);
+            void *arena_saved_pointer = arena_pointer_get(&arena);
 
-        float scan_y_top = (float)y;
-        float scan_y_bottom = scan_y_top + 1.0f;
-        for (int32_t i = 0; i < edges.count; i++) {
-            float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
-            float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
-            if (y_top < y_bottom) {
-                float height = y_bottom - y_top;
-                float x_top = segment_y_intersection(edges.items[i].segment, y_top);
-                float x_bottom = segment_y_intersection(edges.items[i].segment, y_bottom);
+            EdgeArray edges =
+                    shape_edges_get(&arena, &scratch_arena, character->shape, transform, 0.25f);
 
-                float y_start;
-                float y_end;
-                float x_start;
-                float x_end;
-                if (x_top < x_bottom) {
-                    y_start = y_top;
-                    y_end = y_bottom;
-                    x_start = x_top;
-                    x_end = x_bottom;
-                } else {
-                    y_start = y_bottom;
-                    y_end = y_top;
-                    x_start = x_bottom;
-                    x_end = x_top;
-                }
+            for (int32_t y = 0; y < character->bitmap.dimensions.y; y++) {
+                memset(coverage, 0, coverage_size);
 
-                int32_t first_pixel_index = (int32_t)x_start;
-                float first_pixel_right = (float)(first_pixel_index + 1);
+                float scan_y_top = (float)y;
+                float scan_y_bottom = scan_y_top + 1.0f;
+                for (int32_t i = 0; i < edges.count; i++) {
+                    float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
+                    float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
+                    if (y_top < y_bottom) {
+                        float height = y_bottom - y_top;
+                        float x_top = segment_y_intersection(edges.items[i].segment, y_top);
+                        float x_bottom = segment_y_intersection(edges.items[i].segment, y_bottom);
 
-                if (first_pixel_index == (int32_t)x_end) {
-                    // Edge only covers one pixel
+                        float y_start;
+                        float y_end;
+                        float x_start;
+                        float x_end;
+                        if (x_top < x_bottom) {
+                            y_start = y_top;
+                            y_end = y_bottom;
+                            x_start = x_top;
+                            x_end = x_bottom;
+                        } else {
+                            y_start = y_bottom;
+                            y_end = y_top;
+                            x_start = x_bottom;
+                            x_end = x_top;
+                        }
 
-                    // Compute trapezoid area
-                    float top_width = first_pixel_right - x_top;
-                    float bottom_width = first_pixel_right - x_bottom;
-                    float area = (top_width + bottom_width) / 2.0f * height;
-                    coverage[first_pixel_index] += edges.items[i].direction * area;
+                        int32_t first_pixel_index = (int32_t)x_start;
+                        float first_pixel_right = (float)(first_pixel_index + 1);
 
-                    // Fill everything to the right with height
-                    fill[first_pixel_index + 1] += edges.items[i].direction * height;
-                } else {
-                    // Edge covers multiple pixels
-                    float delta_y = (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
-                            / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
+                        if (first_pixel_index == (int32_t)x_end) {
+                            // Edge only covers one pixel
 
-                    // Handle first pixel
-                    float first_x_intersection =
-                            segment_x_intersection(edges.items[i].segment, first_pixel_right);
-                    float first_pixel_y_offset = first_x_intersection - y_start;
-                    float first_pixel_area =
-                            (first_pixel_right - x_start) * fabsf(first_pixel_y_offset) / 2.0f;
-                    coverage[first_pixel_index] += edges.items[i].direction * first_pixel_area;
+                            // Compute trapezoid area
+                            float top_width = first_pixel_right - x_top;
+                            float bottom_width = first_pixel_right - x_bottom;
+                            float area = (top_width + bottom_width) / 2.0f * height;
+                            coverage[first_pixel_index] += edges.items[i].direction * area;
 
-                    // Handle middle pixels (if there are any)
-                    float y_offset = first_pixel_y_offset;
-                    int32_t pixel_index = first_pixel_index + 1;
-                    for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
-                        coverage[pixel_index] +=
-                                edges.items[i].direction * fabsf(y_offset + delta_y / 2.0f);
-                        y_offset += delta_y;
+                            // Fill everything to the right with height
+                            fill[first_pixel_index + 1] += edges.items[i].direction * height;
+                        } else {
+                            // Edge covers multiple pixels
+                            float delta_y =
+                                    (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
+                                    / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
+
+                            // Handle first pixel
+                            float first_x_intersection = segment_x_intersection(
+                                    edges.items[i].segment, first_pixel_right);
+                            float first_pixel_y_offset = first_x_intersection - y_start;
+                            float first_pixel_area = (first_pixel_right - x_start)
+                                    * fabsf(first_pixel_y_offset) / 2.0f;
+                            coverage[first_pixel_index] +=
+                                    edges.items[i].direction * first_pixel_area;
+
+                            // Handle middle pixels (if there are any)
+                            float y_offset = first_pixel_y_offset;
+                            int32_t pixel_index = first_pixel_index + 1;
+                            for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
+                                coverage[pixel_index] +=
+                                        edges.items[i].direction * fabsf(y_offset + delta_y / 2.0f);
+                                y_offset += delta_y;
+                            }
+
+                            // Handle last pixel
+                            float last_x_intersection = y_start + y_offset;
+                            float uncovered_triangle = fabsf(y_end - last_x_intersection)
+                                    * (x_end - (float)pixel_index) / 2.0f;
+                            coverage[pixel_index] +=
+                                    edges.items[i].direction * (height - uncovered_triangle);
+
+                            // Fill everything to the right with height
+                            fill[pixel_index + 1] += edges.items[i].direction * height;
+                        }
                     }
+                }
 
-                    // Handle last pixel
-                    float last_x_intersection = y_start + y_offset;
-                    float uncovered_triangle = fabsf(y_end - last_x_intersection)
-                            * (x_end - (float)pixel_index) / 2.0f;
-                    coverage[pixel_index] +=
-                            edges.items[i].direction * (height - uncovered_triangle);
-
-                    // Fill everything to the right with height
-                    fill[pixel_index + 1] += edges.items[i].direction * height;
+                // Fill the scanline according to coverage
+                float acc = 0.0f;
+                for (int32_t x = 0; x < character->bitmap.dimensions.x; x++) {
+                    acc += fill[x];
+                    int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
+                    if (255 < value) {
+                        value = 255;
+                    }
+                    character->bitmap.data[y * character->bitmap.dimensions.x + x] = (uint8_t)value;
                 }
             }
-        }
 
-        // Fill the scanline according to coverage
-        float acc = 0.0f;
-        for (int32_t x = 0; x < bitmap_width; x++) {
-            acc += fill[x];
-            int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
-            if (255 < value) {
-                value = 255;
-            }
-            bezier->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] =
-                    blend_alpha(color_light_squares, color_background, (uint8_t)value);
+            arena_pointer_set(&arena, arena_saved_pointer);
         }
     }
+
+    {
+        JkIntVector2 current_point = {
+            (int32_t)(scale * (float)first_point),
+            (int32_t)(scale * (float)bezier->font_y1_max),
+        };
+        CharacterDrawCommandArray characters = {.count = display_string.size};
+        characters.items = arena_alloc(&arena, characters.count * sizeof(characters.items[0]));
+        for (int32_t i = 0; i < display_string.size; i++) {
+            characters.items[i].index = display_string.data[i] - 32;
+            characters.items[i].pos = jk_int_vector_2_add(current_point,
+                    bezier->printable_characters[characters.items[i].index].bitmap.offset);
+            current_point.x +=
+                    bezier->printable_characters[characters.items[i].index].bitmap.advance_width;
+        }
+
+        JkIntVector2 pos;
+        for (pos.y = 0; pos.y < bezier->draw_square_side_length; pos.y++) {
+            for (pos.x = 0; pos.x < bezier->draw_square_side_length; pos.x++) {
+                Color color = color_dark_squares;
+                for (int32_t i = 0; i < characters.count; i++) {
+                    CharacterBitmap *bitmap =
+                            &bezier->printable_characters[characters.items[i].index].bitmap;
+                    JkIntVector2 bitmap_pos = jk_int_vector_2_sub(pos, characters.items[i].pos);
+                    if (0 <= bitmap_pos.x && bitmap_pos.x < bitmap->dimensions.x
+                            && 0 <= bitmap_pos.y && bitmap_pos.y < bitmap->dimensions.y) {
+                        int32_t index = bitmap_pos.y * bitmap->dimensions.x + bitmap_pos.x;
+                        color = blend_alpha(
+                                color_light_squares, color_dark_squares, bitmap->data[index]);
+                    } else {
+                    }
+                }
+                bezier->draw_buffer[pos.y * DRAW_BUFFER_SIDE_LENGTH + pos.x] = color;
+            }
+        }
+    }
+
+    bezier->prev_scale = scale;
 }
