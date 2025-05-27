@@ -7,6 +7,11 @@
 
 // ---- Buffer begin -----------------------------------------------------------
 
+JK_PUBLIC void jk_buffer_zero(JkBuffer buffer)
+{
+    memset(buffer.data, 0, buffer.size);
+}
+
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
 {
     JkBuffer buffer = {.size = strlen(string), .data = (uint8_t *)string};
@@ -26,6 +31,39 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
 }
 
 // ---- Buffer end -------------------------------------------------------------
+
+// ---- Arena begin ------------------------------------------------------------
+
+JK_PUBLIC void *jk_arena_alloc(JkArena *arena, uint64_t byte_count)
+{
+    uint64_t new_pos = arena->pos + byte_count;
+    if (new_pos <= arena->memory.size) {
+        void *result = arena->memory.data + arena->pos;
+        arena->pos = new_pos;
+        return result;
+    } else {
+        return 0;
+    }
+}
+
+JK_PUBLIC void *jk_arena_alloc_zero(JkArena *arena, uint64_t byte_count)
+{
+    void *result = jk_arena_alloc(arena, byte_count);
+    memset(result, 0, byte_count);
+    return result;
+}
+
+JK_PUBLIC void *jk_arena_pointer_get(JkArena *arena)
+{
+    return arena->memory.data + arena->pos;
+}
+
+JK_PUBLIC void jk_arena_pointer_set(JkArena *arena, void *pointer)
+{
+    arena->pos = (uint8_t *)pointer - arena->memory.data;
+}
+
+// ---- Arena end --------------------------------------------------------------
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
@@ -473,6 +511,29 @@ JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
     return (JkVector2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
+JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point)
+{
+    return jk_vector_2_add(
+            transform.position, (JkVector2){transform.scale * point.x, transform.scale * point.y});
+}
+
+JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t)
+{
+    return jk_vector_2_add(jk_vector_2_mul(t, a), jk_vector_2_mul(1.0f - t, b));
+}
+
+JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b)
+{
+    float dx = b.x - a.x;
+    float dy = b.y - a.y;
+    return dx * dx + dy * dy;
+}
+
+JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector)
+{
+    return (JkIntVector2){jk_round(vector.x), jk_round(vector.y)};
+}
+
 // ---- JkVector2 end ----------------------------------------------------------
 
 JK_PUBLIC void jk_assert(char *message, char *file, int64_t line)
@@ -491,7 +552,7 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     x ^= x >> 16;
     x *= 0x21f0aaad;
     x ^= x >> 15;
-    x *= 0xd35a2d97;
+    x *= 0x735a2d97;
     x ^= x >> 15;
     return x;
 }
@@ -499,6 +560,24 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x)
 {
     return x && (x & (x - 1)) == 0;
+}
+
+JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x)
+{
+    x--;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    x |= x >> 8;
+    x |= x >> 16;
+    x |= x >> 32;
+    x++;
+    return x;
+}
+
+JK_PUBLIC int32_t jk_round(float value)
+{
+    return (int32_t)(value + 0.5f);
 }
 
 JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)

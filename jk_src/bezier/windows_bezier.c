@@ -4,7 +4,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <windows.h>
 
 #include "bezier.h"
@@ -35,7 +34,7 @@ static b32 global_running;
 
 static RenderFunction *global_render = 0;
 
-static Color clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
+static JkColor clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
 typedef struct IntArray4 {
     int32_t a[4];
@@ -321,7 +320,7 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-static char *shape_string_data =
+static char *pawn_string_data =
         "M 32,9.2226562 C 28.491821,9.2226562 25.446533,10.884042 24.488281,14.761719 "
         "23.804009,17.946959 24.60016,20.870505 26.490234,22.148438 19.810658,25.985418 "
         "27.057768,25.543324 28.042969,25.599609 L 28.050781,25.962891 C 28.308198,32.248929 "
@@ -331,26 +330,6 @@ static char *shape_string_data =
         "35.957031,25.599609 C 36.942232,25.543324 44.189342,25.985418 37.509766,22.148438 "
         "39.39984,20.870505 40.195991,17.946959 39.511719,14.761719 38.553467,10.884042 "
         "35.508179,9.2226562 32,9.2226562";
-
-static char *b_string_data =
-        "M 39,92 C 54.333333,92.666667 74.166667,93.333333 98.5,94 122.83333,94.666667 147,95 "
-        "171,95 203,95 233.5,94.666667 262.5,94 291.5,93.333333 312,93 324,93 398.66667,93 "
-        "454.5,107.66667 491.5,137 528.5,166.33333 547,204 547,250 547,273.33333 541.5,296.5 "
-        "530.5,319.5 519.5,342.5 501.66667,363.16667 477,381.5 452.33333,399.83333 "
-        "419.66667,414.33333 379,425 V 427 C 435,433 479,445 511,463 543,481 565.66667,502.5 "
-        "579,527.5 592.33333,552.5 599,578.66667 599,606 599,664.66667 576.83333,711.66667 "
-        "532.5,747 488.16667,782.33333 426.33333,800 347,800 332.33333,800 310.16667,799.5 "
-        "280.5,798.5 250.83333,797.5 215,797 173,797 147.66667,797 122.83333,797.16667 98.5,797.5 "
-        "74.166667,797.83333 54.333333,798.66667 39,800 V 780 C 61.666667,778.66667 78.666667,776 "
-        "90,772 101.33333,768 108.83333,760 112.5,748 116.16667,736 118,718 118,694 V 198 C "
-        "118,173.33333 116.16667,155.16667 112.5,143.5 108.83333,131.83333 101.16667,123.83333 "
-        "89.5,119.5 77.833333,115.16667 61,112.66667 39,112 Z M 303,112 C 274.33333,112 "
-        "255.5,117.66667 246.5,129 237.5,140.33333 233,163.33333 233,198 V 694 C 233,728.66667 "
-        "237.66667,751.16667 247,761.5 256.33333,771.83333 276,777 306,777 366,777 409.5,761.83333 "
-        "436.5,731.5 463.5,701.16667 477,658 477,602 477,550.66667 463.5,511 436.5,483 409.5,455 "
-        "365,441 303,441 H 206 V 432.5 424 H 292 C 328.66667,424 357,416.5 377,401.5 397,386.5 "
-        "410.66667,366.5 418,341.5 425.33333,316.5 429,289.66667 429,261 429,211.66667 "
-        "419.33333,174.5 400,149.5 380.66667,124.5 348.33333,112 303,112 Z";
 
 typedef struct FloatArray {
     uint64_t count;
@@ -388,7 +367,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     jk_platform_set_working_directory_to_executable_directory();
 
     global_bezier.draw_buffer = VirtualAlloc(0,
-            sizeof(Color) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
+            sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
             PAGE_READWRITE);
     global_bezier.arena.memory.size = 1024 * 1024 * 1024;
@@ -405,27 +384,25 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         JkPlatformArena scratch_arena;
         jk_platform_arena_init(&scratch_arena, 5llu * 1024 * 1024 * 1024);
 
-        JkBuffer shape_string = {
-            .size = strlen(b_string_data),
-            .data = (uint8_t *)b_string_data,
-        };
+        JkBuffer pawn_string = jk_buffer_from_null_terminated(pawn_string_data);
 
-        PenCommandArray shape = {.items = jk_platform_arena_pointer_get(&storage)};
+        JkShapesPenCommandArray pawn_commands = {.items = jk_platform_arena_pointer_get(&storage)};
         JkVector2 prev_pos = {0};
 
         JkVector2 first_pos = {0};
         uint64_t pos = 0;
         int c;
-        while ((c = jk_buffer_character_next(shape_string, &pos)) != EOF) {
+        while ((c = jk_buffer_character_next(pawn_string, &pos)) != EOF) {
             switch (c) {
             case 'M':
             case 'L': {
-                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
                 JK_ASSERT(numbers.count && numbers.count % 2 == 0);
                 for (int32_t i = 0; i < numbers.count; i += 2) {
-                    PenCommand *new_command =
+                    JkShapesPenCommand *new_command =
                             jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                    new_command->type = c == 'M' ? PEN_COMMAND_MOVE : PEN_COMMAND_LINE;
+                    new_command->type =
+                            c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
                     new_command->coords[0] = (JkVector2){numbers.items[i], numbers.items[i + 1]};
                     prev_pos = new_command->coords[0];
 
@@ -438,12 +415,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
             case 'H':
             case 'V': {
-                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
                 JK_ASSERT(numbers.count);
                 for (int32_t i = 0; i < numbers.count; i++) {
-                    PenCommand *new_command =
+                    JkShapesPenCommand *new_command =
                             jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                    new_command->type = PEN_COMMAND_LINE;
+                    new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
                     new_command->coords[0] = c == 'H' ? (JkVector2){numbers.items[i], prev_pos.y}
                                                       : (JkVector2){prev_pos.x, numbers.items[i]};
                     prev_pos = new_command->coords[0];
@@ -452,12 +429,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             } break;
 
             case 'Q': {
-                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
                 JK_ASSERT(numbers.count && numbers.count % 4 == 0);
                 for (int32_t i = 0; i < numbers.count; i += 4) {
-                    PenCommand *new_command =
+                    JkShapesPenCommand *new_command =
                             jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                    new_command->type = PEN_COMMAND_CURVE_QUADRATIC;
+                    new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
                     for (int32_t j = 0; j < 2; j++) {
                         new_command->coords[j] = (JkVector2){
                             numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
@@ -468,12 +445,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             } break;
 
             case 'C': {
-                FloatArray numbers = parse_numbers(&scratch_arena, shape_string, &pos);
+                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
                 JK_ASSERT(numbers.count && numbers.count % 6 == 0);
                 for (int32_t i = 0; i < numbers.count; i += 6) {
-                    PenCommand *new_command =
+                    JkShapesPenCommand *new_command =
                             jk_platform_arena_push(&storage, sizeof(*new_command));
-                    new_command->type = PEN_COMMAND_CURVE_CUBIC;
+                    new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                     for (int32_t j = 0; j < 3; j++) {
                         new_command->coords[j] = (JkVector2){
                             numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
@@ -484,9 +461,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             } break;
 
             case 'Z': {
-                PenCommand *new_command =
+                JkShapesPenCommand *new_command =
                         jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                new_command->type = PEN_COMMAND_LINE;
+                new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
                 new_command->coords[0] = first_pos;
             } break;
 
@@ -495,9 +472,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             }
         }
 
-        shape.count = (PenCommand *)jk_platform_arena_pointer_get(&storage) - shape.items;
+        pawn_commands.count =
+                (JkShapesPenCommand *)jk_platform_arena_pointer_get(&storage) - pawn_commands.items;
 
-        global_bezier.shape = shape;
+        global_bezier.pawn_commands = pawn_commands;
 
         jk_platform_arena_terminate(&scratch_arena);
     }

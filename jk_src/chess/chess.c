@@ -764,37 +764,6 @@ typedef struct MoveNode {
     uint64_t depth;
 } MoveNode;
 
-// -------- Arena begin ---------------------------------------------------------
-
-typedef struct Arena {
-    JkBuffer memory;
-    uint64_t pos;
-} Arena;
-
-void *arena_alloc(Arena *arena, uint64_t byte_count)
-{
-    uint64_t new_pos = arena->pos + byte_count;
-    if (new_pos <= arena->memory.size) {
-        void *result = arena->memory.data + arena->pos;
-        arena->pos = new_pos;
-        return result;
-    } else {
-        return 0;
-    }
-}
-
-void *arena_pointer_get(Arena *arena)
-{
-    return arena->memory.data + arena->pos;
-}
-
-void arena_pointer_set(Arena *arena, void *pointer)
-{
-    arena->pos = (uint8_t *)pointer - arena->memory.data;
-}
-
-// -------- Arena end -----------------------------------------------------------
-
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
 
@@ -850,7 +819,7 @@ typedef struct Target {
 
 typedef struct AiContext {
     Board board;
-    Arena arena;
+    JkArena arena;
     uint8_t top_level_node_count;
     MoveNode top_level_nodes[256];
     Target targets[256];
@@ -1024,21 +993,21 @@ static b32 expand_node(AiContext *ctx, MoveNode *node)
 {
     Board node_board_state = ctx->board;
     {
-        MovePacked *prev_moves = arena_pointer_get(&ctx->arena);
+        MovePacked *prev_moves = jk_arena_pointer_get(&ctx->arena);
         for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-            MovePacked *move = arena_alloc(&ctx->arena, sizeof(*move));
+            MovePacked *move = jk_arena_alloc(&ctx->arena, sizeof(*move));
             if (!move) {
                 return 0;
             }
             *move = ancestor->move;
         }
-        int64_t move_count = (MovePacked *)arena_pointer_get(&ctx->arena) - prev_moves;
+        int64_t move_count = (MovePacked *)jk_arena_pointer_get(&ctx->arena) - prev_moves;
 
         for (int64_t i = move_count - 1; i >= 0; i--) {
             node_board_state = board_move_perform(node_board_state, prev_moves[i]);
         }
 
-        arena_pointer_set(&ctx->arena, prev_moves);
+        jk_arena_pointer_set(&ctx->arena, prev_moves);
     }
 
     MoveArray moves;
@@ -1047,7 +1016,7 @@ static b32 expand_node(AiContext *ctx, MoveNode *node)
     MoveNode *first_child = 0;
     debug_nodes_found += moves.count;
     for (uint8_t i = 0; i < moves.count; i++) {
-        MoveNode *new_child = arena_alloc(&ctx->arena, sizeof(*new_child));
+        MoveNode *new_child = jk_arena_alloc(&ctx->arena, sizeof(*new_child));
         if (!new_child) {
             return 0;
         }
@@ -1139,7 +1108,7 @@ typedef struct MoveTreeStats {
     MovePacked *max_line;
 } MoveTreeStats;
 
-void move_tree_stats_calculate(Arena *arena, MoveTreeStats *stats, MoveNode *node, uint64_t depth)
+void move_tree_stats_calculate(JkArena *arena, MoveTreeStats *stats, MoveNode *node, uint64_t depth)
 {
     stats->node_count++;
     if (node->first_child) {
@@ -1162,11 +1131,11 @@ void move_tree_stats_calculate(Arena *arena, MoveTreeStats *stats, MoveNode *nod
             stats->max_depth = depth;
 
             if (stats->max_line) {
-                arena_pointer_set(arena, stats->max_line);
+                jk_arena_pointer_set(arena, stats->max_line);
             }
-            stats->max_line = arena_pointer_get(arena);
+            stats->max_line = jk_arena_pointer_get(arena);
             for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-                MovePacked *move = arena_alloc(arena, sizeof(stats->max_line[0]));
+                MovePacked *move = jk_arena_alloc(arena, sizeof(stats->max_line[0]));
                 *move = ancestor->move;
             }
         }

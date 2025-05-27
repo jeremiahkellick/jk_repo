@@ -19,6 +19,8 @@ typedef struct JkBuffer {
 
 #define JKS JK_STRING
 
+JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
+
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
 JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
@@ -26,6 +28,23 @@ JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
 JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
 // ---- Buffer end -------------------------------------------------------------
+
+// ---- Arena begin ------------------------------------------------------------
+
+typedef struct JkArena {
+    JkBuffer memory;
+    uint64_t pos;
+} JkArena;
+
+JK_PUBLIC void *jk_arena_alloc(JkArena *arena, uint64_t byte_count);
+
+JK_PUBLIC void *jk_arena_alloc_zero(JkArena *arena, uint64_t byte_count);
+
+JK_PUBLIC void *jk_arena_pointer_get(JkArena *arena);
+
+JK_PUBLIC void jk_arena_pointer_set(JkArena *arena, void *pointer);
+
+// ---- Arena end --------------------------------------------------------------
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
@@ -156,7 +175,32 @@ JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b);
 
 JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector);
 
-// ---- IntVector2 end ---------------------------------------------------------
+JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t);
+
+JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b);
+
+typedef struct JkTransform2 {
+    float scale;
+    JkVector2 position;
+} JkTransform2;
+
+JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point);
+
+JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);
+
+// ---- JkVector2 end ----------------------------------------------------------
+
+typedef struct JkColor {
+    union {
+        struct {
+            uint8_t b;
+            uint8_t g;
+            uint8_t r;
+            uint8_t a;
+        };
+        uint8_t v[4];
+    };
+} JkColor;
 
 JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 
@@ -182,6 +226,10 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
+
+JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x);
+
+JK_PUBLIC int32_t jk_round(float value);
 
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
