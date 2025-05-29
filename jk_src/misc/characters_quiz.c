@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 
     JkPlatformArena storage;
     jk_platform_arena_init(&storage, (size_t)1 << 35);
-    JkBuffer file = jk_platform_file_read_full(argv[1], &storage);
+    JkBuffer file = jk_platform_file_read_full(&storage, argv[1]);
     size_t file_ptr = 0;
 
     FILE *incorrect = fopen("incorrect.txt", "wb");

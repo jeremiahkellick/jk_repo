@@ -250,7 +250,7 @@ int main(int argc, char **argv)
 
     JkPlatformArena storage;
     jk_platform_arena_init(&storage, 64llu * 1024 * 1024 * 1024);
-    JkBuffer full_file_buffer = jk_platform_file_read_full(argv[1], &storage);
+    JkBuffer full_file_buffer = jk_platform_file_read_full(&storage, argv[1]);
     uint64_t reference_sum = sum(full_file_buffer);
     jk_platform_arena_terminate(&storage);
 

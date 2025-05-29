@@ -195,9 +195,9 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         float ry_sqr = r.dimensions.y * r.dimensions.y;
         float x_sqr = point_prime.x * point_prime.x;
         float y_sqr = point_prime.y * point_prime.y;
-        float scalar = sqrtf(JK_MAX(0.0f,
-                (rx_sqr * ry_sqr - rx_sqr * y_sqr - ry_sqr * x_sqr)
-                        / (rx_sqr * y_sqr + ry_sqr * x_sqr)));
+        float expr = (rx_sqr * ry_sqr - rx_sqr * y_sqr - ry_sqr * x_sqr)
+                / (rx_sqr * y_sqr + ry_sqr * x_sqr);
+        float scalar = sqrtf(JK_MAX(0.0f, expr));
         JkVector2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
             -(r.dimensions.y * point_prime.x) / r.dimensions.x};
         b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_INDEX_LARGE) & 1;

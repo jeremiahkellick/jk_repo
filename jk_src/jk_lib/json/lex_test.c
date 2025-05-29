@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     JkPlatformArena storage;
     jk_platform_arena_init(&storage, (size_t)1 << 36);
 
-    JkBuffer text = jk_platform_file_read_full("./lex_test.json", &storage);
+    JkBuffer text = jk_platform_file_read_full(&storage, "./lex_test.json");
     uint64_t pos = 0;
 
     JkJsonToken token;

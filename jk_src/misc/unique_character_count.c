@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     JkPlatformArena storage;
     jk_platform_arena_init(&storage, (size_t)1 << 35);
 
-    JkBuffer file = jk_platform_file_read_full(opts_parse.operands[0], &storage);
+    JkBuffer file = jk_platform_file_read_full(&storage, opts_parse.operands[0]);
     JkHashTable *seen = jk_hash_table_create();
     uint64_t count = 0;
     uint64_t pos = 0;

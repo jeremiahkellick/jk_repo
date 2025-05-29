@@ -321,26 +321,6 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-static char *piece_string_data[PIECE_COUNT] = {
-    "M 32,9.2226562 C 28.491822,9.2250981 25.446533,10.884042 24.488281,14.761719 "
-    "23.804009,17.946959 24.60016,20.870505 26.490234,22.148438 19.810658,25.985418 "
-    "27.057768,25.543324 28.042969,25.599609 28.042969,25.599609 28.044571,25.812843 "
-    "28.050781,25.962891 28.308198,32.248929 23.849484,32.246524 23.126953,43.076172 "
-    "18.921981,44.38133 11.312719,50.206349 14.154297,59.197266 26.311624,59.170276 "
-    "37.946513,59.194139 49.845703,59.197266 52.687281,50.206349 45.078019,44.38133 "
-    "40.873047,43.076172 40.150516,32.246524 35.691802,32.248929 35.949219,25.962891 "
-    "35.955429,25.812843 35.957031,25.599609 35.957031,25.599609 36.942232,25.543324 "
-    "44.189342,25.985418 37.509766,22.148438 39.39984,20.870505 40.195991,17.946959 "
-    "39.511719,14.761719 38.553467,10.884042 35.508178,9.2250981 32,9.2226562 Z",
-    "M 8,32 H 26 A 8,16 45 0 0 38,32 H 56 V 56 H 8 Z",
-    "M 8,32 H 26 A 8,16 45 0 1 38,32 H 56 V 56 H 8 Z",
-    "M 8,32 H 26 A 8,16 45 1 0 38,32 H 56 V 56 H 8 Z",
-    "M 8,32 H 26 A 8,16 45 1 1 38,32 H 56 V 56 H 8 Z",
-    "M 10,32 A 5,5 0 0 1 54,32 V 54 H 10 Z",
-    // "M 55,32 A 22.999999,22.999999 0 0 1 32,55 22.999999,22.999999 0 0 1 9,32 "
-    // "22.999999,22.999999 0 0 1 32,9 22.999999,22.999999 0 0 1 55,32",
-};
-
 typedef struct FloatArray {
     uint64_t count;
     float *items;
@@ -394,13 +374,14 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         JkPlatformArena scratch_arena;
         jk_platform_arena_init(&scratch_arena, 5llu * 1024 * 1024 * 1024);
 
-        JkBuffer piece_strings[PIECE_COUNT];
-        for (int32_t i = 0; i < PIECE_COUNT; i++) {
-            piece_strings[i] = jk_buffer_from_null_terminated(piece_string_data[i]);
-        }
+        JkBufferArray piece_strings =
+                jk_platform_file_read_lines(&scratch_arena, "chess_paths.txt");
+        JK_ASSERT(piece_strings.count == PIECE_COUNT - 1);
 
-        for (int32_t piece_index = 0; piece_index < PIECE_COUNT; piece_index++) {
-            JkBuffer piece_string = piece_strings[piece_index];
+        void *scratch_arena_saved_pointer = jk_platform_arena_pointer_get(&scratch_arena);
+
+        for (int32_t piece_index = 1; piece_index < PIECE_COUNT; piece_index++) {
+            JkBuffer piece_string = piece_strings.items[piece_index - 1];
 
             global_bezier.shapes[piece_index].dimensions.x = 64.0f;
             global_bezier.shapes[piece_index].dimensions.y = 64.0f;
@@ -516,6 +497,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                     JK_ASSERT(0 && "Unknown SVG path command character");
                 } break;
                 }
+
+                jk_platform_arena_pointer_set(&scratch_arena, scratch_arena_saved_pointer);
             }
 
             global_bezier.shapes[piece_index].commands.count =
@@ -527,7 +510,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     }
 
     char *ttf_file_name = "AmiriQuran-Regular.ttf";
-    global_bezier.ttf_file = jk_platform_file_read_full(ttf_file_name, &storage);
+    global_bezier.ttf_file = jk_platform_file_read_full(&storage, ttf_file_name);
     if (!global_bezier.ttf_file.size) {
         win32_debug_printf("Failed to read file '%s'\n", ttf_file_name);
     }

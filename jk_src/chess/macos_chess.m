@@ -114,7 +114,7 @@ int main(void)
         // Load image data
         JkPlatformArena storage;
         if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
-            JkBuffer image_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
+            JkBuffer image_file = jk_platform_file_read_full(&storage, "chess_atlas.bmp");
             if (image_file.size) {
                 BitmapHeader *header = (BitmapHeader *)image_file.data;
                 Color *pixels = (Color *)(image_file.data + header->offset);

@@ -1023,7 +1023,7 @@ JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n)
     return n & ~(page_size - 1);
 }
 
-JK_PUBLIC JkBuffer jk_platform_file_read_full(char *file_name, JkPlatformArena *storage)
+JK_PUBLIC JkBuffer jk_platform_file_read_full(JkPlatformArena *storage, char *file_name)
 {
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(jk_platform_file_read_full);
 
@@ -1059,6 +1059,31 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(char *file_name, JkPlatformArena *
     fclose(file);
     JK_PLATFORM_PROFILE_ZONE_END(jk_platform_file_read_full);
     return buffer;
+}
+
+JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkPlatformArena *arena, char *file_name)
+{
+    JkBuffer file = jk_platform_file_read_full(arena, file_name);
+    JkBufferArray lines = {.items = jk_platform_arena_pointer_get(arena)};
+
+    uint64_t start = 0;
+    uint64_t i = 0;
+    for (; i < file.size; i++) {
+        if (file.data[i] == '\n') {
+            JkBuffer *line = jk_platform_arena_push(arena, sizeof(*line));
+            line->data = file.data + start;
+            line->size = i - start;
+            start = i + 1;
+        }
+    }
+    if (start < i) {
+        JkBuffer *line = jk_platform_arena_push(arena, sizeof(*line));
+        line->data = file.data + start;
+        line->size = i - start;
+    }
+
+    lines.count = (JkBuffer *)jk_platform_arena_pointer_get(arena) - lines.items;
+    return lines;
 }
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait)

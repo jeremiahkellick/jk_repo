@@ -8,7 +8,7 @@
 
 #define FRAME_RATE 60
 
-#define PIECE_COUNT 6
+#define PIECE_COUNT 7
 
 #define CLEAR_COLOR_B 0x27
 #define CLEAR_COLOR_G 0x20

@@ -130,10 +130,10 @@ JK_PUBLIC HaversineContext haversine_setup(
 {
     HaversineContext context = {0};
 
-    JkBuffer text = jk_platform_file_read_full(json_file_name, storage);
+    JkBuffer text = jk_platform_file_read_full(storage, json_file_name);
     JkBuffer answers_buffer = {0};
     if (answers_file_name) {
-        answers_buffer = jk_platform_file_read_full(answers_file_name, storage);
+        answers_buffer = jk_platform_file_read_full(storage, answers_file_name);
     }
 
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);

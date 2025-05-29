@@ -845,7 +845,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     JkPlatformArena storage;
     if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
         // Load image data
-        JkBuffer image_file = jk_platform_file_read_full("chess_atlas.bmp", &storage);
+        JkBuffer image_file = jk_platform_file_read_full(&storage, "chess_atlas.bmp");
         if (image_file.size) {
             BitmapHeader *header = (BitmapHeader *)image_file.data;
             Color *pixels = (Color *)(image_file.data + header->offset);
@@ -867,7 +867,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         // Load sounds
         for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
             if (sound_file_paths[i]) {
-                JkBuffer audio_file = jk_platform_file_read_full(sound_file_paths[i], &storage);
+                JkBuffer audio_file = jk_platform_file_read_full(&storage, sound_file_paths[i]);
                 if (audio_file.size) {
                     b32 error = 0;
                     RiffChunkMain *chunk_main = (RiffChunkMain *)audio_file.data;

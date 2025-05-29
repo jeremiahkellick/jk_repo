@@ -14,6 +14,11 @@ typedef struct JkBuffer {
     uint8_t *data;
 } JkBuffer;
 
+typedef struct JkBufferArray {
+    uint64_t count;
+    JkBuffer *items;
+} JkBufferArray;
+
 #define JK_STRING(string_literal) \
     ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
 
@@ -227,8 +232,8 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
 
-#define JK_MIN(a, b) (a < b ? a : b)
-#define JK_MAX(a, b) (a < b ? b : a)
+#define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
+#define JK_MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define JK_PI 3.14159265358979323846264338327950288419716939937510582097494459230781640628
 #define JK_INV_SQRT_2 0.70710678118654752440084

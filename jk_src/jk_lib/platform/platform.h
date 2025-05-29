@@ -291,7 +291,9 @@ JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);
 
-JK_PUBLIC JkBuffer jk_platform_file_read_full(char *file_name, JkPlatformArena *storage);
+JK_PUBLIC JkBuffer jk_platform_file_read_full(JkPlatformArena *storage, char *file_name);
+
+JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkPlatformArena *arena, char *file_name);
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait);
 
