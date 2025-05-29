@@ -332,12 +332,13 @@ static char *piece_string_data[PIECE_COUNT] = {
     "35.955429,25.812843 35.957031,25.599609 35.957031,25.599609 36.942232,25.543324 "
     "44.189342,25.985418 37.509766,22.148438 39.39984,20.870505 40.195991,17.946959 "
     "39.511719,14.761719 38.553467,10.884042 35.508178,9.2250981 32,9.2226562 Z",
-    "M 10,10 H 54 V 54 H 10 Z",
-    "M 10,10 H 54 V 54 H 10 Z",
-    "M 10,10 H 54 V 54 H 10 Z",
+    "M 8,32 H 26 A 8,16 45 0 0 38,32 H 56 V 56 H 8 Z",
+    "M 8,32 H 26 A 8,16 45 0 1 38,32 H 56 V 56 H 8 Z",
+    "M 8,32 H 26 A 8,16 45 1 0 38,32 H 56 V 56 H 8 Z",
+    "M 8,32 H 26 A 8,16 45 1 1 38,32 H 56 V 56 H 8 Z",
     "M 10,32 A 5,5 0 0 1 54,32 V 54 H 10 Z",
-    "M 55,32 A 22.999999,22.999999 0 0 1 32,55 22.999999,22.999999 0 0 1 9,32 22.999999,22.999999 "
-    "0 0 1 32,9 22.999999,22.999999 0 0 1 55,32",
+    // "M 55,32 A 22.999999,22.999999 0 0 1 32,55 22.999999,22.999999 0 0 1 9,32 "
+    // "22.999999,22.999999 0 0 1 32,9 22.999999,22.999999 0 0 1 55,32",
 };
 
 typedef struct FloatArray {
@@ -490,7 +491,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                         new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
                         new_command->arc.dimensions.x = numbers.items[i];
                         new_command->arc.dimensions.y = numbers.items[i + 1];
-                        new_command->arc.rotation = numbers.items[i + 2];
+                        new_command->arc.rotation = numbers.items[i + 2] * (float)JK_PI / 180.0f;
                         if (numbers.items[i + 3]) {
                             new_command->arc.flags |= JK_SHAPES_ARC_FLAG_LARGE;
                         }
