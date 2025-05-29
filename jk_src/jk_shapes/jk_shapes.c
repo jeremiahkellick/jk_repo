@@ -133,6 +133,116 @@ static JkVector2 jk_shapes_evaluate_bezier_cubic(
     return result;
 }
 
+typedef struct JkShapesArcByCenter {
+    b32 treat_as_line;
+    JkVector2 center;
+    JkVector2 dimensions;
+    JkVector2 point_end;
+    float rotation_matrix[2][2];
+    float angle_start;
+    float angle_delta;
+} JkShapesArcByCenter;
+
+// https://www.w3.org/TR/SVG2/implnote.html#ArcImplementationNotes
+static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
+        JkTransform2 transform, JkVector2 point_start, JkShapesArcByEndpoint a)
+{
+    JkShapesArcByCenter r = {0};
+
+    // Transform arc values
+    a.dimensions = jk_transform_2_apply(transform, a.dimensions);
+    r.point_end = jk_transform_2_apply(transform, a.point_end);
+
+    if (jk_vector_2_approx_equal(point_start, r.point_end, 0.00001f)) {
+        r.treat_as_line = 1;
+        return r;
+    }
+
+    r.rotation_matrix[0][0] = cosf(a.rotation);
+    r.rotation_matrix[0][1] = -sinf(a.rotation);
+    r.rotation_matrix[1][0] = sinf(a.rotation);
+    r.rotation_matrix[1][1] = cosf(a.rotation);
+
+    float inverse_rotation_matrix[2][2] = {
+        {cosf(a.rotation), sinf(a.rotation)},
+        {-sinf(a.rotation), cosf(a.rotation)},
+    };
+
+    // Transform point_start into ellipse space
+    JkVector2 point_prime = jk_matrix_2x2_multiply_vector(inverse_rotation_matrix,
+            jk_vector_2_mul(
+                    0.5f, jk_vector_2_add(point_start, jk_vector_2_mul(-1.0f, r.point_end))));
+
+    // Correct out-of-range radii
+    float lambda = 0.0f;
+    for (int32_t i = 0; i < 2; i++) {
+        if (!a.dimensions.coords[i]) {
+            r.treat_as_line = 1;
+            return r;
+        }
+        r.dimensions.coords[i] = fabsf(a.dimensions.coords[i]);
+        lambda += (point_prime.coords[i] * point_prime.coords[i])
+                / (r.dimensions.coords[i] * r.dimensions.coords[i]);
+    }
+    if (1.0f < lambda) {
+        r.dimensions = jk_vector_2_mul(sqrtf(lambda), r.dimensions);
+    }
+
+    // Compute center in ellipse space
+    JkVector2 center_prime;
+    {
+        float rx_sqr = r.dimensions.x * r.dimensions.x;
+        float ry_sqr = r.dimensions.y * r.dimensions.y;
+        float x_sqr = point_prime.x * point_prime.x;
+        float y_sqr = point_prime.y * point_prime.y;
+        float scalar = sqrtf(JK_MAX(0.0f,
+                (rx_sqr * ry_sqr - rx_sqr * y_sqr - ry_sqr * x_sqr)
+                        / (rx_sqr * y_sqr + ry_sqr * x_sqr)));
+        JkVector2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
+            -(r.dimensions.y * point_prime.x) / r.dimensions.x};
+        b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_INDEX_LARGE) & 1;
+        b32 flag_sweep = (a.flags >> JK_SHAPES_ARC_FLAG_INDEX_SWEEP) & 1;
+        float sign = flag_large == flag_sweep ? -1.0f : 1.0f;
+        center_prime = jk_vector_2_mul(sign * scalar, vector);
+    }
+    // Transform center point back into screen space
+    r.center = jk_vector_2_add(jk_matrix_2x2_multiply_vector(r.rotation_matrix, center_prime),
+            jk_vector_2_lerp(point_start, r.point_end, 0.5f));
+
+    // Compute angles
+    {
+        JkVector2 delta = jk_vector_2_add(point_prime, jk_vector_2_mul(-1.0f, center_prime));
+        JkVector2 nsum = jk_vector_2_mul(-1.0f, jk_vector_2_add(point_prime, center_prime));
+
+        JkVector2 v1 = (JkVector2){delta.x / r.dimensions.x, delta.y / r.dimensions.y};
+        JkVector2 v2 = (JkVector2){nsum.x / r.dimensions.x, nsum.y / r.dimensions.y};
+
+        r.angle_start = jk_vector_2_angle_between((JkVector2){1.0f, 0.0f}, v1);
+        r.angle_delta = jk_vector_2_angle_between(v1, v2);
+
+        if (a.flags & JK_SHAPES_ARC_FLAG_SWEEP) {
+            if (r.angle_delta < 0.0f) {
+                r.angle_delta += 2.0f * (float)JK_PI;
+            }
+        } else {
+            if (0.0f < r.angle_delta) {
+                r.angle_delta -= 2.0f * (float)JK_PI;
+            }
+        }
+    }
+
+    return r;
+}
+
+static JkVector2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc)
+{
+    float angle = arc.angle_start + t * arc.angle_delta;
+    return jk_vector_2_add(
+            jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
+                    (JkVector2){arc.dimensions.x * cosf(angle), arc.dimensions.y * sinf(angle)}),
+            arc.center);
+}
+
 typedef struct JkShapesLinearizer {
     JkArena *arena;
     float tolerance_squared;
@@ -260,6 +370,18 @@ static JkShapesEdgeArray jk_shapes_edges_get(
                         &l, jk_shapes_evaluate_bezier_cubic(l.t, p0, p1, p2, p3));
             }
         } break;
+
+        case JK_SHAPES_PEN_COMMAND_ARC: {
+            JkShapesArcByCenter arc = jk_shapes_arc_endpoint_to_center(
+                    transform, current_node->point, commands.items[i].arc);
+
+            JkShapesLinearizer l;
+            jk_shapes_linearizer_init(&l, arena, &current_node, arc.point_end, tolerance);
+
+            while (jk_shapes_linearizer_running(&l)) {
+                jk_shapes_linearizer_evaluate(&l, jk_shapes_evaluate_arc(l.t, arc));
+            }
+        } break;
         }
     }
 
@@ -300,133 +422,138 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         JkColor color)
 {
     JkShape shape = renderer->shapes.items[shape_index];
-    JkVector2 scaled_offset = jk_vector_2_mul(scale, shape.offset);
 
-    JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
-    node->command.position = jk_vector_2_round(jk_vector_2_add(position, scaled_offset));
-    node->command.color = color;
-    node->next = renderer->draw_commands_head;
-    renderer->draw_commands_head = node;
+    if (shape.dimensions.x && shape.dimensions.y) {
+        JkVector2 scaled_offset = jk_vector_2_mul(scale, shape.offset);
 
-    uint64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, scale);
-    JkShapesHashTableSlot *bitmap_slot =
-            jk_shapes_hash_table_probe(&renderer->hash_table, bitmap_key);
-    node->command.bitmap = &bitmap_slot->value;
-    if (!bitmap_slot->filled) {
+        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+        node->command.position = jk_vector_2_round(jk_vector_2_add(position, scaled_offset));
+        node->command.color = color;
+        node->next = renderer->draw_commands_head;
+        renderer->draw_commands_head = node;
 
-        JkShapesBitmap bitmp;
-        bitmp.dimensions.x = (int32_t)ceilf(scale * shape.dimensions.x);
-        bitmp.dimensions.y = (int32_t)ceilf(scale * shape.dimensions.y);
-        // TODO: do we really need to zero it?
-        bitmp.data = jk_arena_alloc_zero(
-                renderer->arena, bitmp.dimensions.x * bitmp.dimensions.y * sizeof(bitmp.data[0]));
-        jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmp);
+        uint64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, scale);
+        JkShapesHashTableSlot *bitmap_slot =
+                jk_shapes_hash_table_probe(&renderer->hash_table, bitmap_key);
+        node->command.bitmap = &bitmap_slot->value;
+        if (!bitmap_slot->filled) {
+            JkShapesBitmap bitmp;
+            bitmp.dimensions.x = (int32_t)ceilf(scale * shape.dimensions.x);
+            bitmp.dimensions.y = (int32_t)ceilf(scale * shape.dimensions.y);
+            // TODO: do we really need to zero it?
+            bitmp.data = jk_arena_alloc_zero(renderer->arena,
+                    bitmp.dimensions.x * bitmp.dimensions.y * sizeof(bitmp.data[0]));
+            jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmp);
 
-        JkTransform2 transform;
-        transform.scale = scale;
-        transform.position = jk_vector_2_mul(-1.0f, scaled_offset);
+            JkTransform2 transform;
+            transform.scale = scale;
+            transform.position = jk_vector_2_mul(-1.0f, scaled_offset);
 
-        void *arena_saved_pointer = jk_arena_pointer_get(renderer->arena);
+            void *arena_saved_pointer = jk_arena_pointer_get(renderer->arena);
 
-        uint64_t coverage_size = sizeof(float) * (bitmp.dimensions.x + 1);
-        float *coverage = jk_arena_alloc(renderer->arena, coverage_size);
-        float *fill = jk_arena_alloc(renderer->arena, coverage_size);
+            uint64_t coverage_size = sizeof(float) * (bitmp.dimensions.x + 1);
+            float *coverage = jk_arena_alloc(renderer->arena, coverage_size);
+            float *fill = jk_arena_alloc(renderer->arena, coverage_size);
 
-        JkShapesEdgeArray edges =
-                jk_shapes_edges_get(renderer->arena, shape.commands, transform, 0.25f);
+            JkShapesEdgeArray edges =
+                    jk_shapes_edges_get(renderer->arena, shape.commands, transform, 0.25f);
 
-        for (int32_t y = 0; y < bitmp.dimensions.y; y++) {
-            memset(coverage, 0, coverage_size * 2);
+            for (int32_t y = 0; y < bitmp.dimensions.y; y++) {
+                memset(coverage, 0, coverage_size * 2);
 
-            float scan_y_top = (float)y;
-            float scan_y_bottom = scan_y_top + 1.0f;
-            for (int32_t i = 0; i < edges.count; i++) {
-                float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
-                float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
-                if (y_top < y_bottom) {
-                    float height = y_bottom - y_top;
-                    float x_top = jk_shapes_segment_y_intersection(edges.items[i].segment, y_top);
-                    float x_bottom =
-                            jk_shapes_segment_y_intersection(edges.items[i].segment, y_bottom);
+                float scan_y_top = (float)y;
+                float scan_y_bottom = scan_y_top + 1.0f;
+                for (int32_t i = 0; i < edges.count; i++) {
+                    float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
+                    float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
+                    if (y_top < y_bottom) {
+                        float height = y_bottom - y_top;
+                        float x_top =
+                                jk_shapes_segment_y_intersection(edges.items[i].segment, y_top);
+                        float x_bottom =
+                                jk_shapes_segment_y_intersection(edges.items[i].segment, y_bottom);
 
-                    float y_start;
-                    float y_end;
-                    float x_start;
-                    float x_end;
-                    if (x_top < x_bottom) {
-                        y_start = y_top;
-                        y_end = y_bottom;
-                        x_start = x_top;
-                        x_end = x_bottom;
-                    } else {
-                        y_start = y_bottom;
-                        y_end = y_top;
-                        x_start = x_bottom;
-                        x_end = x_top;
-                    }
-
-                    int32_t first_pixel_index = (int32_t)x_start;
-                    float first_pixel_right = (float)(first_pixel_index + 1);
-
-                    if (first_pixel_index == (int32_t)x_end) {
-                        // Edge only covers one pixel
-
-                        // Compute trapezoid area
-                        float top_width = first_pixel_right - x_top;
-                        float bottom_width = first_pixel_right - x_bottom;
-                        float area = (top_width + bottom_width) / 2.0f * height;
-                        coverage[first_pixel_index] += edges.items[i].direction * area;
-
-                        // Fill everything to the right with height
-                        fill[first_pixel_index + 1] += edges.items[i].direction * height;
-                    } else {
-                        // Edge covers multiple pixels
-                        float delta_y = (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
-                                / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
-
-                        // Handle first pixel
-                        float first_x_intersection = jk_shapes_segment_x_intersection(
-                                edges.items[i].segment, first_pixel_right);
-                        float first_pixel_y_offset = first_x_intersection - y_start;
-                        float first_pixel_area =
-                                (first_pixel_right - x_start) * fabsf(first_pixel_y_offset) / 2.0f;
-                        coverage[first_pixel_index] += edges.items[i].direction * first_pixel_area;
-
-                        // Handle middle pixels (if there are any)
-                        float y_offset = first_pixel_y_offset;
-                        int32_t pixel_index = first_pixel_index + 1;
-                        for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
-                            coverage[pixel_index] +=
-                                    edges.items[i].direction * fabsf(y_offset + delta_y / 2.0f);
-                            y_offset += delta_y;
+                        float y_start;
+                        float y_end;
+                        float x_start;
+                        float x_end;
+                        if (x_top < x_bottom) {
+                            y_start = y_top;
+                            y_end = y_bottom;
+                            x_start = x_top;
+                            x_end = x_bottom;
+                        } else {
+                            y_start = y_bottom;
+                            y_end = y_top;
+                            x_start = x_bottom;
+                            x_end = x_top;
                         }
 
-                        // Handle last pixel
-                        float last_x_intersection = y_start + y_offset;
-                        float uncovered_triangle = fabsf(y_end - last_x_intersection)
-                                * (x_end - (float)pixel_index) / 2.0f;
-                        coverage[pixel_index] +=
-                                edges.items[i].direction * (height - uncovered_triangle);
+                        int32_t first_pixel_index = (int32_t)x_start;
+                        float first_pixel_right = (float)(first_pixel_index + 1);
 
-                        // Fill everything to the right with height
-                        fill[pixel_index + 1] += edges.items[i].direction * height;
+                        if (first_pixel_index == (int32_t)x_end) {
+                            // Edge only covers one pixel
+
+                            // Compute trapezoid area
+                            float top_width = first_pixel_right - x_top;
+                            float bottom_width = first_pixel_right - x_bottom;
+                            float area = (top_width + bottom_width) / 2.0f * height;
+                            coverage[first_pixel_index] += edges.items[i].direction * area;
+
+                            // Fill everything to the right with height
+                            fill[first_pixel_index + 1] += edges.items[i].direction * height;
+                        } else {
+                            // Edge covers multiple pixels
+                            float delta_y =
+                                    (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
+                                    / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
+
+                            // Handle first pixel
+                            float first_x_intersection = jk_shapes_segment_x_intersection(
+                                    edges.items[i].segment, first_pixel_right);
+                            float first_pixel_y_offset = first_x_intersection - y_start;
+                            float first_pixel_area = (first_pixel_right - x_start)
+                                    * fabsf(first_pixel_y_offset) / 2.0f;
+                            coverage[first_pixel_index] +=
+                                    edges.items[i].direction * first_pixel_area;
+
+                            // Handle middle pixels (if there are any)
+                            float y_offset = first_pixel_y_offset;
+                            int32_t pixel_index = first_pixel_index + 1;
+                            for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
+                                coverage[pixel_index] +=
+                                        edges.items[i].direction * fabsf(y_offset + delta_y / 2.0f);
+                                y_offset += delta_y;
+                            }
+
+                            // Handle last pixel
+                            float last_x_intersection = y_start + y_offset;
+                            float uncovered_triangle = fabsf(y_end - last_x_intersection)
+                                    * (x_end - (float)pixel_index) / 2.0f;
+                            coverage[pixel_index] +=
+                                    edges.items[i].direction * (height - uncovered_triangle);
+
+                            // Fill everything to the right with height
+                            fill[pixel_index + 1] += edges.items[i].direction * height;
+                        }
                     }
                 }
-            }
 
-            // Fill the scanline according to coverage
-            float acc = 0.0f;
-            for (int32_t x = 0; x < bitmp.dimensions.x; x++) {
-                acc += fill[x];
-                int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
-                if (255 < value) {
-                    value = 255;
+                // Fill the scanline according to coverage
+                float acc = 0.0f;
+                for (int32_t x = 0; x < bitmp.dimensions.x; x++) {
+                    acc += fill[x];
+                    int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
+                    if (255 < value) {
+                        value = 255;
+                    }
+                    bitmp.data[y * bitmp.dimensions.x + x] = (uint8_t)value;
                 }
-                bitmp.data[y * bitmp.dimensions.x + x] = (uint8_t)value;
             }
-        }
 
-        jk_arena_pointer_set(renderer->arena, arena_saved_pointer);
+            jk_arena_pointer_set(renderer->arena, arena_saved_pointer);
+        }
     }
 
     return scale * shape.advance_width;

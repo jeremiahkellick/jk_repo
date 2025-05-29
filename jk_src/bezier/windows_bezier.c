@@ -8,6 +8,7 @@
 
 #include "bezier.h"
 #include "jk_src/jk_lib/jk_lib.h"
+#include "jk_src/jk_shapes/jk_shapes.h"
 
 // #jk_build single_translation_unit
 
@@ -320,16 +321,24 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-static char *pawn_string_data =
-        "M 32,9.2226562 C 28.491821,9.2226562 25.446533,10.884042 24.488281,14.761719 "
-        "23.804009,17.946959 24.60016,20.870505 26.490234,22.148438 19.810658,25.985418 "
-        "27.057768,25.543324 28.042969,25.599609 L 28.050781,25.962891 C 28.308198,32.248929 "
-        "23.849484,32.246524 23.126953,43.076172 18.921981,44.38133 11.312719,50.206349 "
-        "14.154297,59.197266 H 49.845703 C 52.687281,50.206349 45.078019,44.38133 "
-        "40.873047,43.076172 40.150516,32.246524 35.691802,32.248929 35.949219,25.962891 L "
-        "35.957031,25.599609 C 36.942232,25.543324 44.189342,25.985418 37.509766,22.148438 "
-        "39.39984,20.870505 40.195991,17.946959 39.511719,14.761719 38.553467,10.884042 "
-        "35.508179,9.2226562 32,9.2226562";
+static char *piece_string_data[PIECE_COUNT] = {
+    "M 32,9.2226562 C 28.491822,9.2250981 25.446533,10.884042 24.488281,14.761719 "
+    "23.804009,17.946959 24.60016,20.870505 26.490234,22.148438 19.810658,25.985418 "
+    "27.057768,25.543324 28.042969,25.599609 28.042969,25.599609 28.044571,25.812843 "
+    "28.050781,25.962891 28.308198,32.248929 23.849484,32.246524 23.126953,43.076172 "
+    "18.921981,44.38133 11.312719,50.206349 14.154297,59.197266 26.311624,59.170276 "
+    "37.946513,59.194139 49.845703,59.197266 52.687281,50.206349 45.078019,44.38133 "
+    "40.873047,43.076172 40.150516,32.246524 35.691802,32.248929 35.949219,25.962891 "
+    "35.955429,25.812843 35.957031,25.599609 35.957031,25.599609 36.942232,25.543324 "
+    "44.189342,25.985418 37.509766,22.148438 39.39984,20.870505 40.195991,17.946959 "
+    "39.511719,14.761719 38.553467,10.884042 35.508178,9.2250981 32,9.2226562 Z",
+    "M 10,10 H 54 V 54 H 10 Z",
+    "M 10,10 H 54 V 54 H 10 Z",
+    "M 10,10 H 54 V 54 H 10 Z",
+    "M 10,32 A 5,5 0 0 1 54,32 V 54 H 10 Z",
+    "M 55,32 A 22.999999,22.999999 0 0 1 32,55 22.999999,22.999999 0 0 1 9,32 22.999999,22.999999 "
+    "0 0 1 32,9 22.999999,22.999999 0 0 1 55,32",
+};
 
 typedef struct FloatArray {
     uint64_t count;
@@ -384,98 +393,134 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         JkPlatformArena scratch_arena;
         jk_platform_arena_init(&scratch_arena, 5llu * 1024 * 1024 * 1024);
 
-        JkBuffer pawn_string = jk_buffer_from_null_terminated(pawn_string_data);
+        JkBuffer piece_strings[PIECE_COUNT];
+        for (int32_t i = 0; i < PIECE_COUNT; i++) {
+            piece_strings[i] = jk_buffer_from_null_terminated(piece_string_data[i]);
+        }
 
-        JkShapesPenCommandArray pawn_commands = {.items = jk_platform_arena_pointer_get(&storage)};
-        JkVector2 prev_pos = {0};
+        for (int32_t piece_index = 0; piece_index < PIECE_COUNT; piece_index++) {
+            JkBuffer piece_string = piece_strings[piece_index];
 
-        JkVector2 first_pos = {0};
-        uint64_t pos = 0;
-        int c;
-        while ((c = jk_buffer_character_next(pawn_string, &pos)) != EOF) {
-            switch (c) {
-            case 'M':
-            case 'L': {
-                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
-                JK_ASSERT(numbers.count && numbers.count % 2 == 0);
-                for (int32_t i = 0; i < numbers.count; i += 2) {
-                    JkShapesPenCommand *new_command =
-                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                    new_command->type =
-                            c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
-                    new_command->coords[0] = (JkVector2){numbers.items[i], numbers.items[i + 1]};
-                    prev_pos = new_command->coords[0];
+            global_bezier.shapes[piece_index].dimensions.x = 64.0f;
+            global_bezier.shapes[piece_index].dimensions.y = 64.0f;
+            global_bezier.shapes[piece_index].commands.items =
+                    jk_platform_arena_pointer_get(&storage);
 
-                    if (c == 'M') {
-                        first_pos = new_command->coords[0];
+            JkVector2 prev_pos = {0};
+
+            JkVector2 first_pos = {0};
+            uint64_t pos = 0;
+            int c;
+            while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
+                switch (c) {
+                case 'M':
+                case 'L': {
+                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JK_ASSERT(numbers.count && numbers.count % 2 == 0);
+                    for (int32_t i = 0; i < numbers.count; i += 2) {
+                        JkShapesPenCommand *new_command =
+                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                        new_command->type =
+                                c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
+                        new_command->coords[0] =
+                                (JkVector2){numbers.items[i], numbers.items[i + 1]};
+                        prev_pos = new_command->coords[0];
+
+                        if (c == 'M') {
+                            first_pos = new_command->coords[0];
+                        }
                     }
-                }
-                scratch_arena.pos = 0;
-            } break;
+                    scratch_arena.pos = 0;
+                } break;
 
-            case 'H':
-            case 'V': {
-                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
-                JK_ASSERT(numbers.count);
-                for (int32_t i = 0; i < numbers.count; i++) {
+                case 'H':
+                case 'V': {
+                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JK_ASSERT(numbers.count);
+                    for (int32_t i = 0; i < numbers.count; i++) {
+                        JkShapesPenCommand *new_command =
+                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                        new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
+                        new_command->coords[0] = c == 'H'
+                                ? (JkVector2){numbers.items[i], prev_pos.y}
+                                : (JkVector2){prev_pos.x, numbers.items[i]};
+                        prev_pos = new_command->coords[0];
+                    }
+                    scratch_arena.pos = 0;
+                } break;
+
+                case 'Q': {
+                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JK_ASSERT(numbers.count && numbers.count % 4 == 0);
+                    for (int32_t i = 0; i < numbers.count; i += 4) {
+                        JkShapesPenCommand *new_command =
+                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                        new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
+                        for (int32_t j = 0; j < 2; j++) {
+                            new_command->coords[j] = (JkVector2){
+                                numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
+                        }
+                        prev_pos = new_command->coords[1];
+                    }
+                    scratch_arena.pos = 0;
+                } break;
+
+                case 'C': {
+                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JK_ASSERT(numbers.count && numbers.count % 6 == 0);
+                    for (int32_t i = 0; i < numbers.count; i += 6) {
+                        JkShapesPenCommand *new_command =
+                                jk_platform_arena_push(&storage, sizeof(*new_command));
+                        new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
+                        for (int32_t j = 0; j < 3; j++) {
+                            new_command->coords[j] = (JkVector2){
+                                numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
+                        }
+                        prev_pos = new_command->coords[2];
+                    }
+                    scratch_arena.pos = 0;
+                } break;
+
+                case 'A': {
+                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JK_ASSERT(numbers.count && numbers.count % 7 == 0);
+                    for (int32_t i = 0; i < numbers.count; i += 7) {
+                        JkShapesPenCommand *new_command =
+                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                        new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
+                        new_command->arc.dimensions.x = numbers.items[i];
+                        new_command->arc.dimensions.y = numbers.items[i + 1];
+                        new_command->arc.rotation = numbers.items[i + 2];
+                        if (numbers.items[i + 3]) {
+                            new_command->arc.flags |= JK_SHAPES_ARC_FLAG_LARGE;
+                        }
+                        if (numbers.items[i + 4]) {
+                            new_command->arc.flags |= JK_SHAPES_ARC_FLAG_SWEEP;
+                        }
+                        new_command->arc.point_end.x = numbers.items[i + 5];
+                        new_command->arc.point_end.y = numbers.items[i + 6];
+                        prev_pos = new_command->arc.point_end;
+                    }
+                    scratch_arena.pos = 0;
+                } break;
+
+                case 'Z': {
                     JkShapesPenCommand *new_command =
                             jk_platform_arena_push_zero(&storage, sizeof(*new_command));
                     new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                    new_command->coords[0] = c == 'H' ? (JkVector2){numbers.items[i], prev_pos.y}
-                                                      : (JkVector2){prev_pos.x, numbers.items[i]};
-                    prev_pos = new_command->coords[0];
+                    new_command->coords[0] = first_pos;
+                } break;
+
+                default: {
+                    JK_ASSERT(0 && "Unknown SVG path command character");
+                } break;
                 }
-                scratch_arena.pos = 0;
-            } break;
-
-            case 'Q': {
-                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
-                JK_ASSERT(numbers.count && numbers.count % 4 == 0);
-                for (int32_t i = 0; i < numbers.count; i += 4) {
-                    JkShapesPenCommand *new_command =
-                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                    new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
-                    for (int32_t j = 0; j < 2; j++) {
-                        new_command->coords[j] = (JkVector2){
-                            numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
-                    }
-                    prev_pos = new_command->coords[1];
-                }
-                scratch_arena.pos = 0;
-            } break;
-
-            case 'C': {
-                FloatArray numbers = parse_numbers(&scratch_arena, pawn_string, &pos);
-                JK_ASSERT(numbers.count && numbers.count % 6 == 0);
-                for (int32_t i = 0; i < numbers.count; i += 6) {
-                    JkShapesPenCommand *new_command =
-                            jk_platform_arena_push(&storage, sizeof(*new_command));
-                    new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
-                    for (int32_t j = 0; j < 3; j++) {
-                        new_command->coords[j] = (JkVector2){
-                            numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
-                    }
-                    prev_pos = new_command->coords[2];
-                }
-                scratch_arena.pos = 0;
-            } break;
-
-            case 'Z': {
-                JkShapesPenCommand *new_command =
-                        jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                new_command->coords[0] = first_pos;
-            } break;
-
-            default: {
-            } break;
             }
+
+            global_bezier.shapes[piece_index].commands.count =
+                    (JkShapesPenCommand *)jk_platform_arena_pointer_get(&storage)
+                    - global_bezier.shapes[piece_index].commands.items;
         }
-
-        pawn_commands.count =
-                (JkShapesPenCommand *)jk_platform_arena_pointer_get(&storage) - pawn_commands.items;
-
-        global_bezier.pawn_commands = pawn_commands;
 
         jk_platform_arena_terminate(&scratch_arena);
     }

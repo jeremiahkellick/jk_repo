@@ -8,6 +8,8 @@
 
 #define FRAME_RATE 60
 
+#define PIECE_COUNT 6
+
 #define CLEAR_COLOR_B 0x27
 #define CLEAR_COLOR_G 0x20
 #define CLEAR_COLOR_R 0x16
@@ -23,7 +25,6 @@ typedef struct Bezier {
     void (*debug_print)(char *);
     uint8_t memory[512llu * 1024 * 1024];
     uint8_t scratch_memory[512llu * 1024 * 1024];
-    JkShapesPenCommandArray pawn_commands;
     JkBuffer ttf_file;
     stbtt_fontinfo font;
     b32 initialized;
@@ -32,7 +33,7 @@ typedef struct Bezier {
     JkArena arena;
     void *arena_saved_pointer;
     float prev_scale;
-    JkShape shapes[96];
+    JkShape shapes[PIECE_COUNT + 95];
 } Bezier;
 
 typedef void RenderFunction(Bezier *chess);

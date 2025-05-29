@@ -34,16 +34,35 @@ JK_PUBLIC void jk_shapes_hash_table_set(
 
 // ---- Hash table end ---------------------------------------------------------
 
+typedef enum JkShapesArcFlagIndex {
+    JK_SHAPES_ARC_FLAG_INDEX_LARGE,
+    JK_SHAPES_ARC_FLAG_INDEX_SWEEP,
+} JkShapesArcFlagIndex;
+
+#define JK_SHAPES_ARC_FLAG_LARGE (1llu << JK_SHAPES_ARC_FLAG_INDEX_LARGE)
+#define JK_SHAPES_ARC_FLAG_SWEEP (1llu << JK_SHAPES_ARC_FLAG_INDEX_SWEEP)
+
+typedef struct JkShapesArcByEndpoint {
+    uint32_t flags;
+    JkVector2 dimensions;
+    float rotation;
+    JkVector2 point_end;
+} JkShapesArcByEndpoint;
+
 typedef enum JkShapesPenCommandType {
     JK_SHAPES_PEN_COMMAND_MOVE,
     JK_SHAPES_PEN_COMMAND_LINE,
     JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC,
     JK_SHAPES_PEN_COMMAND_CURVE_CUBIC,
+    JK_SHAPES_PEN_COMMAND_ARC,
 } JkShapesPenCommandType;
 
 typedef struct JkShapesPenCommand {
     JkShapesPenCommandType type;
-    JkVector2 coords[3];
+    union {
+        JkVector2 coords[3];
+        JkShapesArcByEndpoint arc;
+    };
 } JkShapesPenCommand;
 
 typedef struct JkShapesPenCommandArray {

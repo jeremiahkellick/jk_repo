@@ -511,6 +511,28 @@ JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
     return (JkVector2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
+JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v)
+{
+    return v.x * v.x + v.y * v.y;
+}
+
+JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v)
+{
+    return sqrtf(jk_vector_2_magnitude_sqr(v));
+}
+
+JK_PUBLIC float jk_vector_2_dot(JkVector2 u, JkVector2 v)
+{
+    return u.x * v.x + u.y * v.y;
+}
+
+JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v)
+{
+    float sign = u.x * v.y - u.y * v.x < 0.0f ? -1.0f : 1.0f;
+    return sign
+            * acosf(jk_vector_2_dot(u, v) / (jk_vector_2_magnitude(u) * jk_vector_2_magnitude(v)));
+}
+
 JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point)
 {
     return jk_vector_2_add(
@@ -532,6 +554,14 @@ JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b)
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector)
 {
     return (JkIntVector2){jk_round(vector.x), jk_round(vector.y)};
+}
+
+JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector)
+{
+    return (JkVector2){
+        matrix[0][0] * vector.x + matrix[0][1] * vector.y,
+        matrix[1][0] * vector.x + matrix[1][1] * vector.y,
+    };
 }
 
 // ---- JkVector2 end ----------------------------------------------------------

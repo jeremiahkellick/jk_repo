@@ -15,7 +15,7 @@
 #include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
 
-#define CHARACTER_SHAPE_OFFSET 32
+#define CHARACTER_SHAPE_OFFSET (32 - PIECE_COUNT)
 
 static char debug_print_buffer[4096];
 
@@ -73,20 +73,15 @@ void render(Bezier *bezier)
         {
             int32_t advance_width;
             stbtt_GetCodepointHMetrics(&bezier->font, ' ', &advance_width, 0);
-            bezier->shapes[0].advance_width = (float)advance_width;
+            bezier->shapes[PIECE_COUNT].advance_width = (float)advance_width;
         }
-
-        bezier->shapes[JK_ARRAY_COUNT(bezier->shapes) - 1] = (JkShape){
-            .dimensions = {64.0f, 64.0f},
-            .commands = bezier->pawn_commands,
-        };
 
         bezier->font_y0_min = INT32_MAX;
         bezier->font_y1_max = INT32_MIN;
-        for (int32_t codepoint_offset = 1; codepoint_offset < JK_ARRAY_COUNT(bezier->shapes) - 1;
-                codepoint_offset++) {
-            int32_t codepoint = codepoint_offset + CHARACTER_SHAPE_OFFSET;
-            JkShape *shape = bezier->shapes + codepoint_offset;
+        for (int32_t shape_index = PIECE_COUNT + 1; shape_index < JK_ARRAY_COUNT(bezier->shapes);
+                shape_index++) {
+            JkShape *shape = bezier->shapes + shape_index;
+            int32_t codepoint = shape_index + CHARACTER_SHAPE_OFFSET;
 
             int32_t x0, x1, y0, y1;
             stbtt_GetCodepointBox(&bezier->font, codepoint, &x0, &y0, &x1, &y1);
@@ -179,7 +174,7 @@ void render(Bezier *bezier)
     {
         float width = (float)bezier->draw_square_side_length;
         jk_shapes_draw(&renderer,
-                JK_ARRAY_COUNT(bezier->shapes) - 1,
+                4,
                 (JkVector2){width / 4.0f, width / 4.0f},
                 pawn_scale,
                 color_black_pieces);

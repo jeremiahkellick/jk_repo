@@ -175,6 +175,14 @@ JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b);
 
 JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector);
 
+JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v);
+
+JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v);
+
+JK_PUBLIC float jk_vector_2_dot(JkVector2 u, JkVector2 v);
+
+JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v);
+
 JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t);
 
 JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b);
@@ -187,6 +195,8 @@ typedef struct JkTransform2 {
 JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point);
 
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);
+
+JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector);
 
 // ---- JkVector2 end ----------------------------------------------------------
 
