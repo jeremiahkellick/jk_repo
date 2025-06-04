@@ -10,16 +10,11 @@
 #include <x86intrin.h>
 #endif
 
-static double jk_abs(double x)
-{
-    return x < 0 ? -x : x;
-}
-
 JK_PUBLIC double jk_sin(double x)
 {
     double sign = x < 0 ? -1.0 : 1.0;
-    x = jk_abs(x);
-    x = JK_PI / 2.0 - jk_abs(JK_PI / 2.0 - x);
+    x = jk_abs_64(x);
+    x = JK_PI / 2.0 - jk_abs_64(JK_PI / 2.0 - x);
 
     __m128d x_squared = _mm_set_sd(x * x);
     __m128d result = _mm_set_sd(0x1.883c1c5deffbep-49);

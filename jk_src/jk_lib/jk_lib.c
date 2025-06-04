@@ -610,6 +610,16 @@ JK_PUBLIC int32_t jk_round(float value)
     return (int32_t)(value + 0.5f);
 }
 
+JK_PUBLIC float jk_abs(float value)
+{
+    return value < 0.0f ? -value : value;
+}
+
+JK_PUBLIC double jk_abs_64(double value)
+{
+    return value < 0.0f ? -value : value;
+}
+
 JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)
 {
     if (byte_count < 1024) {

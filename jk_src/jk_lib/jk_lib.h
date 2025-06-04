@@ -201,6 +201,10 @@ JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point
 
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);
 
+JK_PUBLIC float jk_abs(float value);
+
+JK_PUBLIC double jk_abs_64(double value);
+
 JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector);
 
 // ---- JkVector2 end ----------------------------------------------------------
