@@ -19,6 +19,11 @@ typedef struct JkBufferArray {
     JkBuffer *items;
 } JkBufferArray;
 
+typedef struct JkSpan {
+    uint64_t size;
+    uint64_t offset;
+} JkSpan;
+
 #define JK_STRING(string_literal) \
     ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
 
@@ -208,6 +213,15 @@ JK_PUBLIC double jk_abs_64(double value);
 JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector);
 
 // ---- JkVector2 end ----------------------------------------------------------
+
+#define JK_KILOBYTE (1llu << 10)
+#define JK_MEGABYTE (1llu << 20)
+#define JK_GIGABYTE (1llu << 30)
+
+typedef struct JkFloatArray {
+    uint64_t count;
+    float *items;
+} JkFloatArray;
 
 typedef struct JkColor {
     union {

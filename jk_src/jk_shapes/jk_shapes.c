@@ -71,8 +71,9 @@ JK_PUBLIC void jk_shapes_hash_table_set(
 #define JK_SHAPES_CAPACITY 1024
 
 JK_PUBLIC void jk_shapes_renderer_init(
-        JkShapesRenderer *renderer, JkShapeArray shapes, JkArena *arena)
+        JkShapesRenderer *renderer, void *base_pointer, JkShapeArray shapes, JkArena *arena)
 {
+    renderer->base_pointer = base_pointer;
     renderer->shapes = shapes;
     renderer->arena = arena;
 
@@ -323,13 +324,15 @@ static JkShapesEdgeArray jk_shapes_edges_get(
     JkShapesPointListNode *current_node = start_node;
 
     for (int32_t i = 0; i < commands.count; i++) {
-        switch (commands.items[i].type) {
+        JkShapesPenCommand *command = commands.items + i;
+
+        switch (command->type) {
         case JK_SHAPES_PEN_COMMAND_MOVE: {
             JkShapesPointListNode *previous_node = current_node;
             current_node = jk_arena_alloc(arena, sizeof(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point = jk_transform_2_apply(transform, commands.items[i].coords[0]);
+            current_node->point = jk_transform_2_apply(transform, command->coords[0]);
             current_node->is_cursor_movement = 1;
         } break;
 
@@ -338,14 +341,14 @@ static JkShapesEdgeArray jk_shapes_edges_get(
             current_node = jk_arena_alloc(arena, sizeof(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point = jk_transform_2_apply(transform, commands.items[i].coords[0]);
+            current_node->point = jk_transform_2_apply(transform, command->coords[0]);
             current_node->is_cursor_movement = 0;
         } break;
 
         case JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC: {
             JkVector2 p0 = current_node->point;
-            JkVector2 p1 = jk_transform_2_apply(transform, commands.items[i].coords[0]);
-            JkVector2 p2 = jk_transform_2_apply(transform, commands.items[i].coords[1]);
+            JkVector2 p1 = jk_transform_2_apply(transform, command->coords[0]);
+            JkVector2 p2 = jk_transform_2_apply(transform, command->coords[1]);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p2, tolerance);
@@ -358,9 +361,9 @@ static JkShapesEdgeArray jk_shapes_edges_get(
 
         case JK_SHAPES_PEN_COMMAND_CURVE_CUBIC: {
             JkVector2 p0 = current_node->point;
-            JkVector2 p1 = jk_transform_2_apply(transform, commands.items[i].coords[0]);
-            JkVector2 p2 = jk_transform_2_apply(transform, commands.items[i].coords[1]);
-            JkVector2 p3 = jk_transform_2_apply(transform, commands.items[i].coords[2]);
+            JkVector2 p1 = jk_transform_2_apply(transform, command->coords[0]);
+            JkVector2 p2 = jk_transform_2_apply(transform, command->coords[1]);
+            JkVector2 p3 = jk_transform_2_apply(transform, command->coords[2]);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p3, tolerance);
@@ -372,8 +375,8 @@ static JkShapesEdgeArray jk_shapes_edges_get(
         } break;
 
         case JK_SHAPES_PEN_COMMAND_ARC: {
-            JkShapesArcByCenter arc = jk_shapes_arc_endpoint_to_center(
-                    transform, current_node->point, commands.items[i].arc);
+            JkShapesArcByCenter arc =
+                    jk_shapes_arc_endpoint_to_center(transform, current_node->point, command->arc);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, arc.point_end, tolerance);
@@ -455,8 +458,11 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
             float *coverage = jk_arena_alloc(renderer->arena, coverage_size);
             float *fill = jk_arena_alloc(renderer->arena, coverage_size);
 
+            JkShapesPenCommandArray commands;
+            commands.count = shape.commands.size / sizeof(commands.items[0]);
+            commands.items = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
             JkShapesEdgeArray edges =
-                    jk_shapes_edges_get(renderer->arena, shape.commands, transform, 0.25f);
+                    jk_shapes_edges_get(renderer->arena, commands, transform, 0.25f);
 
             for (int32_t y = 0; y < bitmp.dimensions.y; y++) {
                 memset(coverage, 0, coverage_size * 2);

@@ -1,12 +1,12 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <windows.h>
 
 #include "bezier.h"
+#include "jk_src/chess/chess.h"
 #include "jk_src/jk_lib/jk_lib.h"
 #include "jk_src/jk_shapes/jk_shapes.h"
 
@@ -14,6 +14,7 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
+#include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
 
 static char debug_print_buffer[4096];
@@ -30,10 +31,11 @@ static int win32_debug_printf(char *format, ...)
 
 static JkIntVector2 global_window_dimensions;
 static Bezier global_bezier = {0};
+static ChessAssets *global_assets;
 
 static b32 global_running;
 
-static RenderFunction *global_render = 0;
+static BezierRenderFunction *global_bezier_render = 0;
 
 static JkColor clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
@@ -232,14 +234,15 @@ DWORD game_thread(LPVOID param)
                 bezier_dll_last_modified_time = bezier_dll_info.ftLastWriteTime;
                 if (bezier_library) {
                     FreeLibrary(bezier_library);
-                    global_render = 0;
+                    global_bezier_render = 0;
                 }
                 if (!CopyFileA("bezier.dll", "bezier_tmp.dll", FALSE)) {
                     OutputDebugStringA("Failed to copy bezier.dll to bezier_tmp.dll\n");
                 }
                 bezier_library = LoadLibraryA("bezier_tmp.dll");
                 if (bezier_library) {
-                    global_render = (RenderFunction *)GetProcAddress(bezier_library, "render");
+                    global_bezier_render =
+                            (BezierRenderFunction *)GetProcAddress(bezier_library, "bezier_render");
                 } else {
                     OutputDebugStringA("Failed to load bezier_tmp.dll\n");
                 }
@@ -255,7 +258,7 @@ DWORD game_thread(LPVOID param)
                     DRAW_BUFFER_SIDE_LENGTH});
         Rect draw_rect = draw_rect_get();
 
-        global_render(&global_bezier);
+        global_bezier_render(global_assets, &global_bezier);
         global_bezier.time++;
 
         uint64_t counter_work = jk_platform_os_timer_get();
@@ -321,37 +324,6 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-typedef struct FloatArray {
-    uint64_t count;
-    float *items;
-} FloatArray;
-
-static FloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string, uint64_t *pos)
-{
-    FloatArray result = {.items = jk_platform_arena_pointer_get(arena)};
-    int c;
-    while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
-            && (isdigit(c) || isspace(c) || c == ',')) {
-        if (isdigit(c)) {
-            uint64_t start = *pos - 1;
-            do {
-                c = jk_buffer_character_next(shape_string, pos);
-            } while (isdigit(c) || c == '.');
-            JkBuffer number_string = {
-                .size = (*pos - 1) - start,
-                .data = shape_string.data + start,
-            };
-            float *new_number = jk_platform_arena_push(arena, sizeof(*new_number));
-            *new_number = (float)jk_parse_double(number_string);
-        }
-    }
-    result.count = (float *)jk_platform_arena_pointer_get(arena) - result.items;
-    if (c != EOF) {
-        (*pos)--;
-    }
-    return result;
-}
-
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
     jk_platform_set_working_directory_to_executable_directory();
@@ -360,9 +332,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
             PAGE_READWRITE);
-    global_bezier.arena.memory.size = 1024 * 1024 * 1024;
-    global_bezier.arena.memory.data =
-            VirtualAlloc(0, global_bezier.arena.memory.size, MEM_COMMIT, PAGE_READWRITE);
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_bezier.cpu_timer_get = jk_platform_cpu_timer_get;
     global_bezier.debug_print = debug_print;
@@ -370,150 +339,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     JkPlatformArena storage;
     jk_platform_arena_init(&storage, 5llu * 1024 * 1024 * 1024);
 
-    { // Parse shape string
-        JkPlatformArena scratch_arena;
-        jk_platform_arena_init(&scratch_arena, 5llu * 1024 * 1024 * 1024);
-
-        JkBufferArray piece_strings =
-                jk_platform_file_read_lines(&scratch_arena, "chess_paths.txt");
-        JK_ASSERT(piece_strings.count == PIECE_COUNT - 1);
-
-        void *scratch_arena_saved_pointer = jk_platform_arena_pointer_get(&scratch_arena);
-
-        for (int32_t piece_index = 1; piece_index < PIECE_COUNT; piece_index++) {
-            JkBuffer piece_string = piece_strings.items[piece_index - 1];
-
-            global_bezier.shapes[piece_index].dimensions.x = 64.0f;
-            global_bezier.shapes[piece_index].dimensions.y = 64.0f;
-            global_bezier.shapes[piece_index].commands.items =
-                    jk_platform_arena_pointer_get(&storage);
-
-            JkVector2 prev_pos = {0};
-
-            JkVector2 first_pos = {0};
-            uint64_t pos = 0;
-            int c;
-            while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
-                switch (c) {
-                case 'M':
-                case 'L': {
-                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
-                    JK_ASSERT(numbers.count && numbers.count % 2 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 2) {
-                        JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                        new_command->type =
-                                c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->coords[0] =
-                                (JkVector2){numbers.items[i], numbers.items[i + 1]};
-                        prev_pos = new_command->coords[0];
-
-                        if (c == 'M') {
-                            first_pos = new_command->coords[0];
-                        }
-                    }
-                    scratch_arena.pos = 0;
-                } break;
-
-                case 'H':
-                case 'V': {
-                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
-                    JK_ASSERT(numbers.count);
-                    for (int32_t i = 0; i < numbers.count; i++) {
-                        JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                        new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->coords[0] = c == 'H'
-                                ? (JkVector2){numbers.items[i], prev_pos.y}
-                                : (JkVector2){prev_pos.x, numbers.items[i]};
-                        prev_pos = new_command->coords[0];
-                    }
-                    scratch_arena.pos = 0;
-                } break;
-
-                case 'Q': {
-                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
-                    JK_ASSERT(numbers.count && numbers.count % 4 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 4) {
-                        JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                        new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
-                        for (int32_t j = 0; j < 2; j++) {
-                            new_command->coords[j] = (JkVector2){
-                                numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
-                        }
-                        prev_pos = new_command->coords[1];
-                    }
-                    scratch_arena.pos = 0;
-                } break;
-
-                case 'C': {
-                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
-                    JK_ASSERT(numbers.count && numbers.count % 6 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 6) {
-                        JkShapesPenCommand *new_command =
-                                jk_platform_arena_push(&storage, sizeof(*new_command));
-                        new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
-                        for (int32_t j = 0; j < 3; j++) {
-                            new_command->coords[j] = (JkVector2){
-                                numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
-                        }
-                        prev_pos = new_command->coords[2];
-                    }
-                    scratch_arena.pos = 0;
-                } break;
-
-                case 'A': {
-                    FloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
-                    JK_ASSERT(numbers.count && numbers.count % 7 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 7) {
-                        JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                        new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
-                        new_command->arc.dimensions.x = numbers.items[i];
-                        new_command->arc.dimensions.y = numbers.items[i + 1];
-                        new_command->arc.rotation = numbers.items[i + 2] * (float)JK_PI / 180.0f;
-                        if (numbers.items[i + 3]) {
-                            new_command->arc.flags |= JK_SHAPES_ARC_FLAG_LARGE;
-                        }
-                        if (numbers.items[i + 4]) {
-                            new_command->arc.flags |= JK_SHAPES_ARC_FLAG_SWEEP;
-                        }
-                        new_command->arc.point_end.x = numbers.items[i + 5];
-                        new_command->arc.point_end.y = numbers.items[i + 6];
-                        prev_pos = new_command->arc.point_end;
-                    }
-                    scratch_arena.pos = 0;
-                } break;
-
-                case 'Z': {
-                    JkShapesPenCommand *new_command =
-                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
-                    new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                    new_command->coords[0] = first_pos;
-                } break;
-
-                default: {
-                    JK_ASSERT(0 && "Unknown SVG path command character");
-                } break;
-                }
-
-                jk_platform_arena_pointer_set(&scratch_arena, scratch_arena_saved_pointer);
-            }
-
-            global_bezier.shapes[piece_index].commands.count =
-                    (JkShapesPenCommand *)jk_platform_arena_pointer_get(&storage)
-                    - global_bezier.shapes[piece_index].commands.items;
-        }
-
-        jk_platform_arena_terminate(&scratch_arena);
-    }
-
-    char *ttf_file_name = "AmiriQuran-Regular.ttf";
-    global_bezier.ttf_file = jk_platform_file_read_full(&storage, ttf_file_name);
-    if (!global_bezier.ttf_file.size) {
-        win32_debug_printf("Failed to read file '%s'\n", ttf_file_name);
-    }
+    global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
 
     if (global_bezier.draw_buffer) {
         WNDCLASSA window_class = {

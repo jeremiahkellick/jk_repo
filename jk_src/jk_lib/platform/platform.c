@@ -647,9 +647,9 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
 // ---- Arena begin ------------------------------------------------------------
 
 JK_PUBLIC JkPlatformArenaInitResult jk_platform_arena_init(
-        JkPlatformArena *arena, size_t virtual_size)
+        JkPlatformArena *arena, uint64_t virtual_size)
 {
-    size_t page_size = jk_platform_page_size();
+    uint64_t page_size = jk_platform_page_size();
 
     arena->virtual_size = virtual_size;
     arena->size = page_size;
@@ -671,14 +671,14 @@ JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena)
     jk_platform_memory_free(arena->address, arena->virtual_size);
 }
 
-JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, size_t size)
+JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, uint64_t size)
 {
-    size_t new_pos = arena->pos + size;
+    uint64_t new_pos = arena->pos + size;
     if (new_pos > arena->virtual_size) {
         return NULL;
     }
     if (new_pos > arena->size) {
-        size_t expansion_size = jk_platform_page_size_round_up(new_pos - arena->size);
+        uint64_t expansion_size = jk_platform_page_size_round_up(new_pos - arena->size);
         if (!jk_platform_memory_commit(arena->address + arena->size, expansion_size)) {
             return NULL;
         }
@@ -689,14 +689,14 @@ JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, size_t size)
     return address;
 }
 
-JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, size_t size)
+JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, uint64_t size)
 {
     void *pointer = jk_platform_arena_push(arena, size);
     memset(pointer, 0, size);
     return pointer;
 }
 
-JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, size_t size)
+JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size)
 {
     if (size > arena->pos) {
         return JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS;

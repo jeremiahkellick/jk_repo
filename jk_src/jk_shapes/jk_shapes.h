@@ -74,7 +74,7 @@ typedef struct JkShape {
     JkVector2 offset;
     JkVector2 dimensions;
     float advance_width;
-    JkShapesPenCommandArray commands;
+    JkSpan commands;
 } JkShape;
 
 typedef struct JkShapeArray {
@@ -99,6 +99,7 @@ typedef struct JkShapesDrawCommandArray {
 } JkShapesDrawCommandArray;
 
 typedef struct JkShapesRenderer {
+    uint8_t *base_pointer;
     JkShapeArray shapes;
     JkArena *arena;
     JkShapesHashTable hash_table;
@@ -131,7 +132,7 @@ typedef struct JkShapesEdgeArray {
 } JkShapesEdgeArray;
 
 JK_PUBLIC void jk_shapes_renderer_init(
-        JkShapesRenderer *renderer, JkShapeArray shapes, JkArena *arena);
+        JkShapesRenderer *renderer, void *base_pointer, JkShapeArray shapes, JkArena *arena);
 
 JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         uint32_t shape_index,

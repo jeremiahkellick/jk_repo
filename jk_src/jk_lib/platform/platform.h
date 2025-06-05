@@ -127,9 +127,9 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void);
 // ---- Arena begin ------------------------------------------------------------
 
 typedef struct JkPlatformArena {
-    size_t virtual_size;
-    size_t size;
-    size_t pos;
+    uint64_t virtual_size;
+    uint64_t size;
+    uint64_t pos;
     uint8_t *address;
 } JkPlatformArena;
 
@@ -139,20 +139,20 @@ typedef enum JkPlatformArenaInitResult {
 } JkPlatformArenaInitResult;
 
 JK_PUBLIC JkPlatformArenaInitResult jk_platform_arena_init(
-        JkPlatformArena *arena, size_t virtual_size);
+        JkPlatformArena *arena, uint64_t virtual_size);
 
 JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena);
 
-JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, size_t size);
+JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, uint64_t size);
 
-JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, size_t size);
+JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, uint64_t size);
 
 typedef enum JkPlatformArenaPopResult {
     JK_PLATFORM_ARENA_POP_SUCCESS,
     JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS,
 } JkPlatformArenaPopResult;
 
-JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, size_t size);
+JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size);
 
 JK_PUBLIC void *jk_platform_arena_pointer_get(JkPlatformArena *arena);
 

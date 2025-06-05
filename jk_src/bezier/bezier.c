@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 // #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:bezier.dll /EXPORT:render
+// #jk_build linker_arguments /OUT:bezier.dll /EXPORT:bezier_render
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
@@ -14,8 +14,6 @@
 #include <jk_src/jk_shapes/jk_shapes.h>
 #include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
-
-#define CHARACTER_SHAPE_OFFSET (32 - PIECE_COUNT)
 
 static char debug_print_buffer[4096];
 
@@ -62,114 +60,31 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
     return result;
 }
 
-void render(Bezier *bezier)
+void bezier_render(ChessAssets *assets, Bezier *bezier)
 {
-    if (!bezier->initialized) {
-        bezier->initialized = 1;
-        stbtt_InitFont(&bezier->font,
-                bezier->ttf_file.data,
-                stbtt_GetFontOffsetForIndex(bezier->ttf_file.data, 0));
-
-        {
-            int32_t advance_width;
-            stbtt_GetCodepointHMetrics(&bezier->font, ' ', &advance_width, 0);
-            bezier->shapes[PIECE_COUNT].advance_width = (float)advance_width;
-        }
-
-        bezier->font_y0_min = INT32_MAX;
-        bezier->font_y1_max = INT32_MIN;
-        for (int32_t shape_index = PIECE_COUNT + 1; shape_index < JK_ARRAY_COUNT(bezier->shapes);
-                shape_index++) {
-            JkShape *shape = bezier->shapes + shape_index;
-            int32_t codepoint = shape_index + CHARACTER_SHAPE_OFFSET;
-
-            int32_t x0, x1, y0, y1;
-            stbtt_GetCodepointBox(&bezier->font, codepoint, &x0, &y0, &x1, &y1);
-
-            // Since the font uses y values that grow from the bottom. Negate and swap y0 and y1.
-            int32_t tmp = y0;
-            y0 = -y1;
-            y1 = -tmp;
-
-            shape->offset.x = (float)x0;
-            shape->offset.y = (float)y0;
-            shape->dimensions.x = (float)(x1 - x0);
-            shape->dimensions.y = (float)(y1 - y0);
-
-            int32_t advance_width;
-            stbtt_GetCodepointHMetrics(&bezier->font, codepoint, &advance_width, 0);
-            shape->advance_width = (float)advance_width;
-
-            if (y0 < bezier->font_y0_min) {
-                bezier->font_y0_min = y0;
-            }
-            if (bezier->font_y1_max < y1) {
-                bezier->font_y1_max = y1;
-            }
-
-            stbtt_vertex *verticies;
-            shape->commands.count = stbtt_GetCodepointShape(&bezier->font, codepoint, &verticies);
-            shape->commands.items = jk_arena_alloc_zero(
-                    &bezier->arena, shape->commands.count * sizeof(shape->commands.items[0]));
-            for (int32_t i = 0; i < shape->commands.count; i++) {
-                switch (verticies[i].type) {
-                case STBTT_vmove:
-                case STBTT_vline: {
-                    shape->commands.items[i].type = verticies[i].type == STBTT_vmove
-                            ? JK_SHAPES_PEN_COMMAND_MOVE
-                            : JK_SHAPES_PEN_COMMAND_LINE;
-                    shape->commands.items[i].coords[0].x = (float)verticies[i].x;
-                    shape->commands.items[i].coords[0].y = (float)-verticies[i].y;
-                } break;
-
-                case STBTT_vcurve: {
-                    shape->commands.items[i].type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
-                    shape->commands.items[i].coords[0].x = (float)verticies[i].cx;
-                    shape->commands.items[i].coords[0].y = (float)-verticies[i].cy;
-                    shape->commands.items[i].coords[1].x = (float)verticies[i].x;
-                    shape->commands.items[i].coords[1].y = (float)-verticies[i].y;
-                } break;
-
-                case STBTT_vcubic: {
-                    shape->commands.items[i].type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
-                    shape->commands.items[i].coords[0].x = (float)verticies[i].cx;
-                    shape->commands.items[i].coords[0].y = (float)-verticies[i].cy;
-                    shape->commands.items[i].coords[1].x = (float)verticies[i].cx1;
-                    shape->commands.items[i].coords[1].y = (float)-verticies[i].cy1;
-                    shape->commands.items[i].coords[2].x = (float)verticies[i].x;
-                    shape->commands.items[i].coords[2].y = (float)-verticies[i].y;
-                } break;
-
-                default: {
-                    JK_ASSERT(0 && "Unsupported vertex type");
-                } break;
-                }
-            }
-        }
-
-        bezier->arena_saved_pointer = jk_arena_pointer_get(&bezier->arena);
-    }
-
     JkBuffer display_string = JKS("Hello, world!");
-    float first_point = -bezier->shapes[display_string.data[0] - CHARACTER_SHAPE_OFFSET].offset.x;
+    float first_point = -assets->shapes[display_string.data[0] - CHARACTER_SHAPE_OFFSET].offset.x;
     float last_point = first_point;
     for (int32_t i = 0; i < display_string.size - 1; i++) {
-        last_point += bezier->shapes[display_string.data[i] - CHARACTER_SHAPE_OFFSET].advance_width;
+        last_point += assets->shapes[display_string.data[i] - CHARACTER_SHAPE_OFFSET].advance_width;
     }
-    JkShape *last_character = bezier->shapes
+    JkShape *last_character = assets->shapes
             + (display_string.data[display_string.size - 1] - CHARACTER_SHAPE_OFFSET);
     float display_string_width =
             last_point + last_character->offset.x + last_character->dimensions.x;
-    int32_t display_string_height = bezier->font_y1_max - bezier->font_y0_min;
+    int32_t display_string_height = assets->font_y1_max - assets->font_y0_min;
     int32_t max_dimension = JK_MAX(jk_round(display_string_width), display_string_height);
 
     float scale = (float)(bezier->draw_square_side_length - 1) / (float)max_dimension;
     float pawn_scale = (float)bezier->draw_square_side_length / (4.0f * 64.0f);
 
+    JkArena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
+
     JkShapesRenderer renderer;
     jk_shapes_renderer_init(&renderer,
-            (JkShapeArray){.count = JK_ARRAY_COUNT(bezier->shapes), .items = bezier->shapes},
-            &bezier->arena);
+            assets,
+            (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes},
+            &arena);
 
     {
         float width = (float)bezier->draw_square_side_length;
@@ -179,7 +94,7 @@ void render(Bezier *bezier)
                 pawn_scale,
                 color_black_pieces);
 
-        JkVector2 current_point = {scale * first_point, -scale * bezier->font_y0_min};
+        JkVector2 current_point = {scale * first_point, -scale * assets->font_y0_min};
         for (int32_t i = 0; i < display_string.size; i++) {
             current_point.x += jk_shapes_draw(&renderer,
                     display_string.data[i] - CHARACTER_SHAPE_OFFSET,
@@ -221,7 +136,4 @@ void render(Bezier *bezier)
             }
         }
     }
-
-    bezier->prev_scale = scale;
-    jk_arena_pointer_set(&bezier->arena, bezier->arena_saved_pointer);
 }

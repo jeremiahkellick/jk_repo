@@ -1518,13 +1518,13 @@ void update(Chess *chess)
 
         chess->flags = FLAG_INITIALIZED;
         chess->player_types[0] = PLAYER_HUMAN;
-        chess->player_types[1] = PLAYER_AI;
+        chess->player_types[1] = PLAYER_HUMAN;
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
-        // memcpy(&chess->board, &starting_state, sizeof(chess->board));
-        chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
+        memcpy(&chess->board, &starting_state, sizeof(chess->board));
+        // chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
         moves_get(&chess->moves, chess->board);
         if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
             chess->flags |= FLAG_REQUEST_AI_MOVE;

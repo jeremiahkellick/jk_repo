@@ -1,14 +1,12 @@
 #ifndef BEZIER_H
 #define BEZIER_H
 
+#include <jk_src/chess/chess.h>
 #include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_shapes/jk_shapes.h>
-#include <jk_src/stb/stb_truetype.h>
 #include <stdint.h>
 
 #define FRAME_RATE 60
-
-#define PIECE_COUNT 7
 
 #define CLEAR_COLOR_B 0x27
 #define CLEAR_COLOR_G 0x20
@@ -24,19 +22,9 @@ typedef struct Bezier {
     uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
     uint8_t memory[512llu * 1024 * 1024];
-    uint8_t scratch_memory[512llu * 1024 * 1024];
-    JkBuffer ttf_file;
-    stbtt_fontinfo font;
-    b32 initialized;
-    int32_t font_y0_min;
-    int32_t font_y1_max;
-    JkArena arena;
-    void *arena_saved_pointer;
-    float prev_scale;
-    JkShape shapes[PIECE_COUNT + 95];
 } Bezier;
 
-typedef void RenderFunction(Bezier *chess);
-RenderFunction render;
+typedef void BezierRenderFunction(ChessAssets *assets, Bezier *bezier);
+BezierRenderFunction bezier_render;
 
 #endif

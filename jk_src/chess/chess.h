@@ -2,6 +2,7 @@
 #define CHESS_H
 
 #include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_shapes/jk_shapes.h>
 #include <stdint.h>
 
 #define SAMPLES_PER_SECOND 48000
@@ -61,17 +62,12 @@ typedef enum SoundIndex {
     SOUND_COUNT,
 } SoundIndex;
 
-typedef struct Sound {
-    int64_t size;
-    int64_t offset;
-} Sound;
-
 typedef struct Audio {
     // Platform read-write, game read-only
     int64_t sample_count;
     AudioSample *sample_buffer;
     int16_t *asset_data;
-    Sound sounds[SOUND_COUNT];
+    JkSpan sounds[SOUND_COUNT];
 
     // Platform doesn't access, game read-write
     int64_t time;
@@ -100,6 +96,8 @@ typedef enum PieceType {
     PAWN,
     PIECE_TYPE_COUNT,
 } PieceType;
+
+#define CHARACTER_SHAPE_OFFSET (32 - PIECE_TYPE_COUNT)
 
 typedef struct Piece {
     PieceType type;
@@ -178,6 +176,13 @@ typedef enum Result {
     RESULT_STALEMATE,
     RESULT_CHECKMATE,
 } Result;
+
+typedef struct ChessAssets {
+    int32_t font_y0_min;
+    int32_t font_y1_max;
+    JkShape shapes[PIECE_TYPE_COUNT + 95];
+    JkSpan sounds[SOUND_COUNT];
+} ChessAssets;
 
 typedef struct Chess {
     uint64_t flags;
