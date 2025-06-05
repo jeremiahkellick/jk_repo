@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <stdlib.h>
 
 // #jk_build single_translation_unit
@@ -6,7 +5,10 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/perfaware/part2/haversine_lib.h>
+#include <jk_src/perfaware/part4/custom_math_functions.h>
 // #jk_build dependencies_end
+
+#define RADIANS_PER_DEGREE (JK_PI / 180.0)
 
 typedef enum Opt {
     OPT_HELP,
@@ -73,13 +75,18 @@ int main(int argc, char **argv)
 
     JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * sizeof(context.pairs[0]));
     double sum = 0.0;
-    double sum_coefficient = 1.0 / (double)context.pair_count;
     for (size_t i = 0; i < context.pair_count; i++) {
-        double distance = haversine_reference(context.pairs[i].v[X0],
-                context.pairs[i].v[Y0],
-                context.pairs[i].v[X1],
-                context.pairs[i].v[Y1],
-                EARTH_RADIUS);
+        double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
+        double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double dLat = lat2 - lat1;
+        double dLon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+
+        double a = square(jk_sin(dLat / 2.0))
+                + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2.0));
+        double distance = jk_asin(jk_sqrt(a));
 
 #ifndef NDEBUG
         if (context.answers) {
@@ -87,8 +94,9 @@ int main(int argc, char **argv)
         }
 #endif
 
-        sum += distance * sum_coefficient;
+        sum += distance;
     }
+    sum = (2.0 * EARTH_RADIUS * sum) / context.pair_count;
     JK_PLATFORM_PROFILE_ZONE_END(sum);
 
     printf("Pair count: %llu\n", context.pair_count);
