@@ -287,6 +287,95 @@ JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test,
 
 // ---- Profile end ------------------------------------------------------------
 
+// ---- File formats begin -----------------------------------------------------
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkBitmapHeader {
+#else
+typedef struct __attribute__((packed)) JkBitmapHeader {
+#endif
+    uint16_t identifier;
+    uint32_t size;
+    uint32_t reserved;
+    uint32_t offset;
+    uint32_t info_header_size;
+    uint32_t width;
+    uint32_t height;
+} JkBitmapHeader;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkRiffChunk {
+#else
+typedef struct __attribute__((packed)) JkRiffChunk {
+#endif
+    uint32_t id;
+    uint32_t size;
+    uint8_t data[];
+} JkRiffChunk;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkRiffChunkMain {
+#else
+typedef struct __attribute__((packed)) JkRiffChunkMain {
+#endif
+    uint32_t id;
+    uint32_t size;
+    uint32_t form_type;
+    uint8_t chunk_first[];
+} JkRiffChunkMain;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkWavFormat {
+#else
+typedef struct __attribute__((packed)) JkWavFormat {
+#endif
+    uint16_t format_tag;
+    uint16_t channel_count;
+    uint32_t samples_per_second;
+    uint32_t average_bytes_per_second;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+    uint16_t size;
+    uint16_t valid_bits_per_sample;
+    uint32_t channel_mask;
+    uint8_t sub_format[16];
+} JkWavFormat;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#define JK_RIFF_ID(c0, c1, c2, c3)                                          \
+    (((uint32_t)(c0) << 0) | ((uint32_t)(c1) << 8) | ((uint32_t)(c2) << 16) \
+            | ((uint32_t)(c3) << 24))
+
+typedef enum RiffId {
+    JK_RIFF_ID_RIFF = JK_RIFF_ID('R', 'I', 'F', 'F'),
+    JK_RIFF_ID_WAV = JK_RIFF_ID('W', 'A', 'V', 'E'),
+    JK_RIFF_ID_FMT = JK_RIFF_ID('f', 'm', 't', ' '),
+    JK_RIFF_ID_DATA = JK_RIFF_ID('d', 'a', 't', 'a'),
+} RiffId;
+
+#define JK_WAV_FORMAT_PCM 0x1
+
+JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk);
+
+JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk);
+
+// ---- File formats end -------------------------------------------------------
+
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);

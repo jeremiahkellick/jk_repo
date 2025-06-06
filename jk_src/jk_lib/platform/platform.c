@@ -1011,6 +1011,20 @@ JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test,
 
 // ---- Repetition test end ----------------------------------------------------
 
+// ---- File formats begin -----------------------------------------------------
+
+JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk)
+{
+    return ((uint8_t *)chunk - (uint8_t *)&chunk_main->form_type) < chunk_main->size;
+}
+
+JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
+{
+    return (JkRiffChunk *)(chunk->data + ((chunk->size + 1) & ~1));
+}
+
+// ---- File formats end -------------------------------------------------------
+
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n)
 {
     size_t page_size = jk_platform_page_size();

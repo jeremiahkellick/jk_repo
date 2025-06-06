@@ -5,7 +5,6 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 #include <windows.h>
 #include <xinput.h>
 
@@ -29,73 +28,7 @@ typedef struct AudioBufferRegion {
     void *data;
 } AudioBufferRegion;
 
-char *sound_file_paths[SOUND_COUNT] = {
-    0, // SOUND_NONE
-    "chess_move.wav",
-    "chess_capture.wav",
-};
-
 // ---- File formats begin -----------------------------------------------------
-
-#pragma pack(push, 1)
-
-typedef struct BitmapHeader {
-    uint16_t identifier;
-    uint32_t size;
-    uint32_t reserved;
-    uint32_t offset;
-} BitmapHeader;
-
-typedef struct RiffChunk {
-    uint32_t id;
-    uint32_t size;
-    uint8_t data[];
-} RiffChunk;
-
-typedef struct RiffChunkMain {
-    uint32_t id;
-    uint32_t size;
-    uint32_t form_type;
-    uint8_t chunk_first[];
-} RiffChunkMain;
-
-typedef struct WavFormat {
-    uint16_t format_tag;
-    uint16_t channel_count;
-    uint32_t samples_per_second;
-    uint32_t average_bytes_per_second;
-    uint16_t block_align;
-    uint16_t bits_per_sample;
-    uint16_t size;
-    uint16_t valid_bits_per_sample;
-    uint32_t channel_mask;
-    uint8_t sub_format[16];
-} WavFormat;
-
-#pragma pack(pop)
-
-#define RIFF_ID(c0, c1, c2, c3)                                             \
-    (((uint32_t)(c0) << 0) | ((uint32_t)(c1) << 8) | ((uint32_t)(c2) << 16) \
-            | ((uint32_t)(c3) << 24))
-
-typedef enum RiffId {
-    RIFF_ID_RIFF = RIFF_ID('R', 'I', 'F', 'F'),
-    RIFF_ID_WAV = RIFF_ID('W', 'A', 'V', 'E'),
-    RIFF_ID_FMT = RIFF_ID('f', 'm', 't', ' '),
-    RIFF_ID_DATA = RIFF_ID('d', 'a', 't', 'a'),
-} RiffId;
-
-#define WAV_FORMAT_PCM 0x1
-
-b32 riff_chunk_valid(RiffChunkMain *chunk_main, RiffChunk *chunk)
-{
-    return ((uint8_t *)chunk - (uint8_t *)&chunk_main->form_type) < chunk_main->size;
-}
-
-RiffChunk *riff_chunk_next(RiffChunk *chunk)
-{
-    return (RiffChunk *)(chunk->data + ((chunk->size + 1) & ~1));
-}
 
 // ---- File formats end -------------------------------------------------------
 
@@ -150,6 +83,7 @@ static int win32_debug_printf(char *format, ...)
 
 static JkIntVector2 global_window_dimensions;
 static Chess global_chess = {0};
+static ChessAssets *global_assets;
 
 static b32 global_running;
 static int64_t global_keys_down;
@@ -674,7 +608,7 @@ DWORD game_thread(LPVOID param)
         }
         ReleaseSRWLockExclusive(&global_move_lock);
 
-        global_update(&global_chess);
+        global_update(global_assets, &global_chess);
 
         if (global_chess.flags & FLAG_REQUEST_AI_MOVE) {
             global_chess.flags &= ~FLAG_REQUEST_AI_MOVE;
@@ -719,7 +653,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        global_render(&global_chess);
+        global_render(global_assets, &global_chess);
 
         uint64_t counter_work = jk_platform_os_timer_get();
         uint64_t counter_current = counter_work;
@@ -847,7 +781,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         // Load image data
         JkBuffer image_file = jk_platform_file_read_full(&storage, "chess_atlas.bmp");
         if (image_file.size) {
-            BitmapHeader *header = (BitmapHeader *)image_file.data;
+            JkBitmapHeader *header = (JkBitmapHeader *)image_file.data;
             Color *pixels = (Color *)(image_file.data + header->offset);
             for (int32_t y = 0; y < ATLAS_HEIGHT; y++) {
                 int32_t atlas_y = ATLAS_HEIGHT - y - 1;
@@ -859,78 +793,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             OutputDebugStringA("Failed to load chess_atlas.bmp\n");
         }
 
-        storage.pos = 0;
-
-        uint64_t total_asset_data_size = 0;
-        JkBuffer sound_data[SOUND_COUNT] = {0};
-
-        // Load sounds
-        for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
-            if (sound_file_paths[i]) {
-                JkBuffer audio_file = jk_platform_file_read_full(&storage, sound_file_paths[i]);
-                if (audio_file.size) {
-                    b32 error = 0;
-                    RiffChunkMain *chunk_main = (RiffChunkMain *)audio_file.data;
-                    if (chunk_main->id == RIFF_ID_RIFF && chunk_main->form_type == RIFF_ID_WAV) {
-                        for (RiffChunk *chunk = (RiffChunk *)chunk_main->chunk_first;
-                                riff_chunk_valid(chunk_main, chunk);
-                                chunk = riff_chunk_next(chunk)) {
-                            switch (chunk->id) {
-                            case RIFF_ID_FMT: {
-                                WavFormat *format = (WavFormat *)chunk->data;
-                                if (format->format_tag != WAV_FORMAT_PCM
-                                        || format->channel_count != 1
-                                        || format->samples_per_second != 48000
-                                        || format->bits_per_sample != 16) {
-                                    error = 1;
-                                }
-                            } break;
-
-                            case RIFF_ID_DATA: {
-                                sound_data[i].size = chunk->size;
-                                sound_data[i].data = chunk->data;
-                                total_asset_data_size += chunk->size;
-                            } break;
-
-                            default: {
-                            } break;
-                            }
-                        }
-                    } else {
-                        error = 1;
-                    }
-                    if (error) {
-                        win32_debug_printf(
-                                "Something's wrong with the contents of %s\n", sound_file_paths[i]);
-                    }
-                } else {
-                    win32_debug_printf("Failed to load %s\n", sound_file_paths[i]);
-                }
-            }
-        }
-
-        if (total_asset_data_size) {
-            global_chess.audio.asset_data =
-                    VirtualAlloc(0, total_asset_data_size, MEM_COMMIT, PAGE_READWRITE);
-            if (global_chess.audio.asset_data) {
-                uint64_t cursor = 0;
-                for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
-                    if (sound_data[i].size) {
-                        memcpy(global_chess.audio.asset_data + cursor,
-                                sound_data[i].data,
-                                sound_data[i].size);
-                        uint64_t sample_count = sound_data[i].size / sizeof(uint16_t);
-                        global_chess.audio.sounds[i].size = sample_count;
-                        global_chess.audio.sounds[i].offset = cursor;
-                        cursor += sample_count;
-                    }
-                }
-            } else {
-                OutputDebugStringA("Failed to allocate memory for audio data\n");
-            }
-        }
-
-        jk_platform_arena_terminate(&storage);
+        global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
+    } else {
+        OutputDebugStringA("Failed to initialize storage arena\n");
     }
 
     global_board_lock = CreateSemaphoreA(0, 0, 1, 0);

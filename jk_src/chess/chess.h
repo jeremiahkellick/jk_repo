@@ -66,8 +66,6 @@ typedef struct Audio {
     // Platform read-write, game read-only
     int64_t sample_count;
     AudioSample *sample_buffer;
-    int16_t *asset_data;
-    JkSpan sounds[SOUND_COUNT];
 
     // Platform doesn't access, game read-write
     int64_t time;
@@ -212,10 +210,10 @@ typedef struct Chess {
 typedef Move AiMoveGetFunction(Chess *chess);
 AiMoveGetFunction ai_move_get;
 
-typedef void UpdateFunction(Chess *chess);
+typedef void UpdateFunction(ChessAssets *assets, Chess *chess);
 UpdateFunction update;
 
-typedef void RenderFunction(Chess *chess);
+typedef void RenderFunction(ChessAssets *assets, Chess *chess);
 RenderFunction render;
 
 #endif

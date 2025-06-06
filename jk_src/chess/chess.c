@@ -102,12 +102,14 @@ static int debug_printf(void (*debug_print)(char *), char *format, ...)
 
 static Chess debug_chess;
 
+static ChessAssets *debug_assets;
+
 static Color debug_draw_buffer[DRAW_BUFFER_WIDTH * DRAW_BUFFER_HEIGHT];
 
 static void debug_render(Board board)
 {
     debug_chess.board = board;
-    render(&debug_chess);
+    render(debug_assets, &debug_chess);
 }
 
 static Team board_current_team_get(Board board)
@@ -1364,18 +1366,19 @@ Move ai_move_get(Chess *chess)
 
 // ---- AI end -----------------------------------------------------------------
 
-static void audio_write(Audio *audio)
+static void audio_write(ChessAssets *assets, Audio *audio)
 {
+    int64_t sound_sample_count = (int64_t)assets->sounds[audio->sound].size / sizeof(uint16_t);
+    uint16_t *sound_samples = (uint16_t *)((uint8_t *)assets + assets->sounds[audio->sound].offset);
+
     int64_t samples_since_sound_started = audio->time - audio->sound_started_time;
-    int64_t sound_samples_remaining =
-            audio->sounds[audio->sound].size - samples_since_sound_started;
+    int64_t sound_samples_remaining = sound_sample_count - samples_since_sound_started;
 
     for (int64_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
         for (int64_t channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
             if (sample_index < sound_samples_remaining) {
                 audio->sample_buffer[sample_index].channels[channel_index] =
-                        audio->asset_data[audio->sounds[audio->sound].offset
-                                + samples_since_sound_started + sample_index];
+                        sound_samples[samples_since_sound_started + sample_index];
             } else {
                 audio->sample_buffer[sample_index].channels[channel_index] = 0;
             }
@@ -1464,8 +1467,12 @@ void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
     }
 }
 
-void update(Chess *chess)
+void update(ChessAssets *assets, Chess *chess)
 {
+    if (!debug_assets) {
+        debug_assets = assets;
+    }
+
     // Debug reset
     if (button_pressed(chess, INPUT_FLAG_RESET)) {
         chess->flags &= ~FLAG_INITIALIZED;
@@ -1658,7 +1665,7 @@ void update(Chess *chess)
         }
     }
 
-    audio_write(&chess->audio);
+    audio_write(assets, &chess->audio);
 
     chess->time++;
 
@@ -1753,7 +1760,7 @@ static void scale_alpha_map(uint8_t *dest,
     }
 }
 
-void render(Chess *chess)
+void render(ChessAssets *assets, Chess *chess)
 {
     static char string_buf[1024];
 

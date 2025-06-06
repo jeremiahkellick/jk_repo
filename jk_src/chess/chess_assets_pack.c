@@ -10,6 +10,13 @@
 // #jk_build dependencies_end
 
 #include <jk_src/chess/chess.h>
+#include <string.h>
+
+char *sound_file_paths[SOUND_COUNT] = {
+    0, // SOUND_NONE
+    "../jk_assets/chess/move.wav",
+    "../jk_assets/chess/capture.wav",
+};
 
 static JkFloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string, uint64_t *pos)
 {
@@ -267,6 +274,56 @@ int main(void)
                     JK_ASSERT(0 && "Unsupported vertex type");
                 } break;
                 }
+            }
+        }
+    }
+
+    // Load sounds
+    for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
+        if (sound_file_paths[i]) {
+            JkBuffer audio_file = jk_platform_file_read_full(&scratch_arena, sound_file_paths[i]);
+            if (audio_file.size) {
+                b32 error = 0;
+                JkRiffChunkMain *chunk_main = (JkRiffChunkMain *)audio_file.data;
+                if (chunk_main->id == JK_RIFF_ID_RIFF && chunk_main->form_type == JK_RIFF_ID_WAV) {
+                    for (JkRiffChunk *chunk = (JkRiffChunk *)chunk_main->chunk_first;
+                            jk_riff_chunk_valid(chunk_main, chunk);
+                            chunk = jk_riff_chunk_next(chunk)) {
+                        switch (chunk->id) {
+                        case JK_RIFF_ID_FMT: {
+                            JkWavFormat *format = (JkWavFormat *)chunk->data;
+                            if (format->format_tag != JK_WAV_FORMAT_PCM
+                                    || format->channel_count != 1
+                                    || format->samples_per_second != 48000
+                                    || format->bits_per_sample != 16) {
+                                error = 1;
+                            }
+                        } break;
+
+                        case JK_RIFF_ID_DATA: {
+                            assets->sounds[i].size = chunk->size;
+                            assets->sounds[i].offset = storage.pos;
+                            memcpy(jk_platform_arena_push(&storage, chunk->size),
+                                    chunk->data,
+                                    chunk->size);
+                        } break;
+
+                        default: {
+                        } break;
+                        }
+                    }
+                } else {
+                    error = 1;
+                }
+                if (error) {
+                    fprintf(stderr,
+                            "Something's wrong with the contents of %s\n",
+                            sound_file_paths[i]);
+                    exit(1);
+                }
+            } else {
+                fprintf(stderr, "Failed to load %s\n", sound_file_paths[i]);
+                exit(1);
             }
         }
     }
