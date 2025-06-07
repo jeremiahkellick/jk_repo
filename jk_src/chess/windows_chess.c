@@ -1,5 +1,6 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
+#include "jk_src/jk_lib/jk_lib.h"
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
 #include <stdarg.h>
@@ -64,11 +65,6 @@ typedef enum Key {
 
 #define AUDIO_DELAY_MS 30
 
-typedef struct Memory {
-    AudioSample audio[SAMPLES_PER_SECOND * 2 * sizeof(AudioSample)];
-    uint8_t video[sizeof(Color) * DRAW_BUFFER_WIDTH * DRAW_BUFFER_HEIGHT];
-} Memory;
-
 static char debug_print_buffer[4096];
 
 static int win32_debug_printf(char *format, ...)
@@ -99,7 +95,7 @@ static AiMoveGetFunction *global_ai_move_get = 0;
 static UpdateFunction *global_update = 0;
 static RenderFunction *global_render = 0;
 
-static Color window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
+static JkColor window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
 typedef struct IntArray4 {
     int32_t a[4];
@@ -190,8 +186,8 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect dra
         .bmiHeader =
                 {
                     .biSize = sizeof(BITMAPINFOHEADER),
-                    .biWidth = DRAW_BUFFER_WIDTH,
-                    .biHeight = -DRAW_BUFFER_HEIGHT,
+                    .biWidth = DRAW_BUFFER_SIDE_LENGTH,
+                    .biHeight = -DRAW_BUFFER_SIDE_LENGTH,
                     .biPlanes = 1,
                     .biBitCount = 32,
                     .biCompression = BI_RGB,
@@ -500,8 +496,8 @@ DWORD game_thread(LPVOID param)
         global_chess.square_side_length =
                 square_side_length_get((IntArray4){global_window_dimensions.x,
                     global_window_dimensions.y,
-                    DRAW_BUFFER_WIDTH,
-                    DRAW_BUFFER_HEIGHT});
+                    DRAW_BUFFER_SIDE_LENGTH,
+                    DRAW_BUFFER_SIDE_LENGTH});
         Rect draw_rect = draw_rect_get();
 
         // Mouse input
@@ -764,35 +760,32 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         OutputDebugStringA("Failed to load XInput\n");
     }
 
-    Memory *memory = VirtualAlloc(0, sizeof(Memory), MEM_COMMIT, PAGE_READWRITE);
-    global_chess.audio.sample_buffer = memory->audio;
-    global_chess.draw_buffer = (Color *)memory->video;
+    uint64_t audio_buffer_size =
+            jk_round_up_to_power_of_2(SAMPLES_PER_SECOND * 2 * sizeof(AudioSample));
+    global_chess.render_memory.size = 64 * JK_MEGABYTE;
+    global_chess.ai_memory.size = 8 * JK_GIGABYTE;
+    uint8_t *memory = VirtualAlloc(0,
+            audio_buffer_size + DRAW_BUFFER_SIZE + global_chess.render_memory.size
+                    + global_chess.ai_memory.size,
+            MEM_COMMIT,
+            PAGE_READWRITE);
+    if (!memory) {
+        OutputDebugStringA("Failed to allocate memory\n");
+    }
+    global_chess.audio.sample_buffer = (AudioSample *)memory;
+    memory += audio_buffer_size;
+    global_chess.draw_buffer = (JkColor *)memory;
+    memory += DRAW_BUFFER_SIZE;
+    global_chess.render_memory.data = memory;
+    memory += global_chess.render_memory.size;
+    global_chess.ai_memory.data = memory;
+
     global_chess.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;
 
-    global_chess.ai_memory.size = 8llu << 30;
-    global_chess.ai_memory.data =
-            VirtualAlloc(0, global_chess.ai_memory.size, MEM_COMMIT, PAGE_READWRITE);
-    JK_ASSERT(global_chess.ai_memory.data);
-
     JkPlatformArena storage;
-    if (jk_platform_arena_init(&storage, (size_t)1 << 35) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
-        // Load image data
-        JkBuffer image_file = jk_platform_file_read_full(&storage, "chess_atlas.bmp");
-        if (image_file.size) {
-            JkBitmapHeader *header = (JkBitmapHeader *)image_file.data;
-            Color *pixels = (Color *)(image_file.data + header->offset);
-            for (int32_t y = 0; y < ATLAS_HEIGHT; y++) {
-                int32_t atlas_y = ATLAS_HEIGHT - y - 1;
-                for (int32_t x = 0; x < ATLAS_WIDTH; x++) {
-                    global_chess.atlas[atlas_y * ATLAS_WIDTH + x] = pixels[y * ATLAS_WIDTH + x].a;
-                }
-            }
-        } else {
-            OutputDebugStringA("Failed to load chess_atlas.bmp\n");
-        }
-
+    if (jk_platform_arena_init(&storage, JK_GIGABYTE) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
         global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
     } else {
         OutputDebugStringA("Failed to initialize storage arena\n");

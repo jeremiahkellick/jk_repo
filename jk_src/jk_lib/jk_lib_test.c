@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -143,11 +142,11 @@ int main(void)
     size_t size_before = arena.size;
     char *push3 = jk_platform_arena_push(&arena, page_size * 2);
     size_t size_after = arena.size;
-    assert(push3 == NULL);
-    assert(size_before == size_after);
+    JK_ASSERT(push3 == NULL);
+    JK_ASSERT(size_before == size_after);
 
-    assert(jk_platform_arena_pop(&arena, page_size * 2) == JK_PLATFORM_ARENA_POP_SUCCESS);
-    assert(jk_platform_arena_pop(&arena, page_size * 2)
+    JK_ASSERT(jk_platform_arena_pop(&arena, page_size * 2) == JK_PLATFORM_ARENA_POP_SUCCESS);
+    JK_ASSERT(jk_platform_arena_pop(&arena, page_size * 2)
             == JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS);
 
     jk_platform_arena_terminate(&arena);
@@ -207,6 +206,22 @@ int main(void)
     }
 
     // ---- Quicksort end ------------------------------------------------------
+
+    JK_ASSERT(!jk_is_power_of_two(0));
+    JK_ASSERT(jk_round_up_to_power_of_2(0) == 0);
+    JK_ASSERT(jk_round_down_to_power_of_2(0) == 0);
+
+    JK_ASSERT(jk_is_power_of_two(1));
+    JK_ASSERT(jk_round_up_to_power_of_2(1) == 1);
+    JK_ASSERT(jk_round_down_to_power_of_2(1) == 1);
+
+    JK_ASSERT(jk_is_power_of_two(16));
+    JK_ASSERT(jk_round_up_to_power_of_2(16) == 16);
+    JK_ASSERT(jk_round_down_to_power_of_2(16) == 16);
+
+    JK_ASSERT(!jk_is_power_of_two(18));
+    JK_ASSERT(jk_round_up_to_power_of_2(18) == 32);
+    JK_ASSERT(jk_round_down_to_power_of_2(18) == 16);
 
     return 0;
 }

@@ -204,6 +204,8 @@ typedef struct JkTransform2 {
 
 JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point);
 
+JK_PUBLIC JkVector2 jk_vector_2_from_int(JkIntVector2 int_vector);
+
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);
 
 JK_PUBLIC float jk_abs(float value);
@@ -259,6 +261,8 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
+
+JK_PUBLIC uint64_t jk_round_up_to_power_of_2(uint64_t x);
 
 JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x);
 

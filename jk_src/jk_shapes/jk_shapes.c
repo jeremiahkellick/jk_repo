@@ -417,28 +417,17 @@ static float jk_shapes_segment_x_intersection(JkShapesSegment segment, float x)
     return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
 }
 
-// Returns the shape's scaled advance_width
-JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
-        uint32_t shape_index,
-        JkVector2 position,
-        float scale,
-        JkColor color)
+JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
+        JkShapesRenderer *renderer, uint32_t shape_index, float scale)
 {
+    JkShapesBitmap *result = 0;
+
     JkShape shape = renderer->shapes.items[shape_index];
-
     if (shape.dimensions.x && shape.dimensions.y) {
-        JkVector2 scaled_offset = jk_vector_2_mul(scale, shape.offset);
-
-        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
-        node->command.position = jk_vector_2_round(jk_vector_2_add(position, scaled_offset));
-        node->command.color = color;
-        node->next = renderer->draw_commands_head;
-        renderer->draw_commands_head = node;
-
         uint64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, scale);
         JkShapesHashTableSlot *bitmap_slot =
                 jk_shapes_hash_table_probe(&renderer->hash_table, bitmap_key);
-        node->command.bitmap = &bitmap_slot->value;
+        result = &bitmap_slot->value;
         if (!bitmap_slot->filled) {
             JkShapesBitmap bitmp;
             bitmp.dimensions.x = (int32_t)ceilf(scale * shape.dimensions.x);
@@ -450,7 +439,7 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
 
             JkTransform2 transform;
             transform.scale = scale;
-            transform.position = jk_vector_2_mul(-1.0f, scaled_offset);
+            transform.position = jk_vector_2_mul(-1.0f, jk_vector_2_mul(scale, shape.offset));
 
             void *arena_saved_pointer = jk_arena_pointer_get(renderer->arena);
 
@@ -560,6 +549,28 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
 
             jk_arena_pointer_set(renderer->arena, arena_saved_pointer);
         }
+    }
+
+    return result;
+}
+
+// Returns the shape's scaled advance_width
+JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
+        uint32_t shape_index,
+        JkVector2 position,
+        float scale,
+        JkColor color)
+{
+    JkShape shape = renderer->shapes.items[shape_index];
+
+    if (shape.dimensions.x && shape.dimensions.y) {
+        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+        node->command.position =
+                jk_vector_2_round(jk_vector_2_add(position, jk_vector_2_mul(scale, shape.offset)));
+        node->command.color = color;
+        node->command.bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
+        node->next = renderer->draw_commands_head;
+        renderer->draw_commands_head = node;
     }
 
     return scale * shape.advance_width;

@@ -7,14 +7,11 @@
 
 #include "bezier.h"
 #include "jk_src/chess/chess.h"
-#include "jk_src/jk_lib/jk_lib.h"
-#include "jk_src/jk_shapes/jk_shapes.h"
 
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
 
 static char debug_print_buffer[4096];

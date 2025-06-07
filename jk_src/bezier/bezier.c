@@ -89,7 +89,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
     {
         float width = (float)bezier->draw_square_side_length;
         jk_shapes_draw(&renderer,
-                2,
+                4,
                 (JkVector2){width / 4.0f, width / 4.0f},
                 pawn_scale,
                 color_black_pieces);

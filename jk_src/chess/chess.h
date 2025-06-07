@@ -33,18 +33,6 @@ typedef struct Input {
     JkIntVector2 mouse_pos;
 } Input;
 
-typedef struct Color {
-    union {
-        struct {
-            uint8_t b;
-            uint8_t g;
-            uint8_t r;
-            uint8_t a;
-        };
-        uint8_t v[4];
-    };
-} Color;
-
 typedef enum AudioChannel {
     AUDIO_CHANNEL_LEFT,
     AUDIO_CHANNEL_RIGHT,
@@ -74,7 +62,7 @@ typedef struct Audio {
 } Audio;
 
 typedef struct Bitmap {
-    Color *memory;
+    JkColor *memory;
     int32_t width;
     int32_t height;
 } Bitmap;
@@ -153,12 +141,8 @@ typedef enum FlagIndex {
 #define FLAG_HOLDING_PIECE (1llu << FLAG_INDEX_HOLDING_PIECE)
 #define FLAG_REQUEST_AI_MOVE (1llu << FLAG_INDEX_REQUEST_AI_MOVE)
 
-#define ATLAS_SQUARE_SIDE_LENGTH 384
-#define ATLAS_WIDTH (ATLAS_SQUARE_SIDE_LENGTH * 5)
-#define ATLAS_HEIGHT (ATLAS_SQUARE_SIDE_LENGTH * 6)
-
-#define DRAW_BUFFER_WIDTH (ATLAS_SQUARE_SIDE_LENGTH * 8)
-#define DRAW_BUFFER_HEIGHT (ATLAS_SQUARE_SIDE_LENGTH * 8)
+#define DRAW_BUFFER_SIDE_LENGTH 4096ll
+#define DRAW_BUFFER_SIZE (sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
 
 #define CLEAR_COLOR_B 0x27
 #define CLEAR_COLOR_G 0x20
@@ -191,12 +175,10 @@ typedef struct Chess {
     Input input_prev;
     Audio audio;
     int32_t square_side_length;
-    int32_t square_side_length_prev;
-    Color *draw_buffer;
+    JkColor *draw_buffer;
     uint64_t time;
     Board board;
-    uint8_t atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
-    uint8_t scaled_atlas[ATLAS_WIDTH * ATLAS_HEIGHT];
+    JkBuffer render_memory;
     JkBuffer ai_memory;
     MoveArray moves;
     Move ai_move;

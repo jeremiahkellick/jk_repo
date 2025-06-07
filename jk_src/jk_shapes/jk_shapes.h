@@ -134,6 +134,9 @@ typedef struct JkShapesEdgeArray {
 JK_PUBLIC void jk_shapes_renderer_init(
         JkShapesRenderer *renderer, void *base_pointer, JkShapeArray shapes, JkArena *arena);
 
+JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
+        JkShapesRenderer *renderer, uint32_t shape_index, float scale);
+
 JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         uint32_t shape_index,
         JkVector2 position,

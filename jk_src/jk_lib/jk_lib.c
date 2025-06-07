@@ -551,6 +551,11 @@ JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b)
     return dx * dx + dy * dy;
 }
 
+JK_PUBLIC JkVector2 jk_vector_2_from_int(JkIntVector2 int_vector)
+{
+    return (JkVector2){(float)int_vector.x, (float)int_vector.y};
+}
+
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector)
 {
     return (JkIntVector2){jk_round(vector.x), jk_round(vector.y)};
@@ -592,16 +597,34 @@ JK_PUBLIC b32 jk_is_power_of_two(uint64_t x)
     return x && (x & (x - 1)) == 0;
 }
 
+// Rounds up to nearest power of 2. Leaves 0 as 0.
+JK_PUBLIC uint64_t jk_round_up_to_power_of_2(uint64_t x)
+{
+    if (x) {
+        x--;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        x |= x >> 32;
+        x++;
+    }
+    return x;
+}
+
+// Rounds down to nearest power of 2. Leaves 0 as 0.
 JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x)
 {
-    x--;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x |= x >> 32;
-    x++;
+    if (x) {
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        x |= x >> 32;
+        x -= x >> 1;
+    }
     return x;
 }
 

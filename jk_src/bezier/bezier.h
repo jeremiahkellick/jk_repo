@@ -12,8 +12,6 @@
 #define CLEAR_COLOR_G 0x20
 #define CLEAR_COLOR_R 0x16
 
-#define DRAW_BUFFER_SIDE_LENGTH 3072
-
 typedef struct Bezier {
     uint64_t time;
     int32_t draw_square_side_length;
