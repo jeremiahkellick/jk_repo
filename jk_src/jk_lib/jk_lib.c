@@ -521,6 +521,11 @@ JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v)
     return sqrtf(jk_vector_2_magnitude_sqr(v));
 }
 
+JK_PUBLIC JkVector2 jk_vector_2_normalized(JkVector2 v)
+{
+    return jk_vector_2_mul(1.0f / jk_vector_2_magnitude(v), v);
+}
+
 JK_PUBLIC float jk_vector_2_dot(JkVector2 u, JkVector2 v)
 {
     return u.x * v.x + u.y * v.y;
@@ -541,7 +546,7 @@ JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point
 
 JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t)
 {
-    return jk_vector_2_add(jk_vector_2_mul(t, a), jk_vector_2_mul(1.0f - t, b));
+    return jk_vector_2_add(jk_vector_2_mul(1.0f - t, a), jk_vector_2_mul(t, b));
 }
 
 JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b)

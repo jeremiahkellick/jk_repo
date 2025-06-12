@@ -209,7 +209,7 @@ int main(void)
                 shape_index < JK_ARRAY_COUNT(assets->shapes);
                 shape_index++) {
             JkShape *shape = assets->shapes + shape_index;
-            int32_t codepoint = shape_index + CHARACTER_SHAPE_OFFSET;
+            int32_t codepoint = shape_index - CHARACTER_SHAPE_OFFSET;
 
             int32_t x0, x1, y0, y1;
             stbtt_GetCodepointBox(&font, codepoint, &x0, &y0, &x1, &y1);

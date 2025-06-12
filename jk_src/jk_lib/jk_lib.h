@@ -189,6 +189,8 @@ JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v);
 
 JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v);
 
+JK_PUBLIC JkVector2 jk_vector_2_normalized(JkVector2 v);
+
 JK_PUBLIC float jk_vector_2_dot(JkVector2 u, JkVector2 v);
 
 JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v);

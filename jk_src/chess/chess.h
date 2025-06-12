@@ -83,7 +83,7 @@ typedef enum PieceType {
     PIECE_TYPE_COUNT,
 } PieceType;
 
-#define CHARACTER_SHAPE_OFFSET (32 - PIECE_TYPE_COUNT)
+#define CHARACTER_SHAPE_OFFSET (PIECE_TYPE_COUNT - 32)
 
 typedef struct Piece {
     PieceType type;

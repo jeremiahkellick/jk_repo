@@ -1792,7 +1792,7 @@ static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scal
     result.dimensions.x = 0.0f;
     float y_bottom = -INFINITY;
     for (int32_t i = 0; i < text.size; i++) {
-        JkShape *shape = shapes.items + text.data[i] - CHARACTER_SHAPE_OFFSET;
+        JkShape *shape = shapes.items + text.data[i] + CHARACTER_SHAPE_OFFSET;
         if (i == 0) {
             result.offset.x = -shape->offset.x;
             result.dimensions.x = result.offset.x;
@@ -1867,6 +1867,51 @@ void render(ChessAssets *assets, Chess *chess)
                     color);
         }
     }
+    float coords_scale = 0.0003f * chess->square_side_length;
+    JkColor coords_color = color_light_squares;
+    coords_color.a = 160;
+    for (int32_t x = 0; x < 8; x++) {
+        uint32_t shape_id = 'a' + x + CHARACTER_SHAPE_OFFSET;
+        JkShape *shape = shapes.items + shape_id;
+        float width = coords_scale * shape->dimensions.x;
+        float x_offset = coords_scale * shape->offset.x;
+        float padding_top = chess->square_side_length * 0.15f;
+        float padding_bottom = chess->square_side_length * 0.3f;
+        float cursor_x = chess->square_side_length * (x + 1.5f) - (width / 2.0f) - x_offset;
+        float cursor_ys[] = {
+            chess->square_side_length - padding_top,
+            (chess->square_side_length * 9) + padding_bottom,
+        };
+        for (int32_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
+            jk_shapes_draw(&renderer,
+                    shape_id,
+                    (JkVector2){cursor_x, cursor_ys[i]},
+                    coords_scale,
+                    coords_color);
+        }
+    }
+    for (int32_t y = 0; y < 8; y++) {
+        uint32_t shape_id = '1' + (7 - y) + CHARACTER_SHAPE_OFFSET;
+        JkShape *shape = shapes.items + shape_id;
+        JkVector2 dimensions = jk_vector_2_mul(coords_scale, shape->dimensions);
+        JkVector2 offset = jk_vector_2_mul(coords_scale, shape->offset);
+        float padding = chess->square_side_length * 0.15f;
+        float cursor_xs[] = {
+            chess->square_side_length - padding - dimensions.x * 0.5f - offset.x,
+            (chess->square_side_length * 9) + padding - dimensions.x * 0.5f - offset.x,
+        };
+        float cursor_y = chess->square_side_length * (y + 1)
+                + (chess->square_side_length - dimensions.y) * 0.5f - offset.y;
+        JkColor color = color_light_squares;
+        color.a = 200;
+        for (int32_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
+            jk_shapes_draw(&renderer,
+                    shape_id,
+                    (JkVector2){cursor_xs[i], cursor_y},
+                    coords_scale,
+                    coords_color);
+        }
+    }
     if (chess->result) {
         float text_scale = 0.0008f * chess->square_side_length;
         JkVector2 result_origin_f = jk_vector_2_from_int(result_origin);
@@ -1891,7 +1936,7 @@ void render(ChessAssets *assets, Chess *chess)
 
         for (int32_t i = 0; i < text.size; i++) {
             cursor_pos.x += jk_shapes_draw(&renderer,
-                    text.data[i] - CHARACTER_SHAPE_OFFSET,
+                    text.data[i] + CHARACTER_SHAPE_OFFSET,
                     cursor_pos,
                     text_scale,
                     color_light_squares);
@@ -1961,24 +2006,23 @@ void render(ChessAssets *assets, Chess *chess)
                 } else {
                     color = square_color;
                 }
-
-                for (int32_t i = cs; i < ce; i++) {
-                    JkShapesBitmap *bitmap = draw_commands.items[i].bitmap;
-                    JkIntVector2 bitmap_pos =
-                            jk_int_vector_2_sub(pos, draw_commands.items[i].position);
-                    if (0 <= bitmap_pos.x && bitmap_pos.x < bitmap->dimensions.x
-                            && bitmap_pos.y < bitmap->dimensions.y) {
-                        uint8_t bitmap_alpha =
-                                bitmap->data[bitmap_pos.y * bitmap->dimensions.x + bitmap_pos.x];
-                        uint8_t alpha =
-                                color_multiply(draw_commands.items[i].color.a, bitmap_alpha);
-                        color = blend_alpha(draw_commands.items[i].color, color, alpha);
-                        break;
-                    }
-                }
             } else {
                 color = color_background;
             }
+
+            for (int32_t i = cs; i < ce; i++) {
+                JkShapesBitmap *bitmap = draw_commands.items[i].bitmap;
+                JkIntVector2 bitmap_pos = jk_int_vector_2_sub(pos, draw_commands.items[i].position);
+                if (0 <= bitmap_pos.x && bitmap_pos.x < bitmap->dimensions.x
+                        && bitmap_pos.y < bitmap->dimensions.y) {
+                    uint8_t bitmap_alpha =
+                            bitmap->data[bitmap_pos.y * bitmap->dimensions.x + bitmap_pos.x];
+                    uint8_t alpha = color_multiply(draw_commands.items[i].color.a, bitmap_alpha);
+                    color = blend_alpha(draw_commands.items[i].color, color, alpha);
+                    break;
+                }
+            }
+
             color.a = 255;
             chess->draw_buffer[pos.y * DRAW_BUFFER_SIDE_LENGTH + pos.x] = color;
         }

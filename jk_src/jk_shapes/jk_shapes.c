@@ -429,13 +429,13 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
                 jk_shapes_hash_table_probe(&renderer->hash_table, bitmap_key);
         result = &bitmap_slot->value;
         if (!bitmap_slot->filled) {
-            JkShapesBitmap bitmp;
-            bitmp.dimensions.x = (int32_t)ceilf(scale * shape.dimensions.x);
-            bitmp.dimensions.y = (int32_t)ceilf(scale * shape.dimensions.y);
+            JkShapesBitmap bitmap;
+            bitmap.dimensions.x = (int32_t)ceilf(scale * shape.dimensions.x);
+            bitmap.dimensions.y = (int32_t)ceilf(scale * shape.dimensions.y);
             // TODO: do we really need to zero it?
-            bitmp.data = jk_arena_alloc_zero(renderer->arena,
-                    bitmp.dimensions.x * bitmp.dimensions.y * sizeof(bitmp.data[0]));
-            jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmp);
+            bitmap.data = jk_arena_alloc_zero(renderer->arena,
+                    bitmap.dimensions.x * bitmap.dimensions.y * sizeof(bitmap.data[0]));
+            jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmap);
 
             JkTransform2 transform;
             transform.scale = scale;
@@ -443,7 +443,7 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
 
             void *arena_saved_pointer = jk_arena_pointer_get(renderer->arena);
 
-            uint64_t coverage_size = sizeof(float) * (bitmp.dimensions.x + 1);
+            uint64_t coverage_size = sizeof(float) * (bitmap.dimensions.x + 1);
             float *coverage = jk_arena_alloc(renderer->arena, coverage_size);
             float *fill = jk_arena_alloc(renderer->arena, coverage_size);
 
@@ -453,7 +453,7 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
             JkShapesEdgeArray edges =
                     jk_shapes_edges_get(renderer->arena, commands, transform, 0.25f);
 
-            for (int32_t y = 0; y < bitmp.dimensions.y; y++) {
+            for (int32_t y = 0; y < bitmap.dimensions.y; y++) {
                 memset(coverage, 0, coverage_size * 2);
 
                 float scan_y_top = (float)y;
@@ -537,13 +537,13 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
 
                 // Fill the scanline according to coverage
                 float acc = 0.0f;
-                for (int32_t x = 0; x < bitmp.dimensions.x; x++) {
+                for (int32_t x = 0; x < bitmap.dimensions.x; x++) {
                     acc += fill[x];
                     int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
                     if (255 < value) {
                         value = 255;
                     }
-                    bitmp.data[y * bitmp.dimensions.x + x] = (uint8_t)value;
+                    bitmap.data[y * bitmap.dimensions.x + x] = (uint8_t)value;
                 }
             }
 

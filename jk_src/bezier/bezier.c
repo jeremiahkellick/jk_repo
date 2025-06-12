@@ -63,13 +63,13 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
 void bezier_render(ChessAssets *assets, Bezier *bezier)
 {
     JkBuffer display_string = JKS("Hello, world!");
-    float first_point = -assets->shapes[display_string.data[0] - CHARACTER_SHAPE_OFFSET].offset.x;
+    float first_point = -assets->shapes[display_string.data[0] + CHARACTER_SHAPE_OFFSET].offset.x;
     float last_point = first_point;
     for (int32_t i = 0; i < display_string.size - 1; i++) {
-        last_point += assets->shapes[display_string.data[i] - CHARACTER_SHAPE_OFFSET].advance_width;
+        last_point += assets->shapes[display_string.data[i] + CHARACTER_SHAPE_OFFSET].advance_width;
     }
     JkShape *last_character = assets->shapes
-            + (display_string.data[display_string.size - 1] - CHARACTER_SHAPE_OFFSET);
+            + (display_string.data[display_string.size - 1] + CHARACTER_SHAPE_OFFSET);
     float display_string_width =
             last_point + last_character->offset.x + last_character->dimensions.x;
     int32_t display_string_height = assets->font_y1_max - assets->font_y0_min;
@@ -97,7 +97,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
         JkVector2 current_point = {scale * first_point, -scale * assets->font_y0_min};
         for (int32_t i = 0; i < display_string.size; i++) {
             current_point.x += jk_shapes_draw(&renderer,
-                    display_string.data[i] - CHARACTER_SHAPE_OFFSET,
+                    display_string.data[i] + CHARACTER_SHAPE_OFFSET,
                     current_point,
                     scale,
                     color_light_squares);
