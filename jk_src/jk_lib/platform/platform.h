@@ -60,62 +60,6 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
 
 JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void);
 
-// -------- Performance-monitoring counters begin ------------------------------
-
-#define JK_PLATFORM_PMC_SOURCES_MAX 8
-
-typedef struct JkPlatformPmcNameArray {
-    wchar_t *strings[JK_PLATFORM_PMC_SOURCES_MAX];
-} JkPlatformPmcNameArray;
-
-typedef struct JkPlatformPmcMapping {
-    uint64_t count;
-    uint32_t sources[JK_PLATFORM_PMC_SOURCES_MAX];
-} JkPlatformPmcMapping;
-
-typedef struct JkPlatformPmcTracer {
-    uint64_t count;
-    uint64_t session;
-    uint64_t trace;
-    uint64_t provider;
-    uint64_t registration;
-    GUID guid;
-    uint32_t thread_id;
-    void *thread_handle;
-    b32 ended;
-} JkPlatformPmcTracer;
-
-typedef struct JkPlatformPmcResult {
-    uint64_t time_elapsed;
-    uint64_t counters[JK_PLATFORM_PMC_SOURCES_MAX];
-} JkPlatformPmcResult;
-
-typedef struct JkPlatformPmcZone {
-    JkPlatformPmcResult result;
-    b32 result_ready;
-} JkPlatformPmcZone;
-
-JK_PUBLIC JkPlatformPmcMapping jk_platform_pmc_map_names(JkPlatformPmcNameArray names);
-
-JK_PUBLIC b32 jk_platform_pmc_mapping_valid(JkPlatformPmcMapping mapping);
-
-JK_PUBLIC void jk_platform_pmc_trace_begin(
-        JkPlatformPmcTracer *tracer, JkPlatformPmcMapping *mapping);
-
-JK_PUBLIC void jk_platform_pmc_trace_end(JkPlatformPmcTracer *tracer);
-
-JK_PUBLIC void jk_platform_pmc_zone_begin(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
-
-JK_PUBLIC void jk_platform_pmc_zone_end(JkPlatformPmcTracer *tracer, JkPlatformPmcZone *zone);
-
-JK_PUBLIC b32 jk_platform_pmc_zone_result_ready(JkPlatformPmcZone *zone);
-
-JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_get(JkPlatformPmcZone *zone);
-
-JK_PUBLIC JkPlatformPmcResult jk_platform_pmc_zone_result_wait(JkPlatformPmcZone *zone);
-
-// -------- Performance-monitoring counters end --------------------------------
-
 // ---- OS functions end -------------------------------------------------------
 
 // ---- Compiler functions begin -----------------------------------------------
