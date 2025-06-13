@@ -1161,7 +1161,7 @@ static void custom_profile_print(void *data, char *format, ...)
 
 Move ai_move_get(Chess *chess)
 {
-    jk_platform_profile_begin();
+    jk_platform_profile_frame_begin();
 
     AiContext ctx = {
         .board = chess->board,
@@ -1360,7 +1360,8 @@ Move ai_move_get(Chess *chess)
 
     Move result = move_unpack(move);
 
-    jk_platform_profile_end_and_print_custom(custom_profile_print, (void *)chess->debug_print);
+    jk_platform_profile_frame_end_and_print_custom(
+            custom_profile_print, (void *)chess->debug_print);
     return result;
 }
 

@@ -416,67 +416,152 @@ JK_PUBLIC void jk_platform_arena_pointer_set(JkPlatformArena *arena, void *point
 typedef struct JkPlatformProfile {
     uint64_t start;
 
+    uint64_t frame_count;
+    uint64_t frame_elapsed[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT];
+
 #if !JK_PLATFORM_PROFILE_DISABLE
-    JkPlatformProfileEntry *current;
-    uint64_t depth;
-    size_t entry_count;
-    JkPlatformProfileEntry *entries[1024];
+    size_t zone_count;
+    JkPlatformProfileZone *zones[1024];
+    JkPlatformProfileZone *zone_current;
+    uint64_t zone_depth;
 #endif
 } JkPlatformProfile;
 
 static JkPlatformProfile jk_platform_profile;
 
-JK_PUBLIC void jk_platform_profile_begin(void)
+JK_PUBLIC void jk_platform_profile_frame_begin(void)
 {
+    if (!jk_platform_profile.frame_count) {
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN] = UINT64_MAX;
+    }
+    jk_platform_profile.frame_count++;
     jk_platform_profile.start = jk_platform_cpu_timer_get();
 }
 
-JK_PUBLIC void jk_platform_profile_end_and_print_custom(
-        void (*print)(void *data, char *format, ...), void *data)
+JK_PUBLIC void jk_platform_profile_frame_end(void)
 {
-    uint64_t total = jk_platform_cpu_timer_get() - jk_platform_profile.start;
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
-    print(data,
-            "Total time: %.4fms (CPU freq %llu)\n",
-            1000.0 * (double)total / (double)frequency,
-            (long long)frequency);
+    uint64_t elapsed = jk_platform_cpu_timer_get() - jk_platform_profile.start;
+    jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_CURRENT] = elapsed;
+
+    jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_TOTAL] += elapsed;
+#if !JK_PLATFORM_PROFILE_DISABLE
+    for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
+        JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
+        for (JkPlatformProfileMetric metric = 0; metric < JK_PLATFORM_PROFILE_METRIC_COUNT;
+                metric++) {
+            zone->frames[JK_PLATFORM_PROFILE_FRAME_TOTAL].a[metric] +=
+                    zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT].a[metric];
+        }
+    }
+#endif
+
+    if (elapsed < jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN]) {
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN] = elapsed;
+#if !JK_PLATFORM_PROFILE_DISABLE
+        for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
+            JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
+            zone->frames[JK_PLATFORM_PROFILE_FRAME_MIN] =
+                    zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT];
+        }
+#endif
+    }
+
+    if (jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] < elapsed) {
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] = elapsed;
+#if !JK_PLATFORM_PROFILE_DISABLE
+        for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
+            JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
+            zone->frames[JK_PLATFORM_PROFILE_FRAME_MAX] =
+                    zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT];
+        }
+#endif
+    }
+}
+
+static char *jk_platform_profile_frame_type_strings[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT] = {
+    "Current",
+    "Min",
+    "Max",
+    "Average",
+};
+
+static void jk_platform_profile_frame_print(void (*print)(void *data, char *format, ...),
+        void *data,
+        char *name,
+        JkPlatformProfileFrameType frame_index,
+        double frequency,
+        uint64_t frame_count)
+{
+    uint64_t total = jk_platform_profile.frame_elapsed[frame_index];
+    print(data, "\n%s: %.4fms\n", name, 1000.0 * (double)total / (frequency * (double)frame_count));
 
 #if !JK_PLATFORM_PROFILE_DISABLE
-    for (size_t i = 0; i < jk_platform_profile.entry_count; i++) {
-        JkPlatformProfileEntry *entry = jk_platform_profile.entries[i];
+    for (size_t i = 0; i < jk_platform_profile.zone_count; i++) {
+        JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
+        JkPlatformProfileZoneFrame *frame = zone->frames + frame_index;
 
-        JK_DEBUG_ASSERT(entry->active_count == 0
+        JK_DEBUG_ASSERT(zone->active_count == 0
                 && "jk_platform_profile_zone_begin was called without a matching "
                    "jk_platform_profile_zone_end");
 
-        for (uint64_t j = 0; j < entry->depth; j++) {
+        for (uint64_t j = 0; j < frame->depth; j++) {
             print(data, "\t");
         }
         print(data,
                 "\t%s[%llu]: %llu (%.2f%%",
-                entry->name,
-                (long long)entry->hit_count,
-                (long long)entry->elapsed_exclusive,
-                (double)entry->elapsed_exclusive / (double)total * 100.0);
-        if (entry->elapsed_inclusive != entry->elapsed_exclusive) {
+                zone->name,
+                (long long)(frame->hit_count / frame_count),
+                (long long)(frame->elapsed_exclusive / frame_count),
+                (double)frame->elapsed_exclusive / (double)total * 100.0);
+        if (frame->elapsed_inclusive != frame->elapsed_exclusive) {
             print(data,
                     ", %.2f%% w/ children",
-                    (double)entry->elapsed_inclusive / (double)total * 100.0);
+                    (double)frame->elapsed_inclusive / (double)total * 100.0);
         }
         print(data, ")");
 
-        if (entry->byte_count) {
-            double seconds = (double)entry->elapsed_inclusive / (double)frequency;
+        if (frame->byte_count) {
+            double seconds = (double)frame->elapsed_inclusive / frequency;
             print(data, " ");
-            jk_print_bytes_uint64(stdout, "%.3f", entry->byte_count);
+            jk_print_bytes_uint64(stdout, "%.3f", frame->byte_count / frame_count);
             print(data, " at ");
-            jk_print_bytes_double(stdout, "%.3f", (double)entry->byte_count / seconds);
+            jk_print_bytes_double(stdout, "%.3f", (double)frame->byte_count / seconds);
             print(data, "/s");
         }
 
         print(data, "\n");
     }
 #endif
+}
+
+JK_PUBLIC void jk_platform_profile_print_custom(
+        void (*print)(void *data, char *format, ...), void *data)
+{
+    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    print(data, "CPU frequency: %llu\n", frequency);
+
+    if (jk_platform_profile.frame_count == 1) {
+        jk_platform_profile_frame_print(
+                print, data, "Total time", JK_PLATFORM_PROFILE_FRAME_CURRENT, (double)frequency, 1);
+    } else {
+        jk_platform_profile_frame_print(
+                print, data, "Min", JK_PLATFORM_PROFILE_FRAME_MIN, (double)frequency, 1);
+        jk_platform_profile_frame_print(
+                print, data, "Max", JK_PLATFORM_PROFILE_FRAME_MAX, (double)frequency, 1);
+        jk_platform_profile_frame_print(print,
+                data,
+                "Average",
+                JK_PLATFORM_PROFILE_FRAME_TOTAL,
+                (double)frequency,
+                jk_platform_profile.frame_count);
+    }
+}
+
+JK_PUBLIC void jk_platform_profile_frame_end_and_print_custom(
+        void (*print)(void *data, char *format, ...), void *data)
+{
+    jk_platform_profile_frame_end();
+    jk_platform_profile_print_custom(print, data);
 }
 
 static void jk_platform_profile_printf(void *data, char *format, ...)
@@ -487,37 +572,44 @@ static void jk_platform_profile_printf(void *data, char *format, ...)
     va_end(args);
 }
 
-JK_PUBLIC void jk_platform_profile_end_and_print(void)
+JK_PUBLIC void jk_platform_profile_print(void)
 {
-    jk_platform_profile_end_and_print_custom(jk_platform_profile_printf, 0);
+    jk_platform_profile_print_custom(jk_platform_profile_printf, 0);
+}
+
+JK_PUBLIC void jk_platform_profile_frame_end_and_print(void)
+{
+    jk_platform_profile_frame_end_and_print_custom(jk_platform_profile_printf, 0);
 }
 
 #if !JK_PLATFORM_PROFILE_DISABLE
 
 JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
-        JkPlatformProfileEntry *entry,
+        JkPlatformProfileZone *zone,
         char *name,
         uint64_t byte_count)
 {
-    if (!entry->seen) {
-        entry->seen = 1;
-        entry->name = name;
-        entry->byte_count += byte_count;
-        entry->depth = jk_platform_profile.depth;
-        jk_platform_profile.entries[jk_platform_profile.entry_count++] = entry;
+    JkPlatformProfileZoneFrame *frame = zone->frames + JK_PLATFORM_PROFILE_FRAME_CURRENT;
+
+    if (!zone->seen) {
+        zone->seen = 1;
+        zone->name = name;
+        frame->byte_count += byte_count;
+        frame->depth = jk_platform_profile.zone_depth;
+        jk_platform_profile.zones[jk_platform_profile.zone_count++] = zone;
         JK_DEBUG_ASSERT(
-                jk_platform_profile.entry_count <= JK_ARRAY_COUNT(jk_platform_profile.entries));
+                jk_platform_profile.zone_count <= JK_ARRAY_COUNT(jk_platform_profile.zones));
     }
 
-    timing->parent = jk_platform_profile.current;
-    jk_platform_profile.current = entry;
-    jk_platform_profile.depth++;
+    timing->parent = jk_platform_profile.zone_current;
+    jk_platform_profile.zone_current = zone;
+    jk_platform_profile.zone_depth++;
 
-    timing->saved_elapsed_inclusive = entry->elapsed_inclusive;
+    timing->saved_elapsed_inclusive = frame->elapsed_inclusive;
 
 #ifndef NDEBUG
-    entry->active_count++;
-    timing->entry = entry;
+    zone->active_count++;
+    timing->zone = zone;
     timing->ended = 0;
 #endif
 
@@ -528,29 +620,33 @@ JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
 JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing)
 {
     uint64_t elapsed = jk_platform_cpu_timer_get() - timing->start;
+    JkPlatformProfileZoneFrame *parent_frame =
+            timing->parent->frames + JK_PLATFORM_PROFILE_FRAME_CURRENT;
+    JkPlatformProfileZoneFrame *current_frame =
+            jk_platform_profile.zone_current->frames + JK_PLATFORM_PROFILE_FRAME_CURRENT;
 
 #ifndef NDEBUG
     JK_ASSERT(!timing->ended
             && "jk_platform_profile_zone_end: Called multiple times for a single timing instance");
     timing->ended = 1;
-    timing->entry->active_count--;
-    JK_ASSERT(timing->entry->active_count >= 0
+    timing->zone->active_count--;
+    JK_ASSERT(timing->zone->active_count >= 0
             && "jk_platform_profile_zone_end: Called more times than "
-               "jk_platform_profile_zone_begin for some entry");
-    JK_ASSERT(jk_platform_profile.current == timing->entry
+               "jk_platform_profile_zone_begin for some zone");
+    JK_ASSERT(jk_platform_profile.zone_current == timing->zone
             && "jk_platform_profile_zone_end: Must end all child timings before ending their "
                "parent");
 #endif
 
     if (timing->parent) {
-        timing->parent->elapsed_exclusive -= elapsed;
+        parent_frame->elapsed_exclusive -= elapsed;
     }
-    jk_platform_profile.current->elapsed_exclusive += elapsed;
-    jk_platform_profile.current->elapsed_inclusive = timing->saved_elapsed_inclusive + elapsed;
-    jk_platform_profile.current->hit_count++;
+    current_frame->elapsed_exclusive += elapsed;
+    current_frame->elapsed_inclusive = timing->saved_elapsed_inclusive + elapsed;
+    current_frame->hit_count++;
 
-    jk_platform_profile.current = timing->parent;
-    jk_platform_profile.depth--;
+    jk_platform_profile.zone_current = timing->parent;
+    jk_platform_profile.zone_depth--;
 }
 
 #endif

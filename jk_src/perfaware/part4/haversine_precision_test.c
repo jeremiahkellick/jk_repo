@@ -27,7 +27,7 @@ JkOptionsParseResult opts_parse = {0};
 
 int main(int argc, char **argv)
 {
-    jk_platform_profile_begin();
+    jk_platform_profile_frame_begin();
 
     // Parse command line arguments
     {
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
     printf("%+.24f Average error\n", diff_total / (double)diff_count);
 
     printf("\n");
-    jk_platform_profile_end_and_print();
+    jk_platform_profile_frame_end_and_print();
 
     return 0;
 }

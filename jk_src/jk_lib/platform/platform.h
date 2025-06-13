@@ -1,8 +1,6 @@
 #ifndef JK_PLATFORM_H
 #define JK_PLATFORM_H
 
-#include <wchar.h>
-
 #include <jk_src/jk_lib/jk_lib.h>
 
 // ---- Copy-paste from windows headers to avoid importing windows.h begin -----
@@ -118,34 +116,58 @@ JK_PUBLIC void jk_platform_arena_pointer_set(JkPlatformArena *arena, void *point
 
 #else
 
-typedef struct JkPlatformProfileEntry {
+typedef enum JkPlatformProfileFrameType {
+    JK_PLATFORM_PROFILE_FRAME_CURRENT,
+    JK_PLATFORM_PROFILE_FRAME_MIN,
+    JK_PLATFORM_PROFILE_FRAME_MAX,
+    JK_PLATFORM_PROFILE_FRAME_TOTAL,
+    JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT,
+} JkPlatformProfileFrameType;
+
+typedef enum JkPlatformProfileMetric {
+    JK_PLATFORM_PROFILE_METRIC_ELAPSED_EXCLUSIVE,
+    JK_PLATFORM_PROFILE_METRIC_ELAPSED_INCLUSIVE,
+    JK_PLATFORM_PROFILE_METRIC_HIT_COUNT,
+    JK_PLATFORM_PROFILE_METRIC_BYTE_COUNT,
+    JK_PLATFORM_PROFILE_METRIC_DEPTH,
+    JK_PLATFORM_PROFILE_METRIC_COUNT,
+} JkPlatformProfileMetric;
+
+typedef union JkPlatformProfileZoneFrame {
+    uint64_t a[JK_PLATFORM_PROFILE_METRIC_COUNT];
+    struct {
+        uint64_t elapsed_exclusive;
+        uint64_t elapsed_inclusive;
+        uint64_t hit_count;
+        uint64_t byte_count;
+        uint64_t depth;
+    };
+} JkPlatformProfileZoneFrame;
+
+typedef struct JkPlatformProfileZone {
     char *name;
-    uint64_t elapsed_exclusive;
-    uint64_t elapsed_inclusive;
-    uint64_t hit_count;
-    uint64_t byte_count;
-    uint64_t depth;
+    JkPlatformProfileZoneFrame frames[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT];
 
 #ifndef NDEBUG
     int64_t active_count;
 #endif
 
     b32 seen;
-} JkPlatformProfileEntry;
+} JkPlatformProfileZone;
 
 typedef struct JkPlatformProfileTiming {
     uint64_t saved_elapsed_inclusive;
-    JkPlatformProfileEntry *parent;
+    JkPlatformProfileZone *parent;
     uint64_t start;
 
 #ifndef NDEBUG
-    JkPlatformProfileEntry *entry;
+    JkPlatformProfileZone *zone;
     b32 ended;
 #endif
 } JkPlatformProfileTiming;
 
 JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
-        JkPlatformProfileEntry *entry,
+        JkPlatformProfileZone *zone,
         char *name,
         uint64_t byte_count);
 
@@ -154,9 +176,9 @@ JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing);
 #define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, byte_count)          \
     JkPlatformProfileTiming jk_platform_profile_timing__##identifier;             \
     do {                                                                          \
-        static JkPlatformProfileEntry jk_platform_profile_time_begin_entry;       \
+        static JkPlatformProfileZone jk_platform_profile_time_begin_zone;         \
         jk_platform_profile_zone_begin(&jk_platform_profile_timing__##identifier, \
-                &jk_platform_profile_time_begin_entry,                            \
+                &jk_platform_profile_time_begin_zone,                             \
                 #identifier,                                                      \
                 byte_count);                                                      \
     } while (0)
@@ -169,12 +191,23 @@ JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing);
 
 #endif
 
-JK_PUBLIC void jk_platform_profile_begin(void);
+JK_PUBLIC void jk_platform_profile_frame_begin(void);
 
-JK_PUBLIC void jk_platform_profile_end_and_print_custom(
+JK_PUBLIC void jk_platform_profile_frame_end(void);
+
+JK_PUBLIC void jk_platform_profile_print_custom(
         void (*print)(void *data, char *format, ...), void *data);
 
-JK_PUBLIC void jk_platform_profile_end_and_print(void);
+JK_PUBLIC void jk_platform_profile_frame_end_and_print_custom(
+        void (*print)(void *data, char *format, ...), void *data);
+
+JK_PUBLIC void jk_platform_profile_print(void);
+
+JK_PUBLIC void jk_platform_profile_frame_end_and_print(void);
+
+// ---- Profile end ------------------------------------------------------------
+
+// ---- Repetition test begin --------------------------------------------------
 
 typedef enum JkPlatformRepetitionTestState {
     JK_REPETITION_TEST_UNINITIALIZED,
@@ -229,7 +262,7 @@ JK_PUBLIC void jk_platform_repetition_test_count_bytes(
 
 JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test, char *message);
 
-// ---- Profile end ------------------------------------------------------------
+// ---- Repetition test end ----------------------------------------------------
 
 // ---- File formats begin -----------------------------------------------------
 

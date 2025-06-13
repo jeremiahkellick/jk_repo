@@ -32,7 +32,7 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 int main(int argc, char **argv)
 {
-    jk_platform_profile_begin();
+    jk_platform_profile_frame_begin();
 
     program_name = argv[0];
 
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
         printf("Difference: %.16f\n\n", sum - context.sum_answer);
     }
 
-    jk_platform_profile_end_and_print();
+    jk_platform_profile_frame_end_and_print();
 
     return 0;
 }
