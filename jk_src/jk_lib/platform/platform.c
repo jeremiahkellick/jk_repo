@@ -441,41 +441,38 @@ JK_PUBLIC void jk_platform_profile_frame_begin(void)
 JK_PUBLIC void jk_platform_profile_frame_end(void)
 {
     uint64_t elapsed = jk_platform_cpu_timer_get() - jk_platform_profile.start;
-    jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_CURRENT] = elapsed;
 
     jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_TOTAL] += elapsed;
+
+    b32 is_min = elapsed < jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN];
+    if (is_min) {
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN] = elapsed;
+    }
+
+    b32 is_max = jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] < elapsed;
+    if (is_max) {
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] = elapsed;
+    }
+
 #if !JK_PLATFORM_PROFILE_DISABLE
     for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
         JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
+
+        JkPlatformProfileZoneFrame current = zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT];
+        zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT] = (JkPlatformProfileZoneFrame){0};
+
         for (JkPlatformProfileMetric metric = 0; metric < JK_PLATFORM_PROFILE_METRIC_COUNT;
                 metric++) {
-            zone->frames[JK_PLATFORM_PROFILE_FRAME_TOTAL].a[metric] +=
-                    zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT].a[metric];
+            zone->frames[JK_PLATFORM_PROFILE_FRAME_TOTAL].a[metric] += current.a[metric];
+        }
+        if (is_min) {
+            zone->frames[JK_PLATFORM_PROFILE_FRAME_MIN] = current;
+        }
+        if (is_max) {
+            zone->frames[JK_PLATFORM_PROFILE_FRAME_MAX] = current;
         }
     }
 #endif
-
-    if (elapsed < jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN]) {
-        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN] = elapsed;
-#if !JK_PLATFORM_PROFILE_DISABLE
-        for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
-            JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
-            zone->frames[JK_PLATFORM_PROFILE_FRAME_MIN] =
-                    zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT];
-        }
-#endif
-    }
-
-    if (jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] < elapsed) {
-        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] = elapsed;
-#if !JK_PLATFORM_PROFILE_DISABLE
-        for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
-            JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
-            zone->frames[JK_PLATFORM_PROFILE_FRAME_MAX] =
-                    zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT];
-        }
-#endif
-    }
 }
 
 static char *jk_platform_profile_frame_type_strings[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT] = {
@@ -540,7 +537,9 @@ JK_PUBLIC void jk_platform_profile_print_custom(
     uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
     print(data, "CPU frequency: %llu\n", frequency);
 
-    if (jk_platform_profile.frame_count == 1) {
+    if (jk_platform_profile.frame_count == 0) {
+        print(data, "\nNo profile data was captured.\n");
+    } else if (jk_platform_profile.frame_count == 1) {
         jk_platform_profile_frame_print(
                 print, data, "Total time", JK_PLATFORM_PROFILE_FRAME_CURRENT, (double)frequency, 1);
     } else {

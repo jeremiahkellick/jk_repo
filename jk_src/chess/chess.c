@@ -6,9 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+// clang-format off
+
 // #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render /EXPORT:ai_move_get
+// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render /EXPORT:ai_move_get /EXPORT:profile_print
 // #jk_build single_translation_unit
+
+// clang-format on
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
@@ -444,8 +448,6 @@ static void threats_in_direction_until_stopped(
 
 static Threats board_threats_get(Board board, Team threatened_by)
 {
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(threats_get);
-
     Threats result = {0};
 
     JkIntVector2 src;
@@ -509,7 +511,6 @@ static Threats board_threats_get(Board board, Team threatened_by)
         }
     }
 
-    JK_PLATFORM_PROFILE_ZONE_END(threats_get);
     return result;
 }
 
@@ -577,8 +578,6 @@ static void moves_append_with_promo_potential(
 // Returns the number of moves written to the buffer
 static void moves_get(MoveArray *moves, Board board)
 {
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(moves_get);
-
     moves->count = 0;
 
     Team current_team = board_current_team_get(board);
@@ -745,8 +744,6 @@ static void moves_get(MoveArray *moves, Board board)
             move_index++;
         }
     }
-
-    JK_PLATFORM_PROFILE_ZONE_END(moves_get);
 }
 
 // ---- AI begin ---------------------------------------------------------------
@@ -1161,8 +1158,6 @@ static void custom_profile_print(void *data, char *format, ...)
 
 Move ai_move_get(Chess *chess)
 {
-    jk_platform_profile_frame_begin();
-
     AiContext ctx = {
         .board = chess->board,
         .arena = {.memory = chess->ai_memory},
@@ -1360,8 +1355,6 @@ Move ai_move_get(Chess *chess)
 
     Move result = move_unpack(move);
 
-    jk_platform_profile_frame_end_and_print_custom(
-            custom_profile_print, (void *)chess->debug_print);
     return result;
 }
 
@@ -1823,6 +1816,8 @@ static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scal
 
 void render(ChessAssets *assets, Chess *chess)
 {
+    jk_platform_profile_frame_begin();
+
     JkIntVector2 pos;
 
     JkArena arena = {.memory = chess->render_memory};
@@ -1848,6 +1843,7 @@ void render(ChessAssets *assets, Chess *chess)
     };
 
     // Do vector drawing
+    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(draw_vectors);
     JkShapesRenderer renderer;
     JkShapeArray shapes =
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
@@ -1944,7 +1940,9 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
     JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
+    JK_PLATFORM_PROFILE_ZONE_END(draw_vectors);
 
+    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(fill_draw_buffer);
     int32_t cs = 0;
     int32_t ce = 0;
     for (pos.y = 0; pos.y < chess->square_side_length * 10; pos.y++) {
@@ -2028,6 +2026,7 @@ void render(ChessAssets *assets, Chess *chess)
             chess->draw_buffer[pos.y * DRAW_BUFFER_SIDE_LENGTH + pos.x] = color;
         }
     }
+    JK_PLATFORM_PROFILE_ZONE_END(fill_draw_buffer);
 
     if ((chess->flags & FLAG_HOLDING_PIECE) && selected_index < 64) {
         Piece piece = board_piece_get_index(chess->board, selected_index);
@@ -2049,4 +2048,12 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
     }
+
+    jk_platform_profile_frame_end();
+}
+
+void profile_print(void (*print)(char *))
+{
+    print("\n");
+    jk_platform_profile_print_custom(custom_profile_print, (void *)print);
 }

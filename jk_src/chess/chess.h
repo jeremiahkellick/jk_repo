@@ -198,4 +198,7 @@ UpdateFunction update;
 typedef void RenderFunction(ChessAssets *assets, Chess *chess);
 RenderFunction render;
 
+typedef void ProfilePrintFunction(void (*print)(char *));
+ProfilePrintFunction profile_print;
+
 #endif

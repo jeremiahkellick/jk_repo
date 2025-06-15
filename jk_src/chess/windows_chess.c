@@ -94,6 +94,7 @@ static Move global_move = {.src = UINT8_MAX};
 static AiMoveGetFunction *global_ai_move_get = 0;
 static UpdateFunction *global_update = 0;
 static RenderFunction *global_render = 0;
+static ProfilePrintFunction *global_profile_print = 0;
 
 static JkColor window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
@@ -430,6 +431,7 @@ DWORD game_thread(LPVOID param)
                     global_ai_move_get = 0;
                     global_update = 0;
                     global_render = 0;
+                    global_profile_print = 0;
                 }
                 if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
                     OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
@@ -440,6 +442,8 @@ DWORD game_thread(LPVOID param)
                             (AiMoveGetFunction *)GetProcAddress(chess_library, "ai_move_get");
                     global_update = (UpdateFunction *)GetProcAddress(chess_library, "update");
                     global_render = (RenderFunction *)GetProcAddress(chess_library, "render");
+                    global_profile_print =
+                            (ProfilePrintFunction *)GetProcAddress(chess_library, "profile_print");
                 } else {
                     OutputDebugStringA("Failed to load chess_tmp.dll\n");
                 }
@@ -699,6 +703,7 @@ DWORD game_thread(LPVOID param)
         target_flip_time += ticks_per_frame;
         prev_keys = global_keys_down;
     }
+    global_profile_print(global_chess.debug_print);
 
     snprintf(global_string_buffer,
             JK_ARRAY_COUNT(global_string_buffer),
