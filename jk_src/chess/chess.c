@@ -1537,6 +1537,8 @@ void update(ChessAssets *assets, Chess *chess)
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
+        chess->piece_prev_type = NONE;
+        chess->time_move_prev = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         // chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
         moves_get(&chess->moves, chess->board);
@@ -1635,9 +1637,9 @@ void update(ChessAssets *assets, Chess *chess)
         if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
             chess->promo_square = dest;
         } else { // Make a move
-            chess->audio.sound = board_piece_get_index(chess->board, move.dest).type == NONE
-                    ? SOUND_MOVE
-                    : SOUND_CAPTURE;
+            chess->time_move_prev = chess->time;
+            chess->piece_prev_type = board_piece_get_index(chess->board, move.dest).type;
+            chess->audio.sound = chess->piece_prev_type ? SOUND_CAPTURE : SOUND_MOVE;
             chess->audio.sound_started_time = chess->audio.time;
 
             chess->board = board_move_perform(chess->board, move_pack(move));
@@ -1818,6 +1820,112 @@ static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scal
     result.dimensions = jk_vector_2_mul(scale, result.dimensions);
 
     return result;
+}
+
+static JkVector2 clip_to_draw_buffer(JkVector2 v)
+{
+    for (int32_t i = 0; i < JK_ARRAY_COUNT(v.coords); i++) {
+        if (v.coords[i] < 0.0f) {
+            v.coords[i] = 0.0f;
+        }
+        if ((float)DRAW_BUFFER_SIDE_LENGTH < v.coords[i]) {
+            v.coords[i] = (float)DRAW_BUFFER_SIDE_LENGTH;
+        }
+    }
+    return v;
+}
+
+static float fpart(float x)
+{
+    return x - floorf(x);
+}
+
+static float fpart_complement(float x)
+{
+    return 1.0f - fpart(x);
+}
+
+static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness)
+{
+    int32_t brightness_i = (int32_t)(brightness * 255.0f);
+    if (brightness_i > 255) {
+        brightness_i = 255;
+    }
+    draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = blend_alpha(color,
+            draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x],
+            color_multiply(color.a, (uint8_t)brightness_i));
+}
+
+static void draw_line(JkColor *draw_buffer, JkColor color, JkVector2 a, JkVector2 b)
+{
+    a = clip_to_draw_buffer(a);
+    b = clip_to_draw_buffer(b);
+    b32 steep = jk_abs(b.y - a.y) > jk_abs(b.x - a.x);
+
+    if (steep) {
+        JK_SWAP(a.x, a.y, float);
+        JK_SWAP(b.x, b.y, float);
+    }
+    if (a.x > b.x) {
+        JK_SWAP(a, b, JkVector2);
+    }
+
+    JkVector2 delta = jk_vector_2_add(b, jk_vector_2_mul(-1.0f, a));
+
+    float gradient;
+    if (delta.x) {
+        gradient = delta.y / delta.x;
+    } else {
+        gradient = 1.0f;
+    }
+
+    // handle first endpoint
+    int32_t x_pixel_1;
+    float intery;
+    {
+        x_pixel_1 = jk_round(a.x);
+        float yend = a.y + gradient * (x_pixel_1 - a.x);
+        float xcoverage = fpart_complement(a.x + 0.5f);
+        int32_t y_pixel_1 = (int32_t)yend;
+        if (steep) {
+            plot(draw_buffer, color, y_pixel_1, x_pixel_1, fpart_complement(yend) * xcoverage);
+            plot(draw_buffer, color, y_pixel_1 + 1, x_pixel_1, fpart(yend) * xcoverage);
+        } else {
+            plot(draw_buffer, color, x_pixel_1, y_pixel_1, fpart_complement(yend) * xcoverage);
+            plot(draw_buffer, color, x_pixel_1, y_pixel_1 + 1, fpart(yend) * xcoverage);
+        }
+        intery = yend + gradient;
+    }
+
+    // handle second endpoint
+    int32_t x_pixel_2;
+    {
+        x_pixel_2 = jk_round(b.x);
+        float yend = b.y + gradient * (x_pixel_2 - b.x);
+        float xcoverage = fpart(b.x + 0.5f);
+        int32_t y_pixel_2 = (int32_t)yend;
+        if (steep) {
+            plot(draw_buffer, color, y_pixel_2, x_pixel_2, fpart_complement(yend) * xcoverage);
+            plot(draw_buffer, color, y_pixel_2 + 1, x_pixel_2, fpart(yend) * xcoverage);
+        } else {
+            plot(draw_buffer, color, x_pixel_2, y_pixel_2, fpart_complement(yend) * xcoverage);
+            plot(draw_buffer, color, x_pixel_2, y_pixel_2 + 1, fpart(yend) * xcoverage);
+        }
+    }
+
+    if (steep) {
+        for (int32_t x = x_pixel_1 + 1; x < x_pixel_2; x++) {
+            plot(draw_buffer, color, (int32_t)intery, x, fpart_complement(intery));
+            plot(draw_buffer, color, (int32_t)intery + 1, x, fpart(intery));
+            intery += gradient;
+        }
+    } else {
+        for (int32_t x = x_pixel_1 + 1; x < x_pixel_2; x++) {
+            plot(draw_buffer, color, x, (int32_t)intery, fpart_complement(intery));
+            plot(draw_buffer, color, x, (int32_t)intery + 1, fpart(intery));
+            intery += gradient;
+        }
+    }
 }
 
 void render(ChessAssets *assets, Chess *chess)
@@ -2051,8 +2159,8 @@ void render(ChessAssets *assets, Chess *chess)
         if (bitmap) {
             JkIntVector2 held_piece_offset = jk_int_vector_2_sub(chess->input.mouse_pos,
                     (JkIntVector2){chess->square_side_length / 2, chess->square_side_length / 2});
-            for (pos.y = 0; pos.y < chess->square_side_length; pos.y++) {
-                for (pos.x = 0; pos.x < chess->square_side_length; pos.x++) {
+            for (pos.y = 0; pos.y < bitmap->dimensions.x; pos.y++) {
+                for (pos.x = 0; pos.x < bitmap->dimensions.y; pos.x++) {
                     JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
                     if (screen_in_bounds(chess->square_side_length, screen_pos)) {
                         int32_t index = screen_pos.y * DRAW_BUFFER_SIDE_LENGTH + screen_pos.x;
@@ -2061,6 +2169,52 @@ void render(ChessAssets *assets, Chess *chess)
                         uint8_t alpha = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
                         chess->draw_buffer[index] = blend_alpha(color_piece, color_bg, alpha);
                     }
+                }
+            }
+        }
+    }
+
+    uint64_t frames_since_last_move = JK_MIN(chess->time - chess->time_move_prev, 14);
+    if (frames_since_last_move < 14 && chess->piece_prev_type) {
+        JkColor piece_color =
+                board_current_team_get(chess->board) ? color_black_pieces : color_white_pieces;
+        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, scale);
+        JkVector2 half_dimensions = jk_vector_2_mul(0.5f,
+                (JkVector2){(float)chess->square_side_length, (float)chess->square_side_length});
+        JkIntVector2 src = board_index_to_vector_2(move_prev.src);
+        JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
+        JkVector2 screen_pos = board_to_screen_pos(chess->square_side_length, dest);
+        JkVector2 origin_direction =
+                jk_vector_2_normalized(jk_vector_2_from_int(jk_int_vector_2_sub(src, dest)));
+        origin_direction.y = -origin_direction.y;
+        JkVector2 blast_center = jk_vector_2_add(jk_vector_2_add(screen_pos, half_dimensions),
+                jk_vector_2_mul(1.0f * (float)chess->square_side_length, origin_direction));
+
+        float speed = 125.0f;
+        float deceleration = 3.0f;
+        float distance = JK_MAX(0.0f,
+                speed * frames_since_last_move
+                        - deceleration * (frames_since_last_move * frames_since_last_move));
+        uint64_t prev_frames_since_last_move = frames_since_last_move - 1;
+        float prev_distance = JK_MAX(0.0f,
+                speed * prev_frames_since_last_move
+                        - deceleration
+                                * (prev_frames_since_last_move * prev_frames_since_last_move));
+
+        for (pos.y = 0; pos.y < bitmap->dimensions.x; pos.y += 3) {
+            for (pos.x = 0; pos.x < bitmap->dimensions.y; pos.x += 3) {
+                JkVector2 offset = jk_vector_2_from_int(pos);
+                JkVector2 pixel_pos = jk_vector_2_add(screen_pos, offset);
+                JkVector2 direction = jk_vector_2_normalized(
+                        jk_vector_2_add(pixel_pos, jk_vector_2_mul(-1.0f, blast_center)));
+                JkVector2 delta = jk_vector_2_mul(distance, direction);
+                JkVector2 prev_delta = jk_vector_2_mul(prev_distance, direction);
+                JkVector2 pixel_dest = jk_vector_2_add(pixel_pos, delta);
+                JkVector2 prev_dest = jk_vector_2_add(pixel_pos, prev_delta);
+
+                piece_color.a = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
+                if (piece_color.a) {
+                    draw_line(chess->draw_buffer, piece_color, prev_dest, pixel_dest);
                 }
             }
         }

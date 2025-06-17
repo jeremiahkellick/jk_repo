@@ -253,6 +253,13 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 #define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define JK_MAX(a, b) ((a) < (b) ? (b) : (a))
 
+#define JK_SWAP(a, b, type)   \
+    do {                      \
+        type jk_swap_tmp = a; \
+        a = b;                \
+        b = jk_swap_tmp;      \
+    } while (0)
+
 #define JK_PI 3.14159265358979323846264338327950288419716939937510582097494459230781640628
 #define JK_INV_SQRT_2 0.70710678118654752440084
 
