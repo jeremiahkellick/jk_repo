@@ -541,7 +541,7 @@ JK_PUBLIC void jk_platform_profile_print_custom(
         print(data, "\nNo profile data was captured.\n");
     } else if (jk_platform_profile.frame_count == 1) {
         jk_platform_profile_frame_print(
-                print, data, "Total time", JK_PLATFORM_PROFILE_FRAME_CURRENT, (double)frequency, 1);
+                print, data, "Total time", JK_PLATFORM_PROFILE_FRAME_MIN, (double)frequency, 1);
     } else {
         jk_platform_profile_frame_print(
                 print, data, "Min", JK_PLATFORM_PROFILE_FRAME_MIN, (double)frequency, 1);

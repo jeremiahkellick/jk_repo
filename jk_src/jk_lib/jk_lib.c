@@ -498,7 +498,7 @@ JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 v
 
 JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance)
 {
-    return a.x == b.x && a.y == b.y;
+    return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance);
 }
 
 JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b)
@@ -646,6 +646,16 @@ JK_PUBLIC float jk_abs(float value)
 JK_PUBLIC double jk_abs_64(double value)
 {
     return value < 0.0f ? -value : value;
+}
+
+JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance)
+{
+    return jk_abs(b - a) < tolerance;
+}
+
+JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
+{
+    return jk_abs_64(b - a) < tolerance;
 }
 
 JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)

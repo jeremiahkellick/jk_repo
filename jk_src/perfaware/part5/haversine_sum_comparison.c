@@ -1,3 +1,4 @@
+#include "jk_src/jk_lib/jk_lib.h"
 #include <stdlib.h>
 
 // #jk_build single_translation_unit
@@ -15,7 +16,7 @@ typedef enum Opt {
     OPT_COUNT,
 } Opt;
 
-JkOption opts[OPT_COUNT] = {
+static JkOption opts[OPT_COUNT] = {
     {
         .flag = '\0',
         .long_name = "help",
@@ -24,16 +25,46 @@ JkOption opts[OPT_COUNT] = {
     },
 };
 
-JkOptionResult opt_results[OPT_COUNT] = {0};
+static JkOptionResult opt_results[OPT_COUNT] = {0};
 
-JkOptionsParseResult opts_parse = {0};
+static JkOptionsParseResult opts_parse = {0};
 
-char *program_name = "<program_name global should be overwritten with argv[0]>";
+static char *program_name = "<program_name global should be overwritten with argv[0]>";
+
+static double haversine_sum_base(HaversineContext context)
+{
+    double sum = 0.0;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
+        double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double dLat = lat2 - lat1;
+        double dLon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+
+        double a = square(jk_sin(dLat / 2.0))
+                + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2.0));
+        double distance = jk_asin(jk_sqrt(a));
+
+        sum += distance;
+    }
+    return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
+}
+
+typedef struct TestFunction {
+    char *name;
+    HaversineSumFunction call;
+} TestFunction;
+
+TestFunction functions[] = {
+    {"Base", haversine_sum_base},
+};
+
+JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
-    jk_platform_profile_frame_begin();
-
     program_name = argv[0];
 
     // Parse command line arguments
@@ -73,41 +104,30 @@ int main(int argc, char **argv)
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * sizeof(context.pairs[0]));
-    double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
-        double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
-        double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
-        double lon1_deg = context.pairs[i].v[X0];
-        double lon2_deg = context.pairs[i].v[X1];
+    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-        double dLat = lat2 - lat1;
-        double dLon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+    for (uint64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
+        JkPlatformRepetitionTest *test = &tests[i];
 
-        double a = square(jk_sin(dLat / 2.0))
-                + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2.0));
-        double distance = jk_asin(jk_sqrt(a));
+        printf("\n%s\n", functions[i].name);
 
-#ifndef NDEBUG
-        if (context.answers) {
-            JK_ASSERT(approximately_equal(2.0 * EARTH_RADIUS * distance, context.answers[i]));
+        jk_platform_repetition_test_run_wave(
+                test, context.pair_count * sizeof(context.pairs[0]), frequency, 10);
+        b32 passed = 1;
+        while (jk_platform_repetition_test_running(test)) {
+            jk_platform_repetition_test_time_begin(test);
+            double sum = functions[i].call(context);
+            jk_platform_repetition_test_count_bytes(
+                    test, context.pair_count * sizeof(context.pairs[0]));
+            jk_platform_repetition_test_time_end(test);
+            if (context.answers && !jk_float64_equal(sum, context.sum_answer, 0.00000001f)) {
+                passed = 0;
+            }
         }
-#endif
-
-        sum += distance;
+        if (!passed) {
+            fprintf(stderr, "WARNING: sum didn't match answer file sum\n");
+        }
     }
-    sum = (2.0 * EARTH_RADIUS * sum) / context.pair_count;
-    JK_PLATFORM_PROFILE_ZONE_END(sum);
-
-    printf("Pair count: %llu\n", context.pair_count);
-    printf("Haversine sum: %.16f\n", sum);
-
-    if (context.answers) {
-        printf("\nReference sum: %.16f\n", context.sum_answer);
-        printf("Difference: %.16f\n\n", sum - context.sum_answer);
-    }
-
-    jk_platform_profile_frame_end_and_print();
 
     return 0;
 }

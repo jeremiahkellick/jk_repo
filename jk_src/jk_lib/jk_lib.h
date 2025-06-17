@@ -210,10 +210,6 @@ JK_PUBLIC JkVector2 jk_vector_2_from_int(JkIntVector2 int_vector);
 
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);
 
-JK_PUBLIC float jk_abs(float value);
-
-JK_PUBLIC double jk_abs_64(double value);
-
 JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector);
 
 // ---- JkVector2 end ----------------------------------------------------------
@@ -269,6 +265,14 @@ JK_PUBLIC uint64_t jk_round_up_to_power_of_2(uint64_t x);
 JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x);
 
 JK_PUBLIC int32_t jk_round(float value);
+
+JK_PUBLIC float jk_abs(float value);
+
+JK_PUBLIC double jk_abs_64(double value);
+
+JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance);
+
+JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance);
 
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
