@@ -60,11 +60,13 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void);
 
 // ---- OS functions end -------------------------------------------------------
 
-// ---- Compiler functions begin -----------------------------------------------
+// ---- ISA functions begin ----------------------------------------------------
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void);
 
-// ---- Compiler functions end -------------------------------------------------
+JK_PUBLIC double jk_platform_fma_64(double a, double b, double c);
+
+// ---- ISA functions end ------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
@@ -216,18 +218,32 @@ typedef enum JkPlatformRepetitionTestState {
     JK_REPETITION_TEST_ERROR,
 } JkPlatformRepetitionTestState;
 
-typedef enum JkPlatformRepValue {
-    JK_REP_VALUE_TEST_COUNT,
-    JK_REP_VALUE_CPU_TIMER,
-    JK_REP_VALUE_BYTE_COUNT,
-    JK_REP_VALUE_PAGE_FAULT_COUNT,
+typedef enum JkPlatformRepetitionTestValueType {
+    JK_PLATFORM_REPETITION_TEST_VALUE_COUNT,
+    JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME,
+    JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT,
+    JK_PLATFORM_REPETITION_TEST_VALUE_PAGE_FAULT_COUNT,
 
-    JK_REP_VALUE_COUNT,
-} JkPlatformRepValue;
+    JK_PLATFORM_REPETITION_TEST_VALUE_TYPE_COUNT,
+} JkPlatformRepetitionTestValueType;
 
-typedef struct JkPlatformRepValues {
-    uint64_t v[JK_REP_VALUE_COUNT];
-} JkPlatformRepValues;
+typedef union JkPlatformRepetitionTestSample {
+    uint64_t v[JK_PLATFORM_REPETITION_TEST_VALUE_TYPE_COUNT];
+    struct {
+        uint64_t count;
+        uint64_t cpu_time;
+        uint64_t byte_count;
+        uint64_t page_fault_count;
+    };
+} JkPlatformRepetitionTestSample;
+
+typedef enum JkPlatformRepetitionTestSampleType {
+    JK_PLATFORM_REPETITION_TEST_SAMPLE_CURRENT,
+    JK_PLATFORM_REPETITION_TEST_SAMPLE_MIN,
+    JK_PLATFORM_REPETITION_TEST_SAMPLE_MAX,
+    JK_PLATFORM_REPETITION_TEST_SAMPLE_TOTAL,
+    JK_PLATFORM_REPETITION_TEST_SAMPLE_TYPE_COUNT,
+} JkPlatformRepetitionTestSampleType;
 
 typedef struct JkPlatformRepetitionTest {
     JkPlatformRepetitionTestState state;
@@ -237,10 +253,15 @@ typedef struct JkPlatformRepetitionTest {
     uint64_t block_open_count;
     uint64_t block_close_count;
     uint64_t last_found_min_time;
-    JkPlatformRepValues current;
-    JkPlatformRepValues min;
-    JkPlatformRepValues max;
-    JkPlatformRepValues total;
+    union {
+        JkPlatformRepetitionTestSample samples[JK_PLATFORM_REPETITION_TEST_SAMPLE_TYPE_COUNT];
+        struct {
+            JkPlatformRepetitionTestSample current;
+            JkPlatformRepetitionTestSample min;
+            JkPlatformRepetitionTestSample max;
+            JkPlatformRepetitionTestSample total;
+        };
+    };
 } JkPlatformRepetitionTest;
 
 JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *test,
@@ -253,7 +274,10 @@ JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *
 JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test);
 
 JK_PUBLIC double jk_platform_repetition_test_bandwidth(
-        JkPlatformRepValues values, uint64_t frequency);
+        JkPlatformRepetitionTestSample values, uint64_t frequency);
+
+JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
+        JkPlatformRepetitionTest *test, JkPlatformRepetitionTest *baseline);
 
 JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test);
 

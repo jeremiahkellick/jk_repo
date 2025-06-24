@@ -31,7 +31,7 @@ static JkOptionsParseResult opts_parse = {0};
 
 static char *program_name = "<program_name global should be overwritten with argv[0]>";
 
-static double haversine_sum_base(HaversineContext context)
+static double haversine_sum_1(HaversineContext context)
 {
     double sum = 0.0;
     for (size_t i = 0; i < context.pair_count; i++) {
@@ -40,12 +40,159 @@ static double haversine_sum_base(HaversineContext context)
         double lon1_deg = context.pairs[i].v[X0];
         double lon2_deg = context.pairs[i].v[X1];
 
-        double dLat = lat2 - lat1;
-        double dLon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+        double d_lat = lat2 - lat1;
+        double d_lon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
 
-        double a = square(jk_sin(dLat / 2.0))
-                + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2.0));
+        double a = square(jk_sin(d_lat / 2.0))
+                + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(d_lon / 2.0));
         double distance = jk_asin(jk_sqrt(a));
+
+        sum += distance;
+    }
+    return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
+}
+
+static double haversine_sum_2(HaversineContext context)
+{
+    double sum = 0.0;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
+        double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double d_lat = lat2 - lat1;
+        double d_lon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+
+        double lat1_cos = jk_sin_core(lat1 + JK_PI / 2.0);
+        double lat2_cos = jk_sin_core(lat2 + JK_PI / 2.0);
+
+        double a = square(jk_sin(d_lat / 2.0)) + lat1_cos * lat2_cos * square(jk_sin(d_lon / 2.0));
+        double distance = jk_asin(jk_sqrt(a));
+
+        sum += distance;
+    }
+    return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
+}
+
+static double haversine_sum_3(HaversineContext context)
+{
+    double sum = 0.0;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
+        double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double d_lat = lat2 - lat1;
+        double d_lon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+
+        double lat1_cos = jk_sin_core(lat1 + JK_PI / 2.0);
+        double lat2_cos = jk_sin_core(lat2 + JK_PI / 2.0);
+
+        double a = square(jk_sin(d_lat / 2.0)) + lat1_cos * lat2_cos * square(jk_sin(d_lon / 2.0));
+
+        b32 in_asin_standard_range = a <= 0.5;
+        double x_squared = in_asin_standard_range ? a : 1.0 - a;
+        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double distance =
+                in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
+
+        sum += distance;
+    }
+    return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
+}
+
+static double haversine_sum_4(HaversineContext context)
+{
+    double sum = 0.0;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
+        double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double d_lat = lat2 - lat1;
+        double d_lon = RADIANS_PER_DEGREE * (lon2_deg - lon1_deg);
+
+        double lat1_cos = jk_sin_core(lat1 + JK_PI / 2.0);
+        double lat2_cos = jk_sin_core(lat2 + JK_PI / 2.0);
+
+        double half_d_lat_sin = jk_sin_core(jk_abs_64(d_lat / 2.0));
+        double half_d_lon_sin = jk_sin_core(jk_abs_64(d_lon / 2.0));
+
+        double a = square(half_d_lat_sin) + lat1_cos * lat2_cos * square(half_d_lon_sin);
+
+        b32 in_asin_standard_range = a <= 0.5;
+        double x_squared = in_asin_standard_range ? a : 1.0 - a;
+        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double distance =
+                in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
+
+        sum += distance;
+    }
+    return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
+}
+
+static double haversine_sum_5(HaversineContext context)
+{
+    double sum = 0.0;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double lat1_deg = context.pairs[i].v[Y0];
+        double lat2_deg = context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double half_d_lat = (RADIANS_PER_DEGREE / 2.0) * (lat2_deg - lat1_deg);
+        double half_d_lon = (RADIANS_PER_DEGREE / 2.0) * (lon2_deg - lon1_deg);
+
+        double lat1_cos = jk_sin_core(RADIANS_PER_DEGREE * lat1_deg + JK_PI / 2.0);
+        double lat2_cos = jk_sin_core(RADIANS_PER_DEGREE * lat2_deg + JK_PI / 2.0);
+
+        double half_d_lat_sin = jk_sin_core(jk_abs_64(half_d_lat));
+        double half_d_lon_sin = jk_sin_core(jk_abs_64(half_d_lon));
+
+        double a = lat1_cos * lat2_cos * square(half_d_lon_sin) + square(half_d_lat_sin);
+
+        b32 in_asin_standard_range = a <= 0.5;
+        double x_squared = in_asin_standard_range ? a : 1.0 - a;
+        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double distance =
+                in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
+
+        sum += distance;
+    }
+    return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
+}
+
+static double haversine_sum_6(HaversineContext context)
+{
+    double sum = 0.0;
+    for (size_t i = 0; i < context.pair_count; i++) {
+        double lat1_deg = context.pairs[i].v[Y0];
+        double lat2_deg = context.pairs[i].v[Y1];
+        double lon1_deg = context.pairs[i].v[X0];
+        double lon2_deg = context.pairs[i].v[X1];
+
+        double half_d_lat = (RADIANS_PER_DEGREE / 2.0) * (lat2_deg - lat1_deg);
+        double half_d_lon = (RADIANS_PER_DEGREE / 2.0) * (lon2_deg - lon1_deg);
+
+        double lat1_cos =
+                jk_sin_core(jk_platform_fma_64(RADIANS_PER_DEGREE, lat1_deg, JK_PI / 2.0));
+        double lat2_cos =
+                jk_sin_core(jk_platform_fma_64(RADIANS_PER_DEGREE, lat2_deg, JK_PI / 2.0));
+
+        double half_d_lat_sin = jk_sin_core(jk_abs_64(half_d_lat));
+        double half_d_lon_sin = jk_sin_core(jk_abs_64(half_d_lon));
+
+        double a = jk_platform_fma_64(
+                lat1_cos * lat2_cos, square(half_d_lon_sin), square(half_d_lat_sin));
+
+        b32 in_asin_standard_range = a <= 0.5;
+        double x_squared = in_asin_standard_range ? a : 1.0 - a;
+        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double distance =
+                in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
 
         sum += distance;
     }
@@ -58,7 +205,14 @@ typedef struct TestFunction {
 } TestFunction;
 
 TestFunction functions[] = {
-    {"Base", haversine_sum_base},
+    {"Reference", haversine_reference_sum},
+    {"Custom math", haversine_sum},
+    {"1", haversine_sum_1},
+    {"2", haversine_sum_2},
+    {"3", haversine_sum_3},
+    {"4", haversine_sum_4},
+    {"5", haversine_sum_5},
+    {"6", haversine_sum_6},
 };
 
 JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
@@ -114,7 +268,7 @@ int main(int argc, char **argv)
         jk_platform_repetition_test_run_wave(
                 test, context.pair_count * sizeof(context.pairs[0]), frequency, 10);
         b32 passed = 1;
-        while (jk_platform_repetition_test_running(test)) {
+        while (jk_platform_repetition_test_running_baseline(test, tests + 0)) {
             jk_platform_repetition_test_time_begin(test);
             double sum = functions[i].call(context);
             jk_platform_repetition_test_count_bytes(

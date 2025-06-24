@@ -290,18 +290,9 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
 
 // ---- OS functions end -------------------------------------------------------
 
-// ---- Compiler functions begin -----------------------------------------------
+// ---- ISA functions begin ----------------------------------------------------
 
-#ifdef _MSC_VER
-
-#include <intrin.h>
-
-JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
-{
-    return __rdtsc();
-}
-
-#elif __TINYC__
+#if __TINYC__
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
 {
@@ -309,6 +300,26 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
     uint64_t eax;
     __asm__ volatile("rdtsc" : "=d"(edx), "=a"(eax));
     return (edx << 32) | eax;
+}
+
+#else
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
+JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
+{
+    return __rdtsc();
+}
+
+JK_PUBLIC double jk_platform_fma_64(double a, double b, double c)
+{
+    return _mm_cvtsd_f64(_mm_fmadd_sd(_mm_set_sd(a), _mm_set_sd(b), _mm_set_sd(c)));
 }
 
 #elif __arm64__
@@ -322,16 +333,13 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
 
 #else
 
-#include <x86intrin.h>
-
-JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void)
-{
-    return __rdtsc();
-}
+_STATIC_ASSERT(0 && "Unknown ISA");
 
 #endif
 
-// ---- Compiler functions end -------------------------------------------------
+#endif
+
+// ---- ISA functions end ------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
@@ -663,7 +671,7 @@ JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *te
         return;
     }
     if (test->state == JK_REPETITION_TEST_UNINITIALIZED) {
-        test->min.v[JK_REP_VALUE_CPU_TIMER] = UINT64_MAX;
+        test->min.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] = UINT64_MAX;
     }
     test->state = JK_REPETITION_TEST_RUNNING;
     test->target_byte_count = target_byte_count;
@@ -675,51 +683,71 @@ JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *te
 JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *test)
 {
     test->block_open_count++;
-    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] -= jk_platform_page_fault_count_get();
-    test->current.v[JK_REP_VALUE_CPU_TIMER] -= jk_platform_cpu_timer_get();
+    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_PAGE_FAULT_COUNT] -=
+            jk_platform_page_fault_count_get();
+    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] -= jk_platform_cpu_timer_get();
 }
 
 JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test)
 {
-    test->current.v[JK_REP_VALUE_CPU_TIMER] += jk_platform_cpu_timer_get();
-    test->current.v[JK_REP_VALUE_PAGE_FAULT_COUNT] += jk_platform_page_fault_count_get();
+    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] += jk_platform_cpu_timer_get();
+    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_PAGE_FAULT_COUNT] +=
+            jk_platform_page_fault_count_get();
     test->block_close_count++;
 }
 
 JK_PUBLIC double jk_platform_repetition_test_bandwidth(
-        JkPlatformRepValues values, uint64_t frequency)
+        JkPlatformRepetitionTestSample sample, uint64_t frequency)
 {
-    double seconds = (double)values.v[JK_REP_VALUE_CPU_TIMER] / (double)frequency;
-    return (double)values.v[JK_REP_VALUE_BYTE_COUNT] / seconds;
+    double seconds =
+            (double)sample.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] / (double)frequency;
+    return (double)sample.v[JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT] / seconds;
 }
 
-static void jk_platform_repetition_test_print_values(
-        char *name, JkPlatformRepValues values, uint64_t frequency)
+static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *test,
+        char *name,
+        JkPlatformRepetitionTestSampleType type,
+        uint64_t frequency,
+        JkPlatformRepetitionTest *baseline)
 {
-    double test_count =
-            values.v[JK_REP_VALUE_TEST_COUNT] ? (double)values.v[JK_REP_VALUE_TEST_COUNT] : 1.0;
-    double v[JK_REP_VALUE_COUNT];
+    JkPlatformRepetitionTestSample *sample = test->samples + type;
 
-    for (int i = 0; i < JK_REP_VALUE_COUNT; i++) {
-        v[i] = (double)values.v[i] / (double)test_count;
+    uint64_t count = sample->count ? sample->count : 1;
+
+    uint64_t cpu_time = sample->cpu_time / count;
+    double seconds = cpu_time / (double)frequency;
+    printf("%s: %llu (%.2f ms", name, (long long)cpu_time, seconds * 1000.0);
+    if (baseline) {
+        if (test == baseline) {
+            printf(", baseline");
+        } else {
+            JkPlatformRepetitionTestSample *baseline_sample = baseline->samples + type;
+            uint64_t baseline_count = baseline_sample->count ? baseline_sample->count : 1;
+            uint64_t baseline_cpu_time = baseline_sample->cpu_time / baseline_count;
+            if (cpu_time <= baseline_cpu_time) {
+                printf(", %.2fx faster", (double)baseline_cpu_time / (double)cpu_time);
+            } else {
+                printf(", %.2fx slower", (double)cpu_time / (double)baseline_cpu_time);
+            }
+        }
     }
-
-    double seconds = v[JK_REP_VALUE_CPU_TIMER] / (double)frequency;
-    printf("%s: %.0f (%.3f ms)", name, v[JK_REP_VALUE_CPU_TIMER], seconds * 1000.0);
-    if (v[JK_REP_VALUE_BYTE_COUNT] > 0.0) {
+    printf(")");
+    if (sample->byte_count) {
         printf(" ");
-        jk_print_bytes_double(stdout, "%.3f", (double)v[JK_REP_VALUE_BYTE_COUNT] / seconds);
+        jk_print_bytes_double(
+                stdout, "%.2f", ((double)sample->byte_count / (double)count) / seconds);
         printf("/s");
     }
-    if (v[JK_REP_VALUE_PAGE_FAULT_COUNT] > 0.0) {
-        printf(" %.0f page faults (", v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
+    if (sample->page_fault_count) {
+        printf(" %.2f page faults (", (double)sample->page_fault_count / (double)count);
         jk_print_bytes_double(
-                stdout, "%.3f", v[JK_REP_VALUE_BYTE_COUNT] / v[JK_REP_VALUE_PAGE_FAULT_COUNT]);
+                stdout, "%.2f", (double)sample->byte_count / (double)sample->page_fault_count);
         printf("/fault)");
     }
 }
 
-JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test)
+JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
+        JkPlatformRepetitionTest *test, JkPlatformRepetitionTest *baseline)
 {
     if (test->state != JK_REPETITION_TEST_RUNNING) {
         return 0;
@@ -735,30 +763,34 @@ JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test
 
     uint64_t current_time = jk_platform_cpu_timer_get();
     if (test->block_open_count > 0) {
-        if (test->current.v[JK_REP_VALUE_BYTE_COUNT] != test->target_byte_count) {
+        if (test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT]
+                != test->target_byte_count) {
             jk_platform_repetition_test_error(test,
                     "JkPlatformRepetitionTest: Counted a different number of bytes than "
                     "target_byte_count\n");
             return 0;
         }
 
-        test->total.v[JK_REP_VALUE_TEST_COUNT]++;
-        for (int i = 0; i < JK_REP_VALUE_COUNT; i++) {
+        test->total.v[JK_PLATFORM_REPETITION_TEST_VALUE_COUNT]++;
+        for (int i = 0; i < JK_PLATFORM_REPETITION_TEST_VALUE_TYPE_COUNT; i++) {
             test->total.v[i] += test->current.v[i];
         }
-        if (test->current.v[JK_REP_VALUE_CPU_TIMER] < test->min.v[JK_REP_VALUE_CPU_TIMER]) {
+        if (test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME]
+                < test->min.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME]) {
             test->min = test->current;
             test->last_found_min_time = current_time;
             printf("\r                                                                             "
                    "          \r");
-            jk_platform_repetition_test_print_values("Min", test->min, test->frequency);
+            jk_platform_repetition_test_print_sample(
+                    test, "Min", JK_PLATFORM_REPETITION_TEST_SAMPLE_MIN, test->frequency, baseline);
         }
-        if (test->current.v[JK_REP_VALUE_CPU_TIMER] > test->max.v[JK_REP_VALUE_CPU_TIMER]) {
+        if (test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME]
+                > test->max.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME]) {
             test->max = test->current;
         }
     }
 
-    test->current = (JkPlatformRepValues){0};
+    test->current = (JkPlatformRepetitionTestSample){0};
     test->block_open_count = 0;
     test->block_close_count = 0;
 
@@ -766,14 +798,20 @@ JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test
         test->state = JK_REPETITION_TEST_COMPLETE;
 
         // Print results
-        if (test->total.v[JK_REP_VALUE_TEST_COUNT]) {
+        if (test->total.v[JK_PLATFORM_REPETITION_TEST_VALUE_COUNT]) {
             printf("\r                                                                             "
                    "          \r");
-            jk_platform_repetition_test_print_values("Min", test->min, test->frequency);
+            jk_platform_repetition_test_print_sample(
+                    test, "Min", JK_PLATFORM_REPETITION_TEST_SAMPLE_MIN, test->frequency, baseline);
             printf("\n");
-            jk_platform_repetition_test_print_values("Max", test->max, test->frequency);
+            jk_platform_repetition_test_print_sample(
+                    test, "Max", JK_PLATFORM_REPETITION_TEST_SAMPLE_MAX, test->frequency, baseline);
             printf("\n");
-            jk_platform_repetition_test_print_values("Avg", test->total, test->frequency);
+            jk_platform_repetition_test_print_sample(test,
+                    "Avg",
+                    JK_PLATFORM_REPETITION_TEST_SAMPLE_TOTAL,
+                    test->frequency,
+                    baseline);
             printf("\n");
         }
     }
@@ -781,10 +819,15 @@ JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test
     return test->state == JK_REPETITION_TEST_RUNNING;
 }
 
+JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test)
+{
+    return jk_platform_repetition_test_running_baseline(test, 0);
+}
+
 JK_PUBLIC void jk_platform_repetition_test_count_bytes(
         JkPlatformRepetitionTest *test, uint64_t bytes)
 {
-    test->current.v[JK_REP_VALUE_BYTE_COUNT] += bytes;
+    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT] += bytes;
 }
 
 JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test, char *message)
