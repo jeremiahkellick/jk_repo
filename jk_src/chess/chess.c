@@ -1822,17 +1822,47 @@ static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scal
     return result;
 }
 
-static JkVector2 clip_to_draw_buffer(JkVector2 v)
+static uint8_t region_code(float side_length, JkVector2 v)
 {
-    for (int32_t i = 0; i < JK_ARRAY_COUNT(v.coords); i++) {
-        if (v.coords[i] < 0.0f) {
-            v.coords[i] = 0.0f;
-        }
-        if ((float)DRAW_BUFFER_SIDE_LENGTH < v.coords[i]) {
-            v.coords[i] = (float)DRAW_BUFFER_SIDE_LENGTH;
+    return ((v.x < 0.0f) << 0) | ((side_length - 1.0f < v.x) << 1) | ((v.y < 0.0f) << 2)
+            | ((side_length - 1.0f < v.y) << 3);
+}
+
+typedef struct Endpoint {
+    uint8_t code;
+    JkVector2 *point;
+} Endpoint;
+
+static b32 clip_to_draw_region(float side_length, JkVector2 *a, JkVector2 *b)
+{
+    Endpoint endpoint_a = {.code = region_code(side_length, *a), .point = a};
+    Endpoint endpoint_b = {.code = region_code(side_length, *b), .point = b};
+
+    for (;;) {
+        if (!(endpoint_a.code | endpoint_b.code)) {
+            return 1;
+        } else if (endpoint_a.code & endpoint_b.code) {
+            return 0;
+        } else {
+            JkVector2 u = *a;
+            JkVector2 v = *b;
+            Endpoint *endpoint = endpoint_a.code < endpoint_b.code ? &endpoint_b : &endpoint_a;
+            if ((endpoint->code >> 0) & 1) {
+                endpoint->point->x = 0.0f;
+                endpoint->point->y = u.y + (v.y - u.y) * (0.0f - u.x) / (v.x - u.x);
+            } else if ((endpoint->code >> 1) & 1) {
+                endpoint->point->x = side_length - 1.0f;
+                endpoint->point->y = u.y + (v.y - u.y) * (side_length - 1.0f - u.x) / (v.x - u.x);
+            } else if ((endpoint->code >> 2) & 1) {
+                endpoint->point->x = u.x + (v.x - u.x) * (0.0f - u.y) / (v.y - u.y);
+                endpoint->point->y = 0.0f;
+            } else if ((endpoint->code >> 3) & 1) {
+                endpoint->point->x = u.x + (v.x - u.x) * (side_length - 1.0f - u.y) / (v.y - u.y);
+                endpoint->point->y = side_length - 1.0f;
+            }
+            endpoint->code = region_code(side_length, *endpoint->point);
         }
     }
-    return v;
 }
 
 static float fpart(float x)
@@ -1856,10 +1886,14 @@ static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, floa
             color_multiply(color.a, (uint8_t)brightness_i));
 }
 
-static void draw_line(JkColor *draw_buffer, JkColor color, JkVector2 a, JkVector2 b)
+static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
 {
-    a = clip_to_draw_buffer(a);
-    b = clip_to_draw_buffer(b);
+    if (!clip_to_draw_region((float)(chess->square_side_length * 10), &a, &b)) {
+        return;
+    }
+
+    JkColor *draw_buffer = chess->draw_buffer;
+
     b32 steep = jk_abs(b.y - a.y) > jk_abs(b.x - a.x);
 
     if (steep) {
@@ -2214,7 +2248,7 @@ void render(ChessAssets *assets, Chess *chess)
 
                 piece_color.a = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
                 if (piece_color.a) {
-                    draw_line(chess->draw_buffer, piece_color, prev_dest, pixel_dest);
+                    draw_line(chess, piece_color, prev_dest, pixel_dest);
                 }
             }
         }
