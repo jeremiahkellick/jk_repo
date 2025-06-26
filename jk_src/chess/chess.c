@@ -1971,6 +1971,7 @@ void render(ChessAssets *assets, Chess *chess)
     JkArena arena = {.memory = chess->render_memory};
 
     // Figure out which squares should be highlighted
+    Team team = board_current_team_get(chess->board);
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
     uint64_t destinations = destinations_get_by_src(chess, selected_index);
     JkIntVector2 mouse_pos = screen_to_board_pos(chess->square_side_length, chess->input.mouse_pos);
@@ -1997,21 +1998,46 @@ void render(ChessAssets *assets, Chess *chess)
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
     jk_shapes_renderer_init(&renderer, assets, shapes, &arena);
     float scale = (float)chess->square_side_length / assets->shapes[KING].dimensions.x;
+    JkColor square_colors[8][8];
     for (pos.y = 0; pos.y < 8; pos.y++) {
         for (pos.x = 0; pos.x < 8; pos.x++) {
+            int32_t index = board_index_get(pos);
             Piece piece = board_piece_get(chess->board, pos);
-            JkColor color = piece.team ? color_black_pieces : color_white_pieces;
-            if (board_index_get(pos) == selected_index
-                    && ((chess->flags & FLAG_HOLDING_PIECE) || promoting)) {
-                color.a /= 2;
+            int32_t dist_from_promo_square = absolute_value(pos.y - chess->promo_square.y);
+            JkColor square_color =
+                    pos.x % 2 == pos.y % 2 ? color_light_squares : color_dark_squares;
+
+            if (chess->result && result_origin.x <= pos.x && pos.x < result_extent.x
+                    && result_origin.y <= pos.y && pos.y < result_extent.y) {
+                square_color = color_background;
+            } else if (promoting && pos.x == chess->promo_square.x
+                    && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                square_color = color_background;
+                piece.team = team;
+                piece.type = promo_order[dist_from_promo_square];
+            } else if (index == selected_index) {
+                square_color = blend(color_selection, square_color);
+            } else if (destinations & (1llu << index)) {
+                square_color = blend(color_selection, square_color);
+            } else if ((move_prev.src || move_prev.dest)
+                    && (index == move_prev.src || index == move_prev.dest)) {
+                square_color = blend(color_move_prev, square_color);
             }
+
+            JkColor piece_color = piece.team ? color_black_pieces : color_white_pieces;
+            if (board_index_get(pos) == selected_index && (chess->flags & FLAG_HOLDING_PIECE)) {
+                piece_color.a /= 2;
+            }
+
             jk_shapes_draw(&renderer,
                     piece.type,
                     board_to_screen_pos(chess->square_side_length, pos),
                     scale,
-                    color);
+                    piece_color);
+            square_colors[pos.y][pos.x] = square_color;
         }
     }
+
     float coords_scale = 0.0003f * chess->square_side_length;
     JkColor coords_color = color_light_squares;
     coords_color.a = 160;
@@ -2035,6 +2061,7 @@ void render(ChessAssets *assets, Chess *chess)
                     coords_color);
         }
     }
+
     for (int32_t y = 0; y < 8; y++) {
         uint32_t shape_id = '1' + (7 - y) + CHARACTER_SHAPE_OFFSET;
         JkShape *shape = shapes.items + shape_id;
@@ -2057,6 +2084,7 @@ void render(ChessAssets *assets, Chess *chess)
                     coords_color);
         }
     }
+
     if (chess->result) {
         float text_scale = 0.0008f * chess->square_side_length;
         JkVector2 result_origin_f = jk_vector_2_from_int(jk_int_vector_2_add(
@@ -2066,7 +2094,7 @@ void render(ChessAssets *assets, Chess *chess)
 
         JkBuffer text;
         if (chess->result == RESULT_CHECKMATE) {
-            if (board_current_team_get(chess->board)) {
+            if (team) {
                 text = JKS("White won");
             } else {
                 text = JKS("Black won");
@@ -2091,36 +2119,6 @@ void render(ChessAssets *assets, Chess *chess)
     }
     JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
     JK_PLATFORM_PROFILE_ZONE_END(draw_vectors);
-
-    // Find square colors
-    JkColor square_colors[8][8];
-    for (pos.y = 0; pos.y < 8; pos.y++) {
-        for (pos.x = 0; pos.x < 8; pos.x++) {
-            int32_t index = board_index_get(pos);
-            JkColor color = pos.x % 2 == pos.y % 2 ? color_light_squares : color_dark_squares;
-            Piece piece = board_piece_get(chess->board, pos);
-            int32_t dist_from_promo_square = absolute_value(pos.y - chess->promo_square.y);
-
-            if (chess->result && result_origin.x <= pos.x && pos.x < result_extent.x
-                    && result_origin.y <= pos.y && pos.y < result_extent.y) {
-                color = color_background;
-            } else if (promoting && pos.x == chess->promo_square.x
-                    && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
-                color = color_background;
-                piece.team = board_current_team_get(chess->board);
-                piece.type = promo_order[dist_from_promo_square];
-            } else if (index == selected_index) {
-                color = blend(color_selection, color);
-            } else if (destinations & (1llu << index)) {
-                color = blend(color_selection, color);
-            } else if ((move_prev.src || move_prev.dest)
-                    && (index == move_prev.src || index == move_prev.dest)) {
-                color = blend(color_move_prev, color);
-            }
-
-            square_colors[pos.y][pos.x] = color;
-        }
-    }
 
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(fill_draw_buffer);
     int32_t cs = 0;
@@ -2210,8 +2208,7 @@ void render(ChessAssets *assets, Chess *chess)
 
     uint64_t frames_since_last_move = JK_MIN(chess->time - chess->time_move_prev, 14);
     if (frames_since_last_move < 14 && chess->piece_prev_type) {
-        JkColor piece_color =
-                board_current_team_get(chess->board) ? color_black_pieces : color_white_pieces;
+        JkColor piece_color = team ? color_black_pieces : color_white_pieces;
         JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, scale);
         JkVector2 half_dimensions = jk_vector_2_mul(0.5f,
                 (JkVector2){(float)chess->square_side_length, (float)chess->square_side_length});
