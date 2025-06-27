@@ -442,23 +442,20 @@ DWORD game_thread(LPVOID param)
         global_chess.input.flags = 0;
 
         // Keyboard input
+        int64_t keys_down = global_keys_down;
         {
-            global_chess.input.flags |=
-                    (((global_keys_down >> KEY_UP) | (global_keys_down >> KEY_W)) & 1) << INPUT_UP;
-            global_chess.input.flags |=
-                    (((global_keys_down >> KEY_DOWN) | (global_keys_down >> KEY_S)) & 1)
+            global_chess.input.flags |= (((keys_down >> KEY_UP) | (keys_down >> KEY_W)) & 1)
+                    << INPUT_UP;
+            global_chess.input.flags |= (((keys_down >> KEY_DOWN) | (keys_down >> KEY_S)) & 1)
                     << INPUT_DOWN;
-            global_chess.input.flags |=
-                    (((global_keys_down >> KEY_LEFT) | (global_keys_down >> KEY_A)) & 1)
+            global_chess.input.flags |= (((keys_down >> KEY_LEFT) | (keys_down >> KEY_A)) & 1)
                     << INPUT_LEFT;
-            global_chess.input.flags |=
-                    (((global_keys_down >> KEY_RIGHT) | (global_keys_down >> KEY_D)) & 1)
+            global_chess.input.flags |= (((keys_down >> KEY_RIGHT) | (keys_down >> KEY_D)) & 1)
                     << INPUT_RIGHT;
-            global_chess.input.flags |=
-                    (((global_keys_down >> KEY_ENTER) | (global_keys_down >> KEY_SPACE)) & 1)
+            global_chess.input.flags |= (((keys_down >> KEY_ENTER) | (keys_down >> KEY_SPACE)) & 1)
                     << INPUT_CONFIRM;
-            global_chess.input.flags |= ((global_keys_down >> KEY_ESCAPE) & 1) << INPUT_CANCEL;
-            global_chess.input.flags |= ((global_keys_down >> KEY_R) & 1) << INPUT_RESET;
+            global_chess.input.flags |= ((keys_down >> KEY_ESCAPE) & 1) << INPUT_CANCEL;
+            global_chess.input.flags |= ((keys_down >> KEY_R) & 1) << INPUT_RESET;
         }
 
         // Controller input
@@ -538,7 +535,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        if ((global_keys_down & JK_MASK(KEY_C)) && !(prev_keys & JK_MASK(KEY_C))) {
+        if ((keys_down & JK_MASK(KEY_C)) && !(prev_keys & JK_MASK(KEY_C))) {
             global_record_state = (global_record_state + 1) % RECORD_STATE_COUNT;
             switch (global_record_state) {
             case RECORD_STATE_NONE: {
@@ -687,7 +684,7 @@ DWORD game_thread(LPVOID param)
 
         counter_previous = counter_current;
         target_flip_time += ticks_per_frame;
-        prev_keys = global_keys_down;
+        prev_keys = keys_down;
     }
     global_profile_print(global_chess.debug_print);
 
