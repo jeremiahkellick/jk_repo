@@ -49,20 +49,6 @@ typedef enum Key {
     KEY_ESCAPE,
 } Key;
 
-#define KEY_FLAG_UP (1 << KEY_UP)
-#define KEY_FLAG_DOWN (1 << KEY_DOWN)
-#define KEY_FLAG_LEFT (1 << KEY_LEFT)
-#define KEY_FLAG_RIGHT (1 << KEY_RIGHT)
-#define KEY_FLAG_W (1 << KEY_W)
-#define KEY_FLAG_S (1 << KEY_S)
-#define KEY_FLAG_A (1 << KEY_A)
-#define KEY_FLAG_D (1 << KEY_D)
-#define KEY_FLAG_R (1 << KEY_R)
-#define KEY_FLAG_C (1 << KEY_C)
-#define KEY_FLAG_ENTER (1 << KEY_ENTER)
-#define KEY_FLAG_SPACE (1 << KEY_SPACE)
-#define KEY_FLAG_ESCAPE (1 << KEY_ESCAPE)
-
 #define AUDIO_DELAY_MS 30
 
 static char debug_print_buffer[4096];
@@ -230,55 +216,55 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         int64_t flag = 0;
         switch (wparam) {
         case VK_UP: {
-            flag = KEY_FLAG_UP;
+            flag = JK_MASK(KEY_UP);
         } break;
 
         case VK_DOWN: {
-            flag = KEY_FLAG_DOWN;
+            flag = JK_MASK(KEY_DOWN);
         } break;
 
         case VK_LEFT: {
-            flag = KEY_FLAG_LEFT;
+            flag = JK_MASK(KEY_LEFT);
         } break;
 
         case VK_RIGHT: {
-            flag = KEY_FLAG_RIGHT;
+            flag = JK_MASK(KEY_RIGHT);
         } break;
 
         case 'W': {
-            flag = KEY_FLAG_W;
+            flag = JK_MASK(KEY_W);
         } break;
 
         case 'S': {
-            flag = KEY_FLAG_S;
+            flag = JK_MASK(KEY_S);
         } break;
 
         case 'A': {
-            flag = KEY_FLAG_A;
+            flag = JK_MASK(KEY_A);
         } break;
 
         case 'D': {
-            flag = KEY_FLAG_D;
+            flag = JK_MASK(KEY_D);
         } break;
 
         case 'R': {
-            flag = KEY_FLAG_R;
+            flag = JK_MASK(KEY_R);
         } break;
 
         case 'C': {
-            flag = KEY_FLAG_C;
+            flag = JK_MASK(KEY_C);
         } break;
 
         case VK_RETURN: {
-            flag = KEY_FLAG_ENTER;
+            flag = JK_MASK(KEY_ENTER);
         } break;
 
         case VK_SPACE: {
-            flag = KEY_FLAG_SPACE;
+            flag = JK_MASK(KEY_SPACE);
         } break;
 
         case VK_ESCAPE: {
-            flag = KEY_FLAG_ESCAPE;
+            flag = JK_MASK(KEY_ESCAPE);
         } break;
 
         case VK_F4: {
@@ -552,7 +538,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        if ((global_keys_down & KEY_FLAG_C) && !(prev_keys & KEY_FLAG_C)) {
+        if ((global_keys_down & JK_MASK(KEY_C)) && !(prev_keys & JK_MASK(KEY_C))) {
             global_record_state = (global_record_state + 1) % RECORD_STATE_COUNT;
             switch (global_record_state) {
             case RECORD_STATE_NONE: {
@@ -610,8 +596,8 @@ DWORD game_thread(LPVOID param)
 
         global_update(global_assets, &global_chess);
 
-        if (global_chess.flags & FLAG_REQUEST_AI_MOVE) {
-            global_chess.flags &= ~FLAG_REQUEST_AI_MOVE;
+        if (global_chess.flags & JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE)) {
+            global_chess.flags &= ~JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
             ReleaseSemaphore(global_board_lock, 1, 0);
         }
 

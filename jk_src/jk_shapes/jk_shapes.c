@@ -189,6 +189,9 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         r.dimensions = jk_vector_2_mul(sqrtf(lambda), r.dimensions);
     }
 
+    b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_LARGE) & 1;
+    b32 flag_sweep = (a.flags >> JK_SHAPES_ARC_FLAG_SWEEP) & 1;
+
     // Compute center in ellipse space
     JkVector2 center_prime;
     {
@@ -201,8 +204,6 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         float scalar = sqrtf(JK_MAX(0.0f, expr));
         JkVector2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
             -(r.dimensions.y * point_prime.x) / r.dimensions.x};
-        b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_INDEX_LARGE) & 1;
-        b32 flag_sweep = (a.flags >> JK_SHAPES_ARC_FLAG_INDEX_SWEEP) & 1;
         float sign = flag_large == flag_sweep ? -1.0f : 1.0f;
         center_prime = jk_vector_2_mul(sign * scalar, vector);
     }
@@ -221,7 +222,7 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         r.angle_start = jk_vector_2_angle_between((JkVector2){1.0f, 0.0f}, v1);
         r.angle_delta = jk_vector_2_angle_between(v1, v2);
 
-        if (a.flags & JK_SHAPES_ARC_FLAG_SWEEP) {
+        if (flag_sweep) {
             if (r.angle_delta < 0.0f) {
                 r.angle_delta += 2.0f * (float)JK_PI;
             }

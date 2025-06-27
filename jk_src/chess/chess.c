@@ -118,7 +118,7 @@ static void debug_render(Board board)
 
 static Team board_current_team_get(Board board)
 {
-    return (board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1;
+    return (board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1;
 }
 
 static b32 board_in_bounds(JkIntVector2 pos)
@@ -280,10 +280,10 @@ static Move move_unpack(MovePacked move_packed)
 static Board parse_fen(JkBuffer fen)
 {
     // We'll start with no castling rights. (Flag set mean disallowed, clear means allowed).
-    Board board = {.flags = BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS
-                | BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS
-                | BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS
-                | BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS};
+    Board board = {.flags = JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS)
+                | JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS)
+                | JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS)
+                | JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS)};
     uint64_t i = 0;
     JkIntVector2 pos = {0, 7};
 
@@ -334,7 +334,7 @@ static Board parse_fen(JkBuffer fen)
 
     // Parse current player
     if (tolower(fen.data[i++]) == 'b') {
-        board.flags |= BOARD_FLAG_CURRENT_PLAYER;
+        board.flags |= JK_MASK(BOARD_FLAG_CURRENT_PLAYER);
     }
 
     while (isspace(fen.data[i])) {
@@ -345,13 +345,13 @@ static Board parse_fen(JkBuffer fen)
     uint8_t c;
     while (!isspace(c = fen.data[i++])) {
         if (c == 'Q') {
-            board.flags &= ~BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS;
+            board.flags &= ~JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS);
         } else if (c == 'K') {
-            board.flags &= ~BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS;
+            board.flags &= ~JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS);
         } else if (c == 'q') {
-            board.flags &= ~BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS;
+            board.flags &= ~JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS);
         } else if (c == 'k') {
-            board.flags &= ~BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS;
+            board.flags &= ~JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS);
         }
     }
 
@@ -519,12 +519,12 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     Move move = move_unpack(move_packed);
     JkIntVector2 src = board_index_to_vector_2(move.src);
     JkIntVector2 dest = board_index_to_vector_2(move.dest);
-    Team team = (board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1;
+    Team team = (board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1;
 
     // En-passant handling
     if (move.piece.type == PAWN && src.x != dest.x
             && board_piece_get_index(board, move.dest).type == NONE) {
-        int32_t y_delta = (board.flags & BOARD_FLAG_CURRENT_PLAYER) ? 1 : -1;
+        int32_t y_delta = (board.flags & JK_MASK(BOARD_FLAG_CURRENT_PLAYER)) ? 1 : -1;
         board_piece_set(&board, jk_int_vector_2_add(dest, (JkIntVector2){0, y_delta}), (Piece){0});
     }
 
@@ -557,7 +557,7 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     board_piece_set(&board, dest, move.piece);
 
     board.move_prev = move_packed;
-    board.flags ^= BOARD_FLAG_CURRENT_PLAYER;
+    board.flags ^= JK_MASK(BOARD_FLAG_CURRENT_PLAYER);
 
     return board;
 }
@@ -1488,11 +1488,11 @@ void update(ChessAssets *assets, Chess *chess)
     }
 
     // Debug reset
-    if (button_pressed(chess, INPUT_FLAG_RESET)) {
-        chess->flags &= ~FLAG_INITIALIZED;
+    if (button_pressed(chess, JK_MASK(INPUT_RESET))) {
+        chess->flags &= ~JK_MASK(CHESS_FLAG_INITIALIZED);
     }
 
-    if (!(chess->flags & FLAG_INITIALIZED)) {
+    if (!(chess->flags & JK_MASK(CHESS_FLAG_INITIALIZED))) {
         // Test search score calculation
         AiContext ctx = {
             .top_level_node_count = 2,
@@ -1530,7 +1530,7 @@ void update(ChessAssets *assets, Chess *chess)
         print_nodes(chess->debug_print, ctx.top_level_nodes, 0);
         print_nodes(chess->debug_print, ctx.top_level_nodes + 1, 0);
 
-        chess->flags = FLAG_INITIALIZED;
+        chess->flags = JK_MASK(CHESS_FLAG_INITIALIZED);
         chess->player_types[0] = PLAYER_HUMAN;
         chess->player_types[1] = PLAYER_HUMAN;
         chess->selected_square = (JkIntVector2){-1, -1};
@@ -1543,7 +1543,7 @@ void update(ChessAssets *assets, Chess *chess)
         // chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
         moves_get(&chess->moves, chess->board);
         if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
-            chess->flags |= FLAG_REQUEST_AI_MOVE;
+            chess->flags |= JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
         }
 
         chess->audio.time = 0;
@@ -1553,16 +1553,16 @@ void update(ChessAssets *assets, Chess *chess)
         srand(0xd5717cc6);
 
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 0)
-                == BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS);
+                == JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS));
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 1)
-                == BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS);
+                == JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS));
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 0)
-                == BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS);
+                == JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS));
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 1)
-                == BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS);
+                == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
     }
 
-    if (button_pressed(chess, INPUT_FLAG_CANCEL)) {
+    if (button_pressed(chess, JK_MASK(INPUT_CANCEL))) {
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
     }
@@ -1576,7 +1576,7 @@ void update(ChessAssets *assets, Chess *chess)
     if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
         if (board_in_bounds(chess->promo_square)) {
             int32_t dist_from_promo_square = absolute_value(mouse_pos.y - chess->promo_square.y);
-            if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
+            if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
                 if (mouse_pos.x == chess->promo_square.x
                         && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
                     move.src = board_index_get(chess->selected_square);
@@ -1596,7 +1596,7 @@ void update(ChessAssets *assets, Chess *chess)
                     mouse_index < 64 && (available_destinations & (1llu << mouse_index));
             uint8_t piece_drop_index = UINT8_MAX;
 
-            if (button_pressed(chess, INPUT_FLAG_CONFIRM)) {
+            if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
                 if (mouse_on_destination) {
                     piece_drop_index = mouse_index;
                 } else {
@@ -1604,15 +1604,16 @@ void update(ChessAssets *assets, Chess *chess)
                     for (uint8_t i = 0; i < chess->moves.count; i++) {
                         Move available_move = move_unpack(chess->moves.data[i]);
                         if (available_move.src == mouse_index) {
-                            chess->flags |= FLAG_HOLDING_PIECE;
+                            chess->flags |= JK_MASK(CHESS_FLAG_HOLDING_PIECE);
                             chess->selected_square = mouse_pos;
                         }
                     }
                 }
             }
 
-            if (!(chess->input.flags & INPUT_FLAG_CONFIRM) && (chess->flags & FLAG_HOLDING_PIECE)) {
-                chess->flags &= ~FLAG_HOLDING_PIECE;
+            if (!(chess->input.flags & JK_MASK(INPUT_CONFIRM))
+                    && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
+                chess->flags &= ~JK_MASK(CHESS_FLAG_HOLDING_PIECE);
 
                 if (mouse_on_destination) {
                     piece_drop_index = mouse_index;
@@ -1653,7 +1654,7 @@ void update(ChessAssets *assets, Chess *chess)
 
             if (chess->moves.count) {
                 if (chess->player_types[current_team] == PLAYER_AI) {
-                    chess->flags |= FLAG_REQUEST_AI_MOVE;
+                    chess->flags |= JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
                 }
             } else {
                 chess->victor = !current_team;
@@ -1979,10 +1980,10 @@ void render(ChessAssets *assets, Chess *chess)
             mouse_pos.x % 2 == mouse_pos.y % 2 ? color_light_squares : color_dark_squares;
     int32_t drop_indicator_width = JK_MAX(1, chess->square_side_length / 18);
     b32 promoting = board_in_bounds(chess->promo_square);
-    b32 holding_piece = (chess->flags & FLAG_HOLDING_PIECE) && selected_index < 64;
+    b32 holding_piece = (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE)) && selected_index < 64;
 
     // uint64_t threatened = board_threatened_squares_get(
-    //         chess->board, !((chess->board.flags >> BOARD_FLAG_INDEX_CURRENT_PLAYER) & 1));
+    //         chess->board, !((chess->board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1));
 
     Move move_prev = move_unpack(chess->board.move_prev);
 
@@ -2025,7 +2026,8 @@ void render(ChessAssets *assets, Chess *chess)
             }
 
             JkColor piece_color = piece.team ? color_black_pieces : color_white_pieces;
-            if (board_index_get(pos) == selected_index && (chess->flags & FLAG_HOLDING_PIECE)) {
+            if (board_index_get(pos) == selected_index
+                    && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
                 piece_color.a /= 2;
             }
 
