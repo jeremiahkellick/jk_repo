@@ -1687,17 +1687,17 @@ static JkColor color_background = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R, 
 // JkColor light_squares = {0xde, 0xe2, 0xde};
 // JkColor dark_squares = {0x39, 0x41, 0x3a};
 
-static JkColor color_light_squares = {0xe9, 0xe2, 0xd7, 0xff};
+static JkColor color_light_squares = {0xe2, 0xdb, 0xd0, 0xff};
 static JkColor color_dark_squares = {0x50, 0x41, 0x2b, 0xff};
 
 // Blended halfway between the base square colors and #E26D5C
 
 static JkColor color_selection = {0x5c, 0x6d, 0xe2, 0xff};
-static JkColor color_move_prev = {0x2b, 0xa6, 0xff, 0xff};
+static JkColor color_move_prev = {0x11, 0x88, 0xff, 0xff};
 
 // JkColor white = {0x8e, 0x8e, 0x8e};
 static JkColor color_white_pieces = {0x82, 0x92, 0x85, 0xff};
-static JkColor color_black_pieces = {0xff, 0x73, 0xa2, 0xff};
+static JkColor color_black_pieces = {0xfb, 0x6f, 0x9d, 0xff};
 
 static uint8_t uint8_average(uint8_t a, uint8_t b)
 {
@@ -2022,7 +2022,7 @@ void render(ChessAssets *assets, Chess *chess)
                 square_color = blend(color_selection, square_color);
             } else if ((move_prev.src || move_prev.dest)
                     && (index == move_prev.src || index == move_prev.dest)) {
-                square_color = blend(color_move_prev, square_color);
+                square_color = blend_alpha(color_move_prev, square_color, 115);
             }
 
             JkColor piece_color = piece.team ? color_black_pieces : color_white_pieces;
@@ -2209,7 +2209,7 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     int64_t frames_since_last_move = chess->time - chess->time_move_prev;
-    if (frames_since_last_move < 40 && chess->piece_prev_type) {
+    if (frames_since_last_move < 32 && chess->piece_prev_type) {
         JkColor piece_color = team ? color_black_pieces : color_white_pieces;
         JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, scale);
         JkVector2 half_dimensions = jk_vector_2_mul(0.5f,
