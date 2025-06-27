@@ -2208,8 +2208,8 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
-    uint64_t frames_since_last_move = JK_MIN(chess->time - chess->time_move_prev, 14);
-    if (frames_since_last_move < 14 && chess->piece_prev_type) {
+    int64_t frames_since_last_move = chess->time - chess->time_move_prev;
+    if (frames_since_last_move < 40 && chess->piece_prev_type) {
         JkColor piece_color = team ? color_black_pieces : color_white_pieces;
         JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, scale);
         JkVector2 half_dimensions = jk_vector_2_mul(0.5f,
@@ -2223,12 +2223,12 @@ void render(ChessAssets *assets, Chess *chess)
         JkVector2 blast_center = jk_vector_2_add(jk_vector_2_add(screen_pos, half_dimensions),
                 jk_vector_2_mul(1.0f * (float)chess->square_side_length, origin_direction));
 
-        float speed = 125.0f;
-        float deceleration = 3.0f;
+        float speed = 60.0f;
+        float deceleration = 0.82f;
         float distance = JK_MAX(0.0f,
                 speed * frames_since_last_move
                         - deceleration * (frames_since_last_move * frames_since_last_move));
-        uint64_t prev_frames_since_last_move = frames_since_last_move - 1;
+        int64_t prev_frames_since_last_move = JK_MAX(0, frames_since_last_move - 2);
         float prev_distance = JK_MAX(0.0f,
                 speed * prev_frames_since_last_move
                         - deceleration
