@@ -1429,13 +1429,11 @@ static JkIntVector2 screen_to_board_pos(int32_t square_side_length, JkIntVector2
             square_side_length, screen_to_board_pos_pixels(square_side_length, screen_pos));
 }
 
-static JkVector2 board_to_screen_pos(int32_t square_side_length, JkIntVector2 board_pos)
+static JkVector2 board_to_canvas_pos(float square_size, JkIntVector2 board_pos)
 {
-    board_pos.y = 7 - board_pos.y;
-    JkIntVector2 screen_pos =
-            jk_int_vector_2_add(jk_int_vector_2_mul(square_side_length, board_pos),
-                    screen_board_origin_get(square_side_length));
-    return (JkVector2){(float)screen_pos.x, (float)screen_pos.y};
+    JkVector2 board_pos_f = {(float)board_pos.x, (float)(7 - board_pos.y)};
+    return jk_vector_2_add(
+            (JkVector2){square_size, square_size}, jk_vector_2_mul(square_size, board_pos_f));
 }
 
 static b32 button_pressed(Chess *chess, uint64_t flag)
@@ -1997,9 +1995,9 @@ void render(ChessAssets *assets, Chess *chess)
     JkShapesRenderer renderer;
     JkShapeArray shapes =
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
-    float const square_size = 64.0f;
-    jk_shapes_renderer_init(
-            &renderer, (float)chess->square_side_length / square_size, assets, shapes, &arena);
+    float square_size = 64.0f;
+    float pixels_per_unit = (float)chess->square_side_length / square_size;
+    jk_shapes_renderer_init(&renderer, pixels_per_unit, assets, shapes, &arena);
     JkColor square_colors[8][8];
     for (pos.y = 0; pos.y < 8; pos.y++) {
         for (pos.x = 0; pos.x < 8; pos.x++) {
@@ -2034,8 +2032,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             jk_shapes_draw(&renderer,
                     piece.type,
-                    jk_vector_2_add((JkVector2){square_size, square_size},
-                            jk_vector_2_mul(square_size, (JkVector2){pos.x, 7 - pos.y})),
+                    board_to_canvas_pos(square_size, pos),
                     1.0f,
                     piece_color);
             square_colors[pos.y][pos.x] = square_color;
@@ -2050,8 +2047,8 @@ void render(ChessAssets *assets, Chess *chess)
         JkShape *shape = shapes.items + shape_id;
         float width = coords_scale * shape->dimensions.x;
         float x_offset = coords_scale * shape->offset.x;
-        float padding_top = chess->square_side_length * 0.15f;
-        float padding_bottom = chess->square_side_length * 0.3f;
+        float padding_top = square_size * 0.15f;
+        float padding_bottom = square_size * 0.3f;
         float cursor_x = square_size * (x + 1.5f) - (width / 2.0f) - x_offset;
         float cursor_ys[] = {
             square_size - padding_top,
@@ -2208,35 +2205,32 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     int64_t frames_since_last_move = chess->time - chess->time_move_prev;
-    if (frames_since_last_move < 32 && chess->piece_prev_type) {
+    if (frames_since_last_move < 43 && chess->piece_prev_type) {
         JkColor piece_color = team ? color_black_pieces : color_white_pieces;
         JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
-        JkVector2 half_dimensions = jk_vector_2_mul(0.5f,
-                (JkVector2){(float)chess->square_side_length, (float)chess->square_side_length});
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);
         JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
-        JkVector2 screen_pos = board_to_screen_pos(chess->square_side_length, dest);
+        JkVector2 canvas_pos = board_to_canvas_pos(square_size, dest);
         JkVector2 origin_direction =
                 jk_vector_2_normalized(jk_vector_2_from_int(jk_int_vector_2_sub(src, dest)));
         origin_direction.y = -origin_direction.y;
-        JkVector2 blast_center = jk_vector_2_add(jk_vector_2_add(screen_pos, half_dimensions),
-                jk_vector_2_mul(1.0f * (float)chess->square_side_length, origin_direction));
+        JkVector2 blast_center =
+                jk_vector_2_add(jk_vector_2_add(canvas_pos, (JkVector2){32.0f, 32.0f}),
+                        jk_vector_2_mul(64.0f, origin_direction));
 
-        float speed = 60.0f;
-        float deceleration = 0.82f;
-        float distance = JK_MAX(0.0f,
-                speed * frames_since_last_move
-                        - deceleration * (frames_since_last_move * frames_since_last_move));
+        float speed = 30.0f;
+        float deceleration = 0.32f;
+        float distance = speed * frames_since_last_move
+                - deceleration * (frames_since_last_move * frames_since_last_move);
         int64_t prev_frames_since_last_move = JK_MAX(0, frames_since_last_move - 2);
-        float prev_distance = JK_MAX(0.0f,
-                speed * prev_frames_since_last_move
-                        - deceleration
-                                * (prev_frames_since_last_move * prev_frames_since_last_move));
+        float prev_distance = speed * prev_frames_since_last_move
+                - deceleration * (prev_frames_since_last_move * prev_frames_since_last_move);
 
-        for (pos.y = 0; pos.y < bitmap->dimensions.x; pos.y += 3) {
-            for (pos.x = 0; pos.x < bitmap->dimensions.y; pos.x += 3) {
-                JkVector2 offset = jk_vector_2_from_int(pos);
-                JkVector2 pixel_pos = jk_vector_2_add(screen_pos, offset);
+        int32_t skip = 1 + (chess->square_side_length * 2 / 100);
+        for (pos.y = 0; pos.y < bitmap->dimensions.x; pos.y += skip) {
+            for (pos.x = 0; pos.x < bitmap->dimensions.y; pos.x += skip) {
+                JkVector2 offset = {(float)pos.x / pixels_per_unit, (float)pos.y / pixels_per_unit};
+                JkVector2 pixel_pos = jk_vector_2_add(canvas_pos, offset);
                 JkVector2 direction = jk_vector_2_normalized(
                         jk_vector_2_add(pixel_pos, jk_vector_2_mul(-1.0f, blast_center)));
                 JkVector2 delta = jk_vector_2_mul(distance, direction);
@@ -2246,7 +2240,10 @@ void render(ChessAssets *assets, Chess *chess)
 
                 piece_color.a = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
                 if (piece_color.a) {
-                    draw_line(chess, piece_color, prev_dest, pixel_dest);
+                    draw_line(chess,
+                            piece_color,
+                            jk_vector_2_mul(pixels_per_unit, prev_dest),
+                            jk_vector_2_mul(pixels_per_unit, pixel_dest));
                 }
             }
         }
