@@ -538,12 +538,6 @@ JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v)
             * acosf(jk_vector_2_dot(u, v) / (jk_vector_2_magnitude(u) * jk_vector_2_magnitude(v)));
 }
 
-JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point)
-{
-    return jk_vector_2_add(
-            transform.position, (JkVector2){transform.scale * point.x, transform.scale * point.y});
-}
-
 JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t)
 {
     return jk_vector_2_add(jk_vector_2_mul(1.0f - t, a), jk_vector_2_mul(t, b));

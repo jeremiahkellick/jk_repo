@@ -96,6 +96,7 @@ typedef struct JkShapesDrawCommandArray {
 } JkShapesDrawCommandArray;
 
 typedef struct JkShapesRenderer {
+    float pixels_per_unit;
     uint8_t *base_pointer;
     JkShapeArray shapes;
     JkArena *arena;
@@ -128,8 +129,11 @@ typedef struct JkShapesEdgeArray {
     JkShapesEdge *items;
 } JkShapesEdgeArray;
 
-JK_PUBLIC void jk_shapes_renderer_init(
-        JkShapesRenderer *renderer, void *base_pointer, JkShapeArray shapes, JkArena *arena);
+JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
+        float pixels_per_unit,
+        void *base_pointer,
+        JkShapeArray shapes,
+        JkArena *arena);
 
 JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
         JkShapesRenderer *renderer, uint32_t shape_index, float scale);

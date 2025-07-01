@@ -1997,8 +1997,9 @@ void render(ChessAssets *assets, Chess *chess)
     JkShapesRenderer renderer;
     JkShapeArray shapes =
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
-    jk_shapes_renderer_init(&renderer, assets, shapes, &arena);
-    float scale = (float)chess->square_side_length / assets->shapes[KING].dimensions.x;
+    float const square_size = 64.0f;
+    jk_shapes_renderer_init(
+            &renderer, (float)chess->square_side_length / square_size, assets, shapes, &arena);
     JkColor square_colors[8][8];
     for (pos.y = 0; pos.y < 8; pos.y++) {
         for (pos.x = 0; pos.x < 8; pos.x++) {
@@ -2033,14 +2034,15 @@ void render(ChessAssets *assets, Chess *chess)
 
             jk_shapes_draw(&renderer,
                     piece.type,
-                    board_to_screen_pos(chess->square_side_length, pos),
-                    scale,
+                    jk_vector_2_add((JkVector2){square_size, square_size},
+                            jk_vector_2_mul(square_size, (JkVector2){pos.x, 7 - pos.y})),
+                    1.0f,
                     piece_color);
             square_colors[pos.y][pos.x] = square_color;
         }
     }
 
-    float coords_scale = 0.0003f * chess->square_side_length;
+    float const coords_scale = 0.0192f;
     JkColor coords_color = color_light_squares;
     coords_color.a = 160;
     for (int32_t x = 0; x < 8; x++) {
@@ -2050,10 +2052,10 @@ void render(ChessAssets *assets, Chess *chess)
         float x_offset = coords_scale * shape->offset.x;
         float padding_top = chess->square_side_length * 0.15f;
         float padding_bottom = chess->square_side_length * 0.3f;
-        float cursor_x = chess->square_side_length * (x + 1.5f) - (width / 2.0f) - x_offset;
+        float cursor_x = square_size * (x + 1.5f) - (width / 2.0f) - x_offset;
         float cursor_ys[] = {
-            chess->square_side_length - padding_top,
-            (chess->square_side_length * 9) + padding_bottom,
+            square_size - padding_top,
+            (square_size * 9.0f) + padding_bottom,
         };
         for (int32_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
             jk_shapes_draw(&renderer,
@@ -2069,13 +2071,12 @@ void render(ChessAssets *assets, Chess *chess)
         JkShape *shape = shapes.items + shape_id;
         JkVector2 dimensions = jk_vector_2_mul(coords_scale, shape->dimensions);
         JkVector2 offset = jk_vector_2_mul(coords_scale, shape->offset);
-        float padding = chess->square_side_length * 0.15f;
+        float padding = square_size * 0.15f;
         float cursor_xs[] = {
-            chess->square_side_length - padding - dimensions.x * 0.5f - offset.x,
-            (chess->square_side_length * 9) + padding - dimensions.x * 0.5f - offset.x,
+            square_size - padding - dimensions.x * 0.5f - offset.x,
+            (square_size * 9) + padding - dimensions.x * 0.5f - offset.x,
         };
-        float cursor_y = chess->square_side_length * (y + 1)
-                + (chess->square_side_length - dimensions.y) * 0.5f - offset.y;
+        float cursor_y = square_size * (y + 1) + (square_size - dimensions.y) * 0.5f - offset.y;
         JkColor color = color_light_squares;
         color.a = 200;
         for (int32_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
@@ -2088,11 +2089,9 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     if (chess->result) {
-        float text_scale = 0.0008f * chess->square_side_length;
-        JkVector2 result_origin_f = jk_vector_2_from_int(jk_int_vector_2_add(
-                board_origin, jk_int_vector_2_mul(chess->square_side_length, result_origin)));
-        JkVector2 result_dimensions_f = jk_vector_2_from_int(
-                jk_int_vector_2_mul(chess->square_side_length, result_dimensions));
+        float const text_scale = 0.05f;
+        JkVector2 result_origin_f = {192.0f, 256.0f};
+        JkVector2 result_dimensions_f = {256.0f, 128.0f};
 
         JkBuffer text;
         if (chess->result == RESULT_CHECKMATE) {
@@ -2189,7 +2188,7 @@ void render(ChessAssets *assets, Chess *chess)
 
     if (holding_piece) {
         Piece piece = board_piece_get_index(chess->board, selected_index);
-        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, piece.type, scale);
+        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, piece.type, 1.0f);
         if (bitmap) {
             JkIntVector2 held_piece_offset = jk_int_vector_2_sub(chess->input.mouse_pos,
                     (JkIntVector2){chess->square_side_length / 2, chess->square_side_length / 2});
@@ -2211,7 +2210,7 @@ void render(ChessAssets *assets, Chess *chess)
     int64_t frames_since_last_move = chess->time - chess->time_move_prev;
     if (frames_since_last_move < 32 && chess->piece_prev_type) {
         JkColor piece_color = team ? color_black_pieces : color_white_pieces;
-        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, scale);
+        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
         JkVector2 half_dimensions = jk_vector_2_mul(0.5f,
                 (JkVector2){(float)chess->square_side_length, (float)chess->square_side_length});
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);

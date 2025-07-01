@@ -199,13 +199,6 @@ JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t);
 
 JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b);
 
-typedef struct JkTransform2 {
-    float scale;
-    JkVector2 position;
-} JkTransform2;
-
-JK_PUBLIC JkVector2 jk_transform_2_apply(JkTransform2 transform, JkVector2 point);
-
 JK_PUBLIC JkVector2 jk_vector_2_from_int(JkIntVector2 int_vector);
 
 JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);

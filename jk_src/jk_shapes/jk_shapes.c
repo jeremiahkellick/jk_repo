@@ -70,9 +70,13 @@ JK_PUBLIC void jk_shapes_hash_table_set(
 
 #define JK_SHAPES_CAPACITY 1024
 
-JK_PUBLIC void jk_shapes_renderer_init(
-        JkShapesRenderer *renderer, void *base_pointer, JkShapeArray shapes, JkArena *arena)
+JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
+        float pixels_per_unit,
+        void *base_pointer,
+        JkShapeArray shapes,
+        JkArena *arena)
 {
+    renderer->pixels_per_unit = pixels_per_unit;
     renderer->base_pointer = base_pointer;
     renderer->shapes = shapes;
     renderer->arena = arena;
@@ -146,13 +150,13 @@ typedef struct JkShapesArcByCenter {
 
 // https://www.w3.org/TR/SVG2/implnote.html#ArcImplementationNotes
 static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
-        JkTransform2 transform, JkVector2 point_start, JkShapesArcByEndpoint a)
+        JkVector2 offset, float scale, JkVector2 point_start, JkShapesArcByEndpoint a)
 {
     JkShapesArcByCenter r = {0};
 
     // Transform arc values
-    a.dimensions = jk_transform_2_apply(transform, a.dimensions);
-    r.point_end = jk_transform_2_apply(transform, a.point_end);
+    a.dimensions = jk_vector_2_mul(scale, jk_vector_2_add(a.dimensions, offset));
+    r.point_end = jk_vector_2_mul(scale, jk_vector_2_add(a.point_end, offset));
 
     if (jk_vector_2_approx_equal(point_start, r.point_end, 0.00001f)) {
         r.treat_as_line = 1;
@@ -314,8 +318,11 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point
     *l->current_node = next;
 }
 
-static JkShapesEdgeArray jk_shapes_edges_get(
-        JkArena *arena, JkShapesPenCommandArray commands, JkTransform2 transform, float tolerance)
+static JkShapesEdgeArray jk_shapes_edges_get(JkArena *arena,
+        JkShapesPenCommandArray commands,
+        JkVector2 offset,
+        float scale,
+        float tolerance)
 {
     JkShapesPointListNode *start_node = jk_arena_alloc(arena, sizeof(*start_node));
     start_node->next = 0;
@@ -333,7 +340,8 @@ static JkShapesEdgeArray jk_shapes_edges_get(
             current_node = jk_arena_alloc(arena, sizeof(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point = jk_transform_2_apply(transform, command->coords[0]);
+            current_node->point =
+                    jk_vector_2_mul(scale, jk_vector_2_add(command->coords[0], offset));
             current_node->is_cursor_movement = 1;
         } break;
 
@@ -342,14 +350,15 @@ static JkShapesEdgeArray jk_shapes_edges_get(
             current_node = jk_arena_alloc(arena, sizeof(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point = jk_transform_2_apply(transform, command->coords[0]);
+            current_node->point =
+                    jk_vector_2_mul(scale, jk_vector_2_add(command->coords[0], offset));
             current_node->is_cursor_movement = 0;
         } break;
 
         case JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC: {
             JkVector2 p0 = current_node->point;
-            JkVector2 p1 = jk_transform_2_apply(transform, command->coords[0]);
-            JkVector2 p2 = jk_transform_2_apply(transform, command->coords[1]);
+            JkVector2 p1 = jk_vector_2_mul(scale, jk_vector_2_add(command->coords[0], offset));
+            JkVector2 p2 = jk_vector_2_mul(scale, jk_vector_2_add(command->coords[1], offset));
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p2, tolerance);
@@ -362,9 +371,9 @@ static JkShapesEdgeArray jk_shapes_edges_get(
 
         case JK_SHAPES_PEN_COMMAND_CURVE_CUBIC: {
             JkVector2 p0 = current_node->point;
-            JkVector2 p1 = jk_transform_2_apply(transform, command->coords[0]);
-            JkVector2 p2 = jk_transform_2_apply(transform, command->coords[1]);
-            JkVector2 p3 = jk_transform_2_apply(transform, command->coords[2]);
+            JkVector2 p1 = jk_vector_2_mul(scale, jk_vector_2_add(command->coords[0], offset));
+            JkVector2 p2 = jk_vector_2_mul(scale, jk_vector_2_add(command->coords[1], offset));
+            JkVector2 p3 = jk_vector_2_mul(scale, jk_vector_2_add(command->coords[2], offset));
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p3, tolerance);
@@ -376,8 +385,8 @@ static JkShapesEdgeArray jk_shapes_edges_get(
         } break;
 
         case JK_SHAPES_PEN_COMMAND_ARC: {
-            JkShapesArcByCenter arc =
-                    jk_shapes_arc_endpoint_to_center(transform, current_node->point, command->arc);
+            JkShapesArcByCenter arc = jk_shapes_arc_endpoint_to_center(
+                    offset, scale, current_node->point, command->arc);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, arc.point_end, tolerance);
@@ -422,25 +431,22 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
         JkShapesRenderer *renderer, uint32_t shape_index, float scale)
 {
     JkShapesBitmap *result = 0;
+    float pixel_scale = scale * renderer->pixels_per_unit;
 
     JkShape shape = renderer->shapes.items[shape_index];
     if (shape.dimensions.x && shape.dimensions.y) {
-        uint64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, scale);
+        uint64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, pixel_scale);
         JkShapesHashTableSlot *bitmap_slot =
                 jk_shapes_hash_table_probe(&renderer->hash_table, bitmap_key);
         result = &bitmap_slot->value;
         if (!bitmap_slot->filled) {
             JkShapesBitmap bitmap;
-            bitmap.dimensions.x = (int32_t)ceilf(scale * shape.dimensions.x);
-            bitmap.dimensions.y = (int32_t)ceilf(scale * shape.dimensions.y);
+            bitmap.dimensions.x = (int32_t)ceilf(pixel_scale * shape.dimensions.x);
+            bitmap.dimensions.y = (int32_t)ceilf(pixel_scale * shape.dimensions.y);
             // TODO: do we really need to zero it?
             bitmap.data = jk_arena_alloc_zero(renderer->arena,
                     bitmap.dimensions.x * bitmap.dimensions.y * sizeof(bitmap.data[0]));
             jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmap);
-
-            JkTransform2 transform;
-            transform.scale = scale;
-            transform.position = jk_vector_2_mul(-1.0f, jk_vector_2_mul(scale, shape.offset));
 
             void *arena_saved_pointer = jk_arena_pointer_get(renderer->arena);
 
@@ -451,8 +457,11 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
             JkShapesPenCommandArray commands;
             commands.count = shape.commands.size / sizeof(commands.items[0]);
             commands.items = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
-            JkShapesEdgeArray edges =
-                    jk_shapes_edges_get(renderer->arena, commands, transform, 0.25f);
+            JkShapesEdgeArray edges = jk_shapes_edges_get(renderer->arena,
+                    commands,
+                    jk_vector_2_mul(-1.0f, shape.offset),
+                    pixel_scale,
+                    0.25f);
 
             for (int32_t y = 0; y < bitmap.dimensions.y; y++) {
                 memset(coverage, 0, coverage_size * 2);
@@ -566,8 +575,8 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
 
     if (shape.dimensions.x && shape.dimensions.y) {
         JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
-        node->command.position =
-                jk_vector_2_round(jk_vector_2_add(position, jk_vector_2_mul(scale, shape.offset)));
+        node->command.position = jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit,
+                jk_vector_2_add(position, jk_vector_2_mul(scale, shape.offset))));
         node->command.color = color;
         node->command.bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
         node->next = renderer->draw_commands_head;

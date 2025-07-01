@@ -62,6 +62,8 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
 
 void bezier_render(ChessAssets *assets, Bezier *bezier)
 {
+    float const canvas_size = 640.0f;
+
     JkBuffer display_string = JKS("Hello, world!");
     float first_point = -assets->shapes[display_string.data[0] + CHARACTER_SHAPE_OFFSET].offset.x;
     float last_point = first_point;
@@ -75,31 +77,29 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
     int32_t display_string_height = assets->font_y1_max - assets->font_y0_min;
     int32_t max_dimension = JK_MAX(jk_round(display_string_width), display_string_height);
 
-    float scale = (float)(bezier->draw_square_side_length - 1) / (float)max_dimension;
-    float pawn_scale = (float)bezier->draw_square_side_length / (4.0f * 64.0f);
+    float font_scale = (canvas_size - 1.0f) / (float)max_dimension;
 
     JkArena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
 
     JkShapesRenderer renderer;
     jk_shapes_renderer_init(&renderer,
+            (float)bezier->draw_square_side_length / canvas_size,
             assets,
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes},
             &arena);
 
     {
-        float width = (float)bezier->draw_square_side_length;
-        jk_shapes_draw(&renderer,
-                4,
-                (JkVector2){width / 4.0f, width / 4.0f},
-                pawn_scale,
-                color_black_pieces);
+        jk_shapes_draw(&renderer, 2, (JkVector2){256.0f, 256.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 1, (JkVector2){320.0f, 256.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 3, (JkVector2){256.0f, 320.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 4, (JkVector2){320.0f, 320.0f}, 1.0f, color_black_pieces);
 
-        JkVector2 current_point = {scale * first_point, -scale * assets->font_y0_min};
+        JkVector2 current_point = {font_scale * first_point, -font_scale * assets->font_y0_min};
         for (int32_t i = 0; i < display_string.size; i++) {
             current_point.x += jk_shapes_draw(&renderer,
                     display_string.data[i] + CHARACTER_SHAPE_OFFSET,
                     current_point,
-                    scale,
+                    font_scale,
                     color_light_squares);
         }
 
