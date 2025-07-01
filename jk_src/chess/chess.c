@@ -2019,7 +2019,7 @@ void render(ChessAssets *assets, Chess *chess)
             Piece piece = board_piece_get(chess->board, pos);
             int32_t dist_from_promo_square = absolute_value(pos.y - chess->promo_square.y);
             JkColor square_color =
-                    pos.x % 2 == pos.y % 2 ? color_light_squares : color_dark_squares;
+                    pos.x % 2 == pos.y % 2 ? color_dark_squares : color_light_squares;
 
             if (chess->result && result_origin.x <= pos.x && pos.x < result_extent.x
                     && result_origin.y <= pos.y && pos.y < result_extent.y) {
