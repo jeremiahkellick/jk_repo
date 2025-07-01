@@ -2053,7 +2053,7 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
-    float const coords_scale = 0.0192f;
+    float coords_scale = 0.0192f;
     JkColor coords_color = color_light_squares;
     coords_color.a = 160;
     for (int32_t x = 0; x < 8; x++) {
@@ -2106,13 +2106,38 @@ void render(ChessAssets *assets, Chess *chess)
                 captured_piece_team++) {
             JkVector2 draw_pos = {64.0f, y_value[captured_piece_team]};
             for (PieceType piece_type = 1; piece_type < PIECE_TYPE_COUNT; piece_type++) {
-                for (int32_t i = 0; i < captured_pieces[captured_piece_team][piece_type]; i++) {
-                    jk_shapes_draw(&renderer,
-                            piece_type,
-                            draw_pos,
-                            0.5f,
-                            color_teams[captured_piece_team]);
-                    draw_pos.x += 32.0f;
+                JkColor color = color_teams[captured_piece_team];
+                color.a = 200;
+                if (captured_pieces[captured_piece_team][piece_type] < 3) {
+                    for (int32_t i = 0; i < captured_pieces[captured_piece_team][piece_type]; i++) {
+                        jk_shapes_draw(&renderer, piece_type, draw_pos, 0.5f, color);
+                        draw_pos.x += 32.0f;
+                    }
+                } else {
+                    jk_shapes_draw(&renderer, piece_type, draw_pos, 0.5f, color);
+
+                    char characters[2];
+                    characters[0] = 'x';
+                    characters[1] = '0' + (uint8_t)captured_pieces[captured_piece_team][piece_type];
+                    JkBuffer text = {
+                        .size = JK_ARRAY_COUNT(characters),
+                        .data = (uint8_t *)characters,
+                    };
+                    TextLayout layout = text_layout_get(shapes, text, coords_scale);
+                    JkVector2 cursor_pos;
+                    cursor_pos.x = draw_pos.x + 32.0f;
+                    cursor_pos.y = draw_pos.y + 0.5f * (32.0f - layout.dimensions.y);
+                    cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
+
+                    for (int32_t i = 0; i < text.size; i++) {
+                        cursor_pos.x += jk_shapes_draw(&renderer,
+                                text.data[i] + CHARACTER_SHAPE_OFFSET,
+                                cursor_pos,
+                                coords_scale,
+                                coords_color);
+                    }
+
+                    draw_pos.x += 64.0f;
                 }
             }
         }
