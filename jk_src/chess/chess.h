@@ -62,6 +62,7 @@ typedef struct Bitmap {
 typedef enum Team {
     WHITE,
     BLACK,
+    TEAM_COUNT,
 } Team;
 
 typedef enum PieceType {

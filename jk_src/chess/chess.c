@@ -94,6 +94,8 @@ static char *wtf9_fen = "r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - 
 
 static char debug_print_buffer[4096];
 
+static int32_t piece_counts[PIECE_TYPE_COUNT] = {0, 1, 1, 2, 2, 2, 8};
+
 static int debug_printf(void (*debug_print)(char *), char *format, ...)
 {
     va_list args;
@@ -1694,8 +1696,10 @@ static JkColor color_selection = {0x5c, 0x6d, 0xe2, 0xff};
 static JkColor color_move_prev = {0x11, 0x88, 0xff, 0xff};
 
 // JkColor white = {0x8e, 0x8e, 0x8e};
-static JkColor color_white_pieces = {0x82, 0x92, 0x85, 0xff};
-static JkColor color_black_pieces = {0xfb, 0x6f, 0x9d, 0xff};
+static JkColor color_teams[TEAM_COUNT] = {
+    {0x82, 0x92, 0x85, 0xff},
+    {0xfb, 0x6f, 0x9d, 0xff},
+};
 
 static uint8_t uint8_average(uint8_t a, uint8_t b)
 {
@@ -1990,6 +1994,16 @@ void render(ChessAssets *assets, Chess *chess)
     JkIntVector2 result_dimensions = {4, 2};
     JkIntVector2 result_extent = jk_int_vector_2_add(result_origin, result_dimensions);
 
+    int32_t captured_pieces[TEAM_COUNT][PIECE_TYPE_COUNT];
+    memcpy(captured_pieces[0], piece_counts, sizeof(int32_t) * PIECE_TYPE_COUNT);
+    memcpy(captured_pieces[1], piece_counts, sizeof(int32_t) * PIECE_TYPE_COUNT);
+    for (pos.y = 0; pos.y < 8; pos.y++) {
+        for (pos.x = 0; pos.x < 8; pos.x++) {
+            Piece piece = board_piece_get(chess->board, pos);
+            captured_pieces[piece.team][piece.type]--;
+        }
+    }
+
     // Do vector drawing
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(draw_vectors);
     JkShapesRenderer renderer;
@@ -2024,7 +2038,7 @@ void render(ChessAssets *assets, Chess *chess)
                 square_color = blend_alpha(color_move_prev, square_color, 115);
             }
 
-            JkColor piece_color = piece.team ? color_black_pieces : color_white_pieces;
+            JkColor piece_color = color_teams[piece.team];
             if (board_index_get(pos) == selected_index
                     && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
                 piece_color.a /= 2;
@@ -2082,6 +2096,25 @@ void render(ChessAssets *assets, Chess *chess)
                     (JkVector2){cursor_xs[i], cursor_y},
                     coords_scale,
                     coords_color);
+        }
+    }
+
+    {
+        float padding = 6.0f;
+        float y_value[TEAM_COUNT] = {padding, 640.0f - 32.0f - padding};
+        for (Team captured_piece_team = 0; captured_piece_team < TEAM_COUNT;
+                captured_piece_team++) {
+            JkVector2 draw_pos = {64.0f, y_value[captured_piece_team]};
+            for (PieceType piece_type = 1; piece_type < PIECE_TYPE_COUNT; piece_type++) {
+                for (int32_t i = 0; i < captured_pieces[captured_piece_team][piece_type]; i++) {
+                    jk_shapes_draw(&renderer,
+                            piece_type,
+                            draw_pos,
+                            0.5f,
+                            color_teams[captured_piece_team]);
+                    draw_pos.x += 32.0f;
+                }
+            }
         }
     }
 
@@ -2194,7 +2227,7 @@ void render(ChessAssets *assets, Chess *chess)
                     JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
                     if (screen_in_bounds(chess->square_side_length, screen_pos)) {
                         int32_t index = screen_pos.y * DRAW_BUFFER_SIDE_LENGTH + screen_pos.x;
-                        JkColor color_piece = piece.team ? color_black_pieces : color_white_pieces;
+                        JkColor color_piece = color_teams[piece.team];
                         JkColor color_bg = chess->draw_buffer[index];
                         uint8_t alpha = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
                         chess->draw_buffer[index] = blend_alpha(color_piece, color_bg, alpha);
@@ -2206,7 +2239,7 @@ void render(ChessAssets *assets, Chess *chess)
 
     int64_t frames_since_last_move = chess->time - chess->time_move_prev;
     if (frames_since_last_move < 43 && chess->piece_prev_type) {
-        JkColor piece_color = team ? color_black_pieces : color_white_pieces;
+        JkColor piece_color = color_teams[team];
         JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);
         JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
