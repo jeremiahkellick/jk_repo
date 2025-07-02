@@ -768,6 +768,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     memory += global_chess.render_memory.size;
     global_chess.ai_memory.data = memory;
 
+    global_chess.os_timer_frequency = jk_platform_os_timer_frequency();
+    global_chess.os_timer_get = jk_platform_os_timer_get;
     global_chess.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
     global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;

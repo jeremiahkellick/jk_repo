@@ -1550,6 +1550,11 @@ void update(ChessAssets *assets, Chess *chess)
         chess->audio.sound = 0;
         chess->audio.sound_started_time = 0;
 
+        chess->os_time_turn_start = chess->os_timer_get();
+        for (Team team = 0; team < TEAM_COUNT; team++) {
+            chess->os_time_player[team] = 10 * 60 * chess->os_timer_frequency;
+        }
+
         srand(0xd5717cc6);
 
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 0)
@@ -1642,6 +1647,11 @@ void update(ChessAssets *assets, Chess *chess)
             chess->piece_prev_type = board_piece_get_index(chess->board, move.dest).type;
             chess->audio.sound = chess->piece_prev_type ? SOUND_CAPTURE : SOUND_MOVE;
             chess->audio.sound_started_time = chess->audio.time;
+
+            uint64_t os_time = chess->os_timer_get();
+            chess->os_time_player[board_current_team_get(chess->board)] -=
+                    os_time - chess->os_time_turn_start;
+            chess->os_time_turn_start = os_time;
 
             chess->board = board_move_perform(chess->board, move_pack(move));
             debug_printf(chess->debug_print, "move.bits: %x\n", (uint32_t)move_pack(move).bits);
@@ -1984,6 +1994,15 @@ void render(ChessAssets *assets, Chess *chess)
     b32 promoting = board_in_bounds(chess->promo_square);
     b32 holding_piece = (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE)) && selected_index < 64;
 
+    uint64_t time_player_seconds[TEAM_COUNT];
+    for (Team i = 0; i < TEAM_COUNT; i++) {
+        uint64_t time = chess->os_time_player[i];
+        if (i == team) {
+            time -= chess->os_timer_get() - chess->os_time_turn_start;
+        }
+        time_player_seconds[i] = (time + chess->os_timer_frequency - 1) / chess->os_timer_frequency;
+    }
+
     // uint64_t threatened = board_threatened_squares_get(
     //         chess->board, !((chess->board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1));
 
@@ -2012,6 +2031,8 @@ void render(ChessAssets *assets, Chess *chess)
     float square_size = 64.0f;
     float pixels_per_unit = (float)chess->square_side_length / square_size;
     jk_shapes_renderer_init(&renderer, pixels_per_unit, assets, shapes, &arena);
+
+    // Draw pieces on board and compute square colors
     JkColor square_colors[8][8];
     for (pos.y = 0; pos.y < 8; pos.y++) {
         for (pos.x = 0; pos.x < 8; pos.x++) {
@@ -2053,6 +2074,7 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
+    // Draw horizontal square coordinates
     float coords_scale = 0.0192f;
     JkColor coords_color = color_light_squares;
     coords_color.a = 160;
@@ -2077,6 +2099,7 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
+    // Draw vertical square coordinates
     for (int32_t y = 0; y < 8; y++) {
         uint32_t shape_id = '1' + (7 - y) + CHARACTER_SHAPE_OFFSET;
         JkShape *shape = shapes.items + shape_id;
@@ -2099,17 +2122,50 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
+    // Draw timers and captured pieces
     {
+        float timer_scale = 0.025f;
         float padding = 6.0f;
-        float y_value[TEAM_COUNT] = {padding, 640.0f - 32.0f - padding};
-        for (Team captured_piece_team = 0; captured_piece_team < TEAM_COUNT;
-                captured_piece_team++) {
-            JkVector2 draw_pos = {64.0f, y_value[captured_piece_team]};
+        float y_value[TEAM_COUNT] = {640.0f - 32.0f - padding, padding};
+        for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
+            // Draw timer
+            uint64_t remaining = time_player_seconds[team_index];
+            uint8_t digits[5];
+            digits[4] = remaining % 10; // seconds
+            remaining /= 10;
+            digits[3] = remaining % 6; // ten seconds
+            remaining /= 6;
+            digits[1] = remaining % 10; // minutes
+            remaining /= 10;
+            digits[0] = (uint8_t)remaining; // ten minutes
+            JkShape *zero_shape = assets->shapes + ('0' + CHARACTER_SHAPE_OFFSET);
+            JkVector2 digit_pos;
+            digit_pos.y = y_value[team_index]
+                    + 0.5f * (32.0f - timer_scale * zero_shape->dimensions.y)
+                    - timer_scale * zero_shape->offset.y;
+            float raw_x = 64.0f;
+            float width = 13.2f;
+            for (int32_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
+                int32_t shape_index;
+                if (i == 2) { // Draw colon separator
+                    shape_index = ':' + CHARACTER_SHAPE_OFFSET;
+                } else { // Draw digit
+                    shape_index = '0' + digits[i] + CHARACTER_SHAPE_OFFSET;
+                }
+                JkShape *shape = assets->shapes + shape_index;
+                digit_pos.x = raw_x + 0.5f * (width - timer_scale * shape->dimensions.x)
+                        - timer_scale * shape->offset.x;
+                jk_shapes_draw(&renderer, shape_index, digit_pos, timer_scale, color_light_squares);
+                raw_x += width;
+            }
+
+            // Draw captured pieces
+            JkVector2 draw_pos = {140.0f, y_value[!team_index]};
             for (PieceType piece_type = 1; piece_type < PIECE_TYPE_COUNT; piece_type++) {
-                JkColor color = color_teams[captured_piece_team];
+                JkColor color = color_teams[team_index];
                 color.a = 200;
-                if (captured_pieces[captured_piece_team][piece_type] < 3) {
-                    for (int32_t i = 0; i < captured_pieces[captured_piece_team][piece_type]; i++) {
+                if (captured_pieces[team_index][piece_type] < 3) {
+                    for (int32_t i = 0; i < captured_pieces[team_index][piece_type]; i++) {
                         jk_shapes_draw(&renderer, piece_type, draw_pos, 0.5f, color);
                         draw_pos.x += 32.0f;
                     }
@@ -2118,7 +2174,7 @@ void render(ChessAssets *assets, Chess *chess)
 
                     char characters[2];
                     characters[0] = 'x';
-                    characters[1] = '0' + (uint8_t)captured_pieces[captured_piece_team][piece_type];
+                    characters[1] = '0' + (uint8_t)captured_pieces[team_index][piece_type];
                     JkBuffer text = {
                         .size = JK_ARRAY_COUNT(characters),
                         .data = (uint8_t *)characters,
@@ -2143,6 +2199,7 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
+    // If the game is over, display the result
     if (chess->result) {
         float const text_scale = 0.05f;
         JkVector2 result_origin_f = {192.0f, 256.0f};
