@@ -1550,7 +1550,7 @@ void update(ChessAssets *assets, Chess *chess)
         chess->audio.sound = 0;
         chess->audio.sound_started_time = 0;
 
-        chess->os_time_turn_start = chess->os_timer_get();
+        chess->os_time_turn_start = chess->os_time;
         for (Team team = 0; team < TEAM_COUNT; team++) {
             chess->os_time_player[team] = 10 * 60 * chess->os_timer_frequency;
         }
@@ -1567,6 +1567,14 @@ void update(ChessAssets *assets, Chess *chess)
                 == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
     }
 
+    if (chess->result == RESULT_NONE
+            && chess->os_time_player[board_current_team_get(chess->board)]
+                            - (int64_t)(chess->os_time - chess->os_time_turn_start)
+                    <= 0) {
+        chess->os_time_player[board_current_team_get(chess->board)] = 0;
+        chess->result = RESULT_TIME;
+    }
+
     if (button_pressed(chess, JK_MASK(INPUT_CANCEL))) {
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
@@ -1578,63 +1586,66 @@ void update(ChessAssets *assets, Chess *chess)
 
     JkIntVector2 mouse_pos = screen_to_board_pos(chess->square_side_length, chess->input.mouse_pos);
 
-    if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
-        if (board_in_bounds(chess->promo_square)) {
-            int32_t dist_from_promo_square = absolute_value(mouse_pos.y - chess->promo_square.y);
-            if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
-                if (mouse_pos.x == chess->promo_square.x
-                        && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
-                    move.src = board_index_get(chess->selected_square);
-                    move.dest = board_index_get(chess->promo_square);
-                    move.piece.team = board_current_team_get(chess->board);
-                    move.piece.type = promo_order[dist_from_promo_square];
-                } else {
-                    chess->selected_square = (JkIntVector2){-1, -1};
-                    chess->promo_square = (JkIntVector2){-1, -1};
+    if (chess->result == RESULT_NONE) {
+        if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
+            if (board_in_bounds(chess->promo_square)) {
+                int32_t dist_from_promo_square =
+                        absolute_value(mouse_pos.y - chess->promo_square.y);
+                if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+                    if (mouse_pos.x == chess->promo_square.x
+                            && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                        move.src = board_index_get(chess->selected_square);
+                        move.dest = board_index_get(chess->promo_square);
+                        move.piece.team = board_current_team_get(chess->board);
+                        move.piece.type = promo_order[dist_from_promo_square];
+                    } else {
+                        chess->selected_square = (JkIntVector2){-1, -1};
+                        chess->promo_square = (JkIntVector2){-1, -1};
+                    }
                 }
-            }
-        } else {
-            uint64_t available_destinations = destinations_get_by_src(
-                    chess, board_index_get_unbounded(chess->selected_square));
-            uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
-            b32 mouse_on_destination =
-                    mouse_index < 64 && (available_destinations & (1llu << mouse_index));
-            uint8_t piece_drop_index = UINT8_MAX;
+            } else {
+                uint64_t available_destinations = destinations_get_by_src(
+                        chess, board_index_get_unbounded(chess->selected_square));
+                uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
+                b32 mouse_on_destination =
+                        mouse_index < 64 && (available_destinations & (1llu << mouse_index));
+                uint8_t piece_drop_index = UINT8_MAX;
 
-            if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
-                if (mouse_on_destination) {
-                    piece_drop_index = mouse_index;
-                } else {
-                    chess->selected_square = (JkIntVector2){-1, -1};
-                    for (uint8_t i = 0; i < chess->moves.count; i++) {
-                        Move available_move = move_unpack(chess->moves.data[i]);
-                        if (available_move.src == mouse_index) {
-                            chess->flags |= JK_MASK(CHESS_FLAG_HOLDING_PIECE);
-                            chess->selected_square = mouse_pos;
+                if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+                    if (mouse_on_destination) {
+                        piece_drop_index = mouse_index;
+                    } else {
+                        chess->selected_square = (JkIntVector2){-1, -1};
+                        for (uint8_t i = 0; i < chess->moves.count; i++) {
+                            Move available_move = move_unpack(chess->moves.data[i]);
+                            if (available_move.src == mouse_index) {
+                                chess->flags |= JK_MASK(CHESS_FLAG_HOLDING_PIECE);
+                                chess->selected_square = mouse_pos;
+                            }
                         }
                     }
                 }
-            }
 
-            if (!(chess->input.flags & JK_MASK(INPUT_CONFIRM))
-                    && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
-                chess->flags &= ~JK_MASK(CHESS_FLAG_HOLDING_PIECE);
+                if (!(chess->input.flags & JK_MASK(INPUT_CONFIRM))
+                        && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
+                    chess->flags &= ~JK_MASK(CHESS_FLAG_HOLDING_PIECE);
 
-                if (mouse_on_destination) {
-                    piece_drop_index = mouse_index;
+                    if (mouse_on_destination) {
+                        piece_drop_index = mouse_index;
+                    }
+                }
+
+                if (piece_drop_index < 64) {
+                    move.src = board_index_get(chess->selected_square);
+                    move.dest = (uint8_t)piece_drop_index;
+                    move.piece = board_piece_get_index(chess->board, move.src);
                 }
             }
-
-            if (piece_drop_index < 64) {
-                move.src = board_index_get(chess->selected_square);
-                move.dest = (uint8_t)piece_drop_index;
-                move.piece = board_piece_get_index(chess->board, move.src);
+        } else { // Current player is an AI
+            if (chess->ai_move.src < 64) {
+                move = chess->ai_move;
+                chess->ai_move.src = UINT8_MAX;
             }
-        }
-    } else { // Current player is an AI
-        if (chess->ai_move.src < 64) {
-            move = chess->ai_move;
-            chess->ai_move.src = UINT8_MAX;
         }
     }
 
@@ -1648,10 +1659,9 @@ void update(ChessAssets *assets, Chess *chess)
             chess->audio.sound = chess->piece_prev_type ? SOUND_CAPTURE : SOUND_MOVE;
             chess->audio.sound_started_time = chess->audio.time;
 
-            uint64_t os_time = chess->os_timer_get();
             chess->os_time_player[board_current_team_get(chess->board)] -=
-                    os_time - chess->os_time_turn_start;
-            chess->os_time_turn_start = os_time;
+                    (int64_t)(chess->os_time - chess->os_time_turn_start);
+            chess->os_time_turn_start = chess->os_time;
 
             chess->board = board_move_perform(chess->board, move_pack(move));
             debug_printf(chess->debug_print, "move.bits: %x\n", (uint32_t)move_pack(move).bits);
@@ -1994,11 +2004,11 @@ void render(ChessAssets *assets, Chess *chess)
     b32 promoting = board_in_bounds(chess->promo_square);
     b32 holding_piece = (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE)) && selected_index < 64;
 
-    uint64_t time_player_seconds[TEAM_COUNT];
+    int64_t time_player_seconds[TEAM_COUNT];
     for (Team i = 0; i < TEAM_COUNT; i++) {
-        uint64_t time = chess->os_time_player[i];
-        if (i == team) {
-            time -= chess->os_timer_get() - chess->os_time_turn_start;
+        int64_t time = chess->os_time_player[i];
+        if (i == team && chess->result == RESULT_NONE) {
+            time -= (int64_t)(chess->os_time - chess->os_time_turn_start);
         }
         time_player_seconds[i] = (time + chess->os_timer_frequency - 1) / chess->os_timer_frequency;
     }
@@ -2045,31 +2055,34 @@ void render(ChessAssets *assets, Chess *chess)
             if (chess->result && result_origin.x <= pos.x && pos.x < result_extent.x
                     && result_origin.y <= pos.y && pos.y < result_extent.y) {
                 square_color = color_background;
-            } else if (promoting && pos.x == chess->promo_square.x
-                    && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
-                square_color = color_background;
-                piece.team = team;
-                piece.type = promo_order[dist_from_promo_square];
-            } else if (index == selected_index) {
-                square_color = blend(color_selection, square_color);
-            } else if (destinations & (1llu << index)) {
-                square_color = blend(color_selection, square_color);
-            } else if ((move_prev.src || move_prev.dest)
-                    && (index == move_prev.src || index == move_prev.dest)) {
-                square_color = blend_alpha(color_move_prev, square_color, 115);
+            } else {
+                if (promoting && pos.x == chess->promo_square.x
+                        && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                    square_color = color_background;
+                    piece.team = team;
+                    piece.type = promo_order[dist_from_promo_square];
+                } else if (index == selected_index) {
+                    square_color = blend(color_selection, square_color);
+                } else if (destinations & (1llu << index)) {
+                    square_color = blend(color_selection, square_color);
+                } else if ((move_prev.src || move_prev.dest)
+                        && (index == move_prev.src || index == move_prev.dest)) {
+                    square_color = blend_alpha(color_move_prev, square_color, 115);
+                }
+
+                JkColor piece_color = color_teams[piece.team];
+                if (board_index_get(pos) == selected_index
+                        && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
+                    piece_color.a /= 2;
+                }
+
+                jk_shapes_draw(&renderer,
+                        piece.type,
+                        board_to_canvas_pos(square_size, pos),
+                        1.0f,
+                        piece_color);
             }
 
-            JkColor piece_color = color_teams[piece.team];
-            if (board_index_get(pos) == selected_index
-                    && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
-                piece_color.a /= 2;
-            }
-
-            jk_shapes_draw(&renderer,
-                    piece.type,
-                    board_to_canvas_pos(square_size, pos),
-                    1.0f,
-                    piece_color);
             square_colors[pos.y][pos.x] = square_color;
         }
     }
@@ -2201,33 +2214,71 @@ void render(ChessAssets *assets, Chess *chess)
 
     // If the game is over, display the result
     if (chess->result) {
-        float const text_scale = 0.05f;
+        float result_scale = 0.05f;
         JkVector2 result_origin_f = {192.0f, 256.0f};
         JkVector2 result_dimensions_f = {256.0f, 128.0f};
 
-        JkBuffer text;
-        if (chess->result == RESULT_CHECKMATE) {
-            if (team) {
-                text = JKS("White won");
-            } else {
-                text = JKS("Black won");
+        if (chess->result == RESULT_STALEMATE) {
+            JkBuffer text = JKS("Stalemate");
+
+            TextLayout layout = text_layout_get(shapes, text, result_scale);
+            JkVector2 cursor_pos = jk_vector_2_mul(0.5f,
+                    jk_vector_2_add(
+                            result_dimensions_f, jk_vector_2_mul(-1.0f, layout.dimensions)));
+            cursor_pos = jk_vector_2_add(cursor_pos, result_origin_f);
+            cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
+
+            for (int32_t i = 0; i < text.size; i++) {
+                cursor_pos.x += jk_shapes_draw(&renderer,
+                        text.data[i] + CHARACTER_SHAPE_OFFSET,
+                        cursor_pos,
+                        result_scale,
+                        color_light_squares);
             }
         } else {
-            text = JKS("Stalemate");
-        }
+            JkBuffer victor = team ? JKS("White won") : JKS("Black won");
+            JkBuffer condition =
+                    chess->result == RESULT_CHECKMATE ? JKS("by checkmate") : JKS("on time");
+            float condition_scale = 0.03f;
+            float padding = 8.0f;
 
-        TextLayout layout = text_layout_get(shapes, text, text_scale);
-        JkVector2 cursor_pos = jk_vector_2_mul(0.5f,
-                jk_vector_2_add(result_dimensions_f, jk_vector_2_mul(-1.0f, layout.dimensions)));
-        cursor_pos = jk_vector_2_add(cursor_pos, result_origin_f);
-        cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
+            TextLayout victor_layout = text_layout_get(shapes, victor, result_scale);
+            TextLayout condition_layout = text_layout_get(shapes, condition, condition_scale);
 
-        for (int32_t i = 0; i < text.size; i++) {
-            cursor_pos.x += jk_shapes_draw(&renderer,
-                    text.data[i] + CHARACTER_SHAPE_OFFSET,
-                    cursor_pos,
-                    text_scale,
-                    color_light_squares);
+            float y_start = result_origin_f.y
+                    + 0.5f
+                            * (result_dimensions_f.y
+                                    - (victor_layout.dimensions.y + padding
+                                            + condition_layout.dimensions.y));
+
+            JkVector2 victor_cursor;
+            victor_cursor.x = result_origin_f.x
+                    + 0.5f * (result_dimensions_f.x - victor_layout.dimensions.x)
+                    + victor_layout.offset.x;
+            victor_cursor.y = y_start + victor_layout.offset.y;
+
+            JkVector2 condition_cursor;
+            condition_cursor.x = result_origin_f.x
+                    + 0.5f * (result_dimensions_f.x - condition_layout.dimensions.x)
+                    + condition_layout.offset.x;
+            condition_cursor.y =
+                    y_start + padding + victor_layout.dimensions.y + condition_layout.offset.y;
+
+            for (int32_t i = 0; i < victor.size; i++) {
+                victor_cursor.x += jk_shapes_draw(&renderer,
+                        victor.data[i] + CHARACTER_SHAPE_OFFSET,
+                        victor_cursor,
+                        result_scale,
+                        color_light_squares);
+            }
+
+            for (int32_t i = 0; i < condition.size; i++) {
+                condition_cursor.x += jk_shapes_draw(&renderer,
+                        condition.data[i] + CHARACTER_SHAPE_OFFSET,
+                        condition_cursor,
+                        condition_scale,
+                        color_light_squares);
+            }
         }
     }
     JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);

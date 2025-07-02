@@ -136,6 +136,7 @@ typedef enum Result {
     RESULT_NONE,
     RESULT_STALEMATE,
     RESULT_CHECKMATE,
+    RESULT_TIME,
 } Result;
 
 typedef struct ChessAssets {
@@ -165,11 +166,12 @@ typedef struct Chess {
     Team victor;
     PieceType piece_prev_type;
     uint64_t time_move_prev;
-    uint64_t os_time_player[TEAM_COUNT];
+
+    uint64_t os_time;
+    uint64_t os_timer_frequency;
+    int64_t os_time_player[TEAM_COUNT];
     uint64_t os_time_turn_start;
 
-    uint64_t os_timer_frequency;
-    uint64_t (*os_timer_get)(void);
     uint64_t cpu_timer_frequency;
     uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
