@@ -2136,15 +2136,15 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     // Draw timers and captured pieces
-    float bar_text_scale = 0.025f;
-    float bar_padding = 6.0f;
+    float timer_scale = 0.025f;
+    float bar_padding = 5.0f;
     float y_value[TEAM_COUNT] = {640.0f - 32.0f - bar_padding, bar_padding};
     float bar_text_y[TEAM_COUNT];
     for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
         JkShape *zero_shape = assets->shapes + ('0' + CHARACTER_SHAPE_OFFSET);
         bar_text_y[team_index] = y_value[team_index]
-                + 0.5f * (32.0f - bar_text_scale * zero_shape->dimensions.y)
-                - bar_text_scale * zero_shape->offset.y;
+                + 0.5f * (32.0f - timer_scale * zero_shape->dimensions.y)
+                - timer_scale * zero_shape->offset.y;
     }
     {
         for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
@@ -2169,10 +2169,9 @@ void render(ChessAssets *assets, Chess *chess)
                     shape_index = '0' + digits[i] + CHARACTER_SHAPE_OFFSET;
                 }
                 JkShape *shape = assets->shapes + shape_index;
-                digit_pos.x = raw_x + 0.5f * (width - bar_text_scale * shape->dimensions.x)
-                        - bar_text_scale * shape->offset.x;
-                jk_shapes_draw(
-                        &renderer, shape_index, digit_pos, bar_text_scale, color_light_squares);
+                digit_pos.x = raw_x + 0.5f * (width - timer_scale * shape->dimensions.x)
+                        - timer_scale * shape->offset.x;
+                jk_shapes_draw(&renderer, shape_index, digit_pos, timer_scale, color_light_squares);
                 raw_x += width;
             }
 
@@ -2218,11 +2217,12 @@ void render(ChessAssets *assets, Chess *chess)
 
     // Draw menu button
     {
-        float padding = 6.0f;
+        float menu_text_scale = 0.020f;
+        float padding = 9.0f;
         float rect_thickness = 1.0f;
 
         JkBuffer text = JKS("Menu");
-        TextLayout layout = text_layout_get(shapes, text, bar_text_scale);
+        TextLayout layout = text_layout_get(shapes, text, menu_text_scale);
 
         JkVector2 dimensions = jk_vector_2_add(layout.dimensions,
                 (JkVector2){2 * (padding + rect_thickness), 2 * (padding + rect_thickness)});
@@ -2253,7 +2253,7 @@ void render(ChessAssets *assets, Chess *chess)
             cursor.x += jk_shapes_draw(&renderer,
                     text.data[i] + CHARACTER_SHAPE_OFFSET,
                     cursor,
-                    bar_text_scale,
+                    menu_text_scale,
                     text_color);
         }
     }
