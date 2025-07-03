@@ -80,9 +80,10 @@ typedef struct JkShapeArray {
 } JkShapeArray;
 
 typedef struct JkShapesDrawCommand {
-    JkIntVector2 position;
     JkColor color;
-    JkShapesBitmap *bitmap;
+    JkIntVector2 position;
+    JkIntVector2 dimensions;
+    uint8_t *alpha_map;
 } JkShapesDrawCommand;
 
 typedef struct JkShapesDrawCommandListNode {
@@ -135,7 +136,16 @@ JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
         JkShapeArray shapes,
         JkArena *arena);
 
-JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
+JK_PUBLIC void jk_shapes_rect_draw(
+        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions, JkColor color);
+
+JK_PUBLIC void jk_shapes_rect_draw_outline(JkShapesRenderer *renderer,
+        JkVector2 position,
+        JkVector2 dimensions,
+        float thickness,
+        JkColor color);
+
+JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
         JkShapesRenderer *renderer, uint32_t shape_index, float scale);
 
 JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,

@@ -427,10 +427,88 @@ static float jk_shapes_segment_x_intersection(JkShapesSegment segment, float x)
     return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
 }
 
-JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
+JK_PUBLIC void jk_shapes_rect_draw(
+        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions, JkColor color)
+{
+    position = jk_vector_2_mul(renderer->pixels_per_unit, position);
+    dimensions = jk_vector_2_mul(renderer->pixels_per_unit, dimensions);
+
+    JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+    node->command.color = color;
+    node->command.position = jk_vector_2_round(position);
+    node->command.dimensions = jk_int_vector_2_sub(
+            jk_vector_2_round(jk_vector_2_add(position, dimensions)), node->command.position);
+    node->command.alpha_map = 0;
+    node->next = renderer->draw_commands_head;
+    renderer->draw_commands_head = node;
+}
+
+JK_PUBLIC void jk_shapes_rect_draw_outline(JkShapesRenderer *renderer,
+        JkVector2 position,
+        JkVector2 dimensions,
+        float thickness,
+        JkColor color)
+{
+    position = jk_vector_2_mul(renderer->pixels_per_unit, position);
+    dimensions = jk_vector_2_mul(renderer->pixels_per_unit, dimensions);
+    thickness = renderer->pixels_per_unit * thickness;
+
+    JkIntVector2 top_left = jk_vector_2_round(position);
+    JkIntVector2 bottom_right = jk_vector_2_round(jk_vector_2_add(position, dimensions));
+    int32_t thickness_i = JK_MAX(1, jk_round(thickness));
+
+    {
+        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+        node->command.color = color;
+        node->command.position = top_left;
+        node->command.dimensions.x = bottom_right.x - top_left.x;
+        node->command.dimensions.y = thickness_i;
+        node->command.alpha_map = 0;
+        node->next = renderer->draw_commands_head;
+        renderer->draw_commands_head = node;
+    }
+
+    {
+        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+        node->command.color = color;
+        node->command.position.x = top_left.x;
+        node->command.position.y = bottom_right.y - thickness_i;
+        node->command.dimensions.x = bottom_right.x - top_left.x;
+        node->command.dimensions.y = thickness_i;
+        node->command.alpha_map = 0;
+        node->next = renderer->draw_commands_head;
+        renderer->draw_commands_head = node;
+    }
+
+    {
+        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+        node->command.color = color;
+        node->command.position.x = top_left.x;
+        node->command.position.y = top_left.y + thickness_i;
+        node->command.dimensions.x = thickness_i;
+        node->command.dimensions.y = (bottom_right.y - top_left.y) - (2 * thickness_i);
+        node->command.alpha_map = 0;
+        node->next = renderer->draw_commands_head;
+        renderer->draw_commands_head = node;
+    }
+
+    {
+        JkShapesDrawCommandListNode *node = jk_arena_alloc(renderer->arena, sizeof(*node));
+        node->command.color = color;
+        node->command.position.x = bottom_right.x - thickness_i;
+        node->command.position.y = top_left.y + thickness_i;
+        node->command.dimensions.x = thickness_i;
+        node->command.dimensions.y = (bottom_right.y - top_left.y) - (2 * thickness_i);
+        node->command.alpha_map = 0;
+        node->next = renderer->draw_commands_head;
+        renderer->draw_commands_head = node;
+    }
+}
+
+JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
         JkShapesRenderer *renderer, uint32_t shape_index, float scale)
 {
-    JkShapesBitmap *result = 0;
+    JkShapesBitmap bitmap = {0};
     float pixel_scale = scale * renderer->pixels_per_unit;
 
     JkShape shape = renderer->shapes.items[shape_index];
@@ -438,9 +516,9 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
         uint64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, pixel_scale);
         JkShapesHashTableSlot *bitmap_slot =
                 jk_shapes_hash_table_probe(&renderer->hash_table, bitmap_key);
-        result = &bitmap_slot->value;
-        if (!bitmap_slot->filled) {
-            JkShapesBitmap bitmap;
+        if (bitmap_slot->filled) {
+            bitmap = bitmap_slot->value;
+        } else {
             bitmap.dimensions.x = (int32_t)ceilf(pixel_scale * shape.dimensions.x);
             bitmap.dimensions.y = (int32_t)ceilf(pixel_scale * shape.dimensions.y);
             // TODO: do we really need to zero it?
@@ -561,7 +639,7 @@ JK_PUBLIC JkShapesBitmap *jk_shapes_bitmap_get(
         }
     }
 
-    return result;
+    return bitmap;
 }
 
 // Returns the shape's scaled advance_width
@@ -578,7 +656,9 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         node->command.position = jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit,
                 jk_vector_2_add(position, jk_vector_2_mul(scale, shape.offset))));
         node->command.color = color;
-        node->command.bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
+        JkShapesBitmap bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
+        node->command.dimensions = bitmap.dimensions;
+        node->command.alpha_map = bitmap.data;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
     }

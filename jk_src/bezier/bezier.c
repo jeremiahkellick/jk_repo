@@ -114,21 +114,26 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
             }
             while (cs < draw_commands.count
                     && !(pos.y < draw_commands.items[cs].position.y
-                                    + draw_commands.items[cs].bitmap->dimensions.y)) {
+                                    + draw_commands.items[cs].dimensions.y)) {
                 cs++;
             }
 
             for (pos.x = 0; pos.x < bezier->draw_square_side_length; pos.x++) {
                 JkColor color = color_dark_squares;
                 for (int32_t i = cs; i < ce; i++) {
-                    JkShapesBitmap *bitmap = draw_commands.items[i].bitmap;
+                    JkShapesDrawCommand *command = draw_commands.items + i;
                     JkIntVector2 bitmap_pos =
                             jk_int_vector_2_sub(pos, draw_commands.items[i].position);
-                    if (0 <= bitmap_pos.x && bitmap_pos.x < bitmap->dimensions.x
-                            && bitmap_pos.y < bitmap->dimensions.y) {
-                        int32_t index = bitmap_pos.y * bitmap->dimensions.x + bitmap_pos.x;
-                        color = blend_alpha(
-                                color_light_squares, color_dark_squares, bitmap->data[index]);
+                    if (0 <= bitmap_pos.x && bitmap_pos.x < command->dimensions.x
+                            && bitmap_pos.y < command->dimensions.y) {
+                        uint8_t alpha;
+                        if (command->alpha_map) {
+                            int32_t index = bitmap_pos.y * command->dimensions.x + bitmap_pos.x;
+                            alpha = command->alpha_map[index];
+                        } else {
+                            alpha = command->color.a;
+                        }
+                        color = blend_alpha(command->color, color_dark_squares, alpha);
                         break;
                     }
                 }

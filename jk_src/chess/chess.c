@@ -2090,13 +2090,13 @@ void render(ChessAssets *assets, Chess *chess)
     // Draw horizontal square coordinates
     float coords_scale = 0.0192f;
     JkColor coords_color = color_light_squares;
-    coords_color.a = 160;
+    coords_color.a = 185;
     for (int32_t x = 0; x < 8; x++) {
         uint32_t shape_id = 'a' + x + CHARACTER_SHAPE_OFFSET;
         JkShape *shape = shapes.items + shape_id;
         float width = coords_scale * shape->dimensions.x;
         float x_offset = coords_scale * shape->offset.x;
-        float padding_top = square_size * 0.15f;
+        float padding_top = square_size * 0.12f;
         float padding_bottom = square_size * 0.3f;
         float cursor_x = square_size * (x + 1.5f) - (width / 2.0f) - x_offset;
         float cursor_ys[] = {
@@ -2136,10 +2136,17 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     // Draw timers and captured pieces
+    float bar_text_scale = 0.025f;
+    float bar_padding = 6.0f;
+    float y_value[TEAM_COUNT] = {640.0f - 32.0f - bar_padding, bar_padding};
+    float bar_text_y[TEAM_COUNT];
+    for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
+        JkShape *zero_shape = assets->shapes + ('0' + CHARACTER_SHAPE_OFFSET);
+        bar_text_y[team_index] = y_value[team_index]
+                + 0.5f * (32.0f - bar_text_scale * zero_shape->dimensions.y)
+                - bar_text_scale * zero_shape->offset.y;
+    }
     {
-        float timer_scale = 0.025f;
-        float padding = 6.0f;
-        float y_value[TEAM_COUNT] = {640.0f - 32.0f - padding, padding};
         for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
             // Draw timer
             uint64_t remaining = time_player_seconds[team_index];
@@ -2151,11 +2158,7 @@ void render(ChessAssets *assets, Chess *chess)
             digits[1] = remaining % 10; // minutes
             remaining /= 10;
             digits[0] = (uint8_t)remaining; // ten minutes
-            JkShape *zero_shape = assets->shapes + ('0' + CHARACTER_SHAPE_OFFSET);
-            JkVector2 digit_pos;
-            digit_pos.y = y_value[team_index]
-                    + 0.5f * (32.0f - timer_scale * zero_shape->dimensions.y)
-                    - timer_scale * zero_shape->offset.y;
+            JkVector2 digit_pos = {.y = bar_text_y[team_index]};
             float raw_x = 64.0f;
             float width = 13.2f;
             for (int32_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
@@ -2166,9 +2169,10 @@ void render(ChessAssets *assets, Chess *chess)
                     shape_index = '0' + digits[i] + CHARACTER_SHAPE_OFFSET;
                 }
                 JkShape *shape = assets->shapes + shape_index;
-                digit_pos.x = raw_x + 0.5f * (width - timer_scale * shape->dimensions.x)
-                        - timer_scale * shape->offset.x;
-                jk_shapes_draw(&renderer, shape_index, digit_pos, timer_scale, color_light_squares);
+                digit_pos.x = raw_x + 0.5f * (width - bar_text_scale * shape->dimensions.x)
+                        - bar_text_scale * shape->offset.x;
+                jk_shapes_draw(
+                        &renderer, shape_index, digit_pos, bar_text_scale, color_light_squares);
                 raw_x += width;
             }
 
@@ -2209,6 +2213,48 @@ void render(ChessAssets *assets, Chess *chess)
                     draw_pos.x += 64.0f;
                 }
             }
+        }
+    }
+
+    // Draw menu button
+    {
+        float padding = 6.0f;
+        float rect_thickness = 1.0f;
+
+        JkBuffer text = JKS("Menu");
+        TextLayout layout = text_layout_get(shapes, text, bar_text_scale);
+
+        JkVector2 dimensions = jk_vector_2_add(layout.dimensions,
+                (JkVector2){2 * (padding + rect_thickness), 2 * (padding + rect_thickness)});
+
+        JkVector2 top_left = {.x = 64.0f * 9.0f - dimensions.x};
+        JkVector2 cursor = {
+            top_left.x + padding + rect_thickness + layout.offset.x,
+            bar_text_y[1],
+        };
+        top_left.y = cursor.y - layout.offset.y - (padding + rect_thickness);
+        JkVector2 bottom_right = jk_vector_2_add(top_left, dimensions);
+
+        JkVector2 mouse_pos_f = jk_vector_2_mul(
+                1.0f / pixels_per_unit, jk_vector_2_from_int(chess->input.mouse_pos));
+        JkColor text_color;
+        JkColor outline_color;
+        if (top_left.x <= mouse_pos_f.x && mouse_pos_f.x < bottom_right.x
+                && top_left.y <= mouse_pos_f.y && mouse_pos_f.y < bottom_right.y) {
+            text_color = (JkColor){255, 255, 255, 255};
+            outline_color = color_light_squares;
+        } else {
+            text_color = color_light_squares;
+            outline_color = coords_color;
+        }
+
+        jk_shapes_rect_draw_outline(&renderer, top_left, dimensions, rect_thickness, outline_color);
+        for (int32_t i = 0; i < text.size; i++) {
+            cursor.x += jk_shapes_draw(&renderer,
+                    text.data[i] + CHARACTER_SHAPE_OFFSET,
+                    cursor,
+                    bar_text_scale,
+                    text_color);
         }
     }
 
@@ -2281,6 +2327,7 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
     }
+
     JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
     JK_PLATFORM_PROFILE_ZONE_END(draw_vectors);
 
@@ -2295,7 +2342,7 @@ void render(ChessAssets *assets, Chess *chess)
         }
         while (cs < draw_commands.count
                 && !(pos.y < draw_commands.items[cs].position.y
-                                + draw_commands.items[cs].bitmap->dimensions.y)) {
+                                + draw_commands.items[cs].dimensions.y)) {
             cs++;
         }
 
@@ -2331,14 +2378,20 @@ void render(ChessAssets *assets, Chess *chess)
             }
 
             for (int32_t i = cs; i < ce; i++) {
-                JkShapesBitmap *bitmap = draw_commands.items[i].bitmap;
-                JkIntVector2 bitmap_pos = jk_int_vector_2_sub(pos, draw_commands.items[i].position);
-                if (0 <= bitmap_pos.x && bitmap_pos.x < bitmap->dimensions.x
-                        && bitmap_pos.y < bitmap->dimensions.y) {
-                    uint8_t bitmap_alpha =
-                            bitmap->data[bitmap_pos.y * bitmap->dimensions.x + bitmap_pos.x];
-                    uint8_t alpha = color_multiply(draw_commands.items[i].color.a, bitmap_alpha);
-                    color = blend_alpha(draw_commands.items[i].color, color, alpha);
+                JkShapesDrawCommand *command = draw_commands.items + i;
+                JkIntVector2 pos_in_rect = jk_int_vector_2_sub(pos, command->position);
+                if (0 <= pos_in_rect.x && pos_in_rect.x < command->dimensions.x
+                        && pos_in_rect.y < command->dimensions.y) {
+                    uint8_t alpha;
+                    if (command->alpha_map) {
+                        uint8_t bitmap_alpha =
+                                command->alpha_map[pos_in_rect.y * command->dimensions.x
+                                        + pos_in_rect.x];
+                        alpha = color_multiply(command->color.a, bitmap_alpha);
+                    } else {
+                        alpha = command->color.a;
+                    }
+                    color = blend_alpha(command->color, color, alpha);
                     break;
                 }
             }
@@ -2351,18 +2404,18 @@ void render(ChessAssets *assets, Chess *chess)
 
     if (holding_piece) {
         Piece piece = board_piece_get_index(chess->board, selected_index);
-        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, piece.type, 1.0f);
-        if (bitmap) {
+        JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, piece.type, 1.0f);
+        if (bitmap.data) {
             JkIntVector2 held_piece_offset = jk_int_vector_2_sub(chess->input.mouse_pos,
                     (JkIntVector2){chess->square_side_length / 2, chess->square_side_length / 2});
-            for (pos.y = 0; pos.y < bitmap->dimensions.x; pos.y++) {
-                for (pos.x = 0; pos.x < bitmap->dimensions.y; pos.x++) {
+            for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y++) {
+                for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x++) {
                     JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
                     if (screen_in_bounds(chess->square_side_length, screen_pos)) {
                         int32_t index = screen_pos.y * DRAW_BUFFER_SIDE_LENGTH + screen_pos.x;
                         JkColor color_piece = color_teams[piece.team];
                         JkColor color_bg = chess->draw_buffer[index];
-                        uint8_t alpha = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
+                        uint8_t alpha = bitmap.data[pos.y * bitmap.dimensions.x + pos.x];
                         chess->draw_buffer[index] = blend_alpha(color_piece, color_bg, alpha);
                     }
                 }
@@ -2373,7 +2426,7 @@ void render(ChessAssets *assets, Chess *chess)
     int64_t frames_since_last_move = chess->time - chess->time_move_prev;
     if (frames_since_last_move < 43 && chess->piece_prev_type) {
         JkColor piece_color = color_teams[team];
-        JkShapesBitmap *bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
+        JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);
         JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
         JkVector2 canvas_pos = board_to_canvas_pos(square_size, dest);
@@ -2393,8 +2446,8 @@ void render(ChessAssets *assets, Chess *chess)
                 - deceleration * (prev_frames_since_last_move * prev_frames_since_last_move);
 
         int32_t skip = 1 + (chess->square_side_length * 2 / 100);
-        for (pos.y = 0; pos.y < bitmap->dimensions.x; pos.y += skip) {
-            for (pos.x = 0; pos.x < bitmap->dimensions.y; pos.x += skip) {
+        for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y += skip) {
+            for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x += skip) {
                 JkVector2 offset = {(float)pos.x / pixels_per_unit, (float)pos.y / pixels_per_unit};
                 JkVector2 pixel_pos = jk_vector_2_add(canvas_pos, offset);
                 JkVector2 direction = jk_vector_2_normalized(
@@ -2404,7 +2457,7 @@ void render(ChessAssets *assets, Chess *chess)
                 JkVector2 pixel_dest = jk_vector_2_add(pixel_pos, delta);
                 JkVector2 prev_dest = jk_vector_2_add(pixel_pos, prev_delta);
 
-                piece_color.a = bitmap->data[pos.y * bitmap->dimensions.x + pos.x];
+                piece_color.a = bitmap.data[pos.y * bitmap.dimensions.x + pos.x];
                 if (piece_color.a) {
                     draw_line(chess,
                             piece_color,
