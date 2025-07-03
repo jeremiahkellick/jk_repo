@@ -1531,6 +1531,7 @@ void update(ChessAssets *assets, Chess *chess)
         print_nodes(chess->debug_print, ctx.top_level_nodes + 1, 0);
 
         chess->flags = JK_MASK(CHESS_FLAG_INITIALIZED);
+        chess->turn_index = 0;
         chess->player_types[0] = PLAYER_HUMAN;
         chess->player_types[1] = PLAYER_HUMAN;
         chess->selected_square = (JkIntVector2){-1, -1};
@@ -1567,7 +1568,7 @@ void update(ChessAssets *assets, Chess *chess)
                 == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
     }
 
-    if (chess->result == RESULT_NONE
+    if (chess->turn_index && chess->result == RESULT_NONE
             && chess->os_time_player[board_current_team_get(chess->board)]
                             - (int64_t)(chess->os_time - chess->os_time_turn_start)
                     <= 0) {
@@ -1659,9 +1660,12 @@ void update(ChessAssets *assets, Chess *chess)
             chess->audio.sound = chess->piece_prev_type ? SOUND_CAPTURE : SOUND_MOVE;
             chess->audio.sound_started_time = chess->audio.time;
 
-            chess->os_time_player[board_current_team_get(chess->board)] -=
-                    (int64_t)(chess->os_time - chess->os_time_turn_start);
+            if (chess->turn_index) {
+                chess->os_time_player[board_current_team_get(chess->board)] -=
+                        (int64_t)(chess->os_time - chess->os_time_turn_start);
+            }
             chess->os_time_turn_start = chess->os_time;
+            chess->turn_index++;
 
             chess->board = board_move_perform(chess->board, move_pack(move));
             debug_printf(chess->debug_print, "move.bits: %x\n", (uint32_t)move_pack(move).bits);
@@ -2006,7 +2010,7 @@ void render(ChessAssets *assets, Chess *chess)
     int64_t time_player_seconds[TEAM_COUNT];
     for (Team i = 0; i < TEAM_COUNT; i++) {
         int64_t time = chess->os_time_player[i];
-        if (i == team && chess->result == RESULT_NONE) {
+        if (i == team && chess->result == RESULT_NONE && chess->turn_index) {
             time -= (int64_t)(chess->os_time - chess->os_time_turn_start);
         }
         time_player_seconds[i] = (time + chess->os_timer_frequency - 1) / chess->os_timer_frequency;

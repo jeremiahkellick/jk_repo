@@ -165,6 +165,7 @@ typedef struct Chess {
 
     // Game read-write, platform read-only
     uint64_t flags;
+    uint64_t turn_index;
     Board board;
     PlayerType player_types[2];
     JkIntVector2 selected_square;
