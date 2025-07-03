@@ -147,34 +147,35 @@ typedef struct ChessAssets {
 } ChessAssets;
 
 typedef struct Chess {
-    uint64_t flags;
-    PlayerType player_types[2];
-    JkIntVector2 selected_square;
-    JkIntVector2 promo_square;
-    Input input;
-    Input input_prev;
     Audio audio;
+
+    // Platform read-write, game read-only
+    Input input;
     int32_t square_side_length;
     JkColor *draw_buffer;
-    uint64_t time;
-    Board board;
     JkBuffer render_memory;
     JkBuffer ai_memory;
-    MoveArray moves;
     Move ai_move;
-    Result result;
-    Team victor;
-    PieceType piece_prev_type;
-    uint64_t time_move_prev;
-
+    uint64_t time;
     uint64_t os_time;
     uint64_t os_timer_frequency;
-    int64_t os_time_player[TEAM_COUNT];
-    uint64_t os_time_turn_start;
-
     uint64_t cpu_timer_frequency;
     uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
+
+    // Game read-write, platform read-only
+    uint64_t flags;
+    Board board;
+    PlayerType player_types[2];
+    JkIntVector2 selected_square;
+    JkIntVector2 promo_square;
+    Input input_prev;
+    MoveArray moves;
+    Result result;
+    PieceType piece_prev_type;
+    uint64_t time_move_prev;
+    int64_t os_time_player[TEAM_COUNT];
+    uint64_t os_time_turn_start;
 } Chess;
 
 typedef Move AiMoveGetFunction(Chess *chess);

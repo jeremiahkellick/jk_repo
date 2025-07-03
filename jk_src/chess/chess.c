@@ -1677,9 +1677,8 @@ void update(ChessAssets *assets, Chess *chess)
                     chess->flags |= JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
                 }
             } else {
-                chess->victor = !current_team;
-
-                uint64_t threatened = board_threats_get(chess->board, chess->victor).bitfield;
+                Team victor = !current_team;
+                uint64_t threatened = board_threats_get(chess->board, victor).bitfield;
                 uint8_t king_index = 0;
                 for (uint8_t square_index = 0; square_index < 64; square_index++) {
                     Piece piece = board_piece_get_index(chess->board, square_index);
