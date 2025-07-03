@@ -28,6 +28,7 @@ typedef struct Input {
 typedef enum AudioChannel {
     AUDIO_CHANNEL_LEFT,
     AUDIO_CHANNEL_RIGHT,
+
     AUDIO_CHANNEL_COUNT,
 } AudioChannel;
 
@@ -39,6 +40,7 @@ typedef enum SoundIndex {
     SOUND_NONE,
     SOUND_MOVE,
     SOUND_CAPTURE,
+
     SOUND_COUNT,
 } SoundIndex;
 
@@ -62,6 +64,7 @@ typedef struct Bitmap {
 typedef enum Team {
     WHITE,
     BLACK,
+
     TEAM_COUNT,
 } Team;
 
@@ -73,6 +76,7 @@ typedef enum PieceType {
     BISHOP,
     KNIGHT,
     PAWN,
+
     PIECE_TYPE_COUNT,
 } PieceType;
 
@@ -139,6 +143,25 @@ typedef enum Result {
     RESULT_TIME,
 } Result;
 
+typedef enum Screen {
+    SCREEN_GAME,
+    SCREEN_MENU,
+
+    SCREEN_COUNT,
+} Screen;
+
+typedef enum ButtonId {
+    BUTTON_MENU_OPEN,
+    BUTTON_MENU_CLOSE,
+
+    BUTTON_COUNT,
+} ButtonId;
+
+typedef struct Button {
+    ButtonId id;
+    JkIntRect rect;
+} Button;
+
 typedef struct ChessAssets {
     int32_t font_y0_min;
     int32_t font_y1_max;
@@ -177,6 +200,8 @@ typedef struct Chess {
     uint64_t time_move_prev;
     int64_t os_time_player[TEAM_COUNT];
     uint64_t os_time_turn_start;
+    Screen screen;
+    Button buttons[BUTTON_COUNT];
 } Chess;
 
 typedef Move AiMoveGetFunction(Chess *chess);

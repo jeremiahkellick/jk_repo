@@ -591,6 +591,13 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     return x;
 }
 
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point)
+{
+    JkIntVector2 delta = jk_int_vector_2_sub(point, rect.position);
+    return 0 <= delta.x && delta.x < rect.dimensions.x && 0 <= delta.y
+            && delta.y < rect.dimensions.y;
+}
+
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x)
 {
     return x && (x & (x - 1)) == 0;

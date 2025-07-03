@@ -228,6 +228,11 @@ typedef struct JkColor {
     };
 } JkColor;
 
+typedef struct JkIntRect {
+    JkIntVector2 position;
+    JkIntVector2 dimensions;
+} JkIntRect;
+
 JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 
 #define JK_ASSERT(expression) \
@@ -259,6 +264,8 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 #define JK_INV_SQRT_2 0.70710678118654752440084
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
+
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
 
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
 

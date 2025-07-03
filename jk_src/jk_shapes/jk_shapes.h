@@ -136,10 +136,19 @@ JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
         JkShapeArray shapes,
         JkArena *arena);
 
-JK_PUBLIC void jk_shapes_rect_draw(
+JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(
+        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions);
+
+JK_PUBLIC void jk_shapes_pixel_rect_draw(
+        JkShapesRenderer *renderer, JkIntRect pixel_rect, JkColor color);
+
+JK_PUBLIC void jk_shapes_pixel_rect_draw_outline(
+        JkShapesRenderer *renderer, JkIntRect pixel_rect, float thickness, JkColor color);
+
+JK_PUBLIC JkIntRect jk_shapes_rect_draw(
         JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions, JkColor color);
 
-JK_PUBLIC void jk_shapes_rect_draw_outline(JkShapesRenderer *renderer,
+JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(JkShapesRenderer *renderer,
         JkVector2 position,
         JkVector2 dimensions,
         float thickness,
