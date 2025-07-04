@@ -153,6 +153,9 @@ typedef enum Screen {
 typedef enum ButtonId {
     BUTTON_MENU_OPEN,
     BUTTON_MENU_CLOSE,
+    BUTTON_WHITE,
+    BUTTON_BLACK,
+    BUTTON_RANDOM,
 
     BUTTON_COUNT,
 } ButtonId;
@@ -168,6 +171,18 @@ typedef struct ChessAssets {
     JkShape shapes[PIECE_TYPE_COUNT + 95];
     JkSpan sounds[SOUND_COUNT];
 } ChessAssets;
+
+typedef enum TeamChoice {
+    TEAM_CHOICE_WHITE,
+    TEAM_CHOICE_BLACK,
+    TEAM_CHOICE_RANDOM,
+
+    TEAM_CHOICE_COUNT,
+} TeamChoice;
+
+typedef struct Settings {
+    TeamChoice team_choice;
+} Settings;
 
 typedef struct Chess {
     Audio audio;
@@ -202,6 +217,7 @@ typedef struct Chess {
     uint64_t os_time_turn_start;
     Screen screen;
     Button buttons[BUTTON_COUNT];
+    Settings settings;
 } Chess;
 
 typedef Move AiMoveGetFunction(Chess *chess);

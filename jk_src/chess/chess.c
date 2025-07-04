@@ -249,6 +249,8 @@ static PieceType promo_order[] = {
     BISHOP,
 };
 
+static char *team_choice_strings[TEAM_CHOICE_COUNT] = {"White", "Black", "Random"};
+
 static b32 square_available(Board board, JkIntVector2 square)
 {
     if (board_in_bounds(square)) {
@@ -1557,6 +1559,7 @@ void update(ChessAssets *assets, Chess *chess)
         }
 
         chess->screen = SCREEN_GAME;
+        chess->settings.team_choice = TEAM_CHOICE_WHITE;
 
         srand(0xd5717cc6);
 
@@ -1570,7 +1573,7 @@ void update(ChessAssets *assets, Chess *chess)
                 == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
     }
 
-    // See if we should change screens
+    // Process UI button presses
     switch (chess->screen) {
     case SCREEN_GAME: {
         if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))
@@ -1581,10 +1584,17 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_MENU: {
-        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))
-                && jk_int_rect_point_test(
+        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+            if (jk_int_rect_point_test(
                         chess->buttons[BUTTON_MENU_CLOSE].rect, chess->input.mouse_pos)) {
-            chess->screen = SCREEN_GAME;
+                chess->screen = SCREEN_GAME;
+            }
+            for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT; team_choice++) {
+                if (jk_int_rect_point_test(chess->buttons[BUTTON_WHITE + team_choice].rect,
+                            chess->input.mouse_pos)) {
+                    chess->settings.team_choice = team_choice;
+                }
+            }
         }
     } break;
 
@@ -2385,19 +2395,20 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
 
-        {
-            float width = 256;
-            float text_scale = 0.025;
-            float padding = 9;
-            float rect_thickness = 1;
+        float width = 384;
+        float text_scale = 0.025;
+        float padding = 9;
+        float rect_thickness = 1;
+        JkVector2 top_left = {(640 - width) / 2, 32};
 
+        {
             JkBuffer text = JKS("Close menu");
             TextLayout text_layout = text_layout_get(shapes, text, text_scale);
 
-            JkVector2 dimensions = jk_vector_2_add(
-                    text_layout.dimensions, (JkVector2){width, 2 * (padding + rect_thickness)});
-
-            JkVector2 top_left = {(640 - width) / 2, 64};
+            JkVector2 dimensions = {
+                width,
+                text_layout.dimensions.y + 2 * (padding + rect_thickness),
+            };
 
             JkVector2 cursor = jk_vector_2_add(
                     jk_vector_2_add(top_left,
@@ -2427,6 +2438,127 @@ void render(ChessAssets *assets, Chess *chess)
                         cursor,
                         text_scale,
                         text_color);
+            }
+
+            top_left.y += dimensions.y;
+        }
+
+        {
+            float heading_scale = 0.03;
+
+            JkBuffer text = JKS("Configure new game");
+            TextLayout text_layout = text_layout_get(shapes, text, heading_scale);
+
+            top_left.y += 32;
+
+            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            for (int32_t i = 0; i < text.size; i++) {
+                cursor.x += jk_shapes_draw(&renderer,
+                        text.data[i] + CHARACTER_SHAPE_OFFSET,
+                        cursor,
+                        heading_scale,
+                        color_light_squares);
+            }
+
+            top_left.y += text_layout.dimensions.y;
+        }
+
+        {
+            JkBuffer text = JKS("Play as");
+            TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+
+            top_left.y += 20;
+
+            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            for (int32_t i = 0; i < text.size; i++) {
+                cursor.x += jk_shapes_draw(&renderer,
+                        text.data[i] + CHARACTER_SHAPE_OFFSET,
+                        cursor,
+                        text_scale,
+                        color_light_squares);
+            }
+
+            top_left.y += text_layout.dimensions.y;
+        }
+
+        {
+            top_left.y += 14;
+
+            float spacing = 22;
+
+            TextLayout base_layout = text_layout_get(
+                    shapes, jk_buffer_from_null_terminated(team_choice_strings[0]), text_scale);
+            JkVector2 base_dimensions = {
+                (width - (TEAM_CHOICE_COUNT - 1) * spacing) / TEAM_CHOICE_COUNT,
+                base_layout.dimensions.y + 2 * (padding + rect_thickness)};
+
+            float scale_factor = (base_dimensions.x + spacing) / base_dimensions.x;
+            JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
+
+            JkVector2 position = top_left;
+            float text_y_offset = padding + rect_thickness + base_layout.offset.y;
+            float text_y = position.y + text_y_offset;
+            for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT;
+                    team_choice++, position.x += base_dimensions.x + spacing) {
+                JkBuffer text = jk_buffer_from_null_terminated(team_choice_strings[team_choice]);
+                Button *button = chess->buttons + (BUTTON_WHITE + team_choice);
+
+                if (team_choice == chess->settings.team_choice) {
+                    button->rect = (JkIntRect){0};
+
+                    JkVector2 scaled_position = jk_vector_2_add(position,
+                            jk_vector_2_mul(0.5f,
+                                    jk_vector_2_add(base_dimensions,
+                                            jk_vector_2_mul(-1.0f, scaled_dimensions))));
+
+                    jk_shapes_rect_draw_outline(&renderer,
+                            scaled_position,
+                            scaled_dimensions,
+                            rect_thickness,
+                            color_light_squares);
+
+                    TextLayout text_layout =
+                            text_layout_get(shapes, text, scale_factor * text_scale);
+                    JkVector2 cursor = {
+                        scaled_position.x + scale_factor * (padding + rect_thickness)
+                                + text_layout.offset.x,
+                        scaled_position.y
+                                + scale_factor * (padding + rect_thickness + base_layout.offset.y),
+                    };
+                    for (int32_t i = 0; i < text.size; i++) {
+                        cursor.x += jk_shapes_draw(&renderer,
+                                text.data[i] + CHARACTER_SHAPE_OFFSET,
+                                cursor,
+                                scale_factor * text_scale,
+                                (JkColor){255, 255, 255, 255});
+                    }
+                } else {
+                    JkColor text_color;
+                    JkColor outline_color;
+                    button->rect = jk_shapes_pixel_rect_get(&renderer, position, base_dimensions);
+                    if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
+                        text_color = (JkColor){255, 255, 255, 255};
+                        outline_color = color_light_squares;
+                    } else {
+                        text_color = color_light_squares;
+                        outline_color = color_faded;
+                    }
+
+                    jk_shapes_pixel_rect_draw_outline(
+                            &renderer, button->rect, rect_thickness, outline_color);
+
+                    TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+
+                    JkVector2 cursor = {
+                        position.x + padding + rect_thickness + text_layout.offset.x, text_y};
+                    for (int32_t i = 0; i < text.size; i++) {
+                        cursor.x += jk_shapes_draw(&renderer,
+                                text.data[i] + CHARACTER_SHAPE_OFFSET,
+                                cursor,
+                                text_scale,
+                                outline_color);
+                    }
+                }
             }
         }
     } break;
