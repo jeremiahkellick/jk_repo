@@ -29,6 +29,13 @@ typedef struct JkSpan {
 
 #define JKS JK_STRING
 
+#define JK_STRING_INITIALIZER(string_literal)                 \
+    {                                                         \
+        sizeof(string_literal) - 1, (uint8_t *)string_literal \
+    }
+
+#define JKSI JK_STRING_INITIALIZER
+
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);

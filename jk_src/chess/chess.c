@@ -82,15 +82,16 @@ static Board bug_state = {
     .flags = 0x1e,
 };
 
-static char *puzzle_fen = "8/1bp1rkp1/p4p2/1p1p1QPR/3q3P/8/5PK1/8 b - - 0 1";
+static JkBuffer puzzle_fen = JKSI("8/1bp1rkp1/p4p2/1p1p1QPR/3q3P/8/5PK1/8 b - - 0 1");
 
-static char *wtf_fen = "rnb1kbnr/pppp1ppp/5q2/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b - - 0 1";
+static JkBuffer wtf_fen = JKSI("rnb1kbnr/pppp1ppp/5q2/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b - - 0 1");
 
-static char *wtf2_fen = "1nb1k1nr/r2p1qp1/1pp3B1/3pP1Qp/p4p2/2N2N2/PPP2PPP/R4RK1 b k - 1 1";
+static JkBuffer wtf2_fen =
+        JKSI("1nb1k1nr/r2p1qp1/1pp3B1/3pP1Qp/p4p2/2N2N2/PPP2PPP/R4RK1 b k - 1 1");
 
-static char *wtf5_fen = "r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2K1 b kq - 4 3";
+static JkBuffer wtf5_fen = JKSI("r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2K1 b kq - 4 3");
 
-static char *wtf9_fen = "r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2";
+static JkBuffer wtf9_fen = JKSI("r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2");
 
 static char debug_print_buffer[4096];
 
@@ -249,7 +250,8 @@ static PieceType promo_order[] = {
     BISHOP,
 };
 
-static char *team_choice_strings[TEAM_CHOICE_COUNT] = {"White", "Black", "Random"};
+static JkBuffer team_choice_strings[TEAM_CHOICE_COUNT] = {
+    JKSI("White"), JKSI("Black"), JKSI("Random")};
 
 static b32 square_available(Board board, JkIntVector2 square)
 {
@@ -1543,7 +1545,7 @@ void update(ChessAssets *assets, Chess *chess)
         chess->piece_prev_type = NONE;
         chess->time_move_prev = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
-        // chess->board = parse_fen(jk_buffer_from_null_terminated(wtf9_fen));
+        // chess->board = parse_fen(wtf9_fen);
         moves_get(&chess->moves, chess->board);
         if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
             chess->flags |= JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
@@ -1893,6 +1895,15 @@ static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scal
     result.dimensions = jk_vector_2_mul(scale, result.dimensions);
 
     return result;
+}
+
+static void draw_text(
+        JkShapesRenderer *renderer, JkBuffer text, JkVector2 cursor, float scale, JkColor color)
+{
+    for (int32_t i = 0; i < text.size; i++) {
+        cursor.x += jk_shapes_draw(
+                renderer, text.data[i] + CHARACTER_SHAPE_OFFSET, cursor, scale, color);
+    }
 }
 
 static uint8_t region_code(float side_length, JkVector2 v)
@@ -2257,13 +2268,7 @@ void render(ChessAssets *assets, Chess *chess)
                         cursor_pos.y = draw_pos.y + 0.5f * (32.0f - layout.dimensions.y);
                         cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
 
-                        for (int32_t i = 0; i < text.size; i++) {
-                            cursor_pos.x += jk_shapes_draw(&renderer,
-                                    text.data[i] + CHARACTER_SHAPE_OFFSET,
-                                    cursor_pos,
-                                    coords_scale,
-                                    color_faded);
-                        }
+                        draw_text(&renderer, text, cursor_pos, coords_scale, color_faded);
 
                         draw_pos.x += 64.0f;
                     }
@@ -2273,12 +2278,11 @@ void render(ChessAssets *assets, Chess *chess)
 
         // Draw menu button
         {
-            float menu_text_scale = 0.020f;
             float padding = 9.0f;
             float rect_thickness = 1.0f;
 
             JkBuffer text = JKS("Menu");
-            TextLayout layout = text_layout_get(shapes, text, menu_text_scale);
+            TextLayout layout = text_layout_get(shapes, text, coords_scale);
 
             JkVector2 dimensions = jk_vector_2_add(layout.dimensions,
                     (JkVector2){2 * (padding + rect_thickness), 2 * (padding + rect_thickness)});
@@ -2307,13 +2311,7 @@ void render(ChessAssets *assets, Chess *chess)
                     chess->buttons[BUTTON_MENU_OPEN].rect,
                     rect_thickness,
                     outline_color);
-            for (int32_t i = 0; i < text.size; i++) {
-                cursor.x += jk_shapes_draw(&renderer,
-                        text.data[i] + CHARACTER_SHAPE_OFFSET,
-                        cursor,
-                        menu_text_scale,
-                        text_color);
-            }
+            draw_text(&renderer, text, cursor, coords_scale, text_color);
         }
 
         // If the game is over, display the result
@@ -2332,13 +2330,7 @@ void render(ChessAssets *assets, Chess *chess)
                 cursor_pos = jk_vector_2_add(cursor_pos, result_origin_f);
                 cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
 
-                for (int32_t i = 0; i < text.size; i++) {
-                    cursor_pos.x += jk_shapes_draw(&renderer,
-                            text.data[i] + CHARACTER_SHAPE_OFFSET,
-                            cursor_pos,
-                            result_scale,
-                            color_light_squares);
-                }
+                draw_text(&renderer, text, cursor_pos, result_scale, color_light_squares);
             } else {
                 JkBuffer victor = team ? JKS("White won") : JKS("Black won");
                 JkBuffer condition =
@@ -2368,21 +2360,13 @@ void render(ChessAssets *assets, Chess *chess)
                 condition_cursor.y =
                         y_start + padding + victor_layout.dimensions.y + condition_layout.offset.y;
 
-                for (int32_t i = 0; i < victor.size; i++) {
-                    victor_cursor.x += jk_shapes_draw(&renderer,
-                            victor.data[i] + CHARACTER_SHAPE_OFFSET,
-                            victor_cursor,
-                            result_scale,
-                            color_light_squares);
-                }
+                draw_text(&renderer, victor, victor_cursor, result_scale, color_light_squares);
 
-                for (int32_t i = 0; i < condition.size; i++) {
-                    condition_cursor.x += jk_shapes_draw(&renderer,
-                            condition.data[i] + CHARACTER_SHAPE_OFFSET,
-                            condition_cursor,
-                            condition_scale,
-                            color_light_squares);
-                }
+                draw_text(&renderer,
+                        condition,
+                        condition_cursor,
+                        condition_scale,
+                        color_light_squares);
             }
         }
     } break;
@@ -2432,13 +2416,7 @@ void render(ChessAssets *assets, Chess *chess)
                     chess->buttons[BUTTON_MENU_CLOSE].rect,
                     rect_thickness,
                     outline_color);
-            for (int32_t i = 0; i < text.size; i++) {
-                cursor.x += jk_shapes_draw(&renderer,
-                        text.data[i] + CHARACTER_SHAPE_OFFSET,
-                        cursor,
-                        text_scale,
-                        text_color);
-            }
+            draw_text(&renderer, text, cursor, text_scale, text_color);
 
             top_left.y += dimensions.y;
         }
@@ -2452,13 +2430,7 @@ void render(ChessAssets *assets, Chess *chess)
             top_left.y += 32;
 
             JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
-            for (int32_t i = 0; i < text.size; i++) {
-                cursor.x += jk_shapes_draw(&renderer,
-                        text.data[i] + CHARACTER_SHAPE_OFFSET,
-                        cursor,
-                        heading_scale,
-                        color_light_squares);
-            }
+            draw_text(&renderer, text, cursor, heading_scale, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
         }
@@ -2470,13 +2442,7 @@ void render(ChessAssets *assets, Chess *chess)
             top_left.y += 20;
 
             JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
-            for (int32_t i = 0; i < text.size; i++) {
-                cursor.x += jk_shapes_draw(&renderer,
-                        text.data[i] + CHARACTER_SHAPE_OFFSET,
-                        cursor,
-                        text_scale,
-                        color_light_squares);
-            }
+            draw_text(&renderer, text, cursor, text_scale, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
         }
@@ -2486,8 +2452,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             float spacing = 22;
 
-            TextLayout base_layout = text_layout_get(
-                    shapes, jk_buffer_from_null_terminated(team_choice_strings[0]), text_scale);
+            TextLayout base_layout = text_layout_get(shapes, team_choice_strings[0], text_scale);
             JkVector2 base_dimensions = {
                 (width - (TEAM_CHOICE_COUNT - 1) * spacing) / TEAM_CHOICE_COUNT,
                 base_layout.dimensions.y + 2 * (padding + rect_thickness)};
@@ -2500,7 +2465,7 @@ void render(ChessAssets *assets, Chess *chess)
             float text_y = position.y + text_y_offset;
             for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT;
                     team_choice++, position.x += base_dimensions.x + spacing) {
-                JkBuffer text = jk_buffer_from_null_terminated(team_choice_strings[team_choice]);
+                JkBuffer text = team_choice_strings[team_choice];
                 Button *button = chess->buttons + (BUTTON_WHITE + team_choice);
 
                 if (team_choice == chess->settings.team_choice) {
@@ -2515,7 +2480,7 @@ void render(ChessAssets *assets, Chess *chess)
                             scaled_position,
                             scaled_dimensions,
                             rect_thickness,
-                            color_light_squares);
+                            color_move_prev);
 
                     TextLayout text_layout =
                             text_layout_get(shapes, text, scale_factor * text_scale);
@@ -2525,13 +2490,7 @@ void render(ChessAssets *assets, Chess *chess)
                         scaled_position.y
                                 + scale_factor * (padding + rect_thickness + base_layout.offset.y),
                     };
-                    for (int32_t i = 0; i < text.size; i++) {
-                        cursor.x += jk_shapes_draw(&renderer,
-                                text.data[i] + CHARACTER_SHAPE_OFFSET,
-                                cursor,
-                                scale_factor * text_scale,
-                                (JkColor){255, 255, 255, 255});
-                    }
+                    draw_text(&renderer, text, cursor, scale_factor * text_scale, color_move_prev);
                 } else {
                     JkColor text_color;
                     JkColor outline_color;
@@ -2551,13 +2510,7 @@ void render(ChessAssets *assets, Chess *chess)
 
                     JkVector2 cursor = {
                         position.x + padding + rect_thickness + text_layout.offset.x, text_y};
-                    for (int32_t i = 0; i < text.size; i++) {
-                        cursor.x += jk_shapes_draw(&renderer,
-                                text.data[i] + CHARACTER_SHAPE_OFFSET,
-                                cursor,
-                                text_scale,
-                                outline_color);
-                    }
+                    draw_text(&renderer, text, cursor, text_scale, outline_color);
                 }
             }
         }
