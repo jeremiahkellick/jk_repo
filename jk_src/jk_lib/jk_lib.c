@@ -506,6 +506,11 @@ JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b)
     return (JkVector2){.x = a.x + b.x, .y = a.y + b.y};
 }
 
+JK_PUBLIC JkVector2 jk_vector_2_sub(JkVector2 a, JkVector2 b)
+{
+    return (JkVector2){.x = a.x - b.x, .y = a.y - b.y};
+}
+
 JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
 {
     return (JkVector2){.x = scalar * vector.x, .y = scalar * vector.y};

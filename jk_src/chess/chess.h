@@ -156,6 +156,7 @@ typedef enum ButtonId {
     BUTTON_WHITE,
     BUTTON_BLACK,
     BUTTON_RANDOM,
+    BUTTON_START_GAME,
 
     BUTTON_COUNT,
 } ButtonId;
@@ -206,6 +207,7 @@ typedef struct Chess {
     uint64_t turn_index;
     Board board;
     PlayerType player_types[2];
+    Team perspective;
     JkIntVector2 selected_square;
     JkIntVector2 promo_square;
     Input input_prev;

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // clang-format off
 
@@ -1410,34 +1411,44 @@ static b32 board_pos_pixels_in_bounds(int32_t square_side_length, JkIntVector2 b
             && board_pos_pixels.y >= 0 && board_pos_pixels.y < board_side_length;
 }
 
-static JkIntVector2 board_pos_pixels_to_squares_raw(
-        int32_t square_side_length, JkIntVector2 board_pos_pixels)
+static JkIntVector2 apply_perspective(Team perspective, JkIntVector2 board_position)
 {
-    return (JkIntVector2){
-        .x = board_pos_pixels.x / square_side_length,
-        .y = 7 - board_pos_pixels.y / square_side_length,
-    };
+    if (perspective) {
+        board_position.x = 7 - board_position.x;
+    } else {
+        board_position.y = 7 - board_position.y;
+    }
+    return board_position;
 }
 
-static JkIntVector2 board_pos_pixels_to_squares(
-        int32_t square_side_length, JkIntVector2 board_pos_pixels)
+static JkIntVector2 board_pos_pixels_to_squares_raw(Chess *chess, JkIntVector2 board_pos_pixels)
 {
-    if (board_pos_pixels_in_bounds(square_side_length, board_pos_pixels)) {
-        return board_pos_pixels_to_squares_raw(square_side_length, board_pos_pixels);
+    return apply_perspective(chess->perspective,
+            (JkIntVector2){
+                .x = board_pos_pixels.x / chess->square_side_length,
+                .y = board_pos_pixels.y / chess->square_side_length,
+            });
+}
+
+static JkIntVector2 board_pos_pixels_to_squares(Chess *chess, JkIntVector2 board_pos_pixels)
+{
+    if (board_pos_pixels_in_bounds(chess->square_side_length, board_pos_pixels)) {
+        return board_pos_pixels_to_squares_raw(chess, board_pos_pixels);
     } else {
         return (JkIntVector2){-1, -1};
     }
 }
 
-static JkIntVector2 screen_to_board_pos(int32_t square_side_length, JkIntVector2 screen_pos)
+static JkIntVector2 screen_to_board_pos(Chess *chess, JkIntVector2 screen_pos)
 {
     return board_pos_pixels_to_squares(
-            square_side_length, screen_to_board_pos_pixels(square_side_length, screen_pos));
+            chess, screen_to_board_pos_pixels(chess->square_side_length, screen_pos));
 }
 
-static JkVector2 board_to_canvas_pos(float square_size, JkIntVector2 board_pos)
+static JkVector2 board_to_canvas_pos(Team perspective, float square_size, JkIntVector2 board_pos)
 {
-    JkVector2 board_pos_f = {(float)board_pos.x, (float)(7 - board_pos.y)};
+    board_pos = apply_perspective(perspective, board_pos);
+    JkVector2 board_pos_f = {(float)board_pos.x, (float)board_pos.y};
     return jk_vector_2_add(
             (JkVector2){square_size, square_size}, jk_vector_2_mul(square_size, board_pos_f));
 }
@@ -1496,7 +1507,45 @@ void update(ChessAssets *assets, Chess *chess)
         chess->flags &= ~JK_MASK(CHESS_FLAG_INITIALIZED);
     }
 
-    if (!(chess->flags & JK_MASK(CHESS_FLAG_INITIALIZED))) {
+    b32 start_new_game = 0;
+
+    // Process UI button presses
+    switch (chess->screen) {
+    case SCREEN_GAME: {
+        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))
+                && jk_int_rect_point_test(
+                        chess->buttons[BUTTON_MENU_OPEN].rect, chess->input.mouse_pos)) {
+            chess->screen = SCREEN_MENU;
+        }
+    } break;
+
+    case SCREEN_MENU: {
+        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+            if (jk_int_rect_point_test(
+                        chess->buttons[BUTTON_MENU_CLOSE].rect, chess->input.mouse_pos)) {
+                chess->screen = SCREEN_GAME;
+            }
+
+            for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT; team_choice++) {
+                if (jk_int_rect_point_test(chess->buttons[BUTTON_WHITE + team_choice].rect,
+                            chess->input.mouse_pos)) {
+                    chess->settings.team_choice = team_choice;
+                }
+            }
+
+            if (jk_int_rect_point_test(
+                        chess->buttons[BUTTON_START_GAME].rect, chess->input.mouse_pos)) {
+                start_new_game = 1;
+            }
+        }
+    } break;
+
+    case SCREEN_COUNT: {
+        chess->debug_print("Invalid chess->screen value\n");
+    } break;
+    }
+
+    if (start_new_game || !(chess->flags & JK_MASK(CHESS_FLAG_INITIALIZED))) {
         // Test search score calculation
         AiContext ctx = {
             .top_level_node_count = 2,
@@ -1538,6 +1587,7 @@ void update(ChessAssets *assets, Chess *chess)
         chess->turn_index = 0;
         chess->player_types[0] = PLAYER_HUMAN;
         chess->player_types[1] = PLAYER_HUMAN;
+        chess->perspective = WHITE;
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
@@ -1561,7 +1611,17 @@ void update(ChessAssets *assets, Chess *chess)
         }
 
         chess->screen = SCREEN_GAME;
-        chess->settings.team_choice = TEAM_CHOICE_WHITE;
+
+        if (start_new_game) {
+            if (chess->settings.team_choice == TEAM_CHOICE_RANDOM) {
+                srand((unsigned int)time(0));
+                chess->perspective = rand() % 2;
+            } else {
+                chess->perspective = chess->settings.team_choice == TEAM_CHOICE_BLACK;
+            }
+        } else {
+            chess->settings.team_choice = TEAM_CHOICE_WHITE;
+        }
 
         srand(0xd5717cc6);
 
@@ -1573,36 +1633,6 @@ void update(ChessAssets *assets, Chess *chess)
                 == JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS));
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 1)
                 == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
-    }
-
-    // Process UI button presses
-    switch (chess->screen) {
-    case SCREEN_GAME: {
-        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))
-                && jk_int_rect_point_test(
-                        chess->buttons[BUTTON_MENU_OPEN].rect, chess->input.mouse_pos)) {
-            chess->screen = SCREEN_MENU;
-        }
-    } break;
-
-    case SCREEN_MENU: {
-        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
-            if (jk_int_rect_point_test(
-                        chess->buttons[BUTTON_MENU_CLOSE].rect, chess->input.mouse_pos)) {
-                chess->screen = SCREEN_GAME;
-            }
-            for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT; team_choice++) {
-                if (jk_int_rect_point_test(chess->buttons[BUTTON_WHITE + team_choice].rect,
-                            chess->input.mouse_pos)) {
-                    chess->settings.team_choice = team_choice;
-                }
-            }
-        }
-    } break;
-
-    case SCREEN_COUNT: {
-        chess->debug_print("Invalid chess->screen value\n");
-    } break;
     }
 
     if (chess->turn_index && chess->result == RESULT_NONE
@@ -1624,8 +1654,7 @@ void update(ChessAssets *assets, Chess *chess)
         // If move.src becomes valid, we should perform the move.
         Move move = {.src = UINT8_MAX};
 
-        JkIntVector2 mouse_pos =
-                screen_to_board_pos(chess->square_side_length, chess->input.mouse_pos);
+        JkIntVector2 mouse_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
 
         if (chess->result == RESULT_NONE) {
             if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
@@ -1988,7 +2017,7 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
         JK_SWAP(a, b, JkVector2);
     }
 
-    JkVector2 delta = jk_vector_2_add(b, jk_vector_2_mul(-1.0f, a));
+    JkVector2 delta = jk_vector_2_sub(b, a);
 
     float gradient;
     if (delta.x) {
@@ -2058,7 +2087,7 @@ void render(ChessAssets *assets, Chess *chess)
     Team team = board_current_team_get(chess->board);
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
     uint64_t destinations = destinations_get_by_src(chess, selected_index);
-    JkIntVector2 mouse_pos = screen_to_board_pos(chess->square_side_length, chess->input.mouse_pos);
+    JkIntVector2 mouse_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
     JkColor drop_indicator_color =
             mouse_pos.x % 2 == mouse_pos.y % 2 ? color_light_squares : color_dark_squares;
     int32_t drop_indicator_width = JK_MAX(1, chess->square_side_length / 18);
@@ -2146,7 +2175,7 @@ void render(ChessAssets *assets, Chess *chess)
 
                     jk_shapes_draw(&renderer,
                             piece.type,
-                            board_to_canvas_pos(square_size, pos),
+                            board_to_canvas_pos(chess->perspective, square_size, pos),
                             1.0f,
                             piece_color);
                 }
@@ -2158,7 +2187,8 @@ void render(ChessAssets *assets, Chess *chess)
         // Draw horizontal square coordinates
         float coords_scale = 0.0192f;
         for (int32_t x = 0; x < 8; x++) {
-            uint32_t shape_id = 'a' + x + CHARACTER_SHAPE_OFFSET;
+            uint32_t shape_id = 'a' + apply_perspective(chess->perspective, (JkIntVector2){x, 0}).x
+                    + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             float width = coords_scale * shape->dimensions.x;
             float x_offset = coords_scale * shape->offset.x;
@@ -2180,7 +2210,8 @@ void render(ChessAssets *assets, Chess *chess)
 
         // Draw vertical square coordinates
         for (int32_t y = 0; y < 8; y++) {
-            uint32_t shape_id = '1' + (7 - y) + CHARACTER_SHAPE_OFFSET;
+            uint32_t shape_id = '1' + apply_perspective(chess->perspective, (JkIntVector2){0, y}).y
+                    + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             JkVector2 dimensions = jk_vector_2_mul(coords_scale, shape->dimensions);
             JkVector2 offset = jk_vector_2_mul(coords_scale, shape->offset);
@@ -2204,7 +2235,9 @@ void render(ChessAssets *assets, Chess *chess)
         // Draw timers and captured pieces
         float timer_scale = 0.025f;
         float bar_padding = 5.0f;
-        float y_value[TEAM_COUNT] = {640.0f - 32.0f - bar_padding, bar_padding};
+        float y_value[TEAM_COUNT];
+        y_value[!chess->perspective] = bar_padding;
+        y_value[chess->perspective] = 640.0f - 32.0f - bar_padding;
         float bar_text_y[TEAM_COUNT];
         for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
             JkShape *zero_shape = assets->shapes + ('0' + CHARACTER_SHAPE_OFFSET);
@@ -2290,7 +2323,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkVector2 top_left = {.x = 64.0f * 9.0f - dimensions.x};
             JkVector2 cursor = {
                 top_left.x + padding + rect_thickness + layout.offset.x,
-                bar_text_y[1],
+                bar_text_y[!chess->perspective],
             };
             top_left.y = cursor.y - layout.offset.y - (padding + rect_thickness);
 
@@ -2324,9 +2357,8 @@ void render(ChessAssets *assets, Chess *chess)
                 JkBuffer text = JKS("Stalemate");
 
                 TextLayout layout = text_layout_get(shapes, text, result_scale);
-                JkVector2 cursor_pos = jk_vector_2_mul(0.5f,
-                        jk_vector_2_add(
-                                result_dimensions_f, jk_vector_2_mul(-1.0f, layout.dimensions)));
+                JkVector2 cursor_pos = jk_vector_2_mul(
+                        0.5f, jk_vector_2_sub(result_dimensions_f, layout.dimensions));
                 cursor_pos = jk_vector_2_add(cursor_pos, result_origin_f);
                 cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
 
@@ -2448,7 +2480,7 @@ void render(ChessAssets *assets, Chess *chess)
         }
 
         {
-            top_left.y += 14;
+            top_left.y += 12;
 
             float spacing = 22;
 
@@ -2461,6 +2493,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
 
             JkVector2 position = top_left;
+            position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
             float text_y_offset = padding + rect_thickness + base_layout.offset.y;
             float text_y = position.y + text_y_offset;
             for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT;
@@ -2472,9 +2505,8 @@ void render(ChessAssets *assets, Chess *chess)
                     button->rect = (JkIntRect){0};
 
                     JkVector2 scaled_position = jk_vector_2_add(position,
-                            jk_vector_2_mul(0.5f,
-                                    jk_vector_2_add(base_dimensions,
-                                            jk_vector_2_mul(-1.0f, scaled_dimensions))));
+                            jk_vector_2_mul(
+                                    0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
 
                     jk_shapes_rect_draw_outline(&renderer,
                             scaled_position,
@@ -2513,6 +2545,46 @@ void render(ChessAssets *assets, Chess *chess)
                     draw_text(&renderer, text, cursor, text_scale, outline_color);
                 }
             }
+
+            top_left.y += scaled_dimensions.y;
+        }
+
+        {
+            top_left.y += 20;
+
+            JkBuffer text = JKS("Start new game");
+            TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+
+            JkVector2 dimensions = {
+                width,
+                text_layout.dimensions.y + 2 * (padding + rect_thickness),
+            };
+
+            JkVector2 cursor = jk_vector_2_add(
+                    jk_vector_2_add(top_left,
+                            (JkVector2){padding + rect_thickness, padding + rect_thickness}),
+                    text_layout.offset);
+
+            JkColor text_color;
+            JkColor outline_color;
+            chess->buttons[BUTTON_START_GAME].rect =
+                    jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
+            if (jk_int_rect_point_test(
+                        chess->buttons[BUTTON_START_GAME].rect, chess->input.mouse_pos)) {
+                text_color = (JkColor){255, 255, 255, 255};
+                outline_color = color_light_squares;
+            } else {
+                text_color = color_light_squares;
+                outline_color = color_faded;
+            }
+
+            jk_shapes_pixel_rect_draw_outline(&renderer,
+                    chess->buttons[BUTTON_START_GAME].rect,
+                    rect_thickness,
+                    outline_color);
+            draw_text(&renderer, text, cursor, text_scale, text_color);
+
+            top_left.y += dimensions.y;
         }
     } break;
 
@@ -2544,8 +2616,7 @@ void render(ChessAssets *assets, Chess *chess)
                 pos.x++, board_pos_pixels.x++) {
             JkColor color;
             if (board_pos_pixels_in_bounds(chess->square_side_length, board_pos_pixels)) {
-                JkIntVector2 board_pos = board_pos_pixels_to_squares_raw(
-                        chess->square_side_length, board_pos_pixels);
+                JkIntVector2 board_pos = board_pos_pixels_to_squares_raw(chess, board_pos_pixels);
                 color = square_colors[board_pos.y][board_pos.x];
 
                 // Shows a gap in the selection to indicate which square the held piece will drop on
@@ -2622,10 +2693,9 @@ void render(ChessAssets *assets, Chess *chess)
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);
         JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
-        JkVector2 canvas_pos = board_to_canvas_pos(square_size, dest);
-        JkVector2 origin_direction =
-                jk_vector_2_normalized(jk_vector_2_from_int(jk_int_vector_2_sub(src, dest)));
-        origin_direction.y = -origin_direction.y;
+        JkVector2 src_pos = board_to_canvas_pos(chess->perspective, square_size, src);
+        JkVector2 canvas_pos = board_to_canvas_pos(chess->perspective, square_size, dest);
+        JkVector2 origin_direction = jk_vector_2_normalized(jk_vector_2_sub(src_pos, canvas_pos));
         JkVector2 blast_center =
                 jk_vector_2_add(jk_vector_2_add(canvas_pos, (JkVector2){32.0f, 32.0f}),
                         jk_vector_2_mul(64.0f, origin_direction));
@@ -2643,8 +2713,8 @@ void render(ChessAssets *assets, Chess *chess)
             for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x += skip) {
                 JkVector2 offset = {(float)pos.x / pixels_per_unit, (float)pos.y / pixels_per_unit};
                 JkVector2 pixel_pos = jk_vector_2_add(canvas_pos, offset);
-                JkVector2 direction = jk_vector_2_normalized(
-                        jk_vector_2_add(pixel_pos, jk_vector_2_mul(-1.0f, blast_center)));
+                JkVector2 direction =
+                        jk_vector_2_normalized(jk_vector_2_sub(pixel_pos, blast_center));
                 JkVector2 delta = jk_vector_2_mul(distance, direction);
                 JkVector2 prev_delta = jk_vector_2_mul(prev_distance, direction);
                 JkVector2 pixel_dest = jk_vector_2_add(pixel_pos, delta);
