@@ -800,6 +800,7 @@ int main(int argc, char **argv)
         array_append(&command, "/w44062");
         array_append(&command, "/wd4100");
         array_append(&command, "/wd4200");
+        array_append(&command, "/wd4244");
         array_append(&command, "/wd4305");
         array_append(&command, "/wd4706");
         array_append(&command, "/nologo");

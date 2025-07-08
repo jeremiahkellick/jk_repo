@@ -110,6 +110,8 @@ static int debug_printf(void (*debug_print)(char *), char *format, ...)
 
 static Chess debug_chess;
 
+static uint8_t debug_render_memory[1024 * 1024 * 1024];
+
 static ChessAssets *debug_assets;
 
 static JkColor debug_draw_buffer[DRAW_BUFFER_SIZE];
@@ -117,6 +119,12 @@ static JkColor debug_draw_buffer[DRAW_BUFFER_SIZE];
 static void debug_render(Board board)
 {
     debug_chess.board = board;
+
+    // We'll crash if we don't fill out the following
+    debug_chess.os_timer_frequency = 1;
+    debug_chess.render_memory.size = sizeof(debug_render_memory);
+    debug_chess.render_memory.data = debug_render_memory;
+
     render(debug_assets, &debug_chess);
 }
 
@@ -253,6 +261,8 @@ static PieceType promo_order[] = {
 
 static JkBuffer team_choice_strings[TEAM_CHOICE_COUNT] = {
     JKSI("White"), JKSI("Black"), JKSI("Random")};
+
+static JkBuffer opponent_type_strings[PLAYER_TYPE_COUNT] = {JKSI("You"), JKSI("AI")};
 
 static b32 square_available(Board board, JkIntVector2 square)
 {
@@ -1169,7 +1179,6 @@ Move ai_move_get(Chess *chess)
         .board = chess->board,
         .arena = {.memory = chess->ai_memory},
 
-        .time_started = chess->cpu_timer_get(),
         .time_limit = chess->cpu_timer_frequency * 10,
         .time_current_get = chess->cpu_timer_get,
 
@@ -1215,9 +1224,11 @@ Move ai_move_get(Chess *chess)
 
     debug_nodes_found = 0;
 
-    /* ctx.time_started = 0;
-    ctx.time_limit = 298441;
-    ctx.time_current_get = debug_time_current_get; */
+    ctx.time_current_get = debug_time_current_get;
+    // ctx.time_limit = 298441;
+    ctx.time_limit = 100;
+
+    ctx.time_started = ctx.time_current_get();
 
     // Explore tree
     while (ctx.time_current_get() - ctx.time_started < ctx.time_limit) {
@@ -1453,9 +1464,9 @@ static JkVector2 board_to_canvas_pos(Team perspective, float square_size, JkIntV
             (JkVector2){square_size, square_size}, jk_vector_2_mul(square_size, board_pos_f));
 }
 
-static b32 button_pressed(Chess *chess, uint64_t flag)
+static b32 input_button_pressed(Chess *chess, InputId id)
 {
-    return (chess->input.flags & flag) && !(chess->input_prev.flags & flag);
+    return (chess->input.flags & JK_MASK(id)) && !(chess->input_prev.flags & JK_MASK(id));
 }
 
 static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
@@ -1503,7 +1514,7 @@ void update(ChessAssets *assets, Chess *chess)
     }
 
     // Debug reset
-    if (button_pressed(chess, JK_MASK(INPUT_RESET))) {
+    if (input_button_pressed(chess, INPUT_RESET)) {
         chess->flags &= ~JK_MASK(CHESS_FLAG_INITIALIZED);
     }
 
@@ -1512,7 +1523,7 @@ void update(ChessAssets *assets, Chess *chess)
     // Process UI button presses
     switch (chess->screen) {
     case SCREEN_GAME: {
-        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))
+        if (input_button_pressed(chess, INPUT_CONFIRM)
                 && jk_int_rect_point_test(
                         chess->buttons[BUTTON_MENU_OPEN].rect, chess->input.mouse_pos)) {
             chess->screen = SCREEN_MENU;
@@ -1520,7 +1531,7 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_MENU: {
-        if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+        if (input_button_pressed(chess, INPUT_CONFIRM)) {
             if (jk_int_rect_point_test(
                         chess->buttons[BUTTON_MENU_CLOSE].rect, chess->input.mouse_pos)) {
                 chess->screen = SCREEN_GAME;
@@ -1530,6 +1541,13 @@ void update(ChessAssets *assets, Chess *chess)
                 if (jk_int_rect_point_test(chess->buttons[BUTTON_WHITE + team_choice].rect,
                             chess->input.mouse_pos)) {
                     chess->settings.team_choice = team_choice;
+                }
+            }
+
+            for (PlayerType opponent_type = 0; opponent_type < PLAYER_TYPE_COUNT; opponent_type++) {
+                if (jk_int_rect_point_test(chess->buttons[BUTTON_YOU + opponent_type].rect,
+                            chess->input.mouse_pos)) {
+                    chess->settings.opponent_type = opponent_type;
                 }
             }
 
@@ -1583,11 +1601,26 @@ void update(ChessAssets *assets, Chess *chess)
         print_nodes(chess->debug_print, ctx.top_level_nodes, 0);
         print_nodes(chess->debug_print, ctx.top_level_nodes + 1, 0);
 
+        if (!(chess->flags & JK_MASK(CHESS_FLAG_INITIALIZED))) {
+            // If we got here because the state is not initialized (as opposed to the player
+            // clicking the "Start new game" button in the UI), then we should initialize the
+            // settings to their default values.
+            chess->settings.team_choice = TEAM_CHOICE_WHITE;
+            chess->settings.opponent_type = PLAYER_AI;
+        }
+
         chess->flags = JK_MASK(CHESS_FLAG_INITIALIZED);
         chess->turn_index = 0;
-        chess->player_types[0] = PLAYER_HUMAN;
-        chess->player_types[1] = PLAYER_HUMAN;
-        chess->perspective = WHITE;
+
+        if (chess->settings.team_choice == TEAM_CHOICE_RANDOM) {
+            srand((unsigned int)time(0));
+            chess->perspective = rand() % 2;
+        } else {
+            chess->perspective = chess->settings.team_choice == TEAM_CHOICE_BLACK;
+        }
+        chess->player_types[chess->perspective] = PLAYER_HUMAN;
+        chess->player_types[!chess->perspective] = chess->settings.opponent_type;
+
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->ai_move = (Move){.src = UINT8_MAX};
@@ -1612,17 +1645,6 @@ void update(ChessAssets *assets, Chess *chess)
 
         chess->screen = SCREEN_GAME;
 
-        if (start_new_game) {
-            if (chess->settings.team_choice == TEAM_CHOICE_RANDOM) {
-                srand((unsigned int)time(0));
-                chess->perspective = rand() % 2;
-            } else {
-                chess->perspective = chess->settings.team_choice == TEAM_CHOICE_BLACK;
-            }
-        } else {
-            chess->settings.team_choice = TEAM_CHOICE_WHITE;
-        }
-
         srand(0xd5717cc6);
 
         JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 0)
@@ -1645,7 +1667,7 @@ void update(ChessAssets *assets, Chess *chess)
 
     switch (chess->screen) {
     case SCREEN_GAME: {
-        if (button_pressed(chess, JK_MASK(INPUT_CANCEL))) {
+        if (input_button_pressed(chess, INPUT_CANCEL)) {
             chess->selected_square = (JkIntVector2){-1, -1};
             chess->promo_square = (JkIntVector2){-1, -1};
         }
@@ -1661,7 +1683,7 @@ void update(ChessAssets *assets, Chess *chess)
                 if (board_in_bounds(chess->promo_square)) {
                     int32_t dist_from_promo_square =
                             absolute_value(mouse_pos.y - chess->promo_square.y);
-                    if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+                    if (input_button_pressed(chess, INPUT_CONFIRM)) {
                         if (mouse_pos.x == chess->promo_square.x
                                 && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
                             move.src = board_index_get(chess->selected_square);
@@ -1681,7 +1703,7 @@ void update(ChessAssets *assets, Chess *chess)
                             mouse_index < 64 && (available_destinations & (1llu << mouse_index));
                     uint8_t piece_drop_index = UINT8_MAX;
 
-                    if (button_pressed(chess, JK_MASK(INPUT_CONFIRM))) {
+                    if (input_button_pressed(chess, INPUT_CONFIRM)) {
                         if (mouse_on_destination) {
                             piece_drop_index = mouse_index;
                         } else {
@@ -2498,6 +2520,88 @@ void render(ChessAssets *assets, Chess *chess)
                 Button *button = chess->buttons + (BUTTON_WHITE + team_choice);
 
                 if (team_choice == chess->settings.team_choice) {
+                    button->rect = (JkIntRect){0};
+
+                    JkVector2 scaled_position = jk_vector_2_add(position,
+                            jk_vector_2_mul(
+                                    0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
+
+                    jk_shapes_rect_draw_outline(&renderer,
+                            scaled_position,
+                            scaled_dimensions,
+                            rect_thickness,
+                            color_move_prev);
+
+                    TextLayout text_layout =
+                            text_layout_get(assets, text, scale_factor * text_scale);
+                    JkVector2 cursor = {
+                        scaled_position.x + scale_factor * (padding + rect_thickness)
+                                + text_layout.offset.x,
+                        scaled_position.y
+                                + scale_factor * (padding + rect_thickness + base_layout.offset.y),
+                    };
+                    draw_text(&renderer, text, cursor, scale_factor * text_scale, color_move_prev);
+                } else {
+                    JkColor text_color;
+                    JkColor outline_color;
+                    button->rect = jk_shapes_pixel_rect_get(&renderer, position, base_dimensions);
+                    if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
+                        text_color = (JkColor){255, 255, 255, 255};
+                        outline_color = color_light_squares;
+                    } else {
+                        text_color = color_light_squares;
+                        outline_color = color_faded;
+                    }
+
+                    jk_shapes_pixel_rect_draw_outline(
+                            &renderer, button->rect, rect_thickness, outline_color);
+
+                    TextLayout text_layout = text_layout_get(assets, text, text_scale);
+
+                    JkVector2 cursor = {
+                        position.x + padding + rect_thickness + text_layout.offset.x, text_y};
+                    draw_text(&renderer, text, cursor, text_scale, outline_color);
+                }
+            }
+
+            top_left.y += scaled_dimensions.y;
+        }
+
+        {
+            JkBuffer text = JKS("Opponent controlled by");
+            TextLayout text_layout = text_layout_get(assets, text, text_scale);
+
+            top_left.y += 20;
+
+            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            draw_text(&renderer, text, cursor, text_scale, color_light_squares);
+
+            top_left.y += text_layout.dimensions.y;
+        }
+
+        {
+            top_left.y += 12;
+
+            float spacing = 22;
+
+            TextLayout base_layout = text_layout_get(assets, opponent_type_strings[0], text_scale);
+            JkVector2 base_dimensions = {
+                (width - (PLAYER_TYPE_COUNT - 1) * spacing) / PLAYER_TYPE_COUNT,
+                base_layout.dimensions.y + 2 * (padding + rect_thickness)};
+
+            float scale_factor = (base_dimensions.x + spacing) / base_dimensions.x;
+            JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
+
+            JkVector2 position = top_left;
+            position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
+            float text_y_offset = padding + rect_thickness + base_layout.offset.y;
+            float text_y = position.y + text_y_offset;
+            for (PlayerType opponent_type = 0; opponent_type < PLAYER_TYPE_COUNT;
+                    opponent_type++, position.x += base_dimensions.x + spacing) {
+                JkBuffer text = opponent_type_strings[opponent_type];
+                Button *button = chess->buttons + (BUTTON_YOU + opponent_type);
+
+                if (opponent_type == chess->settings.opponent_type) {
                     button->rect = (JkIntRect){0};
 
                     JkVector2 scaled_position = jk_vector_2_add(position,

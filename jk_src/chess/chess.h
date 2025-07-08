@@ -134,6 +134,8 @@ typedef enum ChessFlag {
 typedef enum PlayerType {
     PLAYER_HUMAN,
     PLAYER_AI,
+
+    PLAYER_TYPE_COUNT,
 } PlayerType;
 
 typedef enum Result {
@@ -157,6 +159,8 @@ typedef enum ButtonId {
     BUTTON_BLACK,
     BUTTON_RANDOM,
     BUTTON_START_GAME,
+    BUTTON_YOU,
+    BUTTON_AI,
 
     BUTTON_COUNT,
 } ButtonId;
@@ -183,6 +187,7 @@ typedef enum TeamChoice {
 
 typedef struct Settings {
     TeamChoice team_choice;
+    PlayerType opponent_type;
 } Settings;
 
 typedef struct Chess {
