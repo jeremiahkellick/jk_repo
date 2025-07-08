@@ -167,8 +167,8 @@ typedef struct Button {
 } Button;
 
 typedef struct ChessAssets {
-    int32_t font_y0_min;
-    int32_t font_y1_max;
+    float font_ascent;
+    float font_descent;
     JkShape shapes[PIECE_TYPE_COUNT + 95];
     JkSpan sounds[SOUND_COUNT];
 } ChessAssets;

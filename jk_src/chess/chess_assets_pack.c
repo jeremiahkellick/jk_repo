@@ -203,8 +203,8 @@ int main(void)
             assets->shapes[PIECE_TYPE_COUNT].advance_width = (float)advance_width;
         }
 
-        assets->font_y0_min = INT32_MAX;
-        assets->font_y1_max = INT32_MIN;
+        assets->font_ascent = INT32_MAX;
+        assets->font_descent = INT32_MIN;
         for (int32_t shape_index = PIECE_TYPE_COUNT + 1;
                 shape_index < JK_ARRAY_COUNT(assets->shapes);
                 shape_index++) {
@@ -228,11 +228,18 @@ int main(void)
             stbtt_GetCodepointHMetrics(&font, codepoint, &advance_width, 0);
             shape->advance_width = (float)advance_width;
 
-            if (y0 < assets->font_y0_min) {
-                assets->font_y0_min = y0;
-            }
-            if (assets->font_y1_max < y1) {
-                assets->font_y1_max = y1;
+            // The font I otherwise like unfortunately has some special characters with oddly low
+            // decenders, which throws off the spacing if I use those to calculate the font's line
+            // height. So to address this I only consider the ascenders and decenders of
+            // "regular" characters.
+            if (('0' <= codepoint && codepoint <= '9') || ('A' <= codepoint && codepoint <= 'Z')
+                    || ('a' <= codepoint && codepoint <= 'z')) {
+                if (y0 < assets->font_ascent) {
+                    assets->font_ascent = (float)y0;
+                }
+                if (assets->font_descent < y1) {
+                    assets->font_descent = (float)y1;
+                }
             }
 
             stbtt_vertex *verticies;

@@ -1892,13 +1892,12 @@ typedef struct TextLayout {
     JkVector2 dimensions;
 } TextLayout;
 
-static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scale)
+static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scale)
 {
     TextLayout result = {0};
     result.dimensions.x = 0.0f;
-    float y_bottom = -INFINITY;
     for (int32_t i = 0; i < text.size; i++) {
-        JkShape *shape = shapes.items + text.data[i] + CHARACTER_SHAPE_OFFSET;
+        JkShape *shape = assets->shapes + text.data[i] + CHARACTER_SHAPE_OFFSET;
         if (i == 0) {
             result.offset.x = -shape->offset.x;
             result.dimensions.x = result.offset.x;
@@ -1908,18 +1907,15 @@ static TextLayout text_layout_get(JkShapeArray shapes, JkBuffer text, float scal
         } else {
             result.dimensions.x += shape->advance_width;
         }
-
-        if (shape->offset.y < result.offset.y) {
-            result.offset.y = shape->offset.y;
-        }
-        float shape_y_bottom = shape->offset.y + shape->dimensions.y;
-        if (y_bottom < shape_y_bottom) {
-            y_bottom = shape_y_bottom;
-        }
     }
 
-    result.dimensions.y = y_bottom - result.offset.y;
-    result.offset.y = -result.offset.y;
+    // Layout looks more natural if we weight the descenders less than ascenders when considering
+    // font "height". This is probably because we imagine the descenders dipping below the baseline.
+    float descent = 0.4 * assets->font_descent;
+
+    result.offset.y = -assets->font_ascent;
+    result.dimensions.y = descent - assets->font_ascent;
+
     result.offset = jk_vector_2_mul(scale, result.offset);
     result.dimensions = jk_vector_2_mul(scale, result.dimensions);
 
@@ -2295,7 +2291,7 @@ void render(ChessAssets *assets, Chess *chess)
                             .size = JK_ARRAY_COUNT(characters),
                             .data = (uint8_t *)characters,
                         };
-                        TextLayout layout = text_layout_get(shapes, text, coords_scale);
+                        TextLayout layout = text_layout_get(assets, text, coords_scale);
                         JkVector2 cursor_pos;
                         cursor_pos.x = draw_pos.x + 32.0f;
                         cursor_pos.y = draw_pos.y + 0.5f * (32.0f - layout.dimensions.y);
@@ -2315,7 +2311,7 @@ void render(ChessAssets *assets, Chess *chess)
             float rect_thickness = 1.0f;
 
             JkBuffer text = JKS("Menu");
-            TextLayout layout = text_layout_get(shapes, text, coords_scale);
+            TextLayout layout = text_layout_get(assets, text, coords_scale);
 
             JkVector2 dimensions = jk_vector_2_add(layout.dimensions,
                     (JkVector2){2 * (padding + rect_thickness), 2 * (padding + rect_thickness)});
@@ -2356,7 +2352,7 @@ void render(ChessAssets *assets, Chess *chess)
             if (chess->result == RESULT_STALEMATE) {
                 JkBuffer text = JKS("Stalemate");
 
-                TextLayout layout = text_layout_get(shapes, text, result_scale);
+                TextLayout layout = text_layout_get(assets, text, result_scale);
                 JkVector2 cursor_pos = jk_vector_2_mul(
                         0.5f, jk_vector_2_sub(result_dimensions_f, layout.dimensions));
                 cursor_pos = jk_vector_2_add(cursor_pos, result_origin_f);
@@ -2370,8 +2366,8 @@ void render(ChessAssets *assets, Chess *chess)
                 float condition_scale = 0.03f;
                 float padding = 8.0f;
 
-                TextLayout victor_layout = text_layout_get(shapes, victor, result_scale);
-                TextLayout condition_layout = text_layout_get(shapes, condition, condition_scale);
+                TextLayout victor_layout = text_layout_get(assets, victor, result_scale);
+                TextLayout condition_layout = text_layout_get(assets, condition, condition_scale);
 
                 float y_start = result_origin_f.y
                         + 0.5f
@@ -2419,7 +2415,7 @@ void render(ChessAssets *assets, Chess *chess)
 
         {
             JkBuffer text = JKS("Close menu");
-            TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, text_scale);
 
             JkVector2 dimensions = {
                 width,
@@ -2457,7 +2453,7 @@ void render(ChessAssets *assets, Chess *chess)
             float heading_scale = 0.03;
 
             JkBuffer text = JKS("Configure new game");
-            TextLayout text_layout = text_layout_get(shapes, text, heading_scale);
+            TextLayout text_layout = text_layout_get(assets, text, heading_scale);
 
             top_left.y += 32;
 
@@ -2469,7 +2465,7 @@ void render(ChessAssets *assets, Chess *chess)
 
         {
             JkBuffer text = JKS("Play as");
-            TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, text_scale);
 
             top_left.y += 20;
 
@@ -2484,7 +2480,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             float spacing = 22;
 
-            TextLayout base_layout = text_layout_get(shapes, team_choice_strings[0], text_scale);
+            TextLayout base_layout = text_layout_get(assets, team_choice_strings[0], text_scale);
             JkVector2 base_dimensions = {
                 (width - (TEAM_CHOICE_COUNT - 1) * spacing) / TEAM_CHOICE_COUNT,
                 base_layout.dimensions.y + 2 * (padding + rect_thickness)};
@@ -2515,7 +2511,7 @@ void render(ChessAssets *assets, Chess *chess)
                             color_move_prev);
 
                     TextLayout text_layout =
-                            text_layout_get(shapes, text, scale_factor * text_scale);
+                            text_layout_get(assets, text, scale_factor * text_scale);
                     JkVector2 cursor = {
                         scaled_position.x + scale_factor * (padding + rect_thickness)
                                 + text_layout.offset.x,
@@ -2538,7 +2534,7 @@ void render(ChessAssets *assets, Chess *chess)
                     jk_shapes_pixel_rect_draw_outline(
                             &renderer, button->rect, rect_thickness, outline_color);
 
-                    TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+                    TextLayout text_layout = text_layout_get(assets, text, text_scale);
 
                     JkVector2 cursor = {
                         position.x + padding + rect_thickness + text_layout.offset.x, text_y};
@@ -2553,7 +2549,7 @@ void render(ChessAssets *assets, Chess *chess)
             top_left.y += 20;
 
             JkBuffer text = JKS("Start new game");
-            TextLayout text_layout = text_layout_get(shapes, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, text_scale);
 
             JkVector2 dimensions = {
                 width,
