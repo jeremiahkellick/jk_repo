@@ -267,6 +267,8 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
         b = jk_swap_tmp;      \
     } while (0)
 
+#define JK_FLAG_GET(bitfield, flag) (((bitfield) >> (flag)) & 1)
+
 #define JK_MASK(index) (1llu << (index))
 
 #define JK_PI 3.14159265358979323846264338327950288419716939937510582097494459230781640628

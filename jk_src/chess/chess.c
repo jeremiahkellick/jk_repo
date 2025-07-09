@@ -429,7 +429,7 @@ static uint8_t board_castling_rights_get(Board board, Team team)
     return (board.flags >> (1 + team * 2)) & 0x3;
 }
 
-static uint64_t board_castling_rights_flag_get(Team team, b32 king_side)
+static uint64_t board_castling_rights_mask_get(Team team, b32 king_side)
 {
     return 1llu << (1 + team * 2 + !!king_side);
 }
@@ -541,18 +541,18 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     // En-passant handling
     if (move.piece.type == PAWN && src.x != dest.x
             && board_piece_get_index(board, move.dest).type == NONE) {
-        int32_t y_delta = (board.flags & JK_MASK(BOARD_FLAG_CURRENT_PLAYER)) ? 1 : -1;
+        int32_t y_delta = JK_FLAG_GET(board.flags, BOARD_FLAG_CURRENT_PLAYER) ? 1 : -1;
         board_piece_set(&board, jk_int_vector_2_add(dest, (JkIntVector2){0, y_delta}), (Piece){0});
     }
 
     // Castling handling
     int32_t delta_x = dest.x - src.x;
     if (move.piece.type == ROOK && src.y == (team ? 7 : 0) && (src.x == 0 || src.x == 7)) {
-        board.flags |= board_castling_rights_flag_get(team, src.x == 7);
+        board.flags |= board_castling_rights_mask_get(team, src.x == 7);
     }
     if (move.piece.type == KING) {
-        board.flags |= board_castling_rights_flag_get(team, 0);
-        board.flags |= board_castling_rights_flag_get(team, 1);
+        board.flags |= board_castling_rights_mask_get(team, 0);
+        board.flags |= board_castling_rights_mask_get(team, 1);
 
         if (absolute_value(delta_x) == 2) {
             int32_t rook_from_x, rook_to_x;
@@ -1466,7 +1466,7 @@ static JkVector2 board_to_canvas_pos(Team perspective, float square_size, JkIntV
 
 static b32 input_button_pressed(Chess *chess, InputId id)
 {
-    return (chess->input.flags & JK_MASK(id)) && !(chess->input_prev.flags & JK_MASK(id));
+    return JK_FLAG_GET(chess->input.flags, id) && !JK_FLAG_GET(chess->input_prev.flags, id);
 }
 
 static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
@@ -1563,7 +1563,7 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
     }
 
-    if (start_new_game || !(chess->flags & JK_MASK(CHESS_FLAG_INITIALIZED))) {
+    if (start_new_game || !JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
         // Test search score calculation
         AiContext ctx = {
             .top_level_node_count = 2,
@@ -1601,7 +1601,7 @@ void update(ChessAssets *assets, Chess *chess)
         print_nodes(chess->debug_print, ctx.top_level_nodes, 0);
         print_nodes(chess->debug_print, ctx.top_level_nodes + 1, 0);
 
-        if (!(chess->flags & JK_MASK(CHESS_FLAG_INITIALIZED))) {
+        if (!JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
             // If we got here because the state is not initialized (as opposed to the player
             // clicking the "Start new game" button in the UI), then we should initialize the
             // settings to their default values.
@@ -1647,13 +1647,13 @@ void update(ChessAssets *assets, Chess *chess)
 
         srand(0xd5717cc6);
 
-        JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 0)
+        JK_DEBUG_ASSERT(board_castling_rights_mask_get(WHITE, 0)
                 == JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS));
-        JK_DEBUG_ASSERT(board_castling_rights_flag_get(WHITE, 1)
+        JK_DEBUG_ASSERT(board_castling_rights_mask_get(WHITE, 1)
                 == JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS));
-        JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 0)
+        JK_DEBUG_ASSERT(board_castling_rights_mask_get(BLACK, 0)
                 == JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS));
-        JK_DEBUG_ASSERT(board_castling_rights_flag_get(BLACK, 1)
+        JK_DEBUG_ASSERT(board_castling_rights_mask_get(BLACK, 1)
                 == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
     }
 
@@ -2110,7 +2110,7 @@ void render(ChessAssets *assets, Chess *chess)
             mouse_pos.x % 2 == mouse_pos.y % 2 ? color_light_squares : color_dark_squares;
     int32_t drop_indicator_width = JK_MAX(1, chess->square_side_length / 18);
     b32 promoting = board_in_bounds(chess->promo_square);
-    b32 holding_piece = (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE)) && selected_index < 64;
+    b32 holding_piece = JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE) && selected_index < 64;
 
     int64_t time_player_seconds[TEAM_COUNT];
     for (Team i = 0; i < TEAM_COUNT; i++) {
@@ -2187,7 +2187,7 @@ void render(ChessAssets *assets, Chess *chess)
 
                     JkColor piece_color = color_teams[piece.team];
                     if (board_index_get(pos) == selected_index
-                            && (chess->flags & JK_MASK(CHESS_FLAG_HOLDING_PIECE))) {
+                            && JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE)) {
                         piece_color.a /= 2;
                     }
 

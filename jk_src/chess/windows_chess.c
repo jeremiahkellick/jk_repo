@@ -535,7 +535,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
-        if ((keys_down & JK_MASK(KEY_C)) && !(prev_keys & JK_MASK(KEY_C))) {
+        if (JK_FLAG_GET(keys_down, KEY_C) && !JK_FLAG_GET(prev_keys, KEY_C)) {
             global_record_state = (global_record_state + 1) % RECORD_STATE_COUNT;
             switch (global_record_state) {
             case RECORD_STATE_NONE: {
