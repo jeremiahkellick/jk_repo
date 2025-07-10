@@ -102,6 +102,21 @@ typedef struct MoveArray {
     MovePacked data[UINT8_MAX];
 } MoveArray;
 
+typedef struct MoveNode {
+    b32 expanded;
+    MovePacked move;
+    struct MoveNode *parent;
+    struct MoveNode *next_sibling;
+    struct MoveNode *first_child;
+
+    int32_t board_score;
+    int32_t score;
+    uint32_t search_score;
+    uint8_t top_level_index;
+
+    uint64_t depth;
+} MoveNode;
+
 typedef enum BoardFlag {
     BOARD_FLAG_CURRENT_PLAYER,
     BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS,
@@ -121,7 +136,7 @@ typedef struct Board {
 typedef enum ChessFlag {
     CHESS_FLAG_INITIALIZED,
     CHESS_FLAG_HOLDING_PIECE,
-    CHESS_FLAG_REQUEST_AI_MOVE,
+    CHESS_FLAG_WANTS_AI_MOVE,
 } ChessFlag;
 
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
@@ -190,6 +205,30 @@ typedef struct Settings {
     PlayerType opponent_type;
 } Settings;
 
+typedef struct AiResponse {
+    Board board;
+    Move move;
+} AiResponse;
+
+typedef struct AiTarget {
+    Team assisting_team;
+    int32_t score;
+} AiTarget;
+
+typedef struct Ai {
+    AiResponse response;
+    Board board;
+    JkArena arena;
+    uint8_t top_level_node_count;
+    MoveNode top_level_nodes[256];
+    AiTarget targets[256];
+    uint64_t time;
+    uint64_t time_frequency;
+    uint64_t time_started;
+    uint64_t time_limit;
+    void (*debug_print)(char *);
+} Ai;
+
 typedef struct Chess {
     Audio audio;
 
@@ -198,13 +237,10 @@ typedef struct Chess {
     int32_t square_side_length;
     JkColor *draw_buffer;
     JkBuffer render_memory;
-    JkBuffer ai_memory;
-    Move ai_move;
+    AiResponse ai_response;
     uint64_t time;
     uint64_t os_time;
     uint64_t os_timer_frequency;
-    uint64_t cpu_timer_frequency;
-    uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
 
     // Game read-write, platform read-only
@@ -227,8 +263,16 @@ typedef struct Chess {
     Settings settings;
 } Chess;
 
-typedef Move AiMoveGetFunction(Chess *chess);
-AiMoveGetFunction ai_move_get;
+typedef void AiInitFunction(Ai *ai,
+        Board board,
+        JkBuffer memory,
+        uint64_t time,
+        uint64_t time_frequency,
+        void (*debug_print)(char *));
+AiInitFunction ai_init;
+
+typedef b32 AiRunningFunction(Ai *ai);
+AiRunningFunction ai_running;
 
 typedef void UpdateFunction(ChessAssets *assets, Chess *chess);
 UpdateFunction update;

@@ -802,6 +802,7 @@ int main(int argc, char **argv)
         array_append(&command, "/wd4200");
         array_append(&command, "/wd4244");
         array_append(&command, "/wd4305");
+        array_append(&command, "/wd4324");
         array_append(&command, "/wd4706");
         array_append(&command, "/nologo");
         array_append(&command, "/Gm-");

@@ -10,7 +10,7 @@
 // clang-format off
 
 // #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render /EXPORT:ai_move_get /EXPORT:profile_print
+// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render /EXPORT:ai_init /EXPORT:ai_running /EXPORT:profile_print
 // #jk_build single_translation_unit
 
 // clang-format on
@@ -93,6 +93,8 @@ static JkBuffer wtf2_fen =
 static JkBuffer wtf5_fen = JKSI("r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2K1 b kq - 4 3");
 
 static JkBuffer wtf9_fen = JKSI("r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2");
+
+static JkBuffer king_fight_fen = JKSI("8/8/8/4k3/8/8/8/4K3 w - - 0 1");
 
 static char debug_print_buffer[4096];
 
@@ -765,21 +767,6 @@ static void moves_get(MoveArray *moves, Board board)
 
 // ---- AI begin ---------------------------------------------------------------
 
-typedef struct MoveNode {
-    b32 expanded;
-    MovePacked move;
-    struct MoveNode *parent;
-    struct MoveNode *next_sibling;
-    struct MoveNode *first_child;
-
-    int32_t board_score;
-    int32_t score;
-    uint32_t search_score;
-    uint8_t top_level_index;
-
-    uint64_t depth;
-} MoveNode;
-
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
 
@@ -828,28 +815,11 @@ static int32_t board_score(Board board, uint64_t depth)
     return score;
 }
 
-typedef struct Target {
-    Team assisting_team;
-    int32_t score;
-} Target;
-
-typedef struct AiContext {
-    Board board;
-    JkArena arena;
-    uint8_t top_level_node_count;
-    MoveNode top_level_nodes[256];
-    Target targets[256];
-    uint64_t time_started;
-    uint64_t time_limit;
-    uint64_t (*time_current_get)(void);
-    void (*debug_print)(char *);
-} AiContext;
-
 typedef struct Scores {
     int32_t a[2];
 } Scores;
 
-static uint32_t distance_from_target(int32_t score, Target target)
+static uint32_t distance_from_target(int32_t score, AiTarget target)
 {
     switch (target.assisting_team) {
     case WHITE: { // White wants higher scores
@@ -867,9 +837,9 @@ static uint32_t distance_from_target(int32_t score, Target target)
     }
 }
 
-static uint32_t search_score_get(AiContext *ctx, MoveNode *node, Team team)
+static uint32_t search_score_get(Ai *ctx, MoveNode *node, Team team)
 {
-    Target target = ctx->targets[node->top_level_index];
+    AiTarget target = ctx->targets[node->top_level_index];
     uint32_t search_score;
     if (node->first_child) {
         if (team == target.assisting_team) {
@@ -905,9 +875,9 @@ uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
 
 #pragma optimize("", off)
 
-static void update_search_scores(AiContext *ctx, MoveNode *node, Team team, b32 verify)
+static void update_search_scores(Ai *ctx, MoveNode *node, Team team, b32 verify)
 {
-    Target target = ctx->targets[node->top_level_index];
+    AiTarget target = ctx->targets[node->top_level_index];
     uint32_t search_score;
     if (node->first_child) {
         if (team == target.assisting_team) {
@@ -955,7 +925,7 @@ static int score_index_pair_compare(void *a, void *b)
     return ((ScoreIndexPair *)a)->score - ((ScoreIndexPair *)b)->score;
 }
 
-static void update_search_scores_root(AiContext *ctx, b32 verify)
+static void update_search_scores_root(Ai *ctx, b32 verify)
 {
     Team team = board_current_team_get(ctx->board);
 
@@ -974,11 +944,11 @@ static void update_search_scores_root(AiContext *ctx, b32 verify)
     }
 
     int32_t favorite_child_index = top_two_pairs[1].index;
-    Target favorite_target = {
+    AiTarget favorite_target = {
         .assisting_team = !team,
         .score = team_multiplier[team] * (top_two_pairs[0].score - 1),
     };
-    Target target = {
+    AiTarget target = {
         .assisting_team = team,
         .score = team_multiplier[team] * (top_two_pairs[1].score + 1),
     };
@@ -1005,7 +975,7 @@ static void moves_shuffle(MoveArray *moves)
 
 static uint64_t debug_nodes_found;
 
-static b32 expand_node(AiContext *ctx, MoveNode *node)
+static b32 expand_node(Ai *ctx, MoveNode *node)
 {
     Board node_board_state = ctx->board;
     {
@@ -1173,82 +1143,96 @@ static void custom_profile_print(void *data, char *format, ...)
     print(debug_print_buffer);
 }
 
-Move ai_move_get(Chess *chess)
+void ai_init(Ai *ai,
+        Board board,
+        JkBuffer memory,
+        uint64_t time,
+        uint64_t time_frequency,
+        void (*debug_print)(char *))
 {
-    AiContext ctx = {
-        .board = chess->board,
-        .arena = {.memory = chess->ai_memory},
+    ai->response.board = (Board){0};
+    ai->response.move = (Move){0};
 
-        .time_limit = chess->cpu_timer_frequency * 10,
-        .time_current_get = chess->cpu_timer_get,
-
-        .debug_print = chess->debug_print,
-    };
+    ai->board = board;
+    ai->arena.pos = 0;
+    ai->arena.memory = memory;
+    ai->time = time;
+    ai->time_frequency = time_frequency;
+    ai->time_started = time;
+    ai->time_limit = 5 * time_frequency;
+    ai->debug_print = debug_print;
 
     MoveArray moves;
-    moves_get(&moves, chess->board);
+    moves_get(&moves, ai->board);
+
+    debug_nodes_found = 0;
+
+    // ai->time_current_get = debug_time_current_get;
+    // ai->time_limit = 298441;
+    // ai->time_limit = 100;
+
+    ai->top_level_node_count = moves.count;
 
     if (!moves.count) {
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
     } else if (moves.count == 1) {
         // If there's only one legal move, take it
-        return move_unpack(moves.data[0]);
-    }
+        ai->response.move = move_unpack(moves.data[0]);
+    } else {
+        moves_shuffle(&moves);
+        MoveNode *prev_child = 0;
+        for (uint8_t i = 0; i < moves.count; i++) {
+            MoveNode *new_child = ai->top_level_nodes + i;
 
-    ctx.top_level_node_count = moves.count;
-    moves_shuffle(&moves);
-    MoveNode *prev_child = 0;
-    for (uint8_t i = 0; i < moves.count; i++) {
-        MoveNode *new_child = ctx.top_level_nodes + i;
+            new_child->depth = 1;
+            new_child->expanded = 0;
+            new_child->move = moves.data[i];
+            new_child->parent = 0;
+            new_child->next_sibling = 0;
+            new_child->first_child = 0;
+            new_child->board_score =
+                    board_score(board_move_perform(ai->board, moves.data[i]), new_child->depth);
+            new_child->score = new_child->board_score;
+            new_child->search_score = UINT32_MAX;
+            new_child->top_level_index = i;
 
-        new_child->depth = 1;
-        new_child->expanded = 0;
-        new_child->move = moves.data[i];
-        new_child->parent = 0;
-        new_child->next_sibling = 0;
-        new_child->first_child = 0;
-        new_child->board_score =
-                board_score(board_move_perform(chess->board, moves.data[i]), new_child->depth);
-        new_child->score = new_child->board_score;
-        new_child->search_score = UINT32_MAX;
-        new_child->top_level_index = i;
+            if (i) {
+                prev_child->next_sibling = new_child;
+            }
 
-        if (i) {
-            prev_child->next_sibling = new_child;
+            prev_child = new_child;
         }
 
-        prev_child = new_child;
+        update_search_scores_root(ai, 0);
+    }
+}
+
+b32 ai_running(Ai *ai)
+{
+    if (ai->top_level_node_count < 2) {
+        return 0;
     }
 
-    update_search_scores_root(&ctx, 0);
+    b32 running = ai->time - ai->time_started < ai->time_limit;
 
-    debug_nodes_found = 0;
-
-    ctx.time_current_get = debug_time_current_get;
-    // ctx.time_limit = 298441;
-    ctx.time_limit = 100;
-
-    ctx.time_started = ctx.time_current_get();
-
-    // Explore tree
-    while (ctx.time_current_get() - ctx.time_started < ctx.time_limit) {
+    if (running) {
         MoveNode *node = 0;
         { // Find the node with the best search score
-            Target target = {0};
+            AiTarget target = {0};
             {
                 uint32_t min_search_score = UINT32_MAX;
-                for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
-                    if (ctx.top_level_nodes[i].search_score < min_search_score) {
-                        node = ctx.top_level_nodes + i;
-                        target = ctx.targets[i];
-                        min_search_score = ctx.top_level_nodes[i].search_score;
+                for (int32_t i = 0; i < ai->top_level_node_count; i++) {
+                    if (ai->top_level_nodes[i].search_score < min_search_score) {
+                        node = ai->top_level_nodes + i;
+                        target = ai->targets[i];
+                        min_search_score = ai->top_level_nodes[i].search_score;
                     }
                 }
             }
             JK_ASSERT(node);
 
             {
-                Team team = !board_current_team_get(ctx.board);
+                Team team = !board_current_team_get(ai->board);
                 uint32_t min_search_score = UINT32_MAX;
                 while (node->first_child) {
                     min_search_score = UINT32_MAX;
@@ -1275,105 +1259,110 @@ Move ai_move_get(Chess *chess)
             }
         }
 
-        if (!expand_node(&ctx, node)) {
-            chess->debug_print("Out of AI memory\n");
-            break;
+        if (!expand_node(ai, node)) {
+            ai->debug_print("Out of AI memory\n");
+            running = 0;
         }
     }
 
-    int32_t max_score_i = 0;
-    MovePacked move = {0};
-    {
-        // Pick move with the best score
-        Team team = board_current_team_get(ctx.board);
-        int32_t max_score = INT32_MIN;
-        for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
-            int32_t score = team_multiplier[team] * ctx.top_level_nodes[i].score;
-            if (max_score < score) {
-                max_score_i = i;
-                max_score = score;
-                move = ctx.top_level_nodes[i].move;
-            }
-        }
-    }
-
-    uint64_t time_elapsed = chess->cpu_timer_get() - ctx.time_started;
-    double seconds_elapsed = (double)time_elapsed / (double)chess->cpu_timer_frequency;
-
-    // Print min and max depth
-    MoveTreeStats stats = {.min_depth = UINT64_MAX};
-    for (int32_t i = 0; i < ctx.top_level_node_count; i++) {
-        move_tree_stats_calculate(&ctx.arena, &stats, ctx.top_level_nodes + i, 1);
-    }
-
-    debug_printf(chess->debug_print, "node_count: %llu\n", stats.node_count);
-    debug_printf(chess->debug_print, "seconds_elapsed: %.1f\n", seconds_elapsed);
-    debug_printf(chess->debug_print,
-            "%.4f Mn/s\n",
-            ((double)stats.node_count / 1000000.0) / seconds_elapsed);
-
-    if (stats.max_depth < 300) {
-        uint64_t max_score_depth = 0;
+    if (!running) {
+        int32_t max_score_i = 0;
+        MovePacked move = {0};
         {
-            Team team = board_current_team_get(ctx.board);
-            Board board = chess->board;
-            MoveNode *node = ctx.top_level_nodes + max_score_i;
-            while (node) {
-                max_score_depth++;
-                board = board_move_perform(board, node->move);
-                debug_render(board);
-                team = !team;
-                int32_t max_score = INT32_MIN;
-                MoveNode *max_score_node = 0;
-                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                    int32_t score = team_multiplier[team] * child->score;
-                    if (max_score < score) {
-                        max_score = score;
-                        max_score_node = child;
-                    }
+            // Pick move with the best score
+            Team team = board_current_team_get(ai->board);
+            int32_t max_score = INT32_MIN;
+            for (int32_t i = 0; i < ai->top_level_node_count; i++) {
+                int32_t score = team_multiplier[team] * ai->top_level_nodes[i].score;
+                if (max_score < score) {
+                    max_score_i = i;
+                    max_score = score;
+                    move = ai->top_level_nodes[i].move;
                 }
-                node = max_score_node;
             }
         }
 
-        debug_printf(chess->debug_print,
-                "node_count\t%llu\nleaf_count\t%llu\nmin_depth\t%llu\navg_depth\t%llu\nmax_depth\t%"
-                "llu\nmax_score_depth\t%llu\n",
-                stats.node_count,
-                stats.leaf_count,
-                stats.min_depth,
-                stats.depth_sum / stats.leaf_count,
-                stats.max_depth,
-                max_score_depth);
+        uint64_t time_elapsed = ai->time - ai->time_started;
+        double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
-        debug_printf(chess->debug_print, "max_line:\n");
-        for (int32_t i = 0; i < stats.max_depth; i++) {
-            debug_printf(chess->debug_print, "\t0x%x\n", (uint32_t)stats.max_line[i].bits);
+        // Print min and max depth
+        MoveTreeStats stats = {.min_depth = UINT64_MAX};
+        for (int32_t i = 0; i < ai->top_level_node_count; i++) {
+            move_tree_stats_calculate(&ai->arena, &stats, ai->top_level_nodes + i, 1);
         }
 
-        {
-            Board board = chess->board;
-            for (int32_t i = stats.min_line.count - 1; i >= 0; i--) {
-                board = board_move_perform(board, stats.min_line.data[i]);
-                debug_render(board);
+        debug_printf(ai->debug_print, "node_count: %llu\n", stats.node_count);
+        debug_printf(ai->debug_print, "seconds_elapsed: %.1f\n", seconds_elapsed);
+        debug_printf(ai->debug_print,
+                "%.4f Mn/s\n",
+                ((double)stats.node_count / 1000000.0) / seconds_elapsed);
+
+        if (stats.max_depth < 300) {
+            uint64_t max_score_depth = 0;
+            {
+                Team team = board_current_team_get(ai->board);
+                Board board = ai->board;
+                MoveNode *node = ai->top_level_nodes + max_score_i;
+                while (node) {
+                    max_score_depth++;
+                    board = board_move_perform(board, node->move);
+                    // debug_render(board);
+                    team = !team;
+                    int32_t max_score = INT32_MIN;
+                    MoveNode *max_score_node = 0;
+                    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                        int32_t score = team_multiplier[team] * child->score;
+                        if (max_score < score) {
+                            max_score = score;
+                            max_score_node = child;
+                        }
+                    }
+                    node = max_score_node;
+                }
             }
+
+            debug_printf(ai->debug_print,
+                    "node_count\t%llu\nleaf_count\t%llu\nmin_depth\t%llu\navg_depth\t%llu\nmax_"
+                    "depth\t%"
+                    "llu\nmax_score_depth\t%llu\n",
+                    stats.node_count,
+                    stats.leaf_count,
+                    stats.min_depth,
+                    stats.depth_sum / stats.leaf_count,
+                    stats.max_depth,
+                    max_score_depth);
+
+            debug_printf(ai->debug_print, "max_line:\n");
+            for (int32_t i = 0; i < stats.max_depth; i++) {
+                debug_printf(ai->debug_print, "\t0x%x\n", (uint32_t)stats.max_line[i].bits);
+            }
+
+            /*
+            {
+                Board board = ai->board;
+                for (int32_t i = stats.min_line.count - 1; i >= 0; i--) {
+                    board = board_move_perform(board, stats.min_line.data[i]);
+                    debug_render(board);
+                }
+            }
+
+            {
+                Board board = ai->board;
+                for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
+                    board = board_move_perform(board, stats.max_line[i]);
+                    debug_printf(ai->debug_print,
+                            "score: %d\n",
+                            board_score(board, stats.max_depth - 1 - i));
+                    debug_render(board);
+                }
+            }
+            */
         }
 
-        {
-            Board board = chess->board;
-            for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
-                board = board_move_perform(board, stats.max_line[i]);
-                debug_printf(chess->debug_print,
-                        "score: %d\n",
-                        board_score(board, stats.max_depth - 1 - i));
-                debug_render(board);
-            }
-        }
+        ai->response.move = move_unpack(move);
     }
 
-    Move result = move_unpack(move);
-
-    return result;
+    return running;
 }
 
 // ---- AI end -----------------------------------------------------------------
@@ -1565,7 +1554,7 @@ void update(ChessAssets *assets, Chess *chess)
 
     if (start_new_game || !JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
         // Test search score calculation
-        AiContext ctx = {
+        Ai ctx = {
             .top_level_node_count = 2,
             .top_level_nodes =
                     {
@@ -1623,16 +1612,12 @@ void update(ChessAssets *assets, Chess *chess)
 
         chess->selected_square = (JkIntVector2){-1, -1};
         chess->promo_square = (JkIntVector2){-1, -1};
-        chess->ai_move = (Move){.src = UINT8_MAX};
         chess->result = 0;
         chess->piece_prev_type = NONE;
         chess->time_move_prev = 0;
         memcpy(&chess->board, &starting_state, sizeof(chess->board));
         // chess->board = parse_fen(wtf9_fen);
         moves_get(&chess->moves, chess->board);
-        if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI) {
-            chess->flags |= JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
-        }
 
         chess->audio.time = 0;
         chess->audio.sound = 0;
@@ -1734,9 +1719,8 @@ void update(ChessAssets *assets, Chess *chess)
                     }
                 }
             } else { // Current player is an AI
-                if (chess->ai_move.src < 64) {
-                    move = chess->ai_move;
-                    chess->ai_move.src = UINT8_MAX;
+                if (memcmp(&chess->ai_response.board, &chess->board, sizeof(Board)) == 0) {
+                    move = chess->ai_response.move;
                 }
             }
         }
@@ -1767,11 +1751,7 @@ void update(ChessAssets *assets, Chess *chess)
                 Team current_team = board_current_team_get(chess->board);
                 moves_get(&chess->moves, chess->board);
 
-                if (chess->moves.count) {
-                    if (chess->player_types[current_team] == PLAYER_AI) {
-                        chess->flags |= JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
-                    }
-                } else {
+                if (!chess->moves.count) {
                     Team victor = !current_team;
                     uint64_t threatened = board_threats_get(chess->board, victor).bitfield;
                     uint8_t king_index = 0;
@@ -1798,10 +1778,19 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
     }
 
+    if (input_button_pressed(chess, INPUT_LEFT)) {
+        chess->board = parse_fen(king_fight_fen);
+        moves_get(&chess->moves, chess->board);
+    }
+
     audio_write(assets, &chess->audio);
 
+    // Do some end-of-frame updating of data
+    chess->flags = JK_FLAG_SET(chess->flags,
+            CHESS_FLAG_WANTS_AI_MOVE,
+            chess->result == RESULT_NONE
+                    && chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI);
     chess->time++;
-
     chess->input_prev = chess->input;
 }
 

@@ -6,6 +6,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <windows.h>
 #include <xinput.h>
 
@@ -28,10 +29,6 @@ typedef struct AudioBufferRegion {
     DWORD size;
     void *data;
 } AudioBufferRegion;
-
-// ---- File formats begin -----------------------------------------------------
-
-// ---- File formats end -------------------------------------------------------
 
 typedef enum Key {
     KEY_UP,
@@ -63,9 +60,34 @@ static int win32_debug_printf(char *format, ...)
     return result;
 }
 
+typedef struct AiRequest {
+    Board board;
+    b32 wants_ai_move;
+} AiRequest;
+
+typedef struct Shared {
+    // Game read-write, AI read-only
+    _Alignas(64) AiRequest ai_request;
+
+    // Game read-only, AI read-write
+    _Alignas(64) AiResponse ai_response;
+
+    _Alignas(64) SRWLOCK ai_request_lock;
+
+    _Alignas(64) SRWLOCK ai_response_lock;
+
+    _Alignas(64) CONDITION_VARIABLE wants_ai_move;
+} Shared;
+
+static Shared global_shared = {
+    .ai_request_lock = SRWLOCK_INIT,
+    .ai_response_lock = SRWLOCK_INIT,
+};
+
 static JkIntVector2 global_window_dimensions;
 static Chess global_chess = {0};
 static ChessAssets *global_assets;
+static JkBuffer global_ai_memory;
 
 static b32 global_running;
 static int64_t global_keys_down;
@@ -73,11 +95,9 @@ static LPDIRECTSOUNDBUFFER global_audio_buffer;
 static char global_string_buffer[1024];
 
 static SRWLOCK global_dll_lock = SRWLOCK_INIT;
-static HANDLE global_board_lock;
-static SRWLOCK global_move_lock = SRWLOCK_INIT;
-static Move global_move = {.src = UINT8_MAX};
 
-static AiMoveGetFunction *global_ai_move_get = 0;
+static AiInitFunction *global_ai_init = 0;
+static AiRunningFunction *global_ai_running = 0;
 static UpdateFunction *global_update = 0;
 static RenderFunction *global_render = 0;
 static ProfilePrintFunction *global_profile_print = 0;
@@ -408,24 +428,25 @@ DWORD game_thread(LPVOID param)
         // Hot reloading
         WIN32_FILE_ATTRIBUTE_DATA chess_dll_info;
         if (GetFileAttributesExA("chess.dll", GetFileExInfoStandard, &chess_dll_info)) {
-            if (CompareFileTime(&chess_dll_info.ftLastWriteTime, &chess_dll_last_modified_time)
-                    != 0) {
-                AcquireSRWLockExclusive(&global_dll_lock);
+            if (CompareFileTime(&chess_dll_info.ftLastWriteTime, &chess_dll_last_modified_time) != 0
+                    && TryAcquireSRWLockExclusive(&global_dll_lock)) {
                 chess_dll_last_modified_time = chess_dll_info.ftLastWriteTime;
                 if (chess_library) {
-                    FreeLibrary(chess_library);
-                    global_ai_move_get = 0;
+                    global_ai_init = 0;
+                    global_ai_running = 0;
                     global_update = 0;
                     global_render = 0;
                     global_profile_print = 0;
+                    FreeLibrary(chess_library);
                 }
                 if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
                     OutputDebugStringA("Failed to copy chess.dll to chess_tmp.dll\n");
                 }
                 chess_library = LoadLibraryA("chess_tmp.dll");
                 if (chess_library) {
-                    global_ai_move_get =
-                            (AiMoveGetFunction *)GetProcAddress(chess_library, "ai_move_get");
+                    global_ai_init = (AiInitFunction *)GetProcAddress(chess_library, "ai_init");
+                    global_ai_running =
+                            (AiRunningFunction *)GetProcAddress(chess_library, "ai_running");
                     global_update = (UpdateFunction *)GetProcAddress(chess_library, "update");
                     global_render = (RenderFunction *)GetProcAddress(chess_library, "render");
                     global_profile_print =
@@ -584,20 +605,26 @@ DWORD game_thread(LPVOID param)
         } break;
         }
 
-        AcquireSRWLockExclusive(&global_move_lock);
-        if (global_move.src < 64) {
-            global_chess.ai_move = global_move;
-            global_move.src = UINT8_MAX;
-        }
-        ReleaseSRWLockExclusive(&global_move_lock);
+        AcquireSRWLockShared(&global_shared.ai_response_lock);
+        global_chess.ai_response = global_shared.ai_response;
+        ReleaseSRWLockShared(&global_shared.ai_response_lock);
 
         global_chess.os_time = jk_platform_os_timer_get();
 
         global_update(global_assets, &global_chess);
 
-        if (global_chess.flags & JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE)) {
-            global_chess.flags &= ~JK_MASK(CHESS_FLAG_REQUEST_AI_MOVE);
-            ReleaseSemaphore(global_board_lock, 1, 0);
+        if (!global_shared.ai_request.wants_ai_move
+                        != !JK_FLAG_GET(global_chess.flags, CHESS_FLAG_WANTS_AI_MOVE)
+                || memcmp(&global_shared.ai_request.board, &global_chess.board, sizeof(Board))
+                        != 0) {
+            AcquireSRWLockExclusive(&global_shared.ai_request_lock);
+            global_shared.ai_request.wants_ai_move =
+                    JK_FLAG_GET(global_chess.flags, CHESS_FLAG_WANTS_AI_MOVE);
+            global_shared.ai_request.board = global_chess.board;
+            if (global_shared.ai_request.wants_ai_move) {
+                WakeAllConditionVariable(&global_shared.wants_ai_move);
+            }
+            ReleaseSRWLockExclusive(&global_shared.ai_request_lock);
         }
 
         // Write audio to buffer
@@ -715,18 +742,65 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
+static b32 ai_request_is_canceled(void)
+{
+    AcquireSRWLockShared(&global_shared.ai_request_lock);
+    b32 result = !global_shared.ai_request.wants_ai_move
+            || memcmp(&global_shared.ai_request.board,
+                       &global_shared.ai_response.board,
+                       sizeof(Board))
+                    != 0;
+    ReleaseSRWLockShared(&global_shared.ai_request_lock);
+    return result;
+}
+
 DWORD ai_thread(LPVOID param)
 {
     while (global_running) {
-        WaitForSingleObject(global_board_lock, INFINITE);
+        AcquireSRWLockShared(&global_shared.ai_request_lock);
+        while (!(global_shared.ai_request.wants_ai_move
+                && memcmp(&global_shared.ai_request.board,
+                           &global_shared.ai_response.board,
+                           sizeof(Board))
+                        != 0)) {
+            SleepConditionVariableSRW(&global_shared.wants_ai_move,
+                    &global_shared.ai_request_lock,
+                    INFINITE,
+                    CONDITION_VARIABLE_LOCKMODE_SHARED);
+        }
+        Board board = global_shared.ai_request.board;
+        ReleaseSRWLockShared(&global_shared.ai_request_lock);
 
         AcquireSRWLockShared(&global_dll_lock);
-        Move move = global_ai_move_get(&global_chess);
+
+        Ai ai;
+        global_ai_init(&ai,
+                board,
+                global_ai_memory,
+                jk_platform_os_timer_get(),
+                jk_platform_os_timer_frequency(),
+                debug_print);
+
+        while (global_ai_running(&ai)) {
+            AcquireSRWLockShared(&global_shared.ai_request_lock);
+            b32 cancel = !global_shared.ai_request.wants_ai_move
+                    || memcmp(&global_shared.ai_request.board, &board, sizeof(Board)) != 0;
+            ReleaseSRWLockShared(&global_shared.ai_request_lock);
+            if (cancel) {
+                break;
+            }
+
+            ai.time = jk_platform_os_timer_get();
+        }
+
         ReleaseSRWLockShared(&global_dll_lock);
 
-        AcquireSRWLockExclusive(&global_move_lock);
-        global_move = move;
-        ReleaseSRWLockExclusive(&global_move_lock);
+        if (ai.response.move.src || ai.response.move.dest) {
+            AcquireSRWLockExclusive(&global_shared.ai_response_lock);
+            global_shared.ai_response.board = board;
+            global_shared.ai_response.move = ai.response.move;
+            ReleaseSRWLockExclusive(&global_shared.ai_response_lock);
+        }
     }
 
     return 0;
@@ -753,10 +827,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     uint64_t audio_buffer_size =
             jk_round_up_to_power_of_2(SAMPLES_PER_SECOND * 2 * sizeof(AudioSample));
     global_chess.render_memory.size = 64 * JK_MEGABYTE;
-    global_chess.ai_memory.size = 8 * JK_GIGABYTE;
+    global_ai_memory.size = 8 * JK_GIGABYTE;
     uint8_t *memory = VirtualAlloc(0,
             audio_buffer_size + DRAW_BUFFER_SIZE + global_chess.render_memory.size
-                    + global_chess.ai_memory.size,
+                    + global_ai_memory.size,
             MEM_COMMIT,
             PAGE_READWRITE);
     if (!memory) {
@@ -768,11 +842,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     memory += DRAW_BUFFER_SIZE;
     global_chess.render_memory.data = memory;
     memory += global_chess.render_memory.size;
-    global_chess.ai_memory.data = memory;
+    global_ai_memory.data = memory;
 
     global_chess.os_timer_frequency = jk_platform_os_timer_frequency();
-    global_chess.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
-    global_chess.cpu_timer_get = jk_platform_cpu_timer_get;
     global_chess.debug_print = debug_print;
 
     JkPlatformArena storage;
@@ -782,7 +854,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         OutputDebugStringA("Failed to initialize storage arena\n");
     }
 
-    global_board_lock = CreateSemaphoreA(0, 0, 1, 0);
+    InitializeConditionVariable(&global_shared.wants_ai_move);
 
     if (memory) {
         WNDCLASSA window_class = {
