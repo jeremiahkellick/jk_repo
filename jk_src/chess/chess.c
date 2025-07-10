@@ -2095,11 +2095,13 @@ void render(ChessAssets *assets, Chess *chess)
     uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
     uint64_t destinations = destinations_get_by_src(chess, selected_index);
     JkIntVector2 mouse_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
+    uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
     JkColor drop_indicator_color =
             mouse_pos.x % 2 == mouse_pos.y % 2 ? color_light_squares : color_dark_squares;
     int32_t drop_indicator_width = JK_MAX(1, chess->square_side_length / 18);
     b32 promoting = board_in_bounds(chess->promo_square);
     b32 holding_piece = JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE) && selected_index < 64;
+    b32 ready_to_drop = holding_piece && mouse_index < 64 && ((destinations >> mouse_index) & 1);
 
     int64_t time_player_seconds[TEAM_COUNT];
     for (Team i = 0; i < TEAM_COUNT; i++) {
@@ -2115,7 +2117,6 @@ void render(ChessAssets *assets, Chess *chess)
 
     Move move_prev = move_unpack(chess->board.move_prev);
 
-    JkIntVector2 board_origin = screen_board_origin_get(chess->square_side_length);
     JkIntVector2 result_origin = {2, 3};
     JkIntVector2 result_dimensions = {4, 2};
     JkIntVector2 result_extent = jk_int_vector_2_add(result_origin, result_dimensions);
@@ -2140,7 +2141,7 @@ void render(ChessAssets *assets, Chess *chess)
     float pixels_per_unit = (float)chess->square_side_length / square_size;
     jk_shapes_renderer_init(&renderer, pixels_per_unit, assets, shapes, &arena);
 
-    JkColor square_colors[8][8];
+    JkColor square_colors[10][10];
 
     JkColor color_faded = color_light_squares;
     color_faded.a = 185;
@@ -2148,46 +2149,54 @@ void render(ChessAssets *assets, Chess *chess)
     switch (chess->screen) {
     case SCREEN_GAME: {
         // Draw pieces on board and compute square colors
-        for (pos.y = 0; pos.y < 8; pos.y++) {
-            for (pos.x = 0; pos.x < 8; pos.x++) {
-                int32_t index = board_index_get(pos);
-                Piece piece = board_piece_get(chess->board, pos);
-                int32_t dist_from_promo_square = absolute_value(pos.y - chess->promo_square.y);
-                JkColor square_color =
-                        pos.x % 2 == pos.y % 2 ? color_dark_squares : color_light_squares;
+        for (pos.y = 0; pos.y < 10; pos.y++) {
+            for (pos.x = 0; pos.x < 10; pos.x++) {
+                JkIntVector2 board_pos = apply_perspective(
+                        chess->perspective, jk_int_vector_2_add(pos, (JkIntVector2){-1, -1}));
+                int32_t index = board_index_get_unbounded(board_pos);
+                if (index < 64) {
+                    Piece piece = board_piece_get(chess->board, board_pos);
+                    int32_t dist_from_promo_square =
+                            absolute_value(board_pos.y - chess->promo_square.y);
+                    JkColor square_color = board_pos.x % 2 == board_pos.y % 2 ? color_dark_squares
+                                                                              : color_light_squares;
 
-                if (chess->result && result_origin.x <= pos.x && pos.x < result_extent.x
-                        && result_origin.y <= pos.y && pos.y < result_extent.y) {
-                    square_color = color_background;
-                } else {
-                    if (promoting && pos.x == chess->promo_square.x
-                            && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                    if (chess->result && result_origin.x <= board_pos.x
+                            && board_pos.x < result_extent.x && result_origin.y <= board_pos.y
+                            && board_pos.y < result_extent.y) {
                         square_color = color_background;
-                        piece.team = team;
-                        piece.type = promo_order[dist_from_promo_square];
-                    } else if (index == selected_index) {
-                        square_color = blend(color_selection, square_color);
-                    } else if (destinations & (1llu << index)) {
-                        square_color = blend(color_selection, square_color);
-                    } else if ((move_prev.src || move_prev.dest)
-                            && (index == move_prev.src || index == move_prev.dest)) {
-                        square_color = blend_alpha(color_move_prev, square_color, 115);
+                    } else {
+                        if (promoting && board_pos.x == chess->promo_square.x
+                                && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                            square_color = color_background;
+                            piece.team = team;
+                            piece.type = promo_order[dist_from_promo_square];
+                        } else if (index == selected_index) {
+                            square_color = blend(color_selection, square_color);
+                        } else if (destinations & (1llu << index)) {
+                            square_color = blend(color_selection, square_color);
+                        } else if ((move_prev.src || move_prev.dest)
+                                && (index == move_prev.src || index == move_prev.dest)) {
+                            square_color = blend_alpha(color_move_prev, square_color, 115);
+                        }
+
+                        JkColor piece_color = color_teams[piece.team];
+                        if (board_index_get(board_pos) == selected_index
+                                && JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE)) {
+                            piece_color.a /= 2;
+                        }
+
+                        jk_shapes_draw(&renderer,
+                                piece.type,
+                                board_to_canvas_pos(chess->perspective, square_size, board_pos),
+                                1.0f,
+                                piece_color);
                     }
 
-                    JkColor piece_color = color_teams[piece.team];
-                    if (board_index_get(pos) == selected_index
-                            && JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE)) {
-                        piece_color.a /= 2;
-                    }
-
-                    jk_shapes_draw(&renderer,
-                            piece.type,
-                            board_to_canvas_pos(chess->perspective, square_size, pos),
-                            1.0f,
-                            piece_color);
+                    square_colors[pos.y][pos.x] = square_color;
+                } else {
+                    square_colors[pos.y][pos.x] = color_background;
                 }
-
-                square_colors[pos.y][pos.x] = square_color;
             }
         }
 
@@ -2412,8 +2421,8 @@ void render(ChessAssets *assets, Chess *chess)
 
     case SCREEN_MENU: {
         // Fill all the chess board squares with the background color
-        for (pos.y = 0; pos.y < 8; pos.y++) {
-            for (pos.x = 0; pos.x < 8; pos.x++) {
+        for (pos.y = 0; pos.y < 10; pos.y++) {
+            for (pos.x = 0; pos.x < 10; pos.x++) {
                 square_colors[pos.y][pos.x] = color_background;
             }
         }
@@ -2688,9 +2697,12 @@ void render(ChessAssets *assets, Chess *chess)
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(fill_draw_buffer);
     int32_t cs = 0;
     int32_t ce = 0;
-    JkIntVector2 board_pos_pixels;
-    for (pos.y = 0, board_pos_pixels.y = -board_origin.y; pos.y < chess->square_side_length * 10;
-            pos.y++, board_pos_pixels.y++) {
+    JkIntVector2 pos_in_square;
+    JkIntVector2 square_pos;
+    JkIntVector2 mouse_square_pos =
+            jk_int_vector_2_div(chess->square_side_length, chess->input.mouse_pos);
+    for (pos.y = 0, pos_in_square.y = 0, square_pos.y = 0; pos.y < chess->square_side_length * 10;
+            pos.y++) {
         while (ce < draw_commands.count && draw_commands.items[ce].position.y <= pos.y) {
             ce++;
         }
@@ -2700,34 +2712,25 @@ void render(ChessAssets *assets, Chess *chess)
             cs++;
         }
 
-        for (pos.x = 0, board_pos_pixels.x = -board_origin.x;
+        for (pos.x = 0, pos_in_square.x = 0, square_pos.x = 0;
                 pos.x < chess->square_side_length * 10;
-                pos.x++, board_pos_pixels.x++) {
-            JkColor color;
-            if (board_pos_pixels_in_bounds(chess->square_side_length, board_pos_pixels)) {
-                JkIntVector2 board_pos = board_pos_pixels_to_squares_raw(chess, board_pos_pixels);
-                color = square_colors[board_pos.y][board_pos.x];
+                pos.x++) {
+            JkColor color = square_colors[square_pos.y][square_pos.x];
 
-                // Shows a gap in the selection to indicate which square the held piece will drop on
-                if (jk_int_vector_2_equal(board_pos, mouse_pos) && holding_piece
-                        && (destinations >> board_index_get(board_pos)) & 1) {
-                    JkIntVector2 square_pos =
-                            jk_int_vector_2_remainder(chess->square_side_length, board_pos_pixels);
-                    int32_t x_dist_from_edge = square_pos.x < chess->square_side_length / 2
-                            ? square_pos.x
-                            : chess->square_side_length - 1 - square_pos.x;
-                    int32_t y_dist_from_edge = square_pos.y < chess->square_side_length / 2
-                            ? square_pos.y
-                            : chess->square_side_length - 1 - square_pos.y;
-                    if ((drop_indicator_width <= x_dist_from_edge
-                                && drop_indicator_width <= y_dist_from_edge)
-                            && (x_dist_from_edge < 2 * drop_indicator_width
-                                    || y_dist_from_edge < 2 * drop_indicator_width)) {
-                        color = drop_indicator_color;
-                    }
+            // Shows a gap in the selection to indicate which square the held piece will drop on
+            if (jk_int_vector_2_equal(square_pos, mouse_square_pos) && ready_to_drop) {
+                int32_t x_dist_from_edge = pos_in_square.x < chess->square_side_length / 2
+                        ? pos_in_square.x
+                        : chess->square_side_length - 1 - pos_in_square.x;
+                int32_t y_dist_from_edge = pos_in_square.y < chess->square_side_length / 2
+                        ? pos_in_square.y
+                        : chess->square_side_length - 1 - pos_in_square.y;
+                if ((drop_indicator_width <= x_dist_from_edge
+                            && drop_indicator_width <= y_dist_from_edge)
+                        && (x_dist_from_edge < 2 * drop_indicator_width
+                                || y_dist_from_edge < 2 * drop_indicator_width)) {
+                    color = drop_indicator_color;
                 }
-            } else {
-                color = color_background;
             }
 
             for (int32_t i = cs; i < ce; i++) {
@@ -2751,6 +2754,16 @@ void render(ChessAssets *assets, Chess *chess)
 
             color.a = 255;
             chess->draw_buffer[pos.y * DRAW_BUFFER_SIDE_LENGTH + pos.x] = color;
+
+            if (++pos_in_square.x >= chess->square_side_length) {
+                pos_in_square.x = 0;
+                square_pos.x++;
+            }
+        }
+
+        if (++pos_in_square.y >= chess->square_side_length) {
+            pos_in_square.y = 0;
+            square_pos.y++;
         }
     }
     JK_PLATFORM_PROFILE_ZONE_END(fill_draw_buffer);

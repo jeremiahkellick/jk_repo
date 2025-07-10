@@ -484,7 +484,7 @@ JK_PUBLIC JkIntVector2 jk_int_vector_2_mul(int32_t scalar, JkIntVector2 vector)
 
 JK_PUBLIC JkIntVector2 jk_int_vector_2_div(int32_t divisor, JkIntVector2 vector)
 {
-    return (JkIntVector2){.x = divisor * vector.x, .y = divisor * vector.y};
+    return (JkIntVector2){.x = vector.x / divisor, .y = vector.y / divisor};
 }
 
 JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 vector)
