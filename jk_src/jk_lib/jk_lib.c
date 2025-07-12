@@ -30,6 +30,21 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
     return c;
 }
 
+JK_PUBLIC b32 jk_char_is_whitespace(uint8_t c)
+{
+    return c == ' ' || ('\t' <= c && c <= '\r');
+}
+
+JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
+{
+    for (uint64_t i = 0; i < string.size; i++) {
+        if (jk_char_is_whitespace(string.data[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------

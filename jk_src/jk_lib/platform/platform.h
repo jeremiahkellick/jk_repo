@@ -58,6 +58,8 @@ JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
 
 JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void);
 
+JK_PUBLIC int jk_platform_exec(JkBufferArray command);
+
 // ---- OS functions end -------------------------------------------------------
 
 // ---- ISA functions begin ----------------------------------------------------

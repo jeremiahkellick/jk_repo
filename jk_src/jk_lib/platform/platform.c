@@ -201,6 +201,74 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
     }
 }
 
+static void jk_windows_print_last_error(void)
+{
+    DWORD error_code = GetLastError();
+    if (error_code == 0) {
+        fprintf(stderr, "Unknown error\n");
+    } else {
+        char message_buf[MAX_PATH] = {'\0'};
+        FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                error_code,
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                message_buf,
+                MAX_PATH - 1,
+                NULL);
+        fprintf(stderr, "%s", message_buf);
+    }
+}
+
+JK_PUBLIC int jk_platform_exec(JkBufferArray command)
+{
+    static char command_buffer[4096];
+
+    if (!command.count) {
+        fprintf(stderr, "jk_platform_exec: Received an empty command\n");
+        return 1;
+    }
+
+    STARTUPINFO si = {.cb = sizeof(si)};
+    PROCESS_INFORMATION pi = {0};
+    int string_i = 0;
+    for (int args_i = 0; args_i < command.count; args_i++) {
+        string_i += snprintf(&command_buffer[string_i],
+                JK_ARRAY_COUNT(command_buffer) - string_i,
+                jk_string_contains_whitespace(command.items[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
+                args_i == 0 ? "" : " ",
+                (int)command.items[args_i].size,
+                command.items[args_i].data);
+        if (string_i >= JK_ARRAY_COUNT(command_buffer)) {
+            fprintf(stderr, "jk_platform_exec: Insufficient buffer size\n");
+            return 1;
+        }
+    }
+
+    printf("%s\n", command_buffer);
+
+    if (!CreateProcessA(NULL, command_buffer, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        fprintf(stderr,
+                "jk_platform_exec: Could not run '%.*s': ",
+                (int)command.items[0].size,
+                command.items[0].data);
+        jk_windows_print_last_error();
+        return 1;
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exit_status;
+    if (!GetExitCodeProcess(pi.hProcess, &exit_status)) {
+        fprintf(stderr,
+                "jk_platform_exec: Could not get exit status of '%.*s': ",
+                (int)command.items[0].size,
+                command.items[0].data);
+        jk_windows_print_last_error();
+        exit_status = 1;
+    }
+    CloseHandle(pi.hProcess);
+    return (int)exit_status;
+}
+
 #else
 
 #include <stdio.h>
