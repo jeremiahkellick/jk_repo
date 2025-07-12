@@ -2082,6 +2082,85 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
     }
 }
 
+#define MENU_WIDTH 384.0f
+#define BUTTON_TEXT_SCALE 0.025f
+#define BUTTON_PADDING 9.0f
+#define RECT_THICKNESS 1.0f
+
+static void draw_radio_buttons(ChessAssets *assets,
+        Chess *chess,
+        JkShapesRenderer *renderer,
+        JkVector2 *top_left,
+        uint64_t choice_count,
+        uint64_t choice_selected,
+        JkBuffer *choice_strings,
+        uint64_t first_button_id)
+{
+    top_left->y += 12;
+
+    float spacing = 22;
+
+    TextLayout base_layout = text_layout_get(assets, choice_strings[0], BUTTON_TEXT_SCALE);
+    JkVector2 base_dimensions = {(MENU_WIDTH - (choice_count - 1) * spacing) / choice_count,
+        base_layout.dimensions.y + 2 * (BUTTON_PADDING + RECT_THICKNESS)};
+
+    float scale_factor = (base_dimensions.x + spacing) / base_dimensions.x;
+    JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
+
+    JkVector2 position = *top_left;
+    position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
+    float text_y_offset = BUTTON_PADDING + RECT_THICKNESS + base_layout.offset.y;
+    float text_y = position.y + text_y_offset;
+    for (int32_t choice_id = 0; choice_id < choice_count;
+            choice_id++, position.x += base_dimensions.x + spacing) {
+        JkBuffer text = choice_strings[choice_id];
+        Button *button = chess->buttons + (first_button_id + choice_id);
+
+        if (choice_id == choice_selected) {
+            button->rect = (JkIntRect){0};
+
+            JkVector2 scaled_position = jk_vector_2_add(position,
+                    jk_vector_2_mul(0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
+
+            jk_shapes_rect_draw_outline(
+                    renderer, scaled_position, scaled_dimensions, RECT_THICKNESS, color_move_prev);
+
+            TextLayout text_layout =
+                    text_layout_get(assets, text, scale_factor * BUTTON_TEXT_SCALE);
+            JkVector2 cursor = {
+                scaled_position.x + scale_factor * (BUTTON_PADDING + RECT_THICKNESS)
+                        + text_layout.offset.x,
+                scaled_position.y
+                        + scale_factor * (BUTTON_PADDING + RECT_THICKNESS + base_layout.offset.y),
+            };
+            draw_text(renderer, text, cursor, scale_factor * BUTTON_TEXT_SCALE, color_move_prev);
+        } else {
+            JkColor text_color;
+            JkColor outline_color;
+            button->rect = jk_shapes_pixel_rect_get(renderer, position, base_dimensions);
+            if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
+                text_color = (JkColor){255, 255, 255, 255};
+                outline_color = color_light_squares;
+            } else {
+                text_color = color_light_squares;
+                outline_color = color_light_squares;
+                outline_color.a = 185;
+            }
+
+            jk_shapes_pixel_rect_draw_outline(
+                    renderer, button->rect, RECT_THICKNESS, outline_color);
+
+            TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
+
+            JkVector2 cursor = {
+                position.x + BUTTON_PADDING + RECT_THICKNESS + text_layout.offset.x, text_y};
+            draw_text(renderer, text, cursor, BUTTON_TEXT_SCALE, outline_color);
+        }
+    }
+
+    top_left->y += scaled_dimensions.y;
+}
+
 void render(ChessAssets *assets, Chess *chess)
 {
     jk_platform_profile_frame_begin();
@@ -2327,21 +2406,19 @@ void render(ChessAssets *assets, Chess *chess)
 
         // Draw menu button
         {
-            float padding = 9.0f;
-            float rect_thickness = 1.0f;
-
             JkBuffer text = JKS("Menu");
             TextLayout layout = text_layout_get(assets, text, coords_scale);
 
             JkVector2 dimensions = jk_vector_2_add(layout.dimensions,
-                    (JkVector2){2 * (padding + rect_thickness), 2 * (padding + rect_thickness)});
+                    (JkVector2){2 * (BUTTON_PADDING + RECT_THICKNESS),
+                        2 * (BUTTON_PADDING + RECT_THICKNESS)});
 
             JkVector2 top_left = {.x = 64.0f * 9.0f - dimensions.x};
             JkVector2 cursor = {
-                top_left.x + padding + rect_thickness + layout.offset.x,
+                top_left.x + BUTTON_PADDING + RECT_THICKNESS + layout.offset.x,
                 bar_text_y[!chess->perspective],
             };
-            top_left.y = cursor.y - layout.offset.y - (padding + rect_thickness);
+            top_left.y = cursor.y - layout.offset.y - (BUTTON_PADDING + RECT_THICKNESS);
 
             JkColor text_color;
             JkColor outline_color;
@@ -2358,7 +2435,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             jk_shapes_pixel_rect_draw_outline(&renderer,
                     chess->buttons[BUTTON_MENU_OPEN].rect,
-                    rect_thickness,
+                    RECT_THICKNESS,
                     outline_color);
             draw_text(&renderer, text, cursor, coords_scale, text_color);
         }
@@ -2427,24 +2504,20 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
 
-        float width = 384;
-        float text_scale = 0.025;
-        float padding = 9;
-        float rect_thickness = 1;
-        JkVector2 top_left = {(640 - width) / 2, 32};
+        JkVector2 top_left = {(640 - MENU_WIDTH) / 2, 32};
 
         {
             JkBuffer text = JKS("Close menu");
-            TextLayout text_layout = text_layout_get(assets, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
             JkVector2 dimensions = {
-                width,
-                text_layout.dimensions.y + 2 * (padding + rect_thickness),
+                MENU_WIDTH,
+                text_layout.dimensions.y + 2 * (BUTTON_PADDING + RECT_THICKNESS),
             };
 
-            JkVector2 cursor = jk_vector_2_add(
-                    jk_vector_2_add(top_left,
-                            (JkVector2){padding + rect_thickness, padding + rect_thickness}),
+            JkVector2 cursor = jk_vector_2_add(jk_vector_2_add(top_left,
+                                                       (JkVector2){BUTTON_PADDING + RECT_THICKNESS,
+                                                           BUTTON_PADDING + RECT_THICKNESS}),
                     text_layout.offset);
 
             JkColor text_color;
@@ -2462,9 +2535,9 @@ void render(ChessAssets *assets, Chess *chess)
 
             jk_shapes_pixel_rect_draw_outline(&renderer,
                     chess->buttons[BUTTON_MENU_CLOSE].rect,
-                    rect_thickness,
+                    RECT_THICKNESS,
                     outline_color);
-            draw_text(&renderer, text, cursor, text_scale, text_color);
+            draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, text_color);
 
             top_left.y += dimensions.y;
         }
@@ -2485,182 +2558,60 @@ void render(ChessAssets *assets, Chess *chess)
 
         {
             JkBuffer text = JKS("Play as");
-            TextLayout text_layout = text_layout_get(assets, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
             top_left.y += 20;
 
             JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
-            draw_text(&renderer, text, cursor, text_scale, color_light_squares);
+            draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
         }
 
-        {
-            top_left.y += 12;
-
-            float spacing = 22;
-
-            TextLayout base_layout = text_layout_get(assets, team_choice_strings[0], text_scale);
-            JkVector2 base_dimensions = {
-                (width - (TEAM_CHOICE_COUNT - 1) * spacing) / TEAM_CHOICE_COUNT,
-                base_layout.dimensions.y + 2 * (padding + rect_thickness)};
-
-            float scale_factor = (base_dimensions.x + spacing) / base_dimensions.x;
-            JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
-
-            JkVector2 position = top_left;
-            position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
-            float text_y_offset = padding + rect_thickness + base_layout.offset.y;
-            float text_y = position.y + text_y_offset;
-            for (TeamChoice team_choice = 0; team_choice < TEAM_CHOICE_COUNT;
-                    team_choice++, position.x += base_dimensions.x + spacing) {
-                JkBuffer text = team_choice_strings[team_choice];
-                Button *button = chess->buttons + (BUTTON_WHITE + team_choice);
-
-                if (team_choice == chess->settings.team_choice) {
-                    button->rect = (JkIntRect){0};
-
-                    JkVector2 scaled_position = jk_vector_2_add(position,
-                            jk_vector_2_mul(
-                                    0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
-
-                    jk_shapes_rect_draw_outline(&renderer,
-                            scaled_position,
-                            scaled_dimensions,
-                            rect_thickness,
-                            color_move_prev);
-
-                    TextLayout text_layout =
-                            text_layout_get(assets, text, scale_factor * text_scale);
-                    JkVector2 cursor = {
-                        scaled_position.x + scale_factor * (padding + rect_thickness)
-                                + text_layout.offset.x,
-                        scaled_position.y
-                                + scale_factor * (padding + rect_thickness + base_layout.offset.y),
-                    };
-                    draw_text(&renderer, text, cursor, scale_factor * text_scale, color_move_prev);
-                } else {
-                    JkColor text_color;
-                    JkColor outline_color;
-                    button->rect = jk_shapes_pixel_rect_get(&renderer, position, base_dimensions);
-                    if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
-                        text_color = (JkColor){255, 255, 255, 255};
-                        outline_color = color_light_squares;
-                    } else {
-                        text_color = color_light_squares;
-                        outline_color = color_faded;
-                    }
-
-                    jk_shapes_pixel_rect_draw_outline(
-                            &renderer, button->rect, rect_thickness, outline_color);
-
-                    TextLayout text_layout = text_layout_get(assets, text, text_scale);
-
-                    JkVector2 cursor = {
-                        position.x + padding + rect_thickness + text_layout.offset.x, text_y};
-                    draw_text(&renderer, text, cursor, text_scale, outline_color);
-                }
-            }
-
-            top_left.y += scaled_dimensions.y;
-        }
+        draw_radio_buttons(assets,
+                chess,
+                &renderer,
+                &top_left,
+                TEAM_CHOICE_COUNT,
+                chess->settings.team_choice,
+                team_choice_strings,
+                BUTTON_WHITE);
 
         {
             JkBuffer text = JKS("Opponent controlled by");
-            TextLayout text_layout = text_layout_get(assets, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
             top_left.y += 20;
 
             JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
-            draw_text(&renderer, text, cursor, text_scale, color_light_squares);
+            draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
         }
 
-        {
-            top_left.y += 12;
-
-            float spacing = 22;
-
-            TextLayout base_layout = text_layout_get(assets, opponent_type_strings[0], text_scale);
-            JkVector2 base_dimensions = {
-                (width - (PLAYER_TYPE_COUNT - 1) * spacing) / PLAYER_TYPE_COUNT,
-                base_layout.dimensions.y + 2 * (padding + rect_thickness)};
-
-            float scale_factor = (base_dimensions.x + spacing) / base_dimensions.x;
-            JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
-
-            JkVector2 position = top_left;
-            position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
-            float text_y_offset = padding + rect_thickness + base_layout.offset.y;
-            float text_y = position.y + text_y_offset;
-            for (PlayerType opponent_type = 0; opponent_type < PLAYER_TYPE_COUNT;
-                    opponent_type++, position.x += base_dimensions.x + spacing) {
-                JkBuffer text = opponent_type_strings[opponent_type];
-                Button *button = chess->buttons + (BUTTON_YOU + opponent_type);
-
-                if (opponent_type == chess->settings.opponent_type) {
-                    button->rect = (JkIntRect){0};
-
-                    JkVector2 scaled_position = jk_vector_2_add(position,
-                            jk_vector_2_mul(
-                                    0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
-
-                    jk_shapes_rect_draw_outline(&renderer,
-                            scaled_position,
-                            scaled_dimensions,
-                            rect_thickness,
-                            color_move_prev);
-
-                    TextLayout text_layout =
-                            text_layout_get(assets, text, scale_factor * text_scale);
-                    JkVector2 cursor = {
-                        scaled_position.x + scale_factor * (padding + rect_thickness)
-                                + text_layout.offset.x,
-                        scaled_position.y
-                                + scale_factor * (padding + rect_thickness + base_layout.offset.y),
-                    };
-                    draw_text(&renderer, text, cursor, scale_factor * text_scale, color_move_prev);
-                } else {
-                    JkColor text_color;
-                    JkColor outline_color;
-                    button->rect = jk_shapes_pixel_rect_get(&renderer, position, base_dimensions);
-                    if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
-                        text_color = (JkColor){255, 255, 255, 255};
-                        outline_color = color_light_squares;
-                    } else {
-                        text_color = color_light_squares;
-                        outline_color = color_faded;
-                    }
-
-                    jk_shapes_pixel_rect_draw_outline(
-                            &renderer, button->rect, rect_thickness, outline_color);
-
-                    TextLayout text_layout = text_layout_get(assets, text, text_scale);
-
-                    JkVector2 cursor = {
-                        position.x + padding + rect_thickness + text_layout.offset.x, text_y};
-                    draw_text(&renderer, text, cursor, text_scale, outline_color);
-                }
-            }
-
-            top_left.y += scaled_dimensions.y;
-        }
+        draw_radio_buttons(assets,
+                chess,
+                &renderer,
+                &top_left,
+                PLAYER_TYPE_COUNT,
+                chess->settings.opponent_type,
+                opponent_type_strings,
+                BUTTON_YOU);
 
         {
             top_left.y += 20;
 
             JkBuffer text = JKS("Start new game");
-            TextLayout text_layout = text_layout_get(assets, text, text_scale);
+            TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
             JkVector2 dimensions = {
-                width,
-                text_layout.dimensions.y + 2 * (padding + rect_thickness),
+                MENU_WIDTH,
+                text_layout.dimensions.y + 2 * (BUTTON_PADDING + RECT_THICKNESS),
             };
 
-            JkVector2 cursor = jk_vector_2_add(
-                    jk_vector_2_add(top_left,
-                            (JkVector2){padding + rect_thickness, padding + rect_thickness}),
+            JkVector2 cursor = jk_vector_2_add(jk_vector_2_add(top_left,
+                                                       (JkVector2){BUTTON_PADDING + RECT_THICKNESS,
+                                                           BUTTON_PADDING + RECT_THICKNESS}),
                     text_layout.offset);
 
             JkColor text_color;
@@ -2678,9 +2629,9 @@ void render(ChessAssets *assets, Chess *chess)
 
             jk_shapes_pixel_rect_draw_outline(&renderer,
                     chess->buttons[BUTTON_START_GAME].rect,
-                    rect_thickness,
+                    RECT_THICKNESS,
                     outline_color);
-            draw_text(&renderer, text, cursor, text_scale, text_color);
+            draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, text_color);
 
             top_left.y += dimensions.y;
         }
