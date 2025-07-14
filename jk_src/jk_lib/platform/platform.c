@@ -269,6 +269,11 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
     return (int)exit_status;
 }
 
+JK_PUBLIC void jk_platform_sleep(uint64_t milliseconds)
+{
+    Sleep(milliseconds);
+}
+
 #else
 
 #include <stdio.h>

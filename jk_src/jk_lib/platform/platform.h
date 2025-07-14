@@ -60,6 +60,8 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void);
 
 JK_PUBLIC int jk_platform_exec(JkBufferArray command);
 
+JK_PUBLIC void jk_platform_sleep(uint64_t milliseconds);
+
 // ---- OS functions end -------------------------------------------------------
 
 // ---- ISA functions begin ----------------------------------------------------
