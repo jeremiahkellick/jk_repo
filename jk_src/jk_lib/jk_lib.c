@@ -531,6 +531,17 @@ JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
     return (JkVector2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
+JK_PUBLIC JkVector2 jk_vector_2_ceil(JkVector2 v)
+{
+    return (JkVector2){ceilf(v.x), ceilf(v.y)};
+}
+
+JK_PUBLIC JkIntVector2 jk_vector_2_ceil_i(JkVector2 v)
+{
+    JkVector2 v_ceiled = jk_vector_2_ceil(v);
+    return (JkIntVector2){(int32_t)v_ceiled.x, (int32_t)v_ceiled.y};
+}
+
 JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v)
 {
     return v.x * v.x + v.y * v.y;

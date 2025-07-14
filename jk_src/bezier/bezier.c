@@ -74,7 +74,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
             + (display_string.data[display_string.size - 1] + CHARACTER_SHAPE_OFFSET);
     float display_string_width =
             last_point + last_character->offset.x + last_character->dimensions.x;
-    int32_t display_string_height = assets->font_y1_max - assets->font_y0_min;
+    int32_t display_string_height = assets->font_descent - assets->font_ascent;
     int32_t max_dimension = JK_MAX(jk_round(display_string_width), display_string_height);
 
     float font_scale = (canvas_size - 1.0f) / (float)max_dimension;
@@ -94,7 +94,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
         jk_shapes_draw(&renderer, 3, (JkVector2){256.0f, 320.0f}, 1.0f, color_black_pieces);
         jk_shapes_draw(&renderer, 4, (JkVector2){320.0f, 320.0f}, 1.0f, color_black_pieces);
 
-        JkVector2 current_point = {font_scale * first_point, -font_scale * assets->font_y0_min};
+        JkVector2 current_point = {font_scale * first_point, -font_scale * assets->font_ascent};
         for (int32_t i = 0; i < display_string.size; i++) {
             current_point.x += jk_shapes_draw(&renderer,
                     display_string.data[i] + CHARACTER_SHAPE_OFFSET,

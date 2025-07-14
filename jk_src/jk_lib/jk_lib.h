@@ -198,6 +198,10 @@ JK_PUBLIC JkVector2 jk_vector_2_sub(JkVector2 a, JkVector2 b);
 
 JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector);
 
+JK_PUBLIC JkVector2 jk_vector_2_ceil(JkVector2 v);
+
+JK_PUBLIC JkIntVector2 jk_vector_2_ceil_i(JkVector2 v);
+
 JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v);
 
 JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v);

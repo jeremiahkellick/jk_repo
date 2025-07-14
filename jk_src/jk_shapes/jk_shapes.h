@@ -4,6 +4,7 @@
 #include <jk_src/jk_lib/jk_lib.h>
 
 typedef struct JkShapesBitmap {
+    JkIntVector2 offset;
     JkIntVector2 dimensions;
     uint8_t *data;
 } JkShapesBitmap;
