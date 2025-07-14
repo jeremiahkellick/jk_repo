@@ -167,6 +167,15 @@ typedef enum Screen {
     SCREEN_COUNT,
 } Screen;
 
+typedef enum Timer {
+    TIMER_1_MIN,
+    TIMER_5_MIN,
+    TIMER_10_MIN,
+    TIMER_30_MIN,
+
+    TIMER_COUNT,
+} Timer;
+
 typedef enum ButtonId {
     BUTTON_MENU_OPEN,
     BUTTON_MENU_CLOSE,
@@ -176,6 +185,10 @@ typedef enum ButtonId {
     BUTTON_START_GAME,
     BUTTON_YOU,
     BUTTON_AI,
+    BUTTON_1_MIN,
+    BUTTON_5_MIN,
+    BUTTON_10_MIN,
+    BUTTON_30_MIN,
 
     BUTTON_COUNT,
 } ButtonId;
@@ -203,6 +216,7 @@ typedef enum TeamChoice {
 typedef struct Settings {
     TeamChoice team_choice;
     PlayerType opponent_type;
+    Timer timer;
 } Settings;
 
 typedef struct AiResponse {

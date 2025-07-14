@@ -266,6 +266,11 @@ static JkBuffer team_choice_strings[TEAM_CHOICE_COUNT] = {
 
 static JkBuffer opponent_type_strings[PLAYER_TYPE_COUNT] = {JKSI("You"), JKSI("AI")};
 
+static JkBuffer timer_strings[TIMER_COUNT] = {
+    JKSI("1 min"), JKSI("5 min"), JKSI("10 min"), JKSI("30 min")};
+
+static int64_t timer_minutes[TIMER_COUNT] = {1, 5, 10, 30};
+
 static b32 square_available(Board board, JkIntVector2 square)
 {
     if (board_in_bounds(square)) {
@@ -1540,6 +1545,13 @@ void update(ChessAssets *assets, Chess *chess)
                 }
             }
 
+            for (Timer timer = 0; timer < TIMER_COUNT; timer++) {
+                if (jk_int_rect_point_test(
+                            chess->buttons[BUTTON_1_MIN + timer].rect, chess->input.mouse_pos)) {
+                    chess->settings.timer = timer;
+                }
+            }
+
             if (jk_int_rect_point_test(
                         chess->buttons[BUTTON_START_GAME].rect, chess->input.mouse_pos)) {
                 start_new_game = 1;
@@ -1596,6 +1608,7 @@ void update(ChessAssets *assets, Chess *chess)
             // settings to their default values.
             chess->settings.team_choice = TEAM_CHOICE_WHITE;
             chess->settings.opponent_type = PLAYER_AI;
+            chess->settings.timer = TIMER_10_MIN;
         }
 
         chess->flags = JK_MASK(CHESS_FLAG_INITIALIZED);
@@ -1625,7 +1638,8 @@ void update(ChessAssets *assets, Chess *chess)
 
         chess->os_time_turn_start = chess->os_time;
         for (Team team = 0; team < TEAM_COUNT; team++) {
-            chess->os_time_player[team] = 10 * 60 * chess->os_timer_frequency;
+            chess->os_time_player[team] =
+                    timer_minutes[chess->settings.timer] * 60 * chess->os_timer_frequency;
         }
 
         chess->screen = SCREEN_GAME;
@@ -2082,7 +2096,7 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
     }
 }
 
-#define MENU_WIDTH 384.0f
+#define MENU_WIDTH 512.0f
 #define BUTTON_TEXT_SCALE 0.025f
 #define BUTTON_PADDING 9.0f
 #define RECT_THICKNESS 1.0f
@@ -2597,6 +2611,27 @@ void render(ChessAssets *assets, Chess *chess)
                 chess->settings.opponent_type,
                 opponent_type_strings,
                 BUTTON_YOU);
+
+        {
+            JkBuffer text = JKS("Timer");
+            TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
+
+            top_left.y += 20;
+
+            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, color_light_squares);
+
+            top_left.y += text_layout.dimensions.y;
+        }
+
+        draw_radio_buttons(assets,
+                chess,
+                &renderer,
+                &top_left,
+                TIMER_COUNT,
+                chess->settings.timer,
+                timer_strings,
+                BUTTON_1_MIN);
 
         {
             top_left.y += 20;
