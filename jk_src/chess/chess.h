@@ -40,6 +40,10 @@ typedef enum SoundIndex {
     SOUND_NONE,
     SOUND_MOVE,
     SOUND_CAPTURE,
+    SOUND_CHECK,
+    SOUND_DRAW,
+    SOUND_WIN,
+    SOUND_LOSE,
 
     SOUND_COUNT,
 } SoundIndex;
@@ -169,7 +173,7 @@ typedef enum Screen {
 
 typedef enum Timer {
     TIMER_1_MIN,
-    TIMER_5_MIN,
+    TIMER_3_MIN,
     TIMER_10_MIN,
     TIMER_30_MIN,
 
@@ -186,7 +190,7 @@ typedef enum ButtonId {
     BUTTON_YOU,
     BUTTON_AI,
     BUTTON_1_MIN,
-    BUTTON_5_MIN,
+    BUTTON_3_MIN,
     BUTTON_10_MIN,
     BUTTON_30_MIN,
 

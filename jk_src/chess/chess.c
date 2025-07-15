@@ -94,7 +94,7 @@ static JkBuffer wtf5_fen = JKSI("r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2
 
 static JkBuffer wtf9_fen = JKSI("r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2");
 
-static JkBuffer king_fight_fen = JKSI("8/8/8/4k3/8/8/8/4K3 w - - 0 1");
+static JkBuffer king_fight_fen = JKSI("8/8/8/4k3/8/8/8/3QK3 w - - 0 1");
 
 static char debug_print_buffer[4096];
 
@@ -267,9 +267,9 @@ static JkBuffer team_choice_strings[TEAM_CHOICE_COUNT] = {
 static JkBuffer opponent_type_strings[PLAYER_TYPE_COUNT] = {JKSI("You"), JKSI("AI")};
 
 static JkBuffer timer_strings[TIMER_COUNT] = {
-    JKSI("1 min"), JKSI("5 min"), JKSI("10 min"), JKSI("30 min")};
+    JKSI("1 min"), JKSI("3 min"), JKSI("10 min"), JKSI("30 min")};
 
-static int64_t timer_minutes[TIMER_COUNT] = {1, 5, 10, 30};
+static int64_t timer_minutes[TIMER_COUNT] = {1, 3, 10, 30};
 
 static b32 square_available(Board board, JkIntVector2 square)
 {
@@ -1746,8 +1746,6 @@ void update(ChessAssets *assets, Chess *chess)
             } else { // Make a move
                 chess->time_move_prev = chess->time;
                 chess->piece_prev_type = board_piece_get_index(chess->board, move.dest).type;
-                chess->audio.sound = chess->piece_prev_type ? SOUND_CAPTURE : SOUND_MOVE;
-                chess->audio.sound_started_time = chess->audio.time;
 
                 if (chess->turn_index) {
                     chess->os_time_player[board_current_team_get(chess->board)] -=
@@ -1765,21 +1763,39 @@ void update(ChessAssets *assets, Chess *chess)
                 Team current_team = board_current_team_get(chess->board);
                 moves_get(&chess->moves, chess->board);
 
-                if (!chess->moves.count) {
-                    Team victor = !current_team;
-                    uint64_t threatened = board_threats_get(chess->board, victor).bitfield;
-                    uint8_t king_index = 0;
-                    for (uint8_t square_index = 0; square_index < 64; square_index++) {
-                        Piece piece = board_piece_get_index(chess->board, square_index);
-                        if (piece.type == KING && piece.team == current_team) {
-                            king_index = square_index;
-                            break;
-                        }
+                uint8_t king_index = 0;
+                for (uint8_t square_index = 0; square_index < 64; square_index++) {
+                    Piece piece = board_piece_get_index(chess->board, square_index);
+                    if (piece.type == KING && piece.team == current_team) {
+                        king_index = square_index;
+                        break;
                     }
-
-                    chess->result =
-                            (threatened >> king_index) & 1 ? RESULT_CHECKMATE : RESULT_STALEMATE;
                 }
+                b32 in_check =
+                        (board_threats_get(chess->board, !current_team).bitfield >> king_index) & 1;
+
+                if (!chess->moves.count) {
+                    chess->result = in_check ? RESULT_CHECKMATE : RESULT_STALEMATE;
+                }
+
+                SoundIndex sound;
+                if (chess->result) {
+                    if (chess->result == RESULT_STALEMATE) {
+                        sound = SOUND_DRAW;
+                    } else if (chess->perspective == current_team) {
+                        sound = SOUND_LOSE;
+                    } else {
+                        sound = SOUND_WIN;
+                    }
+                } else if (in_check) {
+                    sound = SOUND_CHECK;
+                } else if (chess->piece_prev_type) {
+                    sound = SOUND_CAPTURE;
+                } else {
+                    sound = SOUND_MOVE;
+                }
+                chess->audio.sound = sound;
+                chess->audio.sound_started_time = chess->audio.time;
             }
         }
     } break;
@@ -2518,7 +2534,7 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
 
-        JkVector2 top_left = {(640 - MENU_WIDTH) / 2, 32};
+        JkVector2 top_left = {(640 - MENU_WIDTH) / 2, 98.88f};
 
         {
             JkBuffer text = JKS("Close menu");

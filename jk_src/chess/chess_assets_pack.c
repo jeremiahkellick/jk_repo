@@ -16,6 +16,10 @@ char *sound_file_paths[SOUND_COUNT] = {
     0, // SOUND_NONE
     "../jk_assets/chess/move.wav",
     "../jk_assets/chess/capture.wav",
+    "../jk_assets/chess/check.wav",
+    "../jk_assets/chess/draw.wav",
+    "../jk_assets/chess/win.wav",
+    "../jk_assets/chess/lose.wav",
 };
 
 static JkFloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string, uint64_t *pos)
