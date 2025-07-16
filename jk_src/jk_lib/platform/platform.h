@@ -83,13 +83,7 @@ typedef struct JkPlatformArena {
     uint8_t *address;
 } JkPlatformArena;
 
-typedef enum JkPlatformArenaInitResult {
-    JK_PLATFORM_ARENA_INIT_SUCCESS,
-    JK_PLATFORM_ARENA_INIT_FAILURE,
-} JkPlatformArenaInitResult;
-
-JK_PUBLIC JkPlatformArenaInitResult jk_platform_arena_init(
-        JkPlatformArena *arena, uint64_t virtual_size);
+JK_PUBLIC b32 jk_platform_arena_init(JkPlatformArena *arena, uint64_t virtual_size);
 
 JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena);
 
@@ -97,12 +91,7 @@ JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, uint64_t size);
 
 JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, uint64_t size);
 
-typedef enum JkPlatformArenaPopResult {
-    JK_PLATFORM_ARENA_POP_SUCCESS,
-    JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS,
-} JkPlatformArenaPopResult;
-
-JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size);
+JK_PUBLIC b32 jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size);
 
 JK_PUBLIC void *jk_platform_arena_pointer_get(JkPlatformArena *arena);
 

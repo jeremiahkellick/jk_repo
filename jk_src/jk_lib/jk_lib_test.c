@@ -116,8 +116,7 @@ int main(void)
 
     size_t page_size = jk_platform_page_size();
     JkPlatformArena arena;
-    JkPlatformArenaInitResult result = jk_platform_arena_init(&arena, page_size * 3);
-    if (result == JK_PLATFORM_ARENA_INIT_FAILURE) {
+    if (!jk_platform_arena_init(&arena, page_size * 3)) {
         perror("jk_platform_arena_init");
         return 1;
     }
@@ -145,9 +144,8 @@ int main(void)
     JK_ASSERT(push3 == NULL);
     JK_ASSERT(size_before == size_after);
 
-    JK_ASSERT(jk_platform_arena_pop(&arena, page_size * 2) == JK_PLATFORM_ARENA_POP_SUCCESS);
-    JK_ASSERT(jk_platform_arena_pop(&arena, page_size * 2)
-            == JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS);
+    JK_ASSERT(jk_platform_arena_pop(&arena, page_size * 2));
+    JK_ASSERT(!jk_platform_arena_pop(&arena, page_size * 2));
 
     jk_platform_arena_terminate(&arena);
     // ---- Arena end ----------------------------------------------------------

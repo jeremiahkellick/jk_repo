@@ -442,8 +442,7 @@ _STATIC_ASSERT(0 && "Unknown ISA");
 
 // ---- Arena begin ------------------------------------------------------------
 
-JK_PUBLIC JkPlatformArenaInitResult jk_platform_arena_init(
-        JkPlatformArena *arena, uint64_t virtual_size)
+JK_PUBLIC b32 jk_platform_arena_init(JkPlatformArena *arena, uint64_t virtual_size)
 {
     uint64_t page_size = jk_platform_page_size();
 
@@ -453,13 +452,13 @@ JK_PUBLIC JkPlatformArenaInitResult jk_platform_arena_init(
 
     arena->address = jk_platform_memory_reserve(virtual_size);
     if (!arena->address) {
-        return JK_PLATFORM_ARENA_INIT_FAILURE;
+        return 0;
     }
     if (!jk_platform_memory_commit(arena->address, page_size)) {
-        return JK_PLATFORM_ARENA_INIT_FAILURE;
+        return 0;
     }
 
-    return JK_PLATFORM_ARENA_INIT_SUCCESS;
+    return 1;
 }
 
 JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena)
@@ -492,13 +491,13 @@ JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, uint64_t siz
     return pointer;
 }
 
-JK_PUBLIC JkPlatformArenaPopResult jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size)
+JK_PUBLIC b32 jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size)
 {
     if (size > arena->pos) {
-        return JK_PLATFORM_ARENA_POP_TRIED_TO_POP_MORE_THAN_POS;
+        return 0;
     }
     arena->pos -= size;
-    return JK_PLATFORM_ARENA_POP_SUCCESS;
+    return 1;
 }
 
 JK_PUBLIC void jk_platform_arena_clear(JkPlatformArena *arena)
