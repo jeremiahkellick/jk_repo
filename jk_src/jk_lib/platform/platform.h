@@ -62,6 +62,8 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command);
 
 JK_PUBLIC void jk_platform_sleep(uint64_t milliseconds);
 
+JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path);
+
 // ---- OS functions end -------------------------------------------------------
 
 // ---- ISA functions begin ----------------------------------------------------

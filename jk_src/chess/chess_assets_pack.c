@@ -48,7 +48,7 @@ static JkFloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string,
     return result;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
@@ -339,8 +339,37 @@ int main(void)
         }
     }
 
-    FILE *assets_file = fopen("chess_assets", "wb");
-    fwrite(storage.address, storage.pos, 1, assets_file);
+    // Write as binary file to build/chess_assets
+    FILE *binary_file = fopen("chess_assets", "wb");
+    fwrite(storage.address, storage.pos, 1, binary_file);
+    fclose(binary_file);
+
+    // Write as C byte array to jk_gen/chess/assets.c
+    jk_platform_ensure_directory_exists("../jk_gen/chess/");
+    char *assets_file_name = "../jk_gen/chess/assets.c";
+    FILE *assets_file = fopen(assets_file_name, "wb");
+    if (!assets_file) {
+        fprintf(stderr,
+                "%s: Failed to open file '%s': %s\n",
+                argv[0],
+                assets_file_name,
+                strerror(errno));
+        exit(1);
+    }
+
+    fprintf(assets_file,
+            "JK_PUBLIC char chess_assets_byte_array[%llu] = {\n",
+            (long long unsigned)storage.pos);
+    uint64_t byte_index = 0;
+    while (byte_index < storage.pos) {
+        fprintf(assets_file, "   ");
+        for (uint32_t i = 0; i < 16 && byte_index < storage.pos; i++) {
+            fprintf(assets_file, " 0x%02x,", (uint32_t)storage.address[byte_index++]);
+        }
+        fprintf(assets_file, "\n");
+    }
+    fprintf(assets_file, "};\n");
+
     fclose(assets_file);
 
     return 0;

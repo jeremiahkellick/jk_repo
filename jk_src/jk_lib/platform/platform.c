@@ -274,6 +274,32 @@ JK_PUBLIC void jk_platform_sleep(uint64_t milliseconds)
     Sleep(milliseconds);
 }
 
+JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
+{
+    char buffer[MAX_PATH];
+
+    size_t length = strlen(directory_path);
+    size_t i = 0;
+    if (directory_path[i] == '/') {
+        i++; // Skip leading slash which indicates an absolute path
+    }
+    while (i < length) {
+        while (i < length && directory_path[i] != '/') {
+            i++;
+        }
+        memcpy(buffer, directory_path, i);
+        buffer[i] = '\0';
+
+        if (!CreateDirectoryA(buffer, 0) && GetLastError() != ERROR_ALREADY_EXISTS) {
+            return 0;
+        }
+
+        i++;
+    }
+
+    return 1;
+}
+
 #else
 
 #include <stdio.h>

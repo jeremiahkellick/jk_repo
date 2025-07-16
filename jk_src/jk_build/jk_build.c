@@ -329,6 +329,7 @@ static void ensure_directory_exists(char *directory_path)
 
 static char const jk_build_string[] = "jk_build";
 static char const jk_src_string[] = JK_SRC_STRING_LITERAL;
+static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
 
 static bool parse_files(char *root_file_path,
         StringArray *dependencies,
@@ -531,10 +532,12 @@ static bool parse_files(char *root_file_path,
 
                 if (dependencies_open) {
                     if (path_length < sizeof(jk_src_string) - 1
-                            || !(memcmp(buf, jk_src_string, sizeof(jk_src_string) - 1) == 0)) {
+                            || (!(memcmp(buf, jk_src_string, sizeof(jk_src_string) - 1) == 0)
+                                    && !(memcmp(buf, jk_gen_string, sizeof(jk_gen_string) - 1)
+                                            == 0))) {
                         fprintf(stderr,
                                 "%s: Warning: Tried to use dependencies_begin on an include path "
-                                "that did not start with 'jk_src/', ignoring <%s>\n",
+                                "that did not start with 'jk_src/' or 'jk_gen/', ignoring <%s>\n",
                                 program_name,
                                 buf);
                         goto reset_parse;
