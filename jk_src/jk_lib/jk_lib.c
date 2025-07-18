@@ -12,6 +12,13 @@ JK_PUBLIC void jk_buffer_zero(JkBuffer buffer)
     memset(buffer.data, 0, buffer.size);
 }
 
+JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer)
+{
+    JkBuffer result = {.size = buffer.size, .data = jk_arena_push(arena, buffer.size)};
+    memcpy(result.data, buffer.data, buffer.size);
+    return result;
+}
+
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
 {
     if (string) {
@@ -19,6 +26,14 @@ JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
     } else {
         return (JkBuffer){0};
     }
+}
+
+JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
+{
+    char *result = jk_arena_push(arena, buffer.size + 1);
+    result[buffer.size] = '\0';
+    memcpy(result, buffer.data, buffer.size);
+    return result;
 }
 
 JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
@@ -31,6 +46,21 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
     int c = jk_buffer_character_get(buffer, *pos);
     (*pos)++;
     return c;
+}
+
+JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b)
+{
+    for (uint64_t pos = 0; 1; pos++) {
+        int a_char = jk_buffer_character_get(a, pos);
+        int b_char = jk_buffer_character_get(b, pos);
+        if (a_char < b_char) {
+            return -1;
+        } else if (a_char > b_char) {
+            return 1;
+        } else if (a_char == EOF && b_char == EOF) {
+            return 0;
+        }
+    }
 }
 
 JK_PUBLIC b32 jk_char_is_whitespace(uint8_t c)

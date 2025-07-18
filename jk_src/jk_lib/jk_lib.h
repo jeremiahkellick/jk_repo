@@ -49,6 +49,8 @@ JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
 
 JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
+JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b);
+
 JK_PUBLIC b32 jk_char_is_whitespace(uint8_t c);
 
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string);
@@ -85,6 +87,10 @@ JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
 // ---- Arena end --------------------------------------------------------------
+
+JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer);
+
+JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
 
 // ---- UTF-8 begin ------------------------------------------------------------
 

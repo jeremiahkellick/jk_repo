@@ -3,13 +3,191 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+typedef uint32_t b32;
+
+#define GIGABYTE (1llu << 30)
+
+#define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+#define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
+
+// ---- Buffer begin -----------------------------------------------------------
+
+typedef struct JkBuffer {
+    uint64_t size;
+    uint8_t *data;
+} JkBuffer;
+
+typedef struct JkBufferArray {
+    uint64_t count;
+    JkBuffer *items;
+} JkBufferArray;
+
+#define JK_STRING(string_literal) \
+    ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
+
+#define JKS JK_STRING
+
+#define JK_STRING_INITIALIZER(string_literal)                 \
+    {                                                         \
+        sizeof(string_literal) - 1, (uint8_t *)string_literal \
+    }
+
+#define JKSI JK_STRING_INITIALIZER
+
+static JkBuffer jk_buffer_from_null_terminated(char *string)
+{
+    if (string) {
+        return (JkBuffer){.size = strlen(string), .data = (uint8_t *)string};
+    } else {
+        return (JkBuffer){0};
+    }
+}
+
+static int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
+{
+    return pos < buffer.size ? buffer.data[pos] : EOF;
+}
+
+static int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
+{
+    int c = jk_buffer_character_get(buffer, *pos);
+    (*pos)++;
+    return c;
+}
+
+static int jk_buffer_compare(JkBuffer a, JkBuffer b)
+{
+    for (uint64_t pos = 0; 1; pos++) {
+        int a_char = jk_buffer_character_get(a, pos);
+        int b_char = jk_buffer_character_get(b, pos);
+        if (a_char < b_char) {
+            return -1;
+        } else if (a_char > b_char) {
+            return 1;
+        } else if (a_char == EOF && b_char == EOF) {
+            return 0;
+        }
+    }
+}
+
+static b32 jk_char_is_whitespace(uint8_t c)
+{
+    return c == ' ' || ('\t' <= c && c <= '\r');
+}
+
+static b32 jk_string_contains_whitespace(JkBuffer string)
+{
+    for (uint64_t i = 0; i < string.size; i++) {
+        if (jk_char_is_whitespace(string.data[i])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Returns the index where the search_string appears in the text if found, or -1 if not found
+static int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
+{
+    for (int64_t i = 0; i <= (int64_t)text.size - (int64_t)search_string.size; i++) {
+        b32 match = 1;
+        for (int64_t j = 0; j < (int64_t)search_string.size; j++) {
+            if (text.data[i + j] != search_string.data[j]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+// ---- Buffer end -------------------------------------------------------------
+
+// ---- Arena begin ------------------------------------------------------------
+
+typedef struct JkArenaRoot {
+    JkBuffer memory;
+} JkArenaRoot;
+
+typedef struct JkArena {
+    uint64_t base;
+    uint64_t pos;
+    JkArenaRoot *root;
+    b32 (*grow)(struct JkArena *arena, uint64_t new_size);
+} JkArena;
+
+static b32 jk_arena_valid(JkArena *arena)
+{
+    return !!arena->root;
+}
+
+static void *jk_arena_push(JkArena *arena, uint64_t size)
+{
+    uint64_t new_pos = arena->pos + size;
+    if (arena->root->memory.size < new_pos) {
+        if (!arena->grow(arena, new_pos)) {
+            return NULL;
+        }
+    }
+    void *address = arena->root->memory.data + arena->pos;
+    arena->pos = new_pos;
+    return address;
+}
+
+static void *jk_arena_push_zero(JkArena *arena, uint64_t size)
+{
+    void *address = jk_arena_push(arena, size);
+    memset(address, 0, size);
+    return address;
+}
+
+static void jk_arena_pop(JkArena *arena, uint64_t size)
+{
+    arena->pos -= size;
+}
+
+static JkArena jk_arena_child_get(JkArena *parent)
+{
+    return (JkArena){
+        .base = parent->pos,
+        .pos = parent->pos,
+        .root = parent->root,
+        .grow = parent->grow,
+    };
+}
+
+static void *jk_arena_pointer_current(JkArena *arena)
+{
+    return arena->root->memory.data + arena->pos;
+}
+
+// ---- Arena end --------------------------------------------------------------
+
+static JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer)
+{
+    JkBuffer result = {.size = buffer.size, .data = jk_arena_push(arena, buffer.size)};
+    memcpy(result.data, buffer.data, buffer.size);
+    return result;
+}
+
+static char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
+{
+    char *result = jk_arena_push(arena, buffer.size + 1);
+    result[buffer.size] = '\0';
+    memcpy(result, buffer.data, buffer.size);
+    return result;
+}
 
 #ifdef _WIN32
 
@@ -24,132 +202,165 @@
 #define mkdir(path, mode) _mkdir(path)
 #define realpath(N, R) _fullpath(R, N, PATH_MAX)
 
-#else // If not Windows, assume Unix
+static size_t jk_platform_file_size(char *file_name)
+{
+    struct __stat64 info = {0};
+    if (_stat64(file_name, &info)) {
+        fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
+        return 0;
+    }
+    return (size_t)info.st_size;
+}
 
-#include <sys/wait.h>
-#include <unistd.h>
+static size_t jk_platform_page_size(void)
+{
+    return 4096;
+}
 
-#endif
+static void *jk_platform_memory_reserve(size_t size)
+{
+    return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+}
 
-#define ARRAY_MAX 255
+static b32 jk_platform_memory_commit(void *address, size_t size)
+{
+    return VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
+}
 
-typedef enum Compiler {
-    COMPILER_NONE,
-    COMPILER_GCC,
-    COMPILER_MSVC,
-    COMPILER_TCC,
-    COMPILER_CLANG,
-} Compiler;
+static void jk_platform_memory_free(void *address, size_t size)
+{
+    // TODO: Consider how to deal with different freeing behavior between Windows and Unix
+    VirtualFree(address, 0, MEM_RELEASE);
+}
 
-/** argv[0] */
-static char *program_name = NULL;
-/** Absolute path of source file passed in as argv[1] */
-static char source_file_path[PATH_MAX] = {0};
-/** Basename of source file without extension */
-static char basename[PATH_MAX] = {0};
-/** jk_repo/ */
-static char root_path[PATH_MAX] = {0};
-static size_t root_path_length = 0;
-/** jk_repo/build/ */
-static char build_path[PATH_MAX] = {0};
-
-#ifdef _WIN32
-static void windows_print_last_error_and_exit(void)
+static void jk_windows_print_last_error(void)
 {
     DWORD error_code = GetLastError();
     if (error_code == 0) {
         fprintf(stderr, "Unknown error\n");
     } else {
-        char message_buf[PATH_MAX] = {'\0'};
+        char message_buf[MAX_PATH] = {'\0'};
         FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                 NULL,
                 error_code,
                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                 message_buf,
-                PATH_MAX - 1,
+                MAX_PATH - 1,
                 NULL);
         fprintf(stderr, "%s", message_buf);
     }
-    exit(1);
-}
-#endif
-
-typedef struct StringArray {
-    int count;
-    char *items[ARRAY_MAX + 1];
-} StringArray;
-
-static void array_concat(StringArray *array, int count, char **items)
-{
-    if (array->count + count > ARRAY_MAX) {
-        fprintf(stderr, "%s: ARRAY_MAX (%d) exceeded\n", program_name, ARRAY_MAX);
-        exit(1);
-    }
-    for (int i = 0; i < count; i++) {
-        array->items[array->count++] = items[i];
-    }
 }
 
-/**
- * Append strings onto a StringArray
- *
- * @param array Array to append onto
- * @param ... Any number of 'char *'s to append
- */
-#define array_append(array, ...) \
-    array_concat(                \
-            array, (sizeof((char *[]){__VA_ARGS__}) / sizeof(char *)), ((char *[]){__VA_ARGS__}))
-
-#ifdef _WIN32
-static bool contains_whitespace(char *string)
+static int jk_platform_exec(JkBufferArray command)
 {
-    for (char *c = string; *c != '\0'; c++) {
-        if (isspace(*c)) {
-            return true;
-        }
+    static char command_buffer[4096];
+
+    if (!command.count) {
+        fprintf(stderr, "jk_platform_exec: Received an empty command\n");
+        return 1;
     }
-    return false;
-}
-#endif
-
-static int command_run(StringArray *command)
-{
-#ifdef _WIN32
-
-#define BUFFER_SIZE 4096
 
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
-    char command_string[BUFFER_SIZE];
     int string_i = 0;
-    for (int args_i = 0; args_i < command->count; args_i++) {
-        string_i += snprintf(&command_string[string_i],
-                BUFFER_SIZE - string_i,
-                contains_whitespace(command->items[args_i]) ? "%s\"%s\"" : "%s%s",
+    for (int args_i = 0; args_i < command.count; args_i++) {
+        string_i += snprintf(&command_buffer[string_i],
+                JK_ARRAY_COUNT(command_buffer) - string_i,
+                jk_string_contains_whitespace(command.items[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
                 args_i == 0 ? "" : " ",
-                command->items[args_i]);
-        if (string_i >= BUFFER_SIZE) {
-            fprintf(stderr, "%s: Insufficient BUFFER_SIZE\n", program_name);
-            exit(1);
+                (int)command.items[args_i].size,
+                command.items[args_i].data);
+        if (string_i >= JK_ARRAY_COUNT(command_buffer)) {
+            fprintf(stderr, "jk_platform_exec: Insufficient buffer size\n");
+            return 1;
         }
     }
 
-    printf("%s\n", command_string);
+    printf("%s\n", command_buffer);
 
-    if (!CreateProcessA(NULL, command_string, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-        fprintf(stderr, "%s: Could not run '%s': ", program_name, command->items[0]);
-        windows_print_last_error_and_exit();
+    if (!CreateProcessA(NULL, command_buffer, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        fprintf(stderr,
+                "jk_platform_exec: Could not run '%.*s': ",
+                (int)command.items[0].size,
+                command.items[0].data);
+        jk_windows_print_last_error();
+        return 1;
     }
     CloseHandle(pi.hThread);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD exit_status;
     if (!GetExitCodeProcess(pi.hProcess, &exit_status)) {
-        fprintf(stderr, "%s: Could not get exit status of '%s': ", program_name, command->items[0]);
-        windows_print_last_error_and_exit();
+        fprintf(stderr,
+                "jk_platform_exec: Could not get exit status of '%.*s': ",
+                (int)command.items[0].size,
+                command.items[0].data);
+        jk_windows_print_last_error();
+        exit_status = 1;
     }
     CloseHandle(pi.hProcess);
     return (int)exit_status;
-#else
+}
+
+static JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
+{
+    FILE *file = fopen(file_name, "rb");
+    if (!file) {
+        fprintf(stderr,
+                "jk_platform_file_read_full: Failed to open file '%s': %s\n",
+                file_name,
+                strerror(errno));
+        exit(1);
+    }
+
+    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
+    buffer.data = jk_arena_push(arena, buffer.size);
+    if (!buffer.data) {
+        fprintf(stderr,
+                "jk_platform_file_read_full: Failed to allocate memory for file '%s'\n",
+                file_name);
+        exit(1);
+    }
+
+    if (fread(buffer.data, buffer.size, 1, file) != 1) {
+        fprintf(stderr, "jk_platform_file_read_full: fread failed\n");
+        exit(1);
+    }
+
+    fclose(file);
+    return buffer;
+}
+
+#else // If not Windows, assume Unix
+
+#include <sys/wait.h>
+#include <unistd.h>
+
+static size_t jk_platform_page_size(void)
+{
+    static size_t page_size = 0;
+    if (page_size == 0) {
+        page_size = getpagesize();
+    }
+    return page_size;
+}
+
+static void *jk_platform_memory_reserve(size_t size)
+{
+    return mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+}
+
+static b32 jk_platform_memory_commit(void *address, size_t size)
+{
+    return !mprotect(address, size, PROT_READ | PROT_WRITE);
+}
+
+static void jk_platform_memory_free(void *address, size_t size)
+{
+    munmap(address, size);
+}
+
+static int command_run(StringArray *command)
+{
     // Print command
     for (int i = 0; i < command->count; i++) {
         if (i != 0) {
@@ -183,37 +394,230 @@ static int command_run(StringArray *command)
                 strerror(errno));
         exit(1);
     }
-#endif
 }
 
-/** Replace all instances of \ with / in the given null terminated string */
-static void path_to_forward_slashes(char *path)
+#endif
+
+static size_t jk_platform_page_size_round_up(size_t n)
 {
-    for (int i = 0; path[i] != '\0'; i++) {
-        if (path[i] == '\\') {
-            path[i] = '/';
+    size_t page_size = jk_platform_page_size();
+    return (n + page_size - 1) & ~(page_size - 1);
+}
+
+// ---- Virtual arena begin ------------------------------------------------------------
+
+typedef struct JkPlatformArenaVirtualRoot {
+    JkArenaRoot generic;
+    uint64_t virtual_size;
+} JkPlatformArenaVirtualRoot;
+
+static JkArena jk_platform_arena_virtual_init(
+        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size);
+
+static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
+{
+    JkPlatformArenaVirtualRoot *root = (JkPlatformArenaVirtualRoot *)arena->root;
+    new_size = jk_platform_page_size_round_up(new_size);
+    if (root->virtual_size < new_size) {
+        return 0;
+    } else {
+        uint64_t expansion_size = new_size - root->generic.memory.size;
+        if (jk_platform_memory_commit(
+                    root->generic.memory.data + root->generic.memory.size, expansion_size)) {
+            root->generic.memory.size = new_size;
+            return 1;
+        } else {
+            return 0;
         }
     }
 }
 
-/** Populates globals source_file_path, basename, root_path, and build_path */
-static void populate_paths(char *source_file_arg)
+static JkArena jk_platform_arena_virtual_init(
+        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size)
 {
+    uint64_t page_size = jk_platform_page_size();
+
+    root->virtual_size = virtual_size;
+    root->generic.memory.size = page_size;
+    root->generic.memory.data = jk_platform_memory_reserve(virtual_size);
+    if (!root->generic.memory.data) {
+        return (JkArena){0};
+    }
+    if (!jk_platform_memory_commit(root->generic.memory.data, page_size)) {
+        return (JkArena){0};
+    }
+
+    return (JkArena){
+        .root = &root->generic,
+        .grow = jk_platform_arena_virtual_grow,
+    };
+}
+
+// ---- Virtual arena end --------------------------------------------------------------
+
+typedef struct StringNode {
+    JkBuffer string;
+    struct StringNode *previous;
+} StringNode;
+
+typedef struct StringArrayBuilder {
+    JkArena *arena;
+    StringNode tail;
+    uint64_t count;
+} StringArrayBuilder;
+
+static void string_array_builder_init(StringArrayBuilder *b, JkArena *arena)
+{
+    b->arena = arena;
+    b->tail = (StringNode){0};
+    b->count = 0;
+}
+
+static void string_array_builder_push(StringArrayBuilder *b, JkBuffer string)
+{
+    StringNode *node = jk_arena_push(b->arena, sizeof(*node));
+    node->string = string;
+    node->previous = b->tail.previous;
+    b->tail.previous = node;
+    b->count++;
+}
+
+static void string_array_builder_push_multiple(StringArrayBuilder *b, JkBufferArray strings)
+{
+    for (uint64_t i = 0; i < strings.count; i++) {
+        string_array_builder_push(b, strings.items[i]);
+    }
+}
+
+static void string_array_builder_push_null_terminated(StringArrayBuilder *b, char *string)
+{
+    string_array_builder_push(b, jk_buffer_from_null_terminated(string));
+}
+
+static void string_array_builder_push_null_terminated_multiple(
+        StringArrayBuilder *b, uint64_t count, char **strings)
+{
+    for (uint64_t i = 0; i < count; i++) {
+        string_array_builder_push_null_terminated(b, strings[i]);
+    }
+}
+
+static void string_array_builder_concat(StringArrayBuilder *dest, StringArrayBuilder *src)
+{
+    StringNode *head = &src->tail;
+    while (head->previous) {
+        head = head->previous;
+    }
+    head->previous = dest->tail.previous;
+    dest->tail.previous = src->tail.previous;
+    dest->count += src->count;
+}
+
+static JkBufferArray string_array_builder_build(StringArrayBuilder *b)
+{
+    JkBufferArray result = {
+        .count = b->count,
+        .items = jk_arena_push(b->arena, b->count * sizeof(result.items[0])),
+    };
+    int64_t i = result.count;
+    for (StringNode *node = b->tail.previous; node; node = node->previous) {
+        result.items[--i] = node->string;
+    }
+    return result;
+}
+
+static b32 string_array_builder_contains(StringArrayBuilder *b, JkBuffer search_string)
+{
+    for (StringNode *node = b->tail.previous; node; node = node->previous) {
+        if (jk_buffer_compare(node->string, search_string) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static JkBuffer string_array_builder_at_index(StringArrayBuilder *b, uint64_t index)
+{
+    if (b->count <= index) {
+        return (JkBuffer){0};
+    }
+
+    uint64_t step_count = b->count - index;
+    StringNode *node = b->tail.previous;
+    while (--step_count) {
+        node = node->previous;
+    }
+    return node->string;
+}
+
+#define append(string_array_builder, ...)                                    \
+    string_array_builder_push_null_terminated_multiple(string_array_builder, \
+            sizeof((char *[]){__VA_ARGS__}) / sizeof(char *),                \
+            (char *[]){__VA_ARGS__})
+
+static JkBuffer concat_strings(JkArena *arena, JkBuffer a, JkBuffer b)
+{
+    JkBuffer result;
+    result.size = a.size + b.size;
+    result.data = jk_arena_push(arena, result.size);
+    memcpy(result.data, a.data, a.size);
+    memcpy(result.data + a.size, b.data, b.size);
+    return result;
+}
+
+static void back_slashes_to_forward_slashes(JkBuffer string)
+{
+    for (uint64_t i = 0; i < string.size; i++) {
+        if (string.data[i] == '\\') {
+            string.data[i] = '/';
+        }
+    }
+}
+
+typedef enum Compiler {
+    COMPILER_NONE,
+    COMPILER_GCC,
+    COMPILER_MSVC,
+    COMPILER_TCC,
+    COMPILER_CLANG,
+} Compiler;
+
+typedef enum JkBuildMode {
+    JK_BUILD_DEBUG,
+    JK_BUILD_OPTIMIZED,
+    JK_BUILD_RELEASE,
+} JkBuildMode;
+
+typedef struct Paths {
+    JkBuffer source_file;
+    JkBuffer basename;
+    JkBuffer repo_root;
+    JkBuffer build;
+} Paths;
+
+/** argv[0] */
+static char *program_name = NULL;
+
+/** Populates globals source_file_path, basename, root_path, and build_path */
+static Paths paths_get(JkArena *arena, char *source_file_arg)
+{
+    Paths paths;
+
     // Get absolute path of the source file
-    char *realpath_result = realpath(source_file_arg, source_file_path);
-    if (realpath_result == NULL) {
+    paths.source_file = jk_buffer_from_null_terminated(
+            realpath(source_file_arg, jk_arena_push(arena, PATH_MAX)));
+    if (!paths.source_file.size) {
         fprintf(stderr, "%s: Invalid source file path '%s'\n", program_name, source_file_arg);
         exit(1);
     }
+    back_slashes_to_forward_slashes(paths.source_file);
 
     // Find basename
-    size_t length = strlen(source_file_path);
-    size_t last_component = 0;
-    size_t last_dot = 0;
-    for (size_t i = 0; i < length; i++) {
-        switch (source_file_path[i]) {
+    uint64_t last_component = 0;
+    uint64_t last_dot = 0;
+    for (uint64_t i = 0; i < paths.source_file.size; i++) {
+        switch (paths.source_file.data[i]) {
         case '/':
-        case '\\':
             last_component = i + 1;
             break;
         case '.':
@@ -223,41 +627,34 @@ static void populate_paths(char *source_file_arg)
             break;
         }
     }
-    if (last_component == length) {
+    if (last_component == paths.source_file.size) {
         fprintf(stderr, "%s: Invalid source file path '%s'\n", program_name, source_file_arg);
         exit(1);
     }
     if (last_dot == 0 || last_dot <= last_component) {
-        last_dot = length;
+        last_dot = paths.source_file.size;
     }
-    strncpy(basename, &source_file_path[last_component], last_dot - last_component);
+    paths.basename.size = last_dot - last_component;
+    paths.basename.data = paths.source_file.data + last_component;
 
     // Find repository root path
-    char *jk_src = strstr(source_file_path, "jk_src");
-    if (jk_src == NULL) {
+    int64_t jk_src_offset = jk_string_find(paths.source_file, JKS("jk_src"));
+    if (jk_src_offset == -1) {
         fprintf(stderr,
                 "%s: File '%s' not located under the jk_src directory\n",
                 program_name,
                 source_file_arg);
         exit(1);
     }
-    root_path_length = jk_src - source_file_path;
-    strncpy(root_path, source_file_path, root_path_length);
+    paths.repo_root.size = (uint64_t)jk_src_offset;
+    paths.repo_root.data = paths.source_file.data;
 
-    // Append "build" to the repository root path to make the build path
-    if (root_path_length > PATH_MAX - 32) {
-        fprintf(stderr, "%s: Maximum repository root path length exceeded\n", program_name);
-        exit(1);
-    }
-    strcpy(build_path, root_path);
-    strcat(build_path, "build");
+    paths.build = concat_strings(arena, paths.repo_root, JKS("build"));
 
-    path_to_forward_slashes(source_file_path);
-    path_to_forward_slashes(root_path);
-    path_to_forward_slashes(build_path);
+    return paths;
 }
 
-static bool is_space_exclude_newlines(int c)
+static b32 is_space_exclude_newlines(int c)
 {
     // We don't consider carraige returns and newlines because none of the things we're parsing are
     // allowed to span multiple lines.
@@ -266,49 +663,58 @@ static bool is_space_exclude_newlines(int c)
     case '\t':
     case '\v':
     case '\f':
-        return true;
+        return 1;
     default:
-        return false;
+        return 0;
     }
 }
 
-static int next_nonspace(FILE *file)
+static int next_nonspace(JkBuffer file, uint64_t *cursor)
 {
     int c;
     do {
-        c = getc(file);
+        c = jk_buffer_character_next(file, cursor);
     } while (is_space_exclude_newlines(c));
     return c;
 }
 
-static bool compare_case_insensitive(char *a, char *b)
+static b32 compare_case_insensitive(char *a, char *b)
 {
     if (!(a && b)) {
-        return false;
+        return 0;
     }
     int i;
     for (i = 0; a[i] != '\0' && b[i] != '\0'; i++) {
         if (tolower(a[i]) != tolower(b[i])) {
-            return false;
+            return 0;
         }
     }
     return a[i] == '\0' && b[i] == '\0';
 }
 
-static void ensure_directory_exists(char *directory_path)
+static void ensure_directory_exists(JkBuffer directory_path)
 {
     char buffer[PATH_MAX];
 
-    size_t length = strlen(directory_path);
-    size_t i = 0;
-    if (directory_path[i] == '/') {
+    if (!directory_path.size) {
+        fprintf(stderr, "%s: Attempted to create directory with empty name\n", program_name);
+        exit(1);
+    }
+
+    if (PATH_MAX <= directory_path.size) {
+        fprintf(stderr, "%s: Attempted to create path with too long a name\n", program_name);
+        exit(1);
+    }
+
+    uint64_t i = 0;
+    if (directory_path.data[i] == '/') {
         i++; // Skip leading slash which indicates an absolute path
     }
-    while (i < length) {
-        while (i < length && directory_path[i] != '/') {
+    while (i < directory_path.size) {
+        while (i < directory_path.size && directory_path.data[i] != '/') {
             i++;
         }
-        memcpy(buffer, directory_path, i);
+        memcpy(buffer, directory_path.data, i);
         buffer[i] = '\0';
 
         if (mkdir(buffer, 0755) == -1 && errno != EEXIST) {
@@ -327,38 +733,38 @@ static void ensure_directory_exists(char *directory_path)
 #define JK_SRC_STRING_LITERAL "jk_src/"
 #define JK_GEN_STRING_LITERAL "jk_gen/"
 
-static char const jk_build_string[] = "jk_build";
-static char const jk_src_string[] = JK_SRC_STRING_LITERAL;
-static char const jk_gen_string[] = JK_GEN_STRING_LITERAL;
+static JkBuffer jk_build_string = JKSI("jk_build");
+static JkBuffer jk_src_string = JKSI(JK_SRC_STRING_LITERAL);
+static JkBuffer jk_gen_string = JKSI(JK_GEN_STRING_LITERAL);
 
-static bool parse_files(char *root_file_path,
-        StringArray *dependencies,
-        StringArray *nasm_files,
-        StringArray *compiler_arguments,
-        StringArray *linker_arguments)
+static b32 parse_files(JkArena *storage,
+        JkArena *scratch_arena,
+        Paths paths,
+        StringArrayBuilder *dependencies,
+        StringArrayBuilder *nasm_files,
+        StringArrayBuilder *compiler_arguments,
+        StringArrayBuilder *linker_arguments)
 {
-    static char buf[PATH_MAX] = {'\0'};
+    b32 single_translation_unit = 0;
 
-    bool dependencies_open = false;
-    bool single_translation_unit = false;
-
-    int path_index = 0;
-    char *path = root_file_path;
+    uint64_t path_index = 0;
+    JkBuffer path = paths.source_file;
     do {
-        FILE *file = fopen(path, "r");
-        if (file == NULL) {
-            fprintf(stderr, "%s: Failed to open '%s': %s\n", program_name, path, strerror(errno));
-            exit(1);
-        }
+        JkArena file_arena = jk_arena_child_get(scratch_arena);
+        JkBuffer file = jk_platform_file_read_full(
+                &file_arena, jk_buffer_to_null_terminated(&file_arena, path));
+
+        uint64_t pos = 0;
+        b32 dependencies_open = 0;
 
         int char1;
-        while ((char1 = getc(file)) != EOF) {
+        while ((char1 = jk_buffer_character_next(file, &pos)) != EOF) {
             int pound;
             if (char1 == '/') { // Parse control comment
-                if (getc(file) != '/') {
+                if (jk_buffer_character_next(file, &pos) != '/') {
                     goto reset_parse;
                 }
-                pound = next_nonspace(file);
+                pound = next_nonspace(file, &pos);
             } else {
                 pound = char1;
             }
@@ -367,26 +773,27 @@ static bool parse_files(char *root_file_path,
                 goto reset_parse;
             }
 
-            // Read control into buf
-            int control_char;
-            size_t control_length = 0;
-            while (!isspace(control_char = getc(file))) {
-                if (control_char == EOF) {
-                    goto end_of_file;
-                }
-                buf[control_length++] = (char)control_char;
-                if (control_length > 32) {
-                    goto reset_parse;
-                }
-            }
-            buf[control_length] = 0;
-
-            int c0 = control_char;
-            while (is_space_exclude_newlines(c0)) {
-                c0 = getc(file);
+            // Read control string
+            JkBuffer control;
+            {
+                uint64_t start = pos;
+                int c;
+                while (!isspace(c = jk_buffer_character_get(file, pos))) {
+                    if (c == EOF) {
+                        goto end_of_file;
+                    }
+                    pos++;
+                };
+                control.size = pos - start;
+                control.data = file.data + start;
             }
 
-            if (char1 == '/' && strcmp(buf, jk_build_string) == 0) {
+            int c0;
+            while (is_space_exclude_newlines(c0 = jk_buffer_character_get(file, pos))) {
+                pos++;
+            }
+
+            if (char1 == '/' && jk_buffer_compare(control, jk_build_string) == 0) {
                 if (c0 == EOF || c0 == '\r' || c0 == '\n') {
                     fprintf(stderr,
                             "%s: Found #jk_build control comment with no command\n",
@@ -395,65 +802,59 @@ static bool parse_files(char *root_file_path,
                     exit(1);
                 }
 
-                // Read command into buf
-                buf[0] = (char)c0;
-                int c;
-                size_t command_length = 1;
-                while (!isspace(c = getc(file)) && c != EOF) {
-                    buf[command_length++] = (char)c;
-                    if (command_length > 32) {
-                        fprintf(stderr,
-                                "%s: #jk_build control comment with unknown command \"%s...\"\n",
-                                program_name,
-                                buf);
-                        exit(1);
+                // Read command
+                JkBuffer command;
+                {
+                    uint64_t start = pos;
+                    int c;
+                    while (!isspace(c = jk_buffer_character_get(file, pos)) && c != EOF) {
+                        pos++;
                     }
+                    command.size = pos - start;
+                    command.data = file.data + start;
                 }
-                buf[command_length] = '\0';
 
-                bool cmd_compiler_arguments = strcmp(buf, "compiler_arguments") == 0;
-                bool cmd_linker_arguments = strcmp(buf, "linker_arguments") == 0;
+                b32 cmd_compiler_arguments =
+                        jk_buffer_compare(command, JKS("compiler_arguments")) == 0;
+                b32 cmd_linker_arguments = jk_buffer_compare(command, JKS("linker_arguments")) == 0;
 
                 if (cmd_compiler_arguments || cmd_linker_arguments) {
                     if (path_index == 0) {
-                        // Read rest of line into buf
-                        size_t pos = 0;
-                        while ((c = getc(file)) != '\n' && c != EOF) {
-                            buf[pos++] = (char)c;
-                            if (pos > PATH_MAX - 1) {
-                                fprintf(stderr,
-                                        "%s: '#jk_build nasm': Path exceeded PATH_MAX\n",
-                                        program_name);
-                                exit(1);
+                        for (;;) {
+                            int a0;
+                            while (is_space_exclude_newlines(
+                                    a0 = jk_buffer_character_get(file, pos))) {
+                                pos++;
                             }
-                        }
-                        buf[pos++] = '\0';
-
-                        char *memory = malloc(sizeof(char) * pos);
-                        if (memory == NULL) {
-                            fprintf(stderr, "%s: Out of memory\n", program_name);
-                            exit(1);
-                        }
-                        memcpy(memory, buf, pos);
-
-                        bool is_start_of_flag = true;
-                        for (size_t i = 0; i < pos; i++) {
-                            if (isspace(memory[i])) {
-                                is_start_of_flag = true;
-                                memory[i] = '\0';
-                            } else if (is_start_of_flag) {
-                                is_start_of_flag = false;
-                                array_append(cmd_compiler_arguments ? compiler_arguments
-                                                                    : linker_arguments,
-                                        &memory[i]);
+                            if (a0 == EOF) {
+                                goto end_of_file;
                             }
+                            if (a0 == '\r' || a0 == '\n') {
+                                break;
+                            }
+
+                            // Read argument
+                            JkBuffer argument;
+                            {
+                                uint64_t start = pos;
+                                int c;
+                                while (!isspace(c = jk_buffer_character_get(file, pos))
+                                        && c != EOF) {
+                                    pos++;
+                                }
+                                argument.size = pos - start;
+                                argument.data = file.data + start;
+                            }
+                            string_array_builder_push(
+                                    cmd_compiler_arguments ? compiler_arguments : linker_arguments,
+                                    jk_buffer_copy(storage, argument));
                         }
                     }
-                } else if (strcmp(buf, "single_translation_unit") == 0) {
+                } else if (jk_buffer_compare(command, JKS("single_translation_unit")) == 0) {
                     if (path_index == 0) {
-                        single_translation_unit = true;
+                        single_translation_unit = 1;
                     }
-                } else if (strcmp(buf, "dependencies_begin") == 0) {
+                } else if (jk_buffer_compare(command, JKS("dependencies_begin")) == 0) {
                     if (dependencies_open) {
                         fprintf(stderr,
                                 "%s: Double '#jk_build dependencies_begin' control comments with "
@@ -461,10 +862,10 @@ static bool parse_files(char *root_file_path,
                                 program_name);
                         exit(1);
                     }
-                    dependencies_open = true;
-                } else if (strcmp(buf, "dependencies_end") == 0) {
+                    dependencies_open = 1;
+                } else if (jk_buffer_compare(command, JKS("dependencies_end")) == 0) {
                     if (dependencies_open) {
-                        dependencies_open = false;
+                        dependencies_open = 0;
                     } else {
                         fprintf(stderr,
                                 "%s: Encountered '#jk_build dependencies_end' control comment when "
@@ -472,106 +873,107 @@ static bool parse_files(char *root_file_path,
                                 program_name);
                         exit(1);
                     }
-                } else if (strcmp(buf, "nasm") == 0) {
-                    if (c == '\n' || c == EOF) {
-                        fprintf(stderr, "%s: '#jk_build nasm' expects a file path\n", program_name);
-                        exit(1);
-                    }
-                    // Read nasm file path into buf
-                    size_t nasm_path_length = 0;
-                    while ((c = getc(file)) != '\n' && c != EOF) {
-                        buf[nasm_path_length++] = (char)c;
-                        if (nasm_path_length > PATH_MAX - 1) {
+                } else if (jk_buffer_compare(command, JKS("nasm")) == 0) {
+                    {
+                        int c;
+                        while (is_space_exclude_newlines(c = jk_buffer_character_get(file, pos))) {
+                            pos++;
+                        }
+                        if (c == '\n' || c == EOF) {
                             fprintf(stderr,
-                                    "%s: '#jk_build nasm': Path exceeded PATH_MAX\n",
+                                    "%s: '#jk_build nasm' expects a file path\n",
                                     program_name);
                             exit(1);
                         }
                     }
-                    buf[nasm_path_length] = '\0';
-                    // Allocate new buffer and write the abolute path of the nasm file to it
-                    char *nasm_path = malloc(root_path_length + nasm_path_length + 1);
-                    if (nasm_path == NULL) {
-                        fprintf(stderr, "%s: Out of memory\n", program_name);
-                        exit(1);
-                    }
-                    memcpy(nasm_path, root_path, root_path_length);
-                    memcpy(nasm_path + root_path_length, buf, nasm_path_length);
-                    nasm_path[root_path_length + nasm_path_length] = '\0';
 
-                    array_append(nasm_files, nasm_path);
+                    // Read nasm file path
+                    JkBuffer nasm_file_path;
+                    {
+                        uint64_t start = pos;
+                        int c;
+                        while ((c = jk_buffer_character_get(file, pos)) != '\n' && c != '\r'
+                                && c != EOF) {
+                            pos++;
+                        }
+                        nasm_file_path.size = pos - start;
+                        nasm_file_path.data = file.data + start;
+                    }
+                    back_slashes_to_forward_slashes(nasm_file_path);
+
+                    string_array_builder_push(
+                            nasm_files, concat_strings(storage, paths.repo_root, nasm_file_path));
                 } else {
                     fprintf(stderr,
-                            "%s: #jk_build control comment with unknown command \"%s\"\n",
+                            "%s: #jk_build control comment with unknown command \"%.*s\"\n",
                             program_name,
-                            buf);
+                            (int)command.size,
+                            command.data);
                     exit(1);
                 }
-            } else if (char1 != '/' && strcmp(buf, "include") == 0) {
+            } else if (char1 != '/' && jk_buffer_compare(control, JKS("include")) == 0) {
                 if (c0 == EOF) {
                     goto end_of_file;
                 } else if (c0 != '<') {
                     goto reset_parse;
                 }
+                pos++;
 
-                // Write path to buf
-                int c;
-                size_t path_length = 0;
-                while ((c = getc(file)) != '>') {
-                    if (c == EOF || c == '\r' || c == '\n') {
-                        goto reset_parse;
-                    }
-                    buf[path_length++] = (char)c;
-                    if (path_length > PATH_MAX - 1) {
-                        fprintf(stderr, "%s: Include path too big for PATH_MAX\n", program_name);
-                        exit(1);
-                    }
-                }
-                buf[path_length] = '\0';
-                path_to_forward_slashes(buf);
-
-                if (dependencies_open) {
-                    if (path_length < sizeof(jk_src_string) - 1
-                            || (!(memcmp(buf, jk_src_string, sizeof(jk_src_string) - 1) == 0)
-                                    && !(memcmp(buf, jk_gen_string, sizeof(jk_gen_string) - 1)
-                                            == 0))) {
-                        fprintf(stderr,
-                                "%s: Warning: Tried to use dependencies_begin on an include path "
-                                "that did not start with 'jk_src/' or 'jk_gen/', ignoring <%s>\n",
-                                program_name,
-                                buf);
-                        goto reset_parse;
-                    }
-
-                    if (buf[path_length - 2] != '.' || buf[path_length - 1] != 'h') {
-                        fprintf(stderr,
-                                "%s: Warning: Tried to use dependencies_begin on an include path "
-                                "that "
-                                "did not end in '.h', ignoring <%s>\n",
-                                program_name,
-                                buf);
-                        goto reset_parse;
-                    }
-                    buf[path_length - 1] = 'c';
-
-                    // Check if already in dependencies
-                    for (int i = 0; i < dependencies->count; i++) {
-                        if (strcmp(buf, dependencies->items[i] + root_path_length) == 0) {
+                // Read path
+                JkBuffer include_path;
+                {
+                    uint64_t start = pos;
+                    int c;
+                    while ((c = jk_buffer_character_get(file, pos)) != '>') {
+                        if (c == EOF) {
+                            goto end_of_file;
+                        }
+                        if (c == '\r' || c == '\n') {
                             goto reset_parse;
                         }
+                        pos++;
+                    }
+                    include_path.size = pos - start;
+                    include_path.data = file.data + start;
+                }
+                back_slashes_to_forward_slashes(include_path);
+
+                if (dependencies_open) {
+                    JkBuffer prefix = {
+                        .size = JK_MIN(include_path.size, jk_src_string.size),
+                        .data = include_path.data,
+                    };
+                    if (jk_buffer_compare(prefix, jk_src_string) != 0
+                            && jk_buffer_compare(prefix, jk_gen_string) != 0) {
+                        fprintf(stderr,
+                                "%s: Warning: Tried to use dependencies_begin on an include path "
+                                "that did not start with 'jk_src/' or 'jk_gen/', ignoring <%.*s>\n",
+                                program_name,
+                                (int)include_path.size,
+                                include_path.data);
+                        goto reset_parse;
                     }
 
-                    // Allocate new buffer and write abolute path of dependency to it
-                    char *dependency_path = malloc(root_path_length + path_length + 1);
-                    if (dependency_path == NULL) {
-                        fprintf(stderr, "%s: Out of memory\n", program_name);
-                        exit(1);
+                    if (include_path.data[include_path.size - 2] != '.'
+                            || include_path.data[include_path.size - 1] != 'h') {
+                        fprintf(stderr,
+                                "%s: Warning: Tried to use dependencies_begin on an include path "
+                                "that did not end in '.h', ignoring <%.*s>\n",
+                                program_name,
+                                (int)include_path.size,
+                                include_path.data);
+                        goto reset_parse;
                     }
-                    memcpy(dependency_path, root_path, root_path_length);
-                    memcpy(dependency_path + root_path_length, buf, path_length);
-                    dependency_path[root_path_length + path_length] = '\0';
 
-                    array_append(dependencies, dependency_path);
+                    // Modify the extension from .h to .c
+                    include_path.data[include_path.size - 1] = 'c';
+
+                    // Check if already in dependencies
+                    if (string_array_builder_contains(dependencies, include_path)) {
+                        goto reset_parse;
+                    }
+
+                    string_array_builder_push(dependencies, jk_buffer_copy(storage, include_path));
                 }
             }
 
@@ -580,7 +982,6 @@ static bool parse_files(char *root_file_path,
         }
 
     end_of_file:
-        fclose(file);
         if (dependencies_open) {
             fprintf(stderr,
                     "%s: '#jk_build dependencies_begin' condition started but never ended. Use "
@@ -589,7 +990,9 @@ static bool parse_files(char *root_file_path,
             exit(1);
         }
 
-        path = dependencies->items[path_index++];
+        path = concat_strings(storage,
+                paths.repo_root,
+                string_array_builder_at_index(dependencies, path_index++));
     } while (path_index <= dependencies->count);
 
     return single_translation_unit;
@@ -602,21 +1005,21 @@ int main(int argc, char **argv)
     // Parse arguments
     Compiler compiler = COMPILER_NONE;
     char *source_file_arg = NULL;
-    bool optimize = false;
-    bool no_profile = false;
+    b32 optimize = 0;
+    b32 no_profile = 0;
     {
-        bool help = false;
-        bool usage_error = false;
-        bool options_ended = false;
+        b32 help = 0;
+        b32 usage_error = 0;
+        b32 options_ended = 0;
         int non_option_arguments = 0;
         for (int i = 1; i < argc; i++) {
             char *compiler_string = NULL;
-            bool expect_compiler_string = false;
+            b32 expect_compiler_string = 0;
 
             if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
                 if (argv[i][1] == '-') {
                     if (argv[i][2] == '\0') { // -- encountered
-                        options_ended = true;
+                        options_ended = 1;
                     } else { // Double hyphen option
                         char *name = &argv[i][2];
                         int end = 0;
@@ -624,7 +1027,7 @@ int main(int argc, char **argv)
                             end++;
                         }
                         if (strncmp(name, "compiler", end) == 0) {
-                            expect_compiler_string = true;
+                            expect_compiler_string = 1;
 
                             if (name[end] == '=') {
                                 if (name[end + 1] != '\0') {
@@ -634,23 +1037,23 @@ int main(int argc, char **argv)
                                 compiler_string = argv[++i];
                             }
                         } else if (strcmp(argv[i], "--help") == 0) {
-                            help = true;
+                            help = 1;
                         } else if (strcmp(argv[i], "--optimize") == 0) {
-                            optimize = true;
+                            optimize = 1;
                         } else if (strcmp(argv[i], "--no-profile") == 0) {
-                            no_profile = true;
+                            no_profile = 1;
                         } else {
                             fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
-                            usage_error = true;
+                            usage_error = 1;
                         }
                     }
                 } else { // Single-hypen option(s)
-                    bool has_argument = false;
+                    b32 has_argument = 0;
                     for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
                         switch (*c) {
                         case 'c': {
-                            has_argument = true;
-                            expect_compiler_string = true;
+                            has_argument = 1;
+                            expect_compiler_string = 1;
                             compiler_string = ++c;
                             if (compiler_string[0] == '\0') {
                                 compiler_string = argv[++i];
@@ -658,7 +1061,7 @@ int main(int argc, char **argv)
                         } break;
 
                         case 'O': {
-                            optimize = true;
+                            optimize = 1;
                         } break;
 
                         default:
@@ -667,7 +1070,7 @@ int main(int argc, char **argv)
                                     program_name,
                                     *c,
                                     argv[i]);
-                            usage_error = true;
+                            usage_error = 1;
                             break;
                         }
                     }
@@ -692,13 +1095,13 @@ int main(int argc, char **argv)
                                 "%s: Option '-c, --compiler' given invalid argument '%s'\n",
                                 argv[0],
                                 compiler_string);
-                        usage_error = true;
+                        usage_error = 1;
                     }
                 } else {
                     fprintf(stderr,
                             "%s: Option '-c, --compiler' missing required argument\n",
                             argv[0]);
-                    usage_error = true;
+                    usage_error = 1;
                 }
             }
         }
@@ -707,7 +1110,7 @@ int main(int argc, char **argv)
                     "%s: Expected 1 non-option argument, got %d\n",
                     program_name,
                     non_option_arguments);
-            usage_error = true;
+            usage_error = 1;
         }
         if (help || usage_error) {
             printf("NAME\n"
@@ -744,172 +1147,224 @@ int main(int argc, char **argv)
         }
     }
 
-    populate_paths(source_file_arg);
+    JkPlatformArenaVirtualRoot storage_root;
+    JkArena storage = jk_platform_arena_virtual_init(&storage_root, 1 * GIGABYTE);
 
-    ensure_directory_exists(build_path);
-    if (chdir(build_path) == -1) {
-        fprintf(stderr,
-                "%s: Failed to change working directory to \"%s\": %s\n",
-                program_name,
-                build_path,
-                strerror(errno));
-        exit(1);
+    JkPlatformArenaVirtualRoot scratch_arena_root;
+    JkArena scratch_arena = jk_platform_arena_virtual_init(&scratch_arena_root, 1 * GIGABYTE);
+
+    StringArrayBuilder dependencies;
+    string_array_builder_init(&dependencies, &storage);
+    StringArrayBuilder nasm_files;
+    string_array_builder_init(&nasm_files, &storage);
+    StringArrayBuilder compiler_arguments;
+    string_array_builder_init(&compiler_arguments, &storage);
+    StringArrayBuilder linker_arguments;
+    string_array_builder_init(&linker_arguments, &storage);
+
+    Paths paths = paths_get(&storage, source_file_arg);
+
+    ensure_directory_exists(paths.build);
+    {
+        JkArena tmp_arena = jk_arena_child_get(&scratch_arena);
+        if (chdir(jk_buffer_to_null_terminated(&tmp_arena, paths.build)) == -1) {
+            fprintf(stderr,
+                    "%s: Failed to change working directory to \"%.*s\": %s\n",
+                    program_name,
+                    (int)paths.build.size,
+                    paths.build.data,
+                    strerror(errno));
+            exit(1);
+        }
     }
 
-    size_t source_file_path_length = strlen(source_file_path);
-    uint8_t is_objective_c_file = source_file_path[source_file_path_length - 1] == 'm';
+    b32 is_objective_c_file = paths.source_file.data[paths.source_file.size - 1] == 'm';
 
-    StringArray dependencies = {0};
-    StringArray nasm_files = {0};
-    StringArray compiler_arguments = {0};
-    StringArray linker_arguments = {0};
-    bool single_translation_unit = parse_files(
-            source_file_path, &dependencies, &nasm_files, &compiler_arguments, &linker_arguments);
+    b32 single_translation_unit = parse_files(&storage,
+            &scratch_arena,
+            paths,
+            &dependencies,
+            &nasm_files,
+            &compiler_arguments,
+            &linker_arguments);
 
-    for (int i = 0; i < nasm_files.count; i++) {
-        char nasm_output_path[PATH_MAX];
-        snprintf(nasm_output_path, PATH_MAX, "%s/nasm%d.o", build_path, i);
+    JkBufferArray nasm_files_array = string_array_builder_build(&nasm_files);
+    for (int i = 0; i < nasm_files_array.count; i++) {
+        char output_path_buffer[16];
+        JkBuffer output_path_relative = {
+            .size = snprintf(output_path_buffer, sizeof(output_path_buffer), "/nasm%d.o", i),
+            .data = (uint8_t *)output_path_buffer,
+        };
+        JkBuffer nasm_output_path = concat_strings(&storage, paths.build, output_path_relative);
 
-        StringArray nasm_command = {0};
+        StringArrayBuilder nasm_command;
+        string_array_builder_init(&nasm_command, &storage);
 
-        array_append(&nasm_command, "nasm");
-        array_append(&nasm_command, "-o", nasm_output_path);
+        append(&nasm_command, "nasm");
+        append(&nasm_command, "-o");
+        string_array_builder_push(&nasm_command, nasm_output_path);
 
         if (compiler == COMPILER_MSVC) {
-            array_append(&nasm_command, "-f", "win64");
+            append(&nasm_command, "-f", "win64");
         } else {
-            array_append(&nasm_command, "-f", "elf64");
+            append(&nasm_command, "-f", "elf64");
         }
 
-        array_append(&nasm_command, nasm_files.items[i]);
+        string_array_builder_push(&nasm_command, nasm_files_array.items[i]);
 
-        command_run(&nasm_command);
+        jk_platform_exec(string_array_builder_build(&nasm_command));
 
         if (compiler == COMPILER_MSVC) {
-            StringArray lib_command = {0};
-            array_append(&lib_command, "lib", "/nologo", nasm_output_path);
-            command_run(&lib_command);
+            StringArrayBuilder lib_command;
+            string_array_builder_init(&lib_command, &storage);
+            append(&lib_command, "lib", "/nologo");
+            string_array_builder_push(&lib_command, nasm_output_path);
+            jk_platform_exec(string_array_builder_build(&lib_command));
         }
     }
 
     // Compile command
-    StringArray command = {0};
+    StringArrayBuilder command;
+    string_array_builder_init(&command, &storage);
 
     switch (compiler) { // Compiler options
     case COMPILER_MSVC: {
-        array_append(&command, "cl");
+        append(&command, "cl");
 
-        array_append(&command, "/W4");
-        array_append(&command, "/w44062");
-        array_append(&command, "/wd4100");
-        array_append(&command, "/wd4200");
-        array_append(&command, "/wd4244");
-        array_append(&command, "/wd4305");
-        array_append(&command, "/wd4324");
-        array_append(&command, "/wd4706");
-        array_append(&command, "/nologo");
-        array_append(&command, "/Gm-");
-        array_append(&command, "/GR-");
-        array_append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
-        array_append(&command, "/Zi");
-        array_append(&command, "/std:c11");
-        array_append(&command, "/EHa-");
+        append(&command, "/W4");
+        append(&command, "/w44062");
+        append(&command, "/wd4100");
+        append(&command, "/wd4200");
+        append(&command, "/wd4244");
+        append(&command, "/wd4305");
+        append(&command, "/wd4324");
+        append(&command, "/wd4706");
+        append(&command, "/nologo");
+        append(&command, "/Gm-");
+        append(&command, "/GR-");
+        append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
+        append(&command, "/Zi");
+        append(&command, "/std:c11");
+        append(&command, "/EHa-");
         if (optimize) {
-            array_append(&command, "/MT");
-            array_append(&command, "/O2");
-            array_append(&command, "/GL");
+            append(&command, "/MT");
+            append(&command, "/O2");
+            append(&command, "/GL");
         } else {
-            array_append(&command, "/MTd");
-            array_append(&command, "/Od");
+            append(&command, "/MTd");
+            append(&command, "/Od");
         }
         if (!single_translation_unit) {
-            array_append(&command, "/D", "JK_PUBLIC=");
+            append(&command, "/D", "JK_PUBLIC=");
         }
         if (no_profile) {
-            array_append(&command, "/D", "JK_PLATFORM_PROFILE_DISABLE");
+            append(&command, "/D", "JK_PLATFORM_PROFILE_DISABLE");
         }
-        array_append(&command, "/I", root_path);
+        append(&command, "/I");
+        string_array_builder_push(&command, paths.repo_root);
     } break;
 
     case COMPILER_GCC: {
-        array_append(&command, "gcc");
-        array_append(&command, "-o", basename);
-        array_append(&command, "-std=c11");
-        array_append(&command, "-pedantic");
-        array_append(&command, "-mfma");
-        array_append(&command, "-g");
-        array_append(&command, "-Wall");
-        array_append(&command, "-Wextra");
-        array_append(&command, "-fstack-protector");
-        array_append(&command, "-fzero-init-padding-bits=all");
-        array_append(&command, "-Werror=vla");
-        array_append(&command, "-Wno-missing-braces");
+        append(&command, "gcc");
+
+        append(&command, "-o");
+        string_array_builder_push(&command, paths.basename);
+
+        append(&command, "-std=c11");
+        append(&command, "-pedantic");
+        append(&command, "-mfma");
+        append(&command, "-g");
+        append(&command, "-Wall");
+        append(&command, "-Wextra");
+        append(&command, "-fstack-protector");
+        append(&command, "-fzero-init-padding-bits=all");
+        append(&command, "-Werror=vla");
+        append(&command, "-Wno-missing-braces");
         if (single_translation_unit) {
-            array_append(&command, "-Wno-unused-function");
+            append(&command, "-Wno-unused-function");
         } else {
-            array_append(&command, "-D", "JK_PUBLIC=");
+            append(&command, "-D", "JK_PUBLIC=");
         }
         if (optimize) {
-            array_append(&command, "-O3");
-            array_append(&command, "-flto");
-            array_append(&command, "-fuse-linker-plugin");
+            append(&command, "-O3");
+            append(&command, "-flto");
+            append(&command, "-fuse-linker-plugin");
         } else {
-            array_append(&command, "-Og");
+            append(&command, "-Og");
         }
         if (no_profile) {
-            array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
+            append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
-        array_append(&command, "-I", root_path);
+
+        append(&command, "-I");
+        string_array_builder_push(&command, paths.repo_root);
     } break;
 
     case COMPILER_TCC: {
-        array_append(&command, "tcc");
+        append(&command, "tcc");
+
 #ifdef _WIN32
-        strcat(basename, ".exe");
+        JkBuffer basename = concat_strings(&storage, paths.basename, JKS(".exe"));
+#else
+        JkBuffer basename = paths.basename;
 #endif
-        array_append(&command, "-o", basename);
-        array_append(&command, "-std=c11");
-        array_append(&command, "-Wall");
-        array_append(&command, "-g");
+        append(&command, "-o");
+        string_array_builder_push(&command, basename);
+
+        append(&command, "-std=c11");
+        append(&command, "-Wall");
+        append(&command, "-g");
 
         if (!single_translation_unit) {
-            array_append(&command, "-D", "JK_PUBLIC=");
+            append(&command, "-D", "JK_PUBLIC=");
         }
         if (no_profile) {
-            array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
+            append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
-        array_append(&command, "-I", root_path);
+
+        append(&command, "-I");
+        string_array_builder_push(&command, paths.repo_root);
     } break;
 
     case COMPILER_CLANG: {
-        array_append(&command, "clang");
-        array_append(&command, "-o", basename);
-        array_append(&command, "-mfma");
-        array_append(&command,
+        append(&command, "clang");
+
+#ifdef _WIN32
+        JkBuffer basename = concat_strings(&storage, paths.basename, JKS(".exe"));
+#else
+        JkBuffer basename = paths.basename;
+#endif
+        append(&command, "-o");
+        string_array_builder_push(&command, basename);
+
+        append(&command, "-mfma");
+        append(&command,
                 "-Wall",
                 "-Wextra",
                 "-Wpedantic",
                 "-Wno-missing-braces",
                 "-Wno-missing-field-initializers");
-        array_append(&command, "-g");
+        append(&command, "-g");
         if (!is_objective_c_file) {
-            array_append(&command, "-std=c11");
+            append(&command, "-std=c11");
         }
         if (single_translation_unit) {
-            array_append(&command, "-Wno-unused-function");
+            append(&command, "-Wno-unused-function");
         } else {
-            array_append(&command, "-D", "JK_PUBLIC=");
+            append(&command, "-D", "JK_PUBLIC=");
         }
         if (optimize) {
-            array_append(&command, "-O3");
-            array_append(&command, "-flto");
+            append(&command, "-O3");
+            append(&command, "-flto");
         } else {
-            array_append(&command, "-Og");
+            append(&command, "-Og");
         }
         if (no_profile) {
-            array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
+            append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
-        array_append(&command, "-I", root_path);
+
+        append(&command, "-I");
+        string_array_builder_push(&command, paths.repo_root);
     } break;
 
     case COMPILER_NONE: {
@@ -918,93 +1373,105 @@ int main(int argc, char **argv)
     } break;
     }
 
-    array_concat(&command, compiler_arguments.count, compiler_arguments.items);
+    string_array_builder_concat(&command, &compiler_arguments);
 
     if (single_translation_unit) {
-        char stu_file_path[PATH_MAX] = {0};
-        char directory[PATH_MAX] = {0};
-
         // Get path for the single translation unit root source file
+        JkBuffer stu_file_path;
         {
-            strcpy(stu_file_path, source_file_path);
+            stu_file_path = jk_buffer_copy(&storage, paths.source_file);
             _Static_assert(sizeof(JK_GEN_STRING_LITERAL) == sizeof(JK_SRC_STRING_LITERAL),
                     "required for this simple find and replace to work");
-            char *jk_src = strstr(stu_file_path, JK_SRC_STRING_LITERAL);
-            memcpy(jk_src, JK_GEN_STRING_LITERAL, sizeof(JK_GEN_STRING_LITERAL) - 1);
+            uint64_t jk_src_index = jk_string_find(stu_file_path, jk_src_string);
+            memcpy(stu_file_path.data + jk_src_index,
+                    JK_GEN_STRING_LITERAL,
+                    sizeof(JK_GEN_STRING_LITERAL) - 1);
 
-            uint64_t length = strlen(source_file_path);
-            memcpy(stu_file_path + length - 1, is_objective_c_file ? "stu.m" : "stu.c", 5);
+            stu_file_path.size--;
+
+            stu_file_path = concat_strings(
+                    &storage, stu_file_path, is_objective_c_file ? JKS("stu.m") : JKS("stu.c"));
         }
 
         // Get the directory
+        JkBuffer stu_directory;
         {
-            int64_t length = strlen(stu_file_path);
-            int64_t last_slash = -1;
-            for (int64_t i = 0; i < length; i++) {
-                switch (stu_file_path[i]) {
-                case '/':
-                case '\\':
-                    last_slash = i;
-                    break;
-                default:
-                    break;
-                }
+            int64_t last_slash = stu_file_path.size - 1;
+            while (0 <= last_slash && stu_file_path.data[last_slash] != '/') {
+                last_slash--;
             }
-            strncpy(directory, stu_file_path, last_slash);
+            stu_directory.size = last_slash;
+            stu_directory.data = stu_file_path.data;
         }
 
-        ensure_directory_exists(directory);
+        ensure_directory_exists(stu_directory);
 
-        FILE *stu_file = fopen(stu_file_path, "wb");
+        FILE *stu_file = fopen(jk_buffer_to_null_terminated(&storage, stu_file_path), "wb");
         if (stu_file == NULL) {
             fprintf(stderr,
-                    "%s: Failed to open '%s': %s\n",
+                    "%s: Failed to open '%.*s': %s\n",
                     program_name,
-                    stu_file_path,
+                    (int)stu_file_path.size,
+                    stu_file_path.data,
                     strerror(errno));
             exit(1);
         }
 
         fprintf(stu_file, "#define JK_PUBLIC static\n");
-        fprintf(stu_file, "#include <%s>\n", source_file_path + root_path_length);
-        for (int i = 0; i < dependencies.count; i++) {
-            fprintf(stu_file, "#include <%s>\n", dependencies.items[i] + root_path_length);
+        JkBuffer source_file_path_relative = {
+            .size = paths.source_file.size - paths.repo_root.size,
+            .data = paths.source_file.data + paths.repo_root.size,
+        };
+        fprintf(stu_file,
+                "#include <%.*s>\n",
+                (int)source_file_path_relative.size,
+                source_file_path_relative.data);
+        JkBufferArray dependencies_array = string_array_builder_build(&dependencies);
+        for (int i = 0; i < dependencies_array.count; i++) {
+            fprintf(stu_file,
+                    "#include <%.*s>\n",
+                    (int)dependencies_array.items[i].size,
+                    dependencies_array.items[i].data);
         }
 
         fclose(stu_file);
 
-        array_append(&command, stu_file_path);
+        string_array_builder_push(&command, stu_file_path);
     } else {
-        array_append(&command, source_file_path);
-        array_concat(&command, dependencies.count, dependencies.items);
+        string_array_builder_push(&command, paths.source_file);
+
+        // Prepend repo_root absolute path to all of the dependencies' paths
+        for (StringNode *node = dependencies.tail.previous; node; node = node->previous) {
+            node->string = concat_strings(&storage, paths.repo_root, node->string);
+        }
+
+        string_array_builder_concat(&command, &dependencies);
     }
 
     switch (compiler) { // Linker options
     case COMPILER_MSVC: {
-        array_append(&command, "/link");
+        append(&command, "/link");
 
-        char out_option[PATH_MAX] = {0};
-        strcpy(out_option, "/OUT:");
-        strcat(out_option, basename);
-        strcat(out_option, ".exe");
-        array_append(&command, out_option);
+        JkBuffer out_option = concat_strings(
+                &storage, concat_strings(&storage, JKS("/OUT:"), paths.basename), JKS(".exe"));
+        string_array_builder_push(&command, out_option);
 
-        array_append(&command, "/INCREMENTAL:NO");
+        append(&command, "/INCREMENTAL:NO");
 
-        char libpath[PATH_MAX];
-        snprintf(libpath, PATH_MAX, "/LIBPATH:\"%s\"", root_path);
-        array_append(&command, libpath);
+        JkBuffer lib_path = concat_strings(
+                &storage, concat_strings(&storage, JKS("/LIBPATH:\""), paths.repo_root), JKS("\""));
+        string_array_builder_push(&command, lib_path);
 
-        array_append(&command, "Advapi32.lib");
+        append(&command, "Advapi32.lib");
     } break;
 
     case COMPILER_GCC: {
-        array_append(&command, "-lm");
+        append(&command, "-lm");
     } break;
 
     case COMPILER_TCC: {
 #ifndef _WIN32
-        array_append(&command, "-lm");
+        append(&command, "-lm");
 #endif
     } break;
 
@@ -1017,13 +1484,13 @@ int main(int argc, char **argv)
     } break;
     }
 
-    array_concat(&command, linker_arguments.count, linker_arguments.items);
+    string_array_builder_concat(&command, &linker_arguments);
 
     for (int i = 0; i < nasm_files.count; i++) {
         char file_name[32];
         snprintf(file_name, 32, "nasm%d.%s", i, compiler == COMPILER_MSVC ? "lib" : "o");
-        array_append(&command, file_name);
+        append(&command, file_name);
     }
 
-    return command_run(&command);
+    return jk_platform_exec(string_array_builder_build(&command));
 }

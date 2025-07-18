@@ -438,7 +438,7 @@ _STATIC_ASSERT(0 && "Unknown ISA");
 
 // ---- ISA functions end ------------------------------------------------------
 
-// ---- Arena begin ------------------------------------------------------------
+// ---- Virtual arena begin ------------------------------------------------------------
 
 static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
 {
@@ -484,7 +484,7 @@ JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *roo
     jk_platform_memory_free(root->generic.memory.data, root->generic.memory.size);
 }
 
-// ---- Arena end --------------------------------------------------------------
+// ---- Virtual arena end --------------------------------------------------------------
 
 // ---- Profile begin ----------------------------------------------------------
 
