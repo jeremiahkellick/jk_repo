@@ -14,8 +14,11 @@ JK_PUBLIC void jk_buffer_zero(JkBuffer buffer)
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
 {
-    JkBuffer buffer = {.size = strlen(string), .data = (uint8_t *)string};
-    return buffer;
+    if (string) {
+        return (JkBuffer){.size = strlen(string), .data = (uint8_t *)string};
+    } else {
+        return (JkBuffer){0};
+    }
 }
 
 JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
@@ -43,6 +46,27 @@ JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
         }
     }
     return 0;
+}
+
+// Returns the index where the search_string appears in the text if found, or -1 if not found
+JK_PUBLIC int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
+{
+    for (int64_t i = 0; i <= (int64_t)text.size - (int64_t)search_string.size; i++) {
+        b32 match = 1;
+        for (int64_t j = 0; j < (int64_t)search_string.size; j++) {
+            JK_DEBUG_ASSERT(i + j < (int64_t)text.size);
+            JK_DEBUG_ASSERT(j < (int64_t)search_string.size);
+            if (text.data[i + j] != search_string.data[j]) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) {
+            return i;
+        }
+    }
+
+    return -1;
 }
 
 // ---- Buffer end -------------------------------------------------------------

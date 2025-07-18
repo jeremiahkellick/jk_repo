@@ -48,6 +48,8 @@ JK_PUBLIC b32 jk_char_is_whitespace(uint8_t c);
 
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string);
 
+JK_PUBLIC int64_t jk_string_find(JkBuffer string, JkBuffer substring);
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------

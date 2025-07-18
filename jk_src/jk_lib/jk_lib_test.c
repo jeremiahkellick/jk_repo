@@ -164,6 +164,12 @@ int main(void)
     pos = 9001;
     printf("Character out of bounds: %d\n", jk_buffer_character_next(buffer, &pos));
 
+    JK_ASSERT(jk_string_find(JKS("Hello, world!"), JKS(" wor")) == 6);
+    JK_ASSERT(jk_string_find(JKS("Hello, world!"), JKS(" wort")) == -1);
+    JK_ASSERT(jk_string_find(JKS("brief"), JKS("long winded")) == -1);
+    JK_ASSERT(jk_string_find(JKS("start end"), JKS("start")) == 0);
+    JK_ASSERT(jk_string_find(JKS("start end"), JKS("end")) == 6);
+
     // ---- Buffer end ---------------------------------------------------------
 
     // ---- UTF-8 begin --------------------------------------------------------
