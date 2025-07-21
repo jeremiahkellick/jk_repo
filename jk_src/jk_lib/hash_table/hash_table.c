@@ -20,7 +20,7 @@ static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
     // power if 2.
     size_t slot_i = jk_hash_uint32((uint32_t)key) & (t->capacity - 1);
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
     size_t iterations = 0;
 #endif
 
@@ -33,7 +33,7 @@ static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
             slot_i -= t->capacity;
         }
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
         iterations++;
 #endif
     }

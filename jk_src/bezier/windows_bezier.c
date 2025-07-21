@@ -333,8 +333,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_bezier.cpu_timer_get = jk_platform_cpu_timer_get;
     global_bezier.debug_print = debug_print;
 
-    JkPlatformArena storage;
-    jk_platform_arena_init(&storage, 5llu * 1024 * 1024 * 1024);
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 5llu * 1024 * 1024 * 1024);
 
     global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
 

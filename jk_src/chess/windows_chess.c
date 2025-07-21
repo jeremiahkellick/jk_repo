@@ -847,8 +847,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_chess.os_timer_frequency = jk_platform_os_timer_frequency();
     global_chess.debug_print = debug_print;
 
-    JkPlatformArena storage;
-    if (jk_platform_arena_init(&storage, JK_GIGABYTE) == JK_PLATFORM_ARENA_INIT_SUCCESS) {
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, JK_GIGABYTE);
+    if (jk_arena_valid(&storage)) {
         global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
     } else {
         OutputDebugStringA("Failed to initialize storage arena\n");

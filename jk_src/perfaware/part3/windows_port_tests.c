@@ -42,7 +42,6 @@ int main(int argc, char **argv)
     uint8_t data[8] = {0};
     size_t mov_count = 1024 * 1024 * 1024;
 
-    jk_platform_init();
     uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (;;) {

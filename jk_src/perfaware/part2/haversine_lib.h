@@ -46,7 +46,7 @@ JK_PUBLIC double haversine_sum(HaversineContext context);
 JK_PUBLIC uint64_t haversine_verify(HaversineContext context);
 
 JK_PUBLIC HaversineContext haversine_setup(
-        char *json_file_name, char *answers_file_name, JkPlatformArena *storage);
+        char *json_file_name, char *answers_file_name, JkArena *storage);
 
 JK_PUBLIC b32 approximately_equal(double a, double b);
 

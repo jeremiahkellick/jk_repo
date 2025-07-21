@@ -244,15 +244,14 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    jk_platform_init();
     size_t file_size = jk_platform_file_size(argv[1]);
     uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    JkPlatformArena storage;
-    jk_platform_arena_init(&storage, 64llu * 1024 * 1024 * 1024);
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 64llu * 1024 * 1024 * 1024);
     JkBuffer full_file_buffer = jk_platform_file_read_full(&storage, argv[1]);
     uint64_t reference_sum = sum(full_file_buffer);
-    jk_platform_arena_terminate(&storage);
+    jk_platform_arena_virtual_release(&arena_root);
 
     size_t buffer_size = STARTING_SIZE;
     for (size_t i = 0; i < JK_ARRAY_COUNT(tests); i++, buffer_size *= 2) {

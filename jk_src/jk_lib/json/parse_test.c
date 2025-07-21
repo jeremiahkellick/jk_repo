@@ -16,8 +16,8 @@ int main(int argc, char **argv)
 
     jk_platform_console_utf8_enable();
 
-    JkPlatformArena storage;
-    jk_platform_arena_init(&storage, (size_t)1 << 35);
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
 
     JkBuffer text = jk_platform_file_read_full(&storage, "./parse_test.json");
 

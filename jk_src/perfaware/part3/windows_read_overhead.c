@@ -272,7 +272,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    jk_platform_init();
     uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (;;) {

@@ -79,7 +79,9 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
 
     float font_scale = (canvas_size - 1.0f) / (float)max_dimension;
 
-    JkArena arena = {.memory = {.size = sizeof(bezier->memory), .data = bezier->memory}};
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(
+            &arena_root, (JkBuffer){.size = sizeof(bezier->memory), .data = bezier->memory});
 
     JkShapesRenderer renderer;
     jk_shapes_renderer_init(&renderer,

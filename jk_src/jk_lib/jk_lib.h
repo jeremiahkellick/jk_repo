@@ -7,6 +7,11 @@
 
 typedef uint32_t b32;
 
+// Can't use an enum because we use these a lot in #if's
+#define JK_DEBUG_SLOW 0
+#define JK_DEBUG_FAST 1
+#define JK_RELEASE 2
+
 // ---- Buffer begin -----------------------------------------------------------
 
 typedef struct JkBuffer {
@@ -54,18 +59,30 @@ JK_PUBLIC int64_t jk_string_find(JkBuffer string, JkBuffer substring);
 
 // ---- Arena begin ------------------------------------------------------------
 
-typedef struct JkArena {
+typedef struct JkArenaRoot {
     JkBuffer memory;
+} JkArenaRoot;
+
+typedef struct JkArena {
+    uint64_t base;
     uint64_t pos;
+    JkArenaRoot *root;
+    b32 (*grow)(struct JkArena *arena, uint64_t new_size);
 } JkArena;
 
-JK_PUBLIC void *jk_arena_alloc(JkArena *arena, uint64_t byte_count);
+JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory);
 
-JK_PUBLIC void *jk_arena_alloc_zero(JkArena *arena, uint64_t byte_count);
+JK_PUBLIC b32 jk_arena_valid(JkArena *arena);
 
-JK_PUBLIC void *jk_arena_pointer_get(JkArena *arena);
+JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size);
 
-JK_PUBLIC void jk_arena_pointer_set(JkArena *arena, void *pointer);
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size);
+
+JK_PUBLIC void jk_arena_pop(JkArena *arena, uint64_t size);
+
+JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
+
+JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
 // ---- Arena end --------------------------------------------------------------
 
@@ -257,7 +274,7 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 #define JK_ASSERT(expression) \
     (void)((!!(expression)) || (jk_assert(#expression, __FILE__, (int64_t)(__LINE__)), 0))
 
-#ifdef NDEBUG
+#if JK_BUILD_MODE == JK_RELEASE
 #define JK_DEBUG_ASSERT(...)
 #else
 #define JK_DEBUG_ASSERT(expression) JK_ASSERT(expression)

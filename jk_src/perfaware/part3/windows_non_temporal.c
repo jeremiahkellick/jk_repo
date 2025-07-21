@@ -33,7 +33,6 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
-    jk_platform_init();
     uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     uint64_t input_size = 16llu * 1024;

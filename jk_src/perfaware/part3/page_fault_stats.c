@@ -64,8 +64,6 @@ int main(int argc, char **argv)
         exit(opts_parse.usage_error);
     }
 
-    jk_platform_init();
-
     uint64_t page_size = jk_platform_page_size();
     JkBuffer buffer = {.size = (uint64_t)page_count * page_size};
     for (int touch_page_count = 0; touch_page_count < page_count; touch_page_count++) {

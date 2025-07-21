@@ -46,15 +46,15 @@ extern char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT];
 
 JK_PUBLIC b32 jk_json_is_whitespace(int byte);
 
-JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkPlatformArena *storage);
+JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *storage);
 
-JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkPlatformArena *storage);
+JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage);
 
-JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena *storage);
+JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage);
 
-JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkPlatformArena *storage);
+JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage);
 
-JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkPlatformArena *storage);
+JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage);
 
 JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name);
 

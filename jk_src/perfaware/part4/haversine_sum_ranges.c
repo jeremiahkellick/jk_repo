@@ -180,8 +180,8 @@ int main(int argc, char **argv)
         answers_file_name = opts_parse.operands[1];
     }
 
-    JkPlatformArena storage;
-    jk_platform_arena_init(&storage, (size_t)1 << 35);
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 

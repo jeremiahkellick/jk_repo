@@ -1,3 +1,4 @@
+#include "jk_src/jk_lib/jk_lib.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,9 +23,9 @@ char *sound_file_paths[SOUND_COUNT] = {
     "../jk_assets/chess/lose.wav",
 };
 
-static JkFloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string, uint64_t *pos)
+static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, uint64_t *pos)
 {
-    JkFloatArray result = {.items = jk_platform_arena_pointer_get(arena)};
+    JkFloatArray result = {.items = jk_arena_pointer_current(arena)};
     int c;
     while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
             && (isdigit(c) || isspace(c) || c == ',')) {
@@ -37,11 +38,11 @@ static JkFloatArray parse_numbers(JkPlatformArena *arena, JkBuffer shape_string,
                 .size = (*pos - 1) - start,
                 .data = shape_string.data + start,
             };
-            float *new_number = jk_platform_arena_push(arena, sizeof(*new_number));
+            float *new_number = jk_arena_push(arena, sizeof(*new_number));
             *new_number = (float)jk_parse_double(number_string);
         }
     }
-    result.count = (float *)jk_platform_arena_pointer_get(arena) - result.items;
+    result.count = (float *)jk_arena_pointer_current(arena) - result.items;
     if (c != EOF) {
         (*pos)--;
     }
@@ -52,20 +53,20 @@ int main(int argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    JkPlatformArena scratch_arena;
-    jk_platform_arena_init(&scratch_arena, JK_GIGABYTE);
+    JkPlatformArenaVirtualRoot scratch_arena_root;
+    JkArena scratch_arena = jk_platform_arena_virtual_init(&scratch_arena_root, JK_GIGABYTE);
 
-    JkPlatformArena storage;
-    jk_platform_arena_init(&storage, JK_GIGABYTE);
+    JkPlatformArenaVirtualRoot storage_arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&storage_arena_root, JK_GIGABYTE);
 
-    ChessAssets *assets = jk_platform_arena_push_zero(&storage, sizeof(*assets));
+    ChessAssets *assets = jk_arena_push_zero(&storage, sizeof(*assets));
 
     { // Fill out shapes array with piece data
         JkBufferArray piece_strings =
                 jk_platform_file_read_lines(&scratch_arena, "../jk_assets/chess/paths.txt");
         JK_ASSERT(piece_strings.count == PIECE_TYPE_COUNT - 1);
 
-        void *scratch_arena_saved_pointer = jk_platform_arena_pointer_get(&scratch_arena);
+        void *scratch_arena_saved_pointer = jk_arena_pointer_current(&scratch_arena);
 
         for (int32_t piece_index = 1; piece_index < PIECE_TYPE_COUNT; piece_index++) {
             JkBuffer piece_string = piece_strings.items[piece_index - 1];
@@ -80,14 +81,16 @@ int main(int argc, char **argv)
             uint64_t pos = 0;
             int c;
             while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
+                JkArena tmp_arena = jk_arena_child_get(&scratch_arena);
+
                 switch (c) {
                 case 'M':
                 case 'L': {
-                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 2 == 0);
                     for (int32_t i = 0; i < numbers.count; i += 2) {
                         JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                                jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type =
                                 c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
                         new_command->coords[0] =
@@ -102,11 +105,11 @@ int main(int argc, char **argv)
 
                 case 'H':
                 case 'V': {
-                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count);
                     for (int32_t i = 0; i < numbers.count; i++) {
                         JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                                jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
                         new_command->coords[0] = c == 'H'
                                 ? (JkVector2){numbers.items[i], prev_pos.y}
@@ -116,11 +119,11 @@ int main(int argc, char **argv)
                 } break;
 
                 case 'Q': {
-                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 4 == 0);
                     for (int32_t i = 0; i < numbers.count; i += 4) {
                         JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                                jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
                         for (int32_t j = 0; j < 2; j++) {
                             new_command->coords[j] = (JkVector2){
@@ -131,11 +134,11 @@ int main(int argc, char **argv)
                 } break;
 
                 case 'C': {
-                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 6 == 0);
                     for (int32_t i = 0; i < numbers.count; i += 6) {
                         JkShapesPenCommand *new_command =
-                                jk_platform_arena_push(&storage, sizeof(*new_command));
+                                jk_arena_push(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                         for (int32_t j = 0; j < 3; j++) {
                             new_command->coords[j] = (JkVector2){
@@ -146,11 +149,11 @@ int main(int argc, char **argv)
                 } break;
 
                 case 'A': {
-                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 7 == 0);
                     for (int32_t i = 0; i < numbers.count; i += 7) {
                         JkShapesPenCommand *new_command =
-                                jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                                jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
                         new_command->arc.dimensions.x = numbers.items[i];
                         new_command->arc.dimensions.y = numbers.items[i + 1];
@@ -169,7 +172,7 @@ int main(int argc, char **argv)
 
                 case 'Z': {
                     JkShapesPenCommand *new_command =
-                            jk_platform_arena_push_zero(&storage, sizeof(*new_command));
+                            jk_arena_push_zero(&storage, sizeof(*new_command));
                     new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
                     new_command->coords[0] = first_pos;
                 } break;
@@ -178,8 +181,6 @@ int main(int argc, char **argv)
                     JK_ASSERT(0 && "Unknown SVG path command character");
                 } break;
                 }
-
-                jk_platform_arena_pointer_set(&scratch_arena, scratch_arena_saved_pointer);
             }
 
             assets->shapes[piece_index].commands.size =
@@ -250,8 +251,7 @@ int main(int argc, char **argv)
             uint64_t command_count = stbtt_GetCodepointShape(&font, codepoint, &verticies);
             shape->commands.size = sizeof(JkShapesPenCommand) * command_count;
             shape->commands.offset = storage.pos;
-            JkShapesPenCommand *commands =
-                    jk_platform_arena_push_zero(&storage, shape->commands.size);
+            JkShapesPenCommand *commands = jk_arena_push_zero(&storage, shape->commands.size);
             for (int32_t i = 0; i < command_count; i++) {
                 switch (verticies[i].type) {
                 case STBTT_vmove:
@@ -314,9 +314,7 @@ int main(int argc, char **argv)
                         case JK_RIFF_ID_DATA: {
                             assets->sounds[i].size = chunk->size;
                             assets->sounds[i].offset = storage.pos;
-                            memcpy(jk_platform_arena_push(&storage, chunk->size),
-                                    chunk->data,
-                                    chunk->size);
+                            memcpy(jk_arena_push(&storage, chunk->size), chunk->data, chunk->size);
                         } break;
 
                         default: {
@@ -341,7 +339,7 @@ int main(int argc, char **argv)
 
     // Write as binary file to build/chess_assets
     FILE *binary_file = fopen("chess_assets", "wb");
-    fwrite(storage.address, storage.pos, 1, binary_file);
+    fwrite(storage.root->memory.data, storage.pos, 1, binary_file);
     fclose(binary_file);
 
     // Write as C byte array to jk_gen/chess/assets.c
@@ -364,7 +362,7 @@ int main(int argc, char **argv)
     while (byte_index < storage.pos) {
         fprintf(assets_file, "   ");
         for (uint32_t i = 0; i < 16 && byte_index < storage.pos; i++) {
-            fprintf(assets_file, " 0x%02x,", (uint32_t)storage.address[byte_index++]);
+            fprintf(assets_file, " 0x%02x,", (uint32_t)storage.root->memory.data[byte_index++]);
         }
         fprintf(assets_file, "\n");
     }

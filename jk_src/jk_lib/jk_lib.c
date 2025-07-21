@@ -73,33 +73,61 @@ JK_PUBLIC int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
 
 // ---- Arena begin ------------------------------------------------------------
 
-JK_PUBLIC void *jk_arena_alloc(JkArena *arena, uint64_t byte_count)
+static b32 jk_arena_fixed_grow(JkArena *arena, uint64_t new_size)
 {
-    uint64_t new_pos = arena->pos + byte_count;
-    if (new_pos <= arena->memory.size) {
-        void *result = arena->memory.data + arena->pos;
-        arena->pos = new_pos;
-        return result;
-    } else {
-        return 0;
+    return 0; // Fixed arenas don't grow, duh
+}
+
+JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory)
+{
+    root->memory = memory;
+    return (JkArena){.root = root, .grow = jk_arena_fixed_grow};
+}
+
+JK_PUBLIC b32 jk_arena_valid(JkArena *arena)
+{
+    return !!arena->root;
+}
+
+JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size)
+{
+    uint64_t new_pos = arena->pos + size;
+    if (arena->root->memory.size < new_pos) {
+        if (!arena->grow(arena, new_pos)) {
+            return NULL;
+        }
     }
+    void *address = arena->root->memory.data + arena->pos;
+    arena->pos = new_pos;
+    return address;
 }
 
-JK_PUBLIC void *jk_arena_alloc_zero(JkArena *arena, uint64_t byte_count)
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size)
 {
-    void *result = jk_arena_alloc(arena, byte_count);
-    memset(result, 0, byte_count);
-    return result;
+    void *address = jk_arena_push(arena, size);
+    memset(address, 0, size);
+    return address;
 }
 
-JK_PUBLIC void *jk_arena_pointer_get(JkArena *arena)
+JK_PUBLIC void jk_arena_pop(JkArena *arena, uint64_t size)
 {
-    return arena->memory.data + arena->pos;
+    JK_DEBUG_ASSERT(size <= arena->pos - arena->base);
+    arena->pos -= size;
 }
 
-JK_PUBLIC void jk_arena_pointer_set(JkArena *arena, void *pointer)
+JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent)
 {
-    arena->pos = (uint8_t *)pointer - arena->memory.data;
+    return (JkArena){
+        .base = parent->pos,
+        .pos = parent->pos,
+        .root = parent->root,
+        .grow = parent->grow,
+    };
+}
+
+JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena)
+{
+    return arena->root->memory.data + arena->pos;
 }
 
 // ---- Arena end --------------------------------------------------------------

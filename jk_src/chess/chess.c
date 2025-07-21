@@ -984,21 +984,15 @@ static b32 expand_node(Ai *ctx, MoveNode *node)
 {
     Board node_board_state = ctx->board;
     {
-        MovePacked *prev_moves = jk_arena_pointer_get(&ctx->arena);
+        MoveArray prev_moves;
+        prev_moves.count = 0;
         for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-            MovePacked *move = jk_arena_alloc(&ctx->arena, sizeof(*move));
-            if (!move) {
-                return 0;
-            }
-            *move = ancestor->move;
-        }
-        int64_t move_count = (MovePacked *)jk_arena_pointer_get(&ctx->arena) - prev_moves;
-
-        for (int64_t i = move_count - 1; i >= 0; i--) {
-            node_board_state = board_move_perform(node_board_state, prev_moves[i]);
+            prev_moves.data[prev_moves.count++] = ancestor->move;
         }
 
-        jk_arena_pointer_set(&ctx->arena, prev_moves);
+        for (int64_t i = prev_moves.count - 1; i >= 0; i--) {
+            node_board_state = board_move_perform(node_board_state, prev_moves.data[i]);
+        }
     }
 
     MoveArray moves;
@@ -1007,7 +1001,7 @@ static b32 expand_node(Ai *ctx, MoveNode *node)
     MoveNode *first_child = 0;
     debug_nodes_found += moves.count;
     for (uint8_t i = 0; i < moves.count; i++) {
-        MoveNode *new_child = jk_arena_alloc(&ctx->arena, sizeof(*new_child));
+        MoveNode *new_child = jk_arena_push(&ctx->arena, sizeof(*new_child));
         if (!new_child) {
             return 0;
         }
@@ -1096,6 +1090,7 @@ typedef struct MoveTreeStats {
     uint64_t min_depth;
     uint64_t max_depth;
     MoveArray min_line;
+    MoveNode *deepest_leaf;
     MovePacked *max_line;
 } MoveTreeStats;
 
@@ -1120,15 +1115,7 @@ void move_tree_stats_calculate(JkArena *arena, MoveTreeStats *stats, MoveNode *n
         }
         if (stats->max_depth < depth) {
             stats->max_depth = depth;
-
-            if (stats->max_line) {
-                jk_arena_pointer_set(arena, stats->max_line);
-            }
-            stats->max_line = jk_arena_pointer_get(arena);
-            for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-                MovePacked *move = jk_arena_alloc(arena, sizeof(stats->max_line[0]));
-                *move = ancestor->move;
-            }
+            stats->deepest_leaf = node;
         }
     }
 }
@@ -1158,9 +1145,10 @@ void ai_init(Ai *ai,
     ai->response.board = (Board){0};
     ai->response.move = (Move){0};
 
+    JkArenaRoot arena_root;
+    ai->arena = jk_arena_fixed_init(&arena_root, memory);
+
     ai->board = board;
-    ai->arena.pos = 0;
-    ai->arena.memory = memory;
     ai->time = time;
     ai->time_frequency = time_frequency;
     ai->time_started = time;
@@ -1294,6 +1282,11 @@ b32 ai_running(Ai *ai)
         MoveTreeStats stats = {.min_depth = UINT64_MAX};
         for (int32_t i = 0; i < ai->top_level_node_count; i++) {
             move_tree_stats_calculate(&ai->arena, &stats, ai->top_level_nodes + i, 1);
+        }
+        stats.max_line = jk_arena_pointer_current(&ai->arena);
+        for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
+            MovePacked *line_move = jk_arena_push(&ai->arena, sizeof(*line_move));
+            *line_move = ancestor->move;
         }
 
         debug_printf(ai->debug_print, "node_count: %llu\n", stats.node_count);
@@ -2197,7 +2190,8 @@ void render(ChessAssets *assets, Chess *chess)
 
     JkIntVector2 pos;
 
-    JkArena arena = {.memory = chess->render_memory};
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
 
     // Figure out which squares should be highlighted
     Team team = board_current_team_get(chess->board);

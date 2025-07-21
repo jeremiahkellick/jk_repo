@@ -30,8 +30,6 @@ typedef uint32_t b32;
 
 // ---- OS functions begin -----------------------------------------------------
 
-JK_PUBLIC void jk_platform_init(void);
-
 JK_PUBLIC size_t jk_platform_file_size(char *file_name);
 
 JK_PUBLIC size_t jk_platform_page_size(void);
@@ -74,30 +72,19 @@ JK_PUBLIC double jk_platform_fma_64(double a, double b, double c);
 
 // ---- ISA functions end ------------------------------------------------------
 
-// ---- Arena begin ------------------------------------------------------------
+// ---- Virtual arena begin ------------------------------------------------------------
 
-typedef struct JkPlatformArena {
+typedef struct JkPlatformArenaVirtualRoot {
+    JkArenaRoot generic;
     uint64_t virtual_size;
-    uint64_t size;
-    uint64_t pos;
-    uint8_t *address;
-} JkPlatformArena;
+} JkPlatformArenaVirtualRoot;
 
-JK_PUBLIC b32 jk_platform_arena_init(JkPlatformArena *arena, uint64_t virtual_size);
+JK_PUBLIC JkArena jk_platform_arena_virtual_init(
+        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size);
 
-JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena);
+JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root);
 
-JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, uint64_t size);
-
-JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, uint64_t size);
-
-JK_PUBLIC b32 jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size);
-
-JK_PUBLIC void *jk_platform_arena_pointer_get(JkPlatformArena *arena);
-
-JK_PUBLIC void jk_platform_arena_pointer_set(JkPlatformArena *arena, void *pointer);
-
-// ---- Arena end --------------------------------------------------------------
+// ---- Virtual arena end --------------------------------------------------------------
 
 // ---- Profile begin ----------------------------------------------------------
 
@@ -145,7 +132,7 @@ typedef struct JkPlatformProfileZone {
     char *name;
     JkPlatformProfileZoneFrame frames[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT];
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
     int64_t active_count;
 #endif
 
@@ -157,7 +144,7 @@ typedef struct JkPlatformProfileTiming {
     JkPlatformProfileZone *parent;
     uint64_t start;
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
     JkPlatformProfileZone *zone;
     b32 ended;
 #endif
@@ -376,9 +363,9 @@ JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);
 
-JK_PUBLIC JkBuffer jk_platform_file_read_full(JkPlatformArena *storage, char *file_name);
+JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name);
 
-JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkPlatformArena *arena, char *file_name);
+JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name);
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait);
 

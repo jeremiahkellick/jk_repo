@@ -4,7 +4,6 @@
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
@@ -115,39 +114,28 @@ int main(void)
     printf("Arena\n");
 
     size_t page_size = jk_platform_page_size();
-    JkPlatformArena arena;
-    if (!jk_platform_arena_init(&arena, page_size * 3)) {
-        perror("jk_platform_arena_init");
-        return 1;
-    }
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena arena = jk_platform_arena_virtual_init(&arena_root, page_size * 3);
+    JK_ASSERT(jk_arena_valid(&arena));
 
-    char *push1 = jk_platform_arena_push(&arena, sizeof(string1));
-    if (push1 == NULL) {
-        perror("jk_platform_arena_push");
-        return 1;
-    }
+    uint8_t *push1 = jk_arena_push(&arena, sizeof(string1));
+    JK_ASSERT(push1);
     memcpy(push1, string1, sizeof(string1));
     printf("%s", push1);
 
-    char *push2 = jk_platform_arena_push(&arena, page_size * 2);
-    if (push2 == NULL) {
-        perror("jk_platform_arena_push");
-        return 1;
-    }
-    char *print = &push2[page_size * 2 - sizeof(string2)];
+    uint8_t *push2 = jk_arena_push(&arena, page_size * 2);
+    JK_ASSERT(push2);
+    uint8_t *print = &push2[page_size * 2 - sizeof(string2)];
     memcpy(print, string2, sizeof(string2));
     printf("%s", print);
 
-    size_t size_before = arena.size;
-    char *push3 = jk_platform_arena_push(&arena, page_size * 2);
-    size_t size_after = arena.size;
+    size_t size_before = arena.root->memory.size;
+    uint8_t *push3 = jk_arena_push(&arena, page_size * 2);
+    size_t size_after = arena.root->memory.size;
     JK_ASSERT(push3 == NULL);
     JK_ASSERT(size_before == size_after);
 
-    JK_ASSERT(jk_platform_arena_pop(&arena, page_size * 2));
-    JK_ASSERT(!jk_platform_arena_pop(&arena, page_size * 2));
-
-    jk_platform_arena_terminate(&arena);
+    jk_platform_arena_virtual_release(&arena_root);
     // ---- Arena end ----------------------------------------------------------
 
     // ---- Buffer begin -------------------------------------------------------

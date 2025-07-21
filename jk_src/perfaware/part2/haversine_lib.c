@@ -126,7 +126,7 @@ JK_PUBLIC uint64_t haversine_verify(HaversineContext context)
 }
 
 JK_PUBLIC HaversineContext haversine_setup(
-        char *json_file_name, char *answers_file_name, JkPlatformArena *storage)
+        char *json_file_name, char *answers_file_name, JkArena *storage)
 {
     HaversineContext context = {0};
 
@@ -161,7 +161,7 @@ JK_PUBLIC HaversineContext haversine_setup(
     }
 
     context.pair_count = pairs_json->child_count;
-    context.pairs = jk_platform_arena_push(storage, context.pair_count * sizeof(context.pairs[0]));
+    context.pairs = jk_arena_push(storage, context.pair_count * sizeof(context.pairs[0]));
 
     if (answers_buffer.size) {
         JK_ASSERT(answers_buffer.size == (context.pair_count + 1) * sizeof(double));

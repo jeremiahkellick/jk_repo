@@ -818,7 +818,6 @@ int main(int argc, char **argv)
             array_append(&command, "/MT");
             array_append(&command, "/O2");
             array_append(&command, "/GL");
-            array_append(&command, "/D", "NDEBUG");
         } else {
             array_append(&command, "/MTd");
             array_append(&command, "/Od");
@@ -854,7 +853,6 @@ int main(int argc, char **argv)
             array_append(&command, "-O3");
             array_append(&command, "-flto");
             array_append(&command, "-fuse-linker-plugin");
-            array_append(&command, "-D", "NDEBUG");
         } else {
             array_append(&command, "-Og");
         }
@@ -876,9 +874,6 @@ int main(int argc, char **argv)
 
         if (!single_translation_unit) {
             array_append(&command, "-D", "JK_PUBLIC=");
-        }
-        if (optimize) {
-            array_append(&command, "-D", "NDEBUG");
         }
         if (no_profile) {
             array_append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
@@ -908,7 +903,6 @@ int main(int argc, char **argv)
         if (optimize) {
             array_append(&command, "-O3");
             array_append(&command, "-flto");
-            array_append(&command, "-D", "NDEBUG");
         } else {
             array_append(&command, "-Og");
         }

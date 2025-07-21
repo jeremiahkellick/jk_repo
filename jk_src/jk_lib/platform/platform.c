@@ -27,15 +27,21 @@ typedef struct JkPlatformData {
     HANDLE process;
 } JkPlatformData;
 
-static JkPlatformData jk_platform_data;
+static JkPlatformData jk_platform_globals;
 
-JK_PUBLIC void jk_platform_init(void)
+static void jk_platform_globals_init(void)
 {
-    JK_ASSERT(!jk_platform_data.initialized);
-    jk_platform_data.initialized = 1;
-    jk_platform_data.large_page_size = jk_platform_large_pages_try_enable();
-    jk_platform_data.process = OpenProcess(PROCESS_QUERY_INFORMATION, 0, GetCurrentProcessId());
+    jk_platform_globals.initialized = 1;
+    jk_platform_globals.large_page_size = jk_platform_large_pages_try_enable();
+    jk_platform_globals.process = OpenProcess(PROCESS_QUERY_INFORMATION, 0, GetCurrentProcessId());
 }
+
+#define JK_PLATFORMS_ENSURE_GLOBALS_INIT()      \
+    do {                                        \
+        if (!jk_platform_globals.initialized) { \
+            jk_platform_globals_init();         \
+        }                                       \
+    } while (0)
 
 JK_PUBLIC size_t jk_platform_file_size(char *file_name)
 {
@@ -79,7 +85,8 @@ JK_PUBLIC uint64_t jk_platform_large_pages_try_enable(void)
 
 JK_PUBLIC uint64_t jk_platform_large_page_size(void)
 {
-    return jk_platform_data.large_page_size;
+    JK_PLATFORMS_ENSURE_GLOBALS_INIT();
+    return jk_platform_globals.large_page_size;
 }
 
 JK_PUBLIC void *jk_platform_memory_reserve(size_t size)
@@ -130,7 +137,7 @@ typedef BOOL (*GetProcessMemoryInfoPointer)(HANDLE, PROCESS_MEMORY_COUNTERS *, D
 
 PROCESS_MEMORY_COUNTERS jk_process_memory_info_get()
 {
-    JK_DEBUG_ASSERT(jk_platform_data.initialized);
+    JK_PLATFORMS_ENSURE_GLOBALS_INIT();
 
     static uint8_t initialized;
     static HINSTANCE library;
@@ -149,7 +156,7 @@ PROCESS_MEMORY_COUNTERS jk_process_memory_info_get()
     PROCESS_MEMORY_COUNTERS memory_counters = {.cb = sizeof(memory_counters)};
     if (GetProcessMemoryInfo) {
         if (!GetProcessMemoryInfo(
-                    jk_platform_data.process, &memory_counters, sizeof(memory_counters))) {
+                    jk_platform_globals.process, &memory_counters, sizeof(memory_counters))) {
             // TODO: log error
         }
     } else {
@@ -354,17 +361,8 @@ typedef struct JkPlatformOsMetrics {
     b32 initialized;
 } JkPlatformOsMetrics;
 
-static JkPlatformOsMetrics jk_platform_data;
-
-JK_PUBLIC void jk_platform_init(void)
-{
-    JK_ASSERT(!jk_platform_data.initialized);
-    jk_platform_data.initialized = 1;
-}
-
 JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
 {
-    JK_DEBUG_ASSERT(jk_platform_data.initialized);
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) == 0) {
         return usage.ru_majflt + usage.ru_minflt;
@@ -442,77 +440,48 @@ _STATIC_ASSERT(0 && "Unknown ISA");
 
 // ---- Arena begin ------------------------------------------------------------
 
-JK_PUBLIC b32 jk_platform_arena_init(JkPlatformArena *arena, uint64_t virtual_size)
+static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
+{
+    JkPlatformArenaVirtualRoot *root = (JkPlatformArenaVirtualRoot *)arena->root;
+    new_size = jk_platform_page_size_round_up(new_size);
+    if (root->virtual_size < new_size) {
+        return 0;
+    } else {
+        uint64_t expansion_size = new_size - root->generic.memory.size;
+        if (jk_platform_memory_commit(
+                    root->generic.memory.data + root->generic.memory.size, expansion_size)) {
+            root->generic.memory.size = new_size;
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+}
+
+JK_PUBLIC JkArena jk_platform_arena_virtual_init(
+        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size)
 {
     uint64_t page_size = jk_platform_page_size();
 
-    arena->virtual_size = virtual_size;
-    arena->size = page_size;
-    arena->pos = 0;
-
-    arena->address = jk_platform_memory_reserve(virtual_size);
-    if (!arena->address) {
-        return 0;
+    root->virtual_size = virtual_size;
+    root->generic.memory.size = page_size;
+    root->generic.memory.data = jk_platform_memory_reserve(virtual_size);
+    if (!root->generic.memory.data) {
+        return (JkArena){0};
     }
-    if (!jk_platform_memory_commit(arena->address, page_size)) {
-        return 0;
+    if (!jk_platform_memory_commit(root->generic.memory.data, page_size)) {
+        return (JkArena){0};
     }
 
-    return 1;
+    return (JkArena){
+        .root = &root->generic,
+        .grow = jk_platform_arena_virtual_grow,
+    };
 }
 
-JK_PUBLIC void jk_platform_arena_terminate(JkPlatformArena *arena)
+JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root)
 {
-    jk_platform_memory_free(arena->address, arena->virtual_size);
-}
-
-JK_PUBLIC void *jk_platform_arena_push(JkPlatformArena *arena, uint64_t size)
-{
-    uint64_t new_pos = arena->pos + size;
-    if (new_pos > arena->virtual_size) {
-        return NULL;
-    }
-    if (new_pos > arena->size) {
-        uint64_t expansion_size = jk_platform_page_size_round_up(new_pos - arena->size);
-        if (!jk_platform_memory_commit(arena->address + arena->size, expansion_size)) {
-            return NULL;
-        }
-        arena->size += expansion_size;
-    }
-    void *address = arena->address + arena->pos;
-    arena->pos = new_pos;
-    return address;
-}
-
-JK_PUBLIC void *jk_platform_arena_push_zero(JkPlatformArena *arena, uint64_t size)
-{
-    void *pointer = jk_platform_arena_push(arena, size);
-    memset(pointer, 0, size);
-    return pointer;
-}
-
-JK_PUBLIC b32 jk_platform_arena_pop(JkPlatformArena *arena, uint64_t size)
-{
-    if (size > arena->pos) {
-        return 0;
-    }
-    arena->pos -= size;
-    return 1;
-}
-
-JK_PUBLIC void jk_platform_arena_clear(JkPlatformArena *arena)
-{
-    arena->pos = 0;
-}
-
-JK_PUBLIC void *jk_platform_arena_pointer_get(JkPlatformArena *arena)
-{
-    return arena->address + arena->pos;
-}
-
-JK_PUBLIC void jk_platform_arena_pointer_set(JkPlatformArena *arena, void *pointer)
-{
-    arena->pos = (uint8_t *)pointer - arena->address;
+    jk_platform_memory_free(root->generic.memory.data, root->generic.memory.size);
 }
 
 // ---- Arena end --------------------------------------------------------------
@@ -712,7 +681,7 @@ JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
 
     timing->saved_elapsed_inclusive = frame->elapsed_inclusive;
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
     zone->active_count++;
     timing->zone = zone;
     timing->ended = 0;
@@ -730,7 +699,7 @@ JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing)
     JkPlatformProfileZoneFrame *current_frame =
             jk_platform_profile.zone_current->frames + JK_PLATFORM_PROFILE_FRAME_CURRENT;
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
     JK_ASSERT(!timing->ended
             && "jk_platform_profile_zone_end: Called multiple times for a single timing instance");
     timing->ended = 1;
@@ -962,7 +931,7 @@ JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n)
     return n & ~(page_size - 1);
 }
 
-JK_PUBLIC JkBuffer jk_platform_file_read_full(JkPlatformArena *storage, char *file_name)
+JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
 {
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(jk_platform_file_read_full);
 
@@ -977,7 +946,7 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(JkPlatformArena *storage, char *fi
     }
 
     JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
-    buffer.data = jk_platform_arena_push(storage, buffer.size);
+    buffer.data = jk_arena_push(arena, buffer.size);
     if (!buffer.data) {
         JK_PLATFORM_PROFILE_ZONE_END(jk_platform_file_read_full);
         fprintf(stderr,
@@ -1000,28 +969,35 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(JkPlatformArena *storage, char *fi
     return buffer;
 }
 
-JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkPlatformArena *arena, char *file_name)
+JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name)
 {
     JkBuffer file = jk_platform_file_read_full(arena, file_name);
-    JkBufferArray lines = {.items = jk_platform_arena_pointer_get(arena)};
+    JkBufferArray lines = {.items = jk_arena_pointer_current(arena)};
 
     uint64_t start = 0;
     uint64_t i = 0;
     for (; i < file.size; i++) {
         if (file.data[i] == '\n') {
-            JkBuffer *line = jk_platform_arena_push(arena, sizeof(*line));
+            JkBuffer *line = jk_arena_push(arena, sizeof(*line));
+            if (!line) {
+                goto end;
+            }
             line->data = file.data + start;
             line->size = i - start;
             start = i + 1;
         }
     }
     if (start < i) {
-        JkBuffer *line = jk_platform_arena_push(arena, sizeof(*line));
+        JkBuffer *line = jk_arena_push(arena, sizeof(*line));
+        if (!line) {
+            goto end;
+        }
         line->data = file.data + start;
         line->size = i - start;
     }
 
-    lines.count = (JkBuffer *)jk_platform_arena_pointer_get(arena) - lines.items;
+end:
+    lines.count = (JkBuffer *)jk_arena_pointer_current(arena) - lines.items;
     return lines;
 }
 

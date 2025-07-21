@@ -37,7 +37,7 @@ JK_PUBLIC b32 jk_json_is_whitespace(int byte)
     return byte == ' ' || byte == '\n' || byte == '\r' || byte == '\t';
 }
 
-JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkPlatformArena *storage)
+JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *storage)
 {
     if (token->type == JK_JSON_TOKEN_VALUE) {
         jk_json_print(file, token->value, 0, storage);
@@ -46,7 +46,7 @@ JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkPlatformAre
     }
 }
 
-JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkPlatformArena *storage)
+JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage)
 {
     if (json->type == JK_JSON_ARRAY || json->type == JK_JSON_OBJECT) {
         b32 is_object = json->type == JK_JSON_OBJECT;
@@ -105,7 +105,7 @@ static JkJsonExactMatch jk_json_exact_matches[] = {
     },
 };
 
-JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena *storage)
+JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage)
 {
     int c;
     JkJsonToken token = {0};
@@ -127,7 +127,7 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena 
         (*pos)++;
 
         token.type = JK_JSON_TOKEN_VALUE;
-        token.value = jk_platform_arena_push_zero(storage, sizeof(*token.value));
+        token.value = jk_arena_push_zero(storage, sizeof(*token.value));
         token.value->type = JK_JSON_STRING;
         token.value->value = (JkBuffer){.size = end - start, .data = text.data + start};
     } break;
@@ -174,7 +174,7 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena 
         size_t end = *pos;
 
         token.type = JK_JSON_TOKEN_VALUE;
-        token.value = jk_platform_arena_push_zero(storage, sizeof(*token.value));
+        token.value = jk_arena_push_zero(storage, sizeof(*token.value));
         token.value->type = JK_JSON_NUMBER;
         token.value->value = (JkBuffer){.size = end - start, .data = text.data + start};
     } break;
@@ -186,7 +186,7 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena 
             if (strncmp((char const *)text.data + *pos, match->string, match->length) == 0) {
                 *pos += match->length;
                 token.type = JK_JSON_TOKEN_VALUE;
-                token.value = jk_platform_arena_push_zero(storage, sizeof(*token.value));
+                token.value = jk_arena_push_zero(storage, sizeof(*token.value));
                 token.value->type = match->type;
             }
         }
@@ -235,13 +235,13 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkPlatformArena 
     } while (0)
 
 static JkJson *jk_json_parse_with_token(
-        JkBuffer text, uint64_t *pos, JkJsonToken token, JkPlatformArena *storage)
+        JkBuffer text, uint64_t *pos, JkJsonToken token, JkArena *storage)
 {
     if (token.type == JK_JSON_TOKEN_VALUE) {
         return token.value;
     } else if (token.type == JK_JSON_TOKEN_OPEN_BRACE || token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
         b32 is_object = token.type == JK_JSON_TOKEN_OPEN_BRACE;
-        JkJson *json = jk_platform_arena_push_zero(storage, sizeof(*json));
+        JkJson *json = jk_arena_push_zero(storage, sizeof(*json));
         json->type = is_object ? JK_JSON_OBJECT : JK_JSON_ARRAY;
 
         JK_JSON_LEX_NEXT_TOKEN;
@@ -306,7 +306,7 @@ static JkJson *jk_json_parse_with_token(
     }
 }
 
-JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkPlatformArena *storage)
+JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
 {
     JkJsonToken token;
     uint64_t pos_alloc = 0;
@@ -317,12 +317,12 @@ JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkPlatformArena *storage)
 
 #undef JK_JSON_LEX_NEXT_TOKEN
 
-JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkPlatformArena *storage)
+JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage)
 {
     int c;
     uint64_t pos = 0;
     JkBuffer string = {0};
-    char *storage_pointer = jk_platform_arena_push(storage, 1);
+    char *storage_pointer = jk_arena_push(storage, 1);
     char *start = storage_pointer;
 
     while ((c = jk_buffer_character_next(json_string_value, &pos)) != EOF) {
@@ -372,7 +372,7 @@ JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkPlatformAr
                 JkUtf8Codepoint utf8 = jk_utf8_codepoint_encode(unicode32);
                 *storage_pointer = utf8.b[0];
                 for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
-                    storage_pointer = jk_platform_arena_push(storage, 1);
+                    storage_pointer = jk_arena_push(storage, 1);
                     *storage_pointer = utf8.b[i];
                 }
             } break;
@@ -384,7 +384,7 @@ JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkPlatformAr
         } else {
             *storage_pointer = (char)c;
         }
-        storage_pointer = jk_platform_arena_push(storage, 1);
+        storage_pointer = jk_arena_push(storage, 1);
     }
 
     *storage_pointer = '\0';

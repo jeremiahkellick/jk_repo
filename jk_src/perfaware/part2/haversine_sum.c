@@ -68,8 +68,8 @@ int main(int argc, char **argv)
         answers_file_name = opts_parse.operands[1];
     }
 
-    JkPlatformArena storage;
-    jk_platform_arena_init(&storage, (size_t)1 << 35);
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
                 + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2.0));
         double distance = jk_asin(jk_sqrt(a));
 
-#ifndef NDEBUG
+#if JK_BUILD_MODE != JK_RELEASE
         if (context.answers) {
             JK_ASSERT(approximately_equal(2.0 * EARTH_RADIUS * distance, context.answers[i]));
         }
