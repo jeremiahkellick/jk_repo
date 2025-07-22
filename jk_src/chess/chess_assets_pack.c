@@ -62,11 +62,11 @@ int main(int argc, char **argv)
     ChessAssets *assets = jk_arena_push_zero(&storage, sizeof(*assets));
 
     { // Fill out shapes array with piece data
-        JkBufferArray piece_strings =
-                jk_platform_file_read_lines(&scratch_arena, "../jk_assets/chess/paths.txt");
-        JK_ASSERT(piece_strings.count == PIECE_TYPE_COUNT - 1);
+        JkArena pieces_arena = jk_arena_child_get(&scratch_arena);
 
-        void *scratch_arena_saved_pointer = jk_arena_pointer_current(&scratch_arena);
+        JkBufferArray piece_strings =
+                jk_platform_file_read_lines(&pieces_arena, "../jk_assets/chess/paths.txt");
+        JK_ASSERT(piece_strings.count == PIECE_TYPE_COUNT - 1);
 
         for (int32_t piece_index = 1; piece_index < PIECE_TYPE_COUNT; piece_index++) {
             JkBuffer piece_string = piece_strings.items[piece_index - 1];
@@ -81,7 +81,7 @@ int main(int argc, char **argv)
             uint64_t pos = 0;
             int c;
             while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
-                JkArena tmp_arena = jk_arena_child_get(&scratch_arena);
+                JkArena tmp_arena = jk_arena_child_get(&pieces_arena);
 
                 switch (c) {
                 case 'M':
@@ -186,13 +186,13 @@ int main(int argc, char **argv)
             assets->shapes[piece_index].commands.size =
                     storage.pos - assets->shapes[piece_index].commands.offset;
         }
-
-        scratch_arena.pos = 0;
     }
 
     { // Fill out the rest of the shapes array with font data
+        JkArena font_arena = jk_arena_child_get(&scratch_arena);
+
         char *ttf_file_name = "../jk_assets/chess/AmiriQuran-Regular.ttf";
-        JkBuffer ttf_file = jk_platform_file_read_full(&scratch_arena, ttf_file_name);
+        JkBuffer ttf_file = jk_platform_file_read_full(&font_arena, ttf_file_name);
         if (!ttf_file.size) {
             fprintf(stderr, "Failed to read file '%s'\n", ttf_file_name);
             exit(1);
@@ -292,7 +292,9 @@ int main(int argc, char **argv)
     // Load sounds
     for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
         if (sound_file_paths[i]) {
-            JkBuffer audio_file = jk_platform_file_read_full(&scratch_arena, sound_file_paths[i]);
+            JkArena sound_arena = jk_arena_child_get(&scratch_arena);
+
+            JkBuffer audio_file = jk_platform_file_read_full(&sound_arena, sound_file_paths[i]);
             if (audio_file.size) {
                 b32 error = 0;
                 JkRiffChunkMain *chunk_main = (JkRiffChunkMain *)audio_file.data;

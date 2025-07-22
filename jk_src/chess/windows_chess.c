@@ -10,6 +10,8 @@
 #include <windows.h>
 #include <xinput.h>
 
+// #jk_build run jk_src/chess/chess_assets_pack.c
+// #jk_build build jk_src/chess/chess.c
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin

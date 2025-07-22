@@ -459,6 +459,11 @@ static JkArena jk_platform_arena_virtual_init(
     };
 }
 
+static void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root)
+{
+    jk_platform_memory_free(root->generic.memory.data, root->generic.memory.size);
+}
+
 // ---- Virtual arena end --------------------------------------------------------------
 
 typedef struct StringNode {
@@ -604,25 +609,14 @@ typedef struct Paths {
 /** argv[0] */
 static char *program_name = NULL;
 
-/** Populates globals source_file_path, basename, root_path, and build_path */
-static Paths paths_get(JkArena *arena, char *source_file_arg)
+static JkBuffer basename(JkBuffer path)
 {
-    Paths paths;
+    JkBuffer result;
 
-    // Get absolute path of the source file
-    paths.source_file = jk_buffer_from_null_terminated(
-            realpath(source_file_arg, jk_arena_push(arena, PATH_MAX)));
-    if (!paths.source_file.size) {
-        fprintf(stderr, "%s: Invalid source file path '%s'\n", program_name, source_file_arg);
-        exit(1);
-    }
-    back_slashes_to_forward_slashes(paths.source_file);
-
-    // Find basename
     uint64_t last_component = 0;
     uint64_t last_dot = 0;
-    for (uint64_t i = 0; i < paths.source_file.size; i++) {
-        switch (paths.source_file.data[i]) {
+    for (uint64_t i = 0; i < path.size; i++) {
+        switch (path.data[i]) {
         case '/':
             last_component = i + 1;
             break;
@@ -633,23 +627,54 @@ static Paths paths_get(JkArena *arena, char *source_file_arg)
             break;
         }
     }
-    if (last_component == paths.source_file.size) {
-        fprintf(stderr, "%s: Invalid source file path '%s'\n", program_name, source_file_arg);
+    if (last_dot == 0 || last_dot <= last_component) {
+        last_dot = path.size;
+    }
+    result.size = last_dot - last_component;
+    result.data = path.data + last_component;
+
+    return result;
+}
+
+/** Populates globals source_file_path, basename, root_path, and build_path */
+static Paths paths_get(JkArena *arena, JkBuffer source_file_relative_path)
+{
+    Paths paths;
+
+    { // Get absolute path of the source file
+        JkArena tmp_arena = jk_arena_child_get(arena);
+        paths.source_file = jk_buffer_from_null_terminated(
+                realpath(jk_buffer_to_null_terminated(&tmp_arena, source_file_relative_path),
+                        jk_arena_push(arena, PATH_MAX)));
+        if (!paths.source_file.size) {
+            fprintf(stderr,
+                    "%s: Invalid source file path '%.*s'\n",
+                    program_name,
+                    (int)source_file_relative_path.size,
+                    source_file_relative_path.data);
+            exit(1);
+        }
+        back_slashes_to_forward_slashes(paths.source_file);
+    }
+
+    paths.basename = basename(paths.source_file);
+    if (!paths.basename.size) {
+        fprintf(stderr,
+                "%s: Invalid source file path '%.*s'\n",
+                program_name,
+                (int)source_file_relative_path.size,
+                source_file_relative_path.data);
         exit(1);
     }
-    if (last_dot == 0 || last_dot <= last_component) {
-        last_dot = paths.source_file.size;
-    }
-    paths.basename.size = last_dot - last_component;
-    paths.basename.data = paths.source_file.data + last_component;
 
     // Find repository root path
     int64_t jk_src_offset = jk_string_find(paths.source_file, JKS("jk_src"));
     if (jk_src_offset == -1) {
         fprintf(stderr,
-                "%s: File '%s' not located under the jk_src directory\n",
+                "%s: File '%.*s' not located under the jk_src directory\n",
                 program_name,
-                source_file_arg);
+                (int)source_file_relative_path.size,
+                source_file_relative_path.data);
         exit(1);
     }
     paths.repo_root.size = (uint64_t)jk_src_offset;
@@ -743,8 +768,17 @@ static JkBuffer jk_build_string = JKSI("jk_build");
 static JkBuffer jk_src_string = JKSI(JK_SRC_STRING_LITERAL);
 static JkBuffer jk_gen_string = JKSI(JK_GEN_STRING_LITERAL);
 
+typedef struct Options {
+    Compiler compiler;
+    Mode mode;
+    b32 no_profile;
+} Options;
+
+static int jk_build(Options options, JkBuffer source_file_relative_path);
+
 static b32 parse_files(JkArena *storage,
         JkArena *scratch_arena,
+        Options options,
         Paths paths,
         StringArrayBuilder *dependencies,
         StringArrayBuilder *nasm_files,
@@ -823,6 +857,8 @@ static b32 parse_files(JkArena *storage,
                 b32 cmd_compiler_arguments =
                         jk_buffer_compare(command, JKS("compiler_arguments")) == 0;
                 b32 cmd_linker_arguments = jk_buffer_compare(command, JKS("linker_arguments")) == 0;
+                b32 cmd_build = jk_buffer_compare(command, JKS("build")) == 0;
+                b32 cmd_run = jk_buffer_compare(command, JKS("run")) == 0;
 
                 if (cmd_compiler_arguments || cmd_linker_arguments) {
                     if (path_index == 0) {
@@ -856,6 +892,47 @@ static b32 parse_files(JkArena *storage,
                                     jk_buffer_copy(storage, argument));
                         }
                     }
+                } else if (cmd_build || cmd_run) {
+                    {
+                        int c;
+                        while (is_space_exclude_newlines(c = jk_buffer_character_get(file, pos))) {
+                            pos++;
+                        }
+                        if (c == '\r' || c == '\n' || c == EOF) {
+                            fprintf(stderr,
+                                    "%s: '#jk_build build' expects a file path\n",
+                                    program_name);
+                            exit(1);
+                        }
+                    }
+
+                    // Read file path
+                    JkBuffer file_path_relative;
+                    {
+                        uint64_t start = pos;
+                        int c;
+                        while ((c = jk_buffer_character_get(file, pos)) != '\n' && c != '\r'
+                                && c != EOF) {
+                            pos++;
+                        }
+                        file_path_relative.size = pos - start;
+                        file_path_relative.data = file.data + start;
+                    }
+                    back_slashes_to_forward_slashes(file_path_relative);
+
+                    JkBuffer file_path_absolute =
+                            concat_strings(&file_arena, paths.repo_root, file_path_relative);
+
+                    jk_build(options, file_path_absolute);
+
+                    if (cmd_run) {
+                        JkBuffer program_path = concat_strings(&file_arena,
+                                concat_strings(&file_arena, paths.build, JKS("/")),
+                                basename(file_path_absolute));
+                        jk_platform_exec((JkBufferArray){.count = 1, .items = &program_path});
+                    }
+
+                    printf("\n");
                 } else if (jk_buffer_compare(command, JKS("single_translation_unit")) == 0) {
                     if (path_index == 0) {
                         single_translation_unit = 1;
@@ -885,7 +962,7 @@ static b32 parse_files(JkArena *storage,
                         while (is_space_exclude_newlines(c = jk_buffer_character_get(file, pos))) {
                             pos++;
                         }
-                        if (c == '\n' || c == EOF) {
+                        if (c == '\r' || c == '\n' || c == EOF) {
                             fprintf(stderr,
                                     "%s: '#jk_build nasm' expects a file path\n",
                                     program_name);
@@ -1004,193 +1081,8 @@ static b32 parse_files(JkArena *storage,
     return single_translation_unit;
 }
 
-int main(int argc, char **argv)
+static int jk_build(Options options, JkBuffer source_file_relative_path)
 {
-    program_name = argv[0];
-
-    // Parse arguments
-
-    Compiler compiler;
-#ifdef _WIN32
-    compiler = COMPILER_MSVC; // Default to MSVC on Windows
-#elif __linux__
-    compiler = COMPILER_GCC; // Default to GCC on Linux
-#else
-    compiler = COMPILER_CLANG; // Default to clang on macOS
-#endif
-
-    Mode mode = JK_DEBUG_FAST;
-    char *source_file_arg = NULL;
-    b32 no_profile = 0;
-    {
-        b32 help = 0;
-        b32 usage_error = 0;
-        b32 options_ended = 0;
-        int non_option_arguments = 0;
-        for (int i = 1; i < argc; i++) {
-            char *compiler_string = 0;
-            b32 expect_compiler_string = 0;
-            char *mode_string = 0;
-            b32 expect_mode_string = 0;
-
-            if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
-                if (argv[i][1] == '-') {
-                    if (argv[i][2] == '\0') { // -- encountered
-                        options_ended = 1;
-                    } else { // Double hyphen option
-                        char *name = &argv[i][2];
-                        int end = 0;
-                        while (name[end] != '=' && name[end] != '\0') {
-                            end++;
-                        }
-                        if (strncmp(name, "compiler", end) == 0) {
-                            expect_compiler_string = 1;
-
-                            if (name[end] == '=') {
-                                if (name[end + 1] != '\0') {
-                                    compiler_string = &name[end + 1];
-                                }
-                            } else {
-                                compiler_string = argv[++i];
-                            }
-                        } else if (strcmp(argv[i], "--help") == 0) {
-                            help = 1;
-                        } else if (strncmp(name, "mode", end) == 0) {
-                            expect_mode_string = 1;
-
-                            if (name[end] == '=') {
-                                if (name[end + 1] != '\0') {
-                                    mode_string = &name[end + 1];
-                                }
-                            } else {
-                                mode_string = argv[++i];
-                            }
-                        } else if (strcmp(argv[i], "--no-profile") == 0) {
-                            no_profile = 1;
-                        } else {
-                            fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
-                            usage_error = 1;
-                        }
-                    }
-                } else { // Single-hypen option(s)
-                    b32 has_argument = 0;
-                    for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
-                        switch (*c) {
-                        case 'c': {
-                            has_argument = 1;
-                            expect_compiler_string = 1;
-                            compiler_string = ++c;
-                            if (compiler_string[0] == '\0') {
-                                compiler_string = argv[++i];
-                            }
-                        } break;
-
-                        case 'm': {
-                            has_argument = 1;
-                            expect_mode_string = 1;
-                            mode_string = ++c;
-                            if (mode_string[0] == '\0') {
-                                mode_string = argv[++i];
-                            }
-                        } break;
-
-                        default:
-                            fprintf(stderr,
-                                    "%s: Invalid option '%c' in '%s'\n",
-                                    program_name,
-                                    *c,
-                                    argv[i]);
-                            usage_error = 1;
-                            break;
-                        }
-                    }
-                }
-            } else { // Regular argument
-                non_option_arguments++;
-                source_file_arg = argv[i];
-            }
-
-            if (expect_compiler_string) {
-                if (compiler_string) {
-                    if (compare_case_insensitive(compiler_string, "gcc")) {
-                        compiler = COMPILER_GCC;
-                    } else if (compare_case_insensitive(compiler_string, "msvc")) {
-                        compiler = COMPILER_MSVC;
-                    } else if (compare_case_insensitive(compiler_string, "tcc")) {
-                        compiler = COMPILER_TCC;
-                    } else if (compare_case_insensitive(compiler_string, "clang")) {
-                        compiler = COMPILER_CLANG;
-                    } else {
-                        fprintf(stderr,
-                                "%s: Option '-c, --compiler' given invalid argument '%s'\n",
-                                argv[0],
-                                compiler_string);
-                        usage_error = 1;
-                    }
-                } else {
-                    fprintf(stderr,
-                            "%s: Option '-c, --compiler' missing required argument\n",
-                            argv[0]);
-                    usage_error = 1;
-                }
-            }
-
-            if (expect_mode_string) {
-                if (mode_string) {
-                    if (compare_case_insensitive(mode_string, "debug_slow")
-                            || compare_case_insensitive(mode_string, "0")) {
-                        mode = JK_DEBUG_SLOW;
-                    } else if (compare_case_insensitive(mode_string, "debug_fast")
-                            || compare_case_insensitive(mode_string, "1")) {
-                        mode = JK_DEBUG_FAST;
-                    } else if (compare_case_insensitive(mode_string, "release")
-                            || compare_case_insensitive(mode_string, "2")) {
-                        mode = JK_RELEASE;
-                    } else {
-                        fprintf(stderr,
-                                "%s: Option '-m, --mode' given invalid argument '%s'\n",
-                                argv[0],
-                                mode_string);
-                        usage_error = 1;
-                    }
-                }
-            }
-        }
-
-        if (!help && non_option_arguments != 1) {
-            fprintf(stderr,
-                    "%s: Expected 1 non-option argument, got %d\n",
-                    program_name,
-                    non_option_arguments);
-            usage_error = 1;
-        }
-
-        if (help || usage_error) {
-            printf("NAME\n"
-                   "\tjk_build - builds programs in jk_repo\n\n"
-                   "SYNOPSIS\n"
-                   "\tjk_build [-c clang|gcc|msvc|tcc] [-m 0|1|2] [--no-profile] FILE\n\n"
-                   "DESCRIPTION\n"
-                   "\tjk_build can be used to compile any program in jk_repo. FILE can be any\n"
-                   "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
-                   "\tif any, do not need to be included in the command line arguments. They\n"
-                   "\twill be found by jk_build and included when it invokes a compiler.\n\n"
-                   "OPTIONS\n"
-                   "\t-c COMPILER, --compiler=COMPILER\n"
-                   "\t\tCOMPILER can be clang, gcc, msvc, or tcc.\n\n"
-                   "\t--help\tDisplay this help text and exit.\n\n"
-                   "\t-m MODE, --mode=MODE\n"
-                   "\t\tMODE can be 0 - debug_slow, 1 - debug_fast, or 2 - release.\n"
-                   "\t\tDefaults to debug_fast. Can be specified by number (-m 0) or\n"
-                   "\t\tname (-m debug_slow).\n\n"
-                   "\t--no-profile\n"
-                   "\t\tExclude profiler timings from the compilation, except for the\n"
-                   "\t\ttotal timing. Equivalent to\n"
-                   "\t\t#define JK_PLATFORM_PROFILE_DISABLE 1\n\n");
-            exit(usage_error);
-        }
-    }
-
     JkPlatformArenaVirtualRoot storage_root;
     JkArena storage = jk_platform_arena_virtual_init(&storage_root, 1 * GIGABYTE);
 
@@ -1206,7 +1098,7 @@ int main(int argc, char **argv)
     StringArrayBuilder linker_arguments;
     string_array_builder_init(&linker_arguments, &storage);
 
-    Paths paths = paths_get(&storage, source_file_arg);
+    Paths paths = paths_get(&storage, source_file_relative_path);
 
     ensure_directory_exists(paths.build);
     {
@@ -1226,6 +1118,7 @@ int main(int argc, char **argv)
 
     b32 single_translation_unit = parse_files(&storage,
             &scratch_arena,
+            options,
             paths,
             &dependencies,
             &nasm_files,
@@ -1248,7 +1141,7 @@ int main(int argc, char **argv)
         append(&nasm_command, "-o");
         string_array_builder_push(&nasm_command, nasm_output_path);
 
-        if (compiler == COMPILER_MSVC) {
+        if (options.compiler == COMPILER_MSVC) {
             append(&nasm_command, "-f", "win64");
         } else {
             append(&nasm_command, "-f", "elf64");
@@ -1258,7 +1151,7 @@ int main(int argc, char **argv)
 
         jk_platform_exec(string_array_builder_build(&nasm_command));
 
-        if (compiler == COMPILER_MSVC) {
+        if (options.compiler == COMPILER_MSVC) {
             StringArrayBuilder lib_command;
             string_array_builder_init(&lib_command, &storage);
             append(&lib_command, "lib", "/nologo");
@@ -1272,9 +1165,9 @@ int main(int argc, char **argv)
     string_array_builder_init(&command, &storage);
 
     char mode_define[16];
-    snprintf(mode_define, sizeof(mode_define), "JK_BUILD_MODE=%d", mode);
+    snprintf(mode_define, sizeof(mode_define), "JK_BUILD_MODE=%d", options.mode);
 
-    switch (compiler) { // Compiler options
+    switch (options.compiler) { // Compiler options
     case COMPILER_MSVC: {
         append(&command, "cl");
 
@@ -1295,7 +1188,7 @@ int main(int argc, char **argv)
         append(&command, "/EHa-");
         append(&command, "/D", mode_define);
 
-        switch (mode) {
+        switch (options.mode) {
         case JK_DEBUG_SLOW: {
             append(&command, "/MTd");
             append(&command, "/Od");
@@ -1317,7 +1210,7 @@ int main(int argc, char **argv)
         if (!single_translation_unit) {
             append(&command, "/D", "JK_PUBLIC=");
         }
-        if (no_profile) {
+        if (options.no_profile) {
             append(&command, "/D", "JK_PLATFORM_PROFILE_DISABLE");
         }
         append(&command, "/I");
@@ -1346,14 +1239,14 @@ int main(int argc, char **argv)
             append(&command, "-D", "JK_PUBLIC=");
         }
         append(&command, "-D", mode_define);
-        if (mode == JK_DEBUG_SLOW) {
+        if (options.mode == JK_DEBUG_SLOW) {
             append(&command, "-Og");
         } else {
             append(&command, "-O3");
             append(&command, "-flto");
             append(&command, "-fuse-linker-plugin");
         }
-        if (no_profile) {
+        if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
 
@@ -1380,7 +1273,7 @@ int main(int argc, char **argv)
         if (!single_translation_unit) {
             append(&command, "-D", "JK_PUBLIC=");
         }
-        if (no_profile) {
+        if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
 
@@ -1416,13 +1309,13 @@ int main(int argc, char **argv)
             append(&command, "-D", "JK_PUBLIC=");
         }
         append(&command, "-D", mode_define);
-        if (mode == JK_DEBUG_SLOW) {
+        if (options.mode == JK_DEBUG_SLOW) {
             append(&command, "-Og");
         } else {
             append(&command, "-O3");
             append(&command, "-flto");
         }
-        if (no_profile) {
+        if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
 
@@ -1431,7 +1324,7 @@ int main(int argc, char **argv)
     } break;
 
     case COMPILER_NONE: {
-        fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", argv[0]);
+        fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", program_name);
         exit(1);
     } break;
     }
@@ -1511,7 +1404,7 @@ int main(int argc, char **argv)
         string_array_builder_concat(&command, &dependencies);
     }
 
-    switch (compiler) { // Linker options
+    switch (options.compiler) { // Linker options
     case COMPILER_MSVC: {
         append(&command, "/link");
 
@@ -1542,7 +1435,7 @@ int main(int argc, char **argv)
     } break;
 
     case COMPILER_NONE: {
-        fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", argv[0]);
+        fprintf(stderr, "%s: compiler should never be COMPILER_NONE by this point\n", program_name);
         exit(1);
     } break;
     }
@@ -1551,9 +1444,204 @@ int main(int argc, char **argv)
 
     for (int i = 0; i < nasm_files.count; i++) {
         char file_name[32];
-        snprintf(file_name, 32, "nasm%d.%s", i, compiler == COMPILER_MSVC ? "lib" : "o");
+        snprintf(file_name, 32, "nasm%d.%s", i, options.compiler == COMPILER_MSVC ? "lib" : "o");
         append(&command, file_name);
     }
 
-    return jk_platform_exec(string_array_builder_build(&command));
+    int result = jk_platform_exec(string_array_builder_build(&command));
+
+    jk_platform_arena_virtual_release(&storage_root);
+    jk_platform_arena_virtual_release(&scratch_arena_root);
+
+    return result;
+}
+
+int main(int argc, char **argv)
+{
+    program_name = argv[0];
+
+    // Parse arguments
+
+    Options options = {
+#ifdef _WIN32
+        .compiler = COMPILER_MSVC, // Default to MSVC on Windows
+#elif __linux__
+        .compiler = COMPILER_GCC, // Default to GCC on Linux
+#else
+        .compiler = COMPILER_CLANG, // Default to clang on macOS
+#endif
+        .mode = JK_DEBUG_FAST,
+    };
+    JkBuffer source_file_relative_path = {0};
+
+    {
+        b32 help = 0;
+        b32 usage_error = 0;
+        b32 options_ended = 0;
+        int non_option_arguments = 0;
+        for (int i = 1; i < argc; i++) {
+            char *compiler_string = 0;
+            b32 expect_compiler_string = 0;
+            char *mode_string = 0;
+            b32 expect_mode_string = 0;
+
+            if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
+                if (argv[i][1] == '-') {
+                    if (argv[i][2] == '\0') { // -- encountered
+                        options_ended = 1;
+                    } else { // Double hyphen option
+                        char *name = &argv[i][2];
+                        int end = 0;
+                        while (name[end] != '=' && name[end] != '\0') {
+                            end++;
+                        }
+                        if (strncmp(name, "compiler", end) == 0) {
+                            expect_compiler_string = 1;
+
+                            if (name[end] == '=') {
+                                if (name[end + 1] != '\0') {
+                                    compiler_string = &name[end + 1];
+                                }
+                            } else {
+                                compiler_string = argv[++i];
+                            }
+                        } else if (strcmp(argv[i], "--help") == 0) {
+                            help = 1;
+                        } else if (strncmp(name, "mode", end) == 0) {
+                            expect_mode_string = 1;
+
+                            if (name[end] == '=') {
+                                if (name[end + 1] != '\0') {
+                                    mode_string = &name[end + 1];
+                                }
+                            } else {
+                                mode_string = argv[++i];
+                            }
+                        } else if (strcmp(argv[i], "--no-profile") == 0) {
+                            options.no_profile = 1;
+                        } else {
+                            fprintf(stderr, "%s: Invalid option '%s'\n", program_name, argv[i]);
+                            usage_error = 1;
+                        }
+                    }
+                } else { // Single-hypen option(s)
+                    b32 has_argument = 0;
+                    for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
+                        switch (*c) {
+                        case 'c': {
+                            has_argument = 1;
+                            expect_compiler_string = 1;
+                            compiler_string = ++c;
+                            if (compiler_string[0] == '\0') {
+                                compiler_string = argv[++i];
+                            }
+                        } break;
+
+                        case 'm': {
+                            has_argument = 1;
+                            expect_mode_string = 1;
+                            mode_string = ++c;
+                            if (mode_string[0] == '\0') {
+                                mode_string = argv[++i];
+                            }
+                        } break;
+
+                        default:
+                            fprintf(stderr,
+                                    "%s: Invalid option '%c' in '%s'\n",
+                                    program_name,
+                                    *c,
+                                    argv[i]);
+                            usage_error = 1;
+                            break;
+                        }
+                    }
+                }
+            } else { // Regular argument
+                non_option_arguments++;
+                source_file_relative_path = jk_buffer_from_null_terminated(argv[i]);
+            }
+
+            if (expect_compiler_string) {
+                if (compiler_string) {
+                    if (compare_case_insensitive(compiler_string, "gcc")) {
+                        options.compiler = COMPILER_GCC;
+                    } else if (compare_case_insensitive(compiler_string, "msvc")) {
+                        options.compiler = COMPILER_MSVC;
+                    } else if (compare_case_insensitive(compiler_string, "tcc")) {
+                        options.compiler = COMPILER_TCC;
+                    } else if (compare_case_insensitive(compiler_string, "clang")) {
+                        options.compiler = COMPILER_CLANG;
+                    } else {
+                        fprintf(stderr,
+                                "%s: Option '-c, --compiler' given invalid argument '%s'\n",
+                                argv[0],
+                                compiler_string);
+                        usage_error = 1;
+                    }
+                } else {
+                    fprintf(stderr,
+                            "%s: Option '-c, --compiler' missing required argument\n",
+                            argv[0]);
+                    usage_error = 1;
+                }
+            }
+
+            if (expect_mode_string) {
+                if (mode_string) {
+                    if (compare_case_insensitive(mode_string, "debug_slow")
+                            || compare_case_insensitive(mode_string, "0")) {
+                        options.mode = JK_DEBUG_SLOW;
+                    } else if (compare_case_insensitive(mode_string, "debug_fast")
+                            || compare_case_insensitive(mode_string, "1")) {
+                        options.mode = JK_DEBUG_FAST;
+                    } else if (compare_case_insensitive(mode_string, "release")
+                            || compare_case_insensitive(mode_string, "2")) {
+                        options.mode = JK_RELEASE;
+                    } else {
+                        fprintf(stderr,
+                                "%s: Option '-m, --mode' given invalid argument '%s'\n",
+                                argv[0],
+                                mode_string);
+                        usage_error = 1;
+                    }
+                }
+            }
+        }
+
+        if (!help && non_option_arguments != 1) {
+            fprintf(stderr,
+                    "%s: Expected 1 non-option argument, got %d\n",
+                    program_name,
+                    non_option_arguments);
+            usage_error = 1;
+        }
+
+        if (help || usage_error) {
+            printf("NAME\n"
+                   "\tjk_build - builds programs in jk_repo\n\n"
+                   "SYNOPSIS\n"
+                   "\tjk_build [-c clang|gcc|msvc|tcc] [-m 0|1|2] [--no-profile] FILE\n\n"
+                   "DESCRIPTION\n"
+                   "\tjk_build can be used to compile any program in jk_repo. FILE can be any\n"
+                   "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
+                   "\tif any, do not need to be included in the command line arguments. They\n"
+                   "\twill be found by jk_build and included when it invokes a compiler.\n\n"
+                   "OPTIONS\n"
+                   "\t-c COMPILER, --compiler=COMPILER\n"
+                   "\t\tCOMPILER can be clang, gcc, msvc, or tcc.\n\n"
+                   "\t--help\tDisplay this help text and exit.\n\n"
+                   "\t-m MODE, --mode=MODE\n"
+                   "\t\tMODE can be 0 - debug_slow, 1 - debug_fast, or 2 - release.\n"
+                   "\t\tDefaults to debug_fast. Can be specified by number (-m 0) or\n"
+                   "\t\tname (-m debug_slow).\n\n"
+                   "\t--no-profile\n"
+                   "\t\tExclude profiler timings from the compilation, except for the\n"
+                   "\t\ttotal timing. Equivalent to\n"
+                   "\t\t#define JK_PLATFORM_PROFILE_DISABLE 1\n\n");
+            exit(usage_error);
+        }
+    }
+
+    return jk_build(options, source_file_relative_path);
 }
