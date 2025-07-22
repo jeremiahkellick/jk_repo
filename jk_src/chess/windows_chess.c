@@ -1,6 +1,5 @@
 // #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
 
-#include "jk_src/jk_lib/jk_lib.h"
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
 #include <stdarg.h>
@@ -17,6 +16,12 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
+
+#if JK_BUILD_MODE == JK_RELEASE
+#include <jk_gen/chess/assets.c>
+#include <jk_src/chess/chess.c>
+#include <jk_src/jk_shapes/jk_shapes.c>
+#endif
 
 typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
 typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration);
@@ -412,8 +417,16 @@ DWORD game_thread(LPVOID param)
         OutputDebugStringA("Failed to load DirectSound\n");
     }
 
+#if JK_BUILD_MODE == JK_RELEASE
+    global_ai_init = ai_init;
+    global_ai_running = ai_running;
+    global_update = update;
+    global_render = render;
+    global_profile_print = profile_print;
+#else
     HINSTANCE chess_library = 0;
     FILETIME chess_dll_last_modified_time = {0};
+#endif
 
     global_chess.time = 0;
     uint64_t work_time_total = 0;
@@ -427,6 +440,7 @@ DWORD game_thread(LPVOID param)
     b32 reset_audio_position = TRUE;
     uint64_t prev_keys = 0;
     while (global_running) {
+#if JK_BUILD_MODE != JK_RELEASE
         // Hot reloading
         WIN32_FILE_ATTRIBUTE_DATA chess_dll_info;
         if (GetFileAttributesExA("chess.dll", GetFileExInfoStandard, &chess_dll_info)) {
@@ -461,6 +475,7 @@ DWORD game_thread(LPVOID param)
         } else {
             OutputDebugStringA("Failed to get last modified time of chess.dll\n");
         }
+#endif
 
         global_chess.input.flags = 0;
 
@@ -849,6 +864,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_chess.os_timer_frequency = jk_platform_os_timer_frequency();
     global_chess.debug_print = debug_print;
 
+#if JK_BUILD_MODE == JK_RELEASE
+    global_assets = (ChessAssets *)chess_assets_byte_array;
+#else
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, JK_GIGABYTE);
     if (jk_arena_valid(&storage)) {
@@ -856,6 +874,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     } else {
         OutputDebugStringA("Failed to initialize storage arena\n");
     }
+#endif
 
     InitializeConditionVariable(&global_shared.wants_ai_move);
 
