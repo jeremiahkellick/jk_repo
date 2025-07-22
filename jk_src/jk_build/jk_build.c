@@ -12,6 +12,12 @@
 
 typedef uint32_t b32;
 
+typedef enum Mode {
+    JK_DEBUG_SLOW,
+    JK_DEBUG_FAST,
+    JK_RELEASE,
+} Mode;
+
 #define GIGABYTE (1llu << 30)
 
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
@@ -1003,9 +1009,18 @@ int main(int argc, char **argv)
     program_name = argv[0];
 
     // Parse arguments
-    Compiler compiler = COMPILER_NONE;
+
+    Compiler compiler;
+#ifdef _WIN32
+    compiler = COMPILER_MSVC; // Default to MSVC on Windows
+#elif __linux__
+    compiler = COMPILER_GCC; // Default to GCC on Linux
+#else
+    compiler = COMPILER_CLANG; // Default to clang on macOS
+#endif
+
+    Mode mode = JK_DEBUG_FAST;
     char *source_file_arg = NULL;
-    b32 optimize = 0;
     b32 no_profile = 0;
     {
         b32 help = 0;
@@ -1013,8 +1028,10 @@ int main(int argc, char **argv)
         b32 options_ended = 0;
         int non_option_arguments = 0;
         for (int i = 1; i < argc; i++) {
-            char *compiler_string = NULL;
+            char *compiler_string = 0;
             b32 expect_compiler_string = 0;
+            char *mode_string = 0;
+            b32 expect_mode_string = 0;
 
             if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
                 if (argv[i][1] == '-') {
@@ -1038,8 +1055,16 @@ int main(int argc, char **argv)
                             }
                         } else if (strcmp(argv[i], "--help") == 0) {
                             help = 1;
-                        } else if (strcmp(argv[i], "--optimize") == 0) {
-                            optimize = 1;
+                        } else if (strncmp(name, "mode", end) == 0) {
+                            expect_mode_string = 1;
+
+                            if (name[end] == '=') {
+                                if (name[end + 1] != '\0') {
+                                    mode_string = &name[end + 1];
+                                }
+                            } else {
+                                mode_string = argv[++i];
+                            }
                         } else if (strcmp(argv[i], "--no-profile") == 0) {
                             no_profile = 1;
                         } else {
@@ -1060,8 +1085,13 @@ int main(int argc, char **argv)
                             }
                         } break;
 
-                        case 'O': {
-                            optimize = 1;
+                        case 'm': {
+                            has_argument = 1;
+                            expect_mode_string = 1;
+                            mode_string = ++c;
+                            if (mode_string[0] == '\0') {
+                                mode_string = argv[++i];
+                            }
                         } break;
 
                         default:
@@ -1104,7 +1134,29 @@ int main(int argc, char **argv)
                     usage_error = 1;
                 }
             }
+
+            if (expect_mode_string) {
+                if (mode_string) {
+                    if (compare_case_insensitive(mode_string, "debug_slow")
+                            || compare_case_insensitive(mode_string, "0")) {
+                        mode = JK_DEBUG_SLOW;
+                    } else if (compare_case_insensitive(mode_string, "debug_fast")
+                            || compare_case_insensitive(mode_string, "1")) {
+                        mode = JK_DEBUG_FAST;
+                    } else if (compare_case_insensitive(mode_string, "release")
+                            || compare_case_insensitive(mode_string, "2")) {
+                        mode = JK_RELEASE;
+                    } else {
+                        fprintf(stderr,
+                                "%s: Option '-m, --mode' given invalid argument '%s'\n",
+                                argv[0],
+                                mode_string);
+                        usage_error = 1;
+                    }
+                }
+            }
         }
+
         if (!help && non_option_arguments != 1) {
             fprintf(stderr,
                     "%s: Expected 1 non-option argument, got %d\n",
@@ -1112,11 +1164,12 @@ int main(int argc, char **argv)
                     non_option_arguments);
             usage_error = 1;
         }
+
         if (help || usage_error) {
             printf("NAME\n"
                    "\tjk_build - builds programs in jk_repo\n\n"
                    "SYNOPSIS\n"
-                   "\tjk_build [-c gcc|msvc|tcc] [--no-profile] [-l|-O] FILE\n\n"
+                   "\tjk_build [-c clang|gcc|msvc|tcc] [-m 0|1|2] [--no-profile] FILE\n\n"
                    "DESCRIPTION\n"
                    "\tjk_build can be used to compile any program in jk_repo. FILE can be any\n"
                    "\t'.c' or '.cpp' file that defines an entry point function. Dependencies,\n"
@@ -1124,26 +1177,17 @@ int main(int argc, char **argv)
                    "\twill be found by jk_build and included when it invokes a compiler.\n\n"
                    "OPTIONS\n"
                    "\t-c COMPILER, --compiler=COMPILER\n"
-                   "\t\tChoose which compiler to use. COMPILER can be gcc, msvc, or tcc.\n\n"
+                   "\t\tCOMPILER can be clang, gcc, msvc, or tcc.\n\n"
                    "\t--help\tDisplay this help text and exit.\n\n"
+                   "\t-m MODE, --mode=MODE\n"
+                   "\t\tMODE can be 0 - debug_slow, 1 - debug_fast, or 2 - release.\n"
+                   "\t\tDefaults to debug_fast. Can be specified by number (-m 0) or\n"
+                   "\t\tname (-m debug_slow).\n\n"
                    "\t--no-profile\n"
                    "\t\tExclude profiler timings from the compilation, except for the\n"
                    "\t\ttotal timing. Equivalent to\n"
-                   "\t\t#define JK_PLATFORM_PROFILE_DISABLE 1\n\n"
-                   "\t-O, --optimize\n"
-                   "\t\tPrioritize the speed of the resulting executable over its\n"
-                   "\t\tdebuggability and compilation speed.\n");
+                   "\t\t#define JK_PLATFORM_PROFILE_DISABLE 1\n\n");
             exit(usage_error);
-        }
-
-        if (compiler == COMPILER_NONE) {
-#ifdef _WIN32
-            compiler = COMPILER_MSVC; // Default to MSVC on Windows
-#elif __linux__
-            compiler = COMPILER_GCC; // Default to GCC on Linux
-#else
-            compiler = COMPILER_CLANG; // Default to clang on macOS
-#endif
         }
     }
 
@@ -1227,6 +1271,9 @@ int main(int argc, char **argv)
     StringArrayBuilder command;
     string_array_builder_init(&command, &storage);
 
+    char mode_define[16];
+    snprintf(mode_define, sizeof(mode_define), "JK_BUILD_MODE=%d", mode);
+
     switch (compiler) { // Compiler options
     case COMPILER_MSVC: {
         append(&command, "cl");
@@ -1246,14 +1293,27 @@ int main(int argc, char **argv)
         append(&command, "/Zi");
         append(&command, "/std:c11");
         append(&command, "/EHa-");
-        if (optimize) {
+        append(&command, "/D", mode_define);
+
+        switch (mode) {
+        case JK_DEBUG_SLOW: {
+            append(&command, "/MTd");
+            append(&command, "/Od");
+        } break;
+
+        case JK_DEBUG_FAST: {
+            append(&command, "/MTd");
+            append(&command, "/O2");
+            append(&command, "/GL");
+        } break;
+
+        case JK_RELEASE: {
             append(&command, "/MT");
             append(&command, "/O2");
             append(&command, "/GL");
-        } else {
-            append(&command, "/MTd");
-            append(&command, "/Od");
+        } break;
         }
+
         if (!single_translation_unit) {
             append(&command, "/D", "JK_PUBLIC=");
         }
@@ -1285,12 +1345,13 @@ int main(int argc, char **argv)
         } else {
             append(&command, "-D", "JK_PUBLIC=");
         }
-        if (optimize) {
+        append(&command, "-D", mode_define);
+        if (mode == JK_DEBUG_SLOW) {
+            append(&command, "-Og");
+        } else {
             append(&command, "-O3");
             append(&command, "-flto");
             append(&command, "-fuse-linker-plugin");
-        } else {
-            append(&command, "-Og");
         }
         if (no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
@@ -1314,6 +1375,7 @@ int main(int argc, char **argv)
         append(&command, "-std=c11");
         append(&command, "-Wall");
         append(&command, "-g");
+        append(&command, "-D", mode_define);
 
         if (!single_translation_unit) {
             append(&command, "-D", "JK_PUBLIC=");
@@ -1353,11 +1415,12 @@ int main(int argc, char **argv)
         } else {
             append(&command, "-D", "JK_PUBLIC=");
         }
-        if (optimize) {
+        append(&command, "-D", mode_define);
+        if (mode == JK_DEBUG_SLOW) {
+            append(&command, "-Og");
+        } else {
             append(&command, "-O3");
             append(&command, "-flto");
-        } else {
-            append(&command, "-Og");
         }
         if (no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
