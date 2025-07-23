@@ -1001,7 +1001,7 @@ static b32 expand_node(Ai *ctx, MoveNode *node)
     MoveNode *first_child = 0;
     debug_nodes_found += moves.count;
     for (uint8_t i = 0; i < moves.count; i++) {
-        MoveNode *new_child = jk_arena_push(&ctx->arena, sizeof(*new_child));
+        MoveNode *new_child = jk_arena_push(ctx->arena, sizeof(*new_child));
         if (!new_child) {
             return 0;
         }
@@ -1135,18 +1135,16 @@ static void custom_profile_print(void *data, char *format, ...)
     print(debug_print_buffer);
 }
 
-void ai_init(Ai *ai,
+void ai_init(JkArena *arena,
+        Ai *ai,
         Board board,
-        JkBuffer memory,
         uint64_t time,
         uint64_t time_frequency,
         void (*debug_print)(char *))
 {
+    ai->arena = arena;
     ai->response.board = (Board){0};
     ai->response.move = (Move){0};
-
-    JkArenaRoot arena_root;
-    ai->arena = jk_arena_fixed_init(&arena_root, memory);
 
     ai->board = board;
     ai->time = time;
@@ -1281,11 +1279,11 @@ b32 ai_running(Ai *ai)
         // Print min and max depth
         MoveTreeStats stats = {.min_depth = UINT64_MAX};
         for (int32_t i = 0; i < ai->top_level_node_count; i++) {
-            move_tree_stats_calculate(&ai->arena, &stats, ai->top_level_nodes + i, 1);
+            move_tree_stats_calculate(ai->arena, &stats, ai->top_level_nodes + i, 1);
         }
-        stats.max_line = jk_arena_pointer_current(&ai->arena);
+        stats.max_line = jk_arena_pointer_current(ai->arena);
         for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
-            MovePacked *line_move = jk_arena_push(&ai->arena, sizeof(*line_move));
+            MovePacked *line_move = jk_arena_push(ai->arena, sizeof(*line_move));
             *line_move = ancestor->move;
         }
 
@@ -1468,7 +1466,7 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
+static void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
 {
     char buffer[1024];
     for (uint32_t i = 0; i < depth; i++) {
@@ -1481,7 +1479,7 @@ void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
     }
 }
 
-void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
+static void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
 {
     node->top_level_index = top_level_index;
     for (MoveNode *child = node->first_child; child; child = child->next_sibling) {

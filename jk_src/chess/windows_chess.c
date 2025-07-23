@@ -790,10 +790,13 @@ DWORD ai_thread(LPVOID param)
 
         AcquireSRWLockShared(&global_dll_lock);
 
+        JkArenaRoot arena_root;
+        JkArena arena = jk_arena_fixed_init(&arena_root, global_ai_memory);
+
         Ai ai;
-        global_ai_init(&ai,
+        global_ai_init(&arena,
+                &ai,
                 board,
-                global_ai_memory,
                 jk_platform_os_timer_get(),
                 jk_platform_os_timer_frequency(),
                 debug_print);

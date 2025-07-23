@@ -236,7 +236,7 @@ typedef struct AiTarget {
 typedef struct Ai {
     AiResponse response;
     Board board;
-    JkArena arena;
+    JkArena *arena;
     uint8_t top_level_node_count;
     MoveNode top_level_nodes[256];
     AiTarget targets[256];
@@ -281,9 +281,9 @@ typedef struct Chess {
     Settings settings;
 } Chess;
 
-typedef void AiInitFunction(Ai *ai,
+typedef void AiInitFunction(JkArena *arena,
+        Ai *ai,
         Board board,
-        JkBuffer memory,
         uint64_t time,
         uint64_t time_frequency,
         void (*debug_print)(char *));
