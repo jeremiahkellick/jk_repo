@@ -309,12 +309,17 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
 
 #else
 
+#include <limits.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
+
+#if __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 JK_PUBLIC size_t jk_platform_file_size(char *file_name)
 {
@@ -381,6 +386,54 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
 JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
 {
     return 1000000;
+}
+
+JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
+{
+#if __APPLE__
+    char path[PATH_MAX];
+    uint32_t bufsize = PATH_MAX;
+    JK_ASSERT(_NSGetExecutablePath(path, &bufsize) == 0);
+    // Truncate path at last slash
+    for (uint32_t i = bufsize - 1; 0 <= i; i--) {
+        if (path[i] == '/') {
+            path[i] = '\0';
+            break;
+        }
+    }
+#endif
+
+    JK_ASSERT(chdir(path) == 0);
+}
+
+JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
+{
+    char buffer[PATH_MAX];
+
+    uint64_t length = strlen(directory_path);
+    uint64_t i = 0;
+    if (directory_path[i] == '/') {
+        i++; // Skip leading slash which indicates an absolute path
+    }
+    while (i < length) {
+        while (i < length && directory_path[i] != '/') {
+            i++;
+        }
+        memcpy(buffer, directory_path, i);
+        buffer[i] = '\0';
+
+        if (mkdir(buffer, 0755) == -1 && errno != EEXIST) {
+            fprintf(stderr,
+                    "jk_platform_ensure_directory_exists: Failed to create \"%s\": %s\n",
+                    buffer,
+                    strerror(errno));
+            return 0;
+        }
+
+        i++;
+    }
+
+    return 1;
 }
 
 #endif
@@ -549,13 +602,6 @@ JK_PUBLIC void jk_platform_profile_frame_end(void)
     }
 #endif
 }
-
-static char *jk_platform_profile_frame_type_strings[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT] = {
-    "Current",
-    "Min",
-    "Max",
-    "Average",
-};
 
 static void jk_platform_profile_frame_print(void (*print)(void *data, char *format, ...),
         void *data,

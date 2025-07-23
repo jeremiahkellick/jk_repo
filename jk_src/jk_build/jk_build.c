@@ -133,6 +133,17 @@ typedef struct JkArena {
     b32 (*grow)(struct JkArena *arena, uint64_t new_size);
 } JkArena;
 
+static b32 jk_arena_fixed_grow(JkArena *arena, uint64_t new_size)
+{
+    return 0; // Fixed arenas don't grow, duh
+}
+
+static JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory)
+{
+    root->memory = memory;
+    return (JkArena){.root = root, .grow = jk_arena_fixed_grow};
+}
+
 static b32 jk_arena_valid(JkArena *arena)
 {
     return !!arena->root;
@@ -338,8 +349,20 @@ static JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
 
 #else // If not Windows, assume Unix
 
+#include <sys/mman.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+static size_t jk_platform_file_size(char *file_name)
+{
+    struct stat stat_struct = {0};
+    if (stat(file_name, &stat_struct)) {
+        fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
+        return 0;
+    }
+    return (size_t)stat_struct.st_size;
+}
 
 static size_t jk_platform_page_size(void)
 {
@@ -365,41 +388,89 @@ static void jk_platform_memory_free(void *address, size_t size)
     munmap(address, size);
 }
 
-static int command_run(StringArray *command)
+static int jk_platform_exec(JkBufferArray command)
 {
+    char buffer[4096];
+
     // Print command
-    for (int i = 0; i < command->count; i++) {
+    for (uint64_t i = 0; i < command.count; i++) {
         if (i != 0) {
             printf(" ");
         }
-        printf("%s", command->items[i]);
+        if (jk_string_contains_whitespace(command.items[i])) {
+            printf("\"%.*s\"", (int)command.items[i].size, command.items[i].data);
+        } else {
+            printf("%.*s", (int)command.items[i].size, command.items[i].data);
+        }
     }
     printf("\n");
+
+    // Convert string array to null terminated strings
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(
+            &arena_root, (JkBuffer){.size = sizeof(buffer), .data = (uint8_t *)buffer});
+
+    char **argv = jk_arena_push(&arena, (command.count + 1) * sizeof(char *));
+    for (uint64_t i = 0; i < command.count; i++) {
+        argv[i] = jk_arena_push(&arena, command.items[i].size + 1);
+        if (!argv[i]) {
+            fprintf(stderr, "jk_platform_exec: Command too large for buffer\n");
+            return 1;
+        }
+        argv[i][command.items[i].size] = '\0';
+        memcpy(argv[i], command.items[i].data, command.items[i].size);
+    }
+    argv[command.count] = 0;
 
     // Run command
     int command_pid;
     if ((command_pid = fork())) {
         if (command_pid == -1) {
-            fprintf(stderr, "%s: Could not fork: %s\n", program_name, strerror(errno));
-            exit(1);
+            fprintf(stderr, "jk_platform_exec: Could not fork: %s\n", strerror(errno));
+            return 1;
         }
         int wstatus;
         waitpid(command_pid, &wstatus, 0);
         if (WIFEXITED(wstatus)) {
             return WEXITSTATUS(wstatus);
         } else {
-            fprintf(stderr, "%s: Compiler exited abnormally\n", program_name);
-            exit(1);
+            fprintf(stderr, "jk_platform_exec: Command exited abnormally\n");
+            return 1;
         }
     } else {
-        execvp(command->items[0], command->items);
+        execvp(argv[0], argv);
+        fprintf(stderr, "jk_platform_exec: Could not run '%s': %s\n", argv[0], strerror(errno));
+        exit(1);
+    }
+}
+
+static JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
+{
+    FILE *file = fopen(file_name, "rb");
+    if (!file) {
         fprintf(stderr,
-                "%s: Could not run '%s': %s\n",
-                program_name,
-                command->items[0],
+                "jk_platform_file_read_full: Failed to open file '%s': %s\n",
+                file_name,
                 strerror(errno));
         exit(1);
     }
+
+    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
+    buffer.data = jk_arena_push(arena, buffer.size);
+    if (!buffer.data) {
+        fprintf(stderr,
+                "jk_platform_file_read_full: Failed to allocate memory for file '%s'\n",
+                file_name);
+        exit(1);
+    }
+
+    if (fread(buffer.data, buffer.size, 1, file) != 1) {
+        fprintf(stderr, "jk_platform_file_read_full: fread failed\n");
+        exit(1);
+    }
+
+    fclose(file);
+    return buffer;
 }
 
 #endif
@@ -637,15 +708,15 @@ static JkBuffer basename(JkBuffer path)
 }
 
 /** Populates globals source_file_path, basename, root_path, and build_path */
-static Paths paths_get(JkArena *arena, JkBuffer source_file_relative_path)
+static Paths paths_get(JkArena *arena, JkArena *scratch_arena, JkBuffer source_file_relative_path)
 {
     Paths paths;
 
     { // Get absolute path of the source file
-        JkArena tmp_arena = jk_arena_child_get(arena);
-        paths.source_file = jk_buffer_from_null_terminated(
-                realpath(jk_buffer_to_null_terminated(&tmp_arena, source_file_relative_path),
-                        jk_arena_push(arena, PATH_MAX)));
+        JkArena tmp_arena = jk_arena_child_get(scratch_arena);
+        char *relative_path = jk_buffer_to_null_terminated(&tmp_arena, source_file_relative_path);
+        char *absolute_path = realpath(relative_path, jk_arena_push(arena, PATH_MAX));
+        paths.source_file = jk_buffer_from_null_terminated(absolute_path);
         if (!paths.source_file.size) {
             fprintf(stderr,
                     "%s: Invalid source file path '%.*s'\n",
@@ -1098,7 +1169,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     StringArrayBuilder linker_arguments;
     string_array_builder_init(&linker_arguments, &storage);
 
-    Paths paths = paths_get(&storage, source_file_relative_path);
+    Paths paths = paths_get(&storage, &scratch_arena, source_file_relative_path);
 
     ensure_directory_exists(paths.build);
     {
@@ -1126,10 +1197,10 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
             &linker_arguments);
 
     JkBufferArray nasm_files_array = string_array_builder_build(&nasm_files);
-    for (int i = 0; i < nasm_files_array.count; i++) {
+    for (uint64_t i = 0; i < nasm_files_array.count; i++) {
         char output_path_buffer[16];
         JkBuffer output_path_relative = {
-            .size = snprintf(output_path_buffer, sizeof(output_path_buffer), "/nasm%d.o", i),
+            .size = snprintf(output_path_buffer, sizeof(output_path_buffer), "/nasm%llu.o", i),
             .data = (uint8_t *)output_path_buffer,
         };
         JkBuffer nasm_output_path = concat_strings(&storage, paths.build, output_path_relative);
@@ -1233,6 +1304,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "-fzero-init-padding-bits=all");
         append(&command, "-Werror=vla");
         append(&command, "-Wno-missing-braces");
+        append(&command, "-Wno-unused-parameter");
         if (single_translation_unit) {
             append(&command, "-Wno-unused-function");
         } else {
@@ -1298,7 +1370,9 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 "-Wextra",
                 "-Wpedantic",
                 "-Wno-missing-braces",
-                "-Wno-missing-field-initializers");
+                "-Wno-missing-field-initializers",
+                "-Wno-unused-command-line-argument",
+                "-Wno-unused-parameter");
         append(&command, "-g");
         if (!is_objective_c_file) {
             append(&command, "-std=c11");
@@ -1383,7 +1457,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 (int)source_file_path_relative.size,
                 source_file_path_relative.data);
         JkBufferArray dependencies_array = string_array_builder_build(&dependencies);
-        for (int i = 0; i < dependencies_array.count; i++) {
+        for (uint64_t i = 0; i < dependencies_array.count; i++) {
             fprintf(stu_file,
                     "#include <%.*s>\n",
                     (int)dependencies_array.items[i].size,
@@ -1442,9 +1516,9 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
     string_array_builder_concat(&command, &linker_arguments);
 
-    for (int i = 0; i < nasm_files.count; i++) {
+    for (uint64_t i = 0; i < nasm_files.count; i++) {
         char file_name[32];
-        snprintf(file_name, 32, "nasm%d.%s", i, options.compiler == COMPILER_MSVC ? "lib" : "o");
+        snprintf(file_name, 32, "nasm%llu.%s", i, options.compiler == COMPILER_MSVC ? "lib" : "o");
         append(&command, file_name);
     }
 

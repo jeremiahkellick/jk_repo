@@ -14,12 +14,13 @@ int main(int argc, char **argv)
 {
     (void)argc;
 
+    jk_platform_set_working_directory_to_executable_directory();
     jk_platform_console_utf8_enable();
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
 
-    JkBuffer text = jk_platform_file_read_full(&storage, "./parse_test.json");
+    JkBuffer text = jk_platform_file_read_full(&storage, "../jk_src/jk_lib/json/parse_test.json");
 
     JkJson *json = jk_json_parse(text, &storage);
     if (json) {

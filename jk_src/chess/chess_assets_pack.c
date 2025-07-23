@@ -1,5 +1,5 @@
-#include "jk_src/jk_lib/jk_lib.h"
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
                 case 'L': {
                     JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 2 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 2) {
+                    for (uint64_t i = 0; i < numbers.count; i += 2) {
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type =
@@ -107,7 +107,7 @@ int main(int argc, char **argv)
                 case 'V': {
                     JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count);
-                    for (int32_t i = 0; i < numbers.count; i++) {
+                    for (uint64_t i = 0; i < numbers.count; i++) {
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
@@ -121,7 +121,7 @@ int main(int argc, char **argv)
                 case 'Q': {
                     JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 4 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 4) {
+                    for (uint64_t i = 0; i < numbers.count; i += 4) {
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
@@ -136,7 +136,7 @@ int main(int argc, char **argv)
                 case 'C': {
                     JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 6 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 6) {
+                    for (uint64_t i = 0; i < numbers.count; i += 6) {
                         JkShapesPenCommand *new_command =
                                 jk_arena_push(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
@@ -151,7 +151,7 @@ int main(int argc, char **argv)
                 case 'A': {
                     JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 7 == 0);
-                    for (int32_t i = 0; i < numbers.count; i += 7) {
+                    for (uint64_t i = 0; i < numbers.count; i += 7) {
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, sizeof(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
@@ -211,7 +211,7 @@ int main(int argc, char **argv)
         assets->font_ascent = INT32_MAX;
         assets->font_descent = INT32_MIN;
         for (int32_t shape_index = PIECE_TYPE_COUNT + 1;
-                shape_index < JK_ARRAY_COUNT(assets->shapes);
+                shape_index < (int32_t)JK_ARRAY_COUNT(assets->shapes);
                 shape_index++) {
             JkShape *shape = assets->shapes + shape_index;
             int32_t codepoint = shape_index - CHARACTER_SHAPE_OFFSET;
@@ -252,7 +252,7 @@ int main(int argc, char **argv)
             shape->commands.size = sizeof(JkShapesPenCommand) * command_count;
             shape->commands.offset = storage.pos;
             JkShapesPenCommand *commands = jk_arena_push_zero(&storage, shape->commands.size);
-            for (int32_t i = 0; i < command_count; i++) {
+            for (uint64_t i = 0; i < command_count; i++) {
                 switch (verticies[i].type) {
                 case STBTT_vmove:
                 case STBTT_vline: {
