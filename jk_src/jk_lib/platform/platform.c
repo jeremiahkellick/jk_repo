@@ -319,6 +319,11 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
 
 #if __APPLE__
 #include <mach-o/dyld.h>
+#include <mach/mach_time.h>
+#endif
+
+#if __linux__
+#include <time.h>
 #endif
 
 JK_PUBLIC size_t jk_platform_file_size(char *file_name)
@@ -376,17 +381,37 @@ JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
     }
 }
 
+#if __APPLE__
+
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
 {
-    struct timeval value;
-    gettimeofday(&value, 0);
-    return jk_platform_os_timer_frequency() * (uint64_t)value.tv_sec + (uint64_t)value.tv_usec;
+    return mach_absolute_time();
 }
 
 JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
 {
-    return 1000000;
+    mach_timebase_info_data_t timebase_info;
+    JK_ASSERT(mach_timebase_info(&timebase_info) == KERN_SUCCESS);
+    return (1000000000llu * timebase_info.denom) / timebase_info.numer;
 }
+
+#endif
+
+#if __linux
+
+JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000llu + (uint64_t)ts.tv_nsec;
+}
+
+JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
+{
+    return 1000000000llu;
+}
+
+#endif
 
 JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
 {

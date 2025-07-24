@@ -8,36 +8,26 @@
 #import <QuartzCore/QuartzCore.h>
 
 // #jk_build single_translation_unit
-// #jk_build compiler_arguments -framework Cocoa -framework Metal -framework MetalKit -framework
-// QuartzCore
+
+// clang-format off
+// #jk_build compiler_arguments -framework Cocoa -framework Metal -framework MetalKit -framework QuartzCore
+// clang-format on
 
 // #jk_build dependencies_begin
 #include <jk_src/chess/chess.h>
-#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-typedef struct __attribute__((packed)) BitmapHeader {
-    uint16_t identifier;
-    uint32_t size;
-    uint32_t reserved;
-    uint32_t offset;
-} BitmapHeader;
+typedef enum MacosInput {
+    MACOS_INPUT_MOUSE,
+    MACOS_INPUT_R,
+} MacosInput;
 
-typedef enum Button {
-    BUTTON_MOUSE,
-    BUTTON_R,
-} Button;
-
-#define BUTTON_FLAG_MOUSE (1 << BUTTON_MOUSE)
-#define BUTTON_FLAG_R (1 << BUTTON_R)
-
-typedef struct ScreenInfo {
-    NSSize resolution;
-    CGFloat scale_factor;
-} ScreenInfo;
+#define BUTTON_FLAG_MOUSE (1 << MACOS_INPUT_MOUSE)
+#define BUTTON_FLAG_R (1 << MACOS_INPUT_R)
 
 static Chess global_chess;
+static ChessAssets *global_assets;
 static uint64_t global_buttons_down;
 
 typedef struct Vertex {
@@ -45,27 +35,69 @@ typedef struct Vertex {
     simd_float2 texture_coordinate;
 } Vertex;
 
+typedef struct IntArray4 {
+    int32_t a[4];
+} IntArray4;
+
+typedef struct MyRect {
+    union {
+        struct {
+            JkIntVector2 pos;
+            JkIntVector2 dimensions;
+        };
+        int32_t a[4];
+    };
+} MyRect;
+
+static int32_t square_side_length_get(IntArray4 dimensions)
+{
+    int32_t min_dimension = INT32_MAX;
+    for (uint64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
+        if (dimensions.a[i] < min_dimension) {
+            min_dimension = dimensions.a[i];
+        }
+    }
+    return min_dimension / 10;
+}
+
+static MyRect draw_rect_get(JkIntVector2 window_dimensions)
+{
+    MyRect result = {0};
+
+    result.dimensions = (JkIntVector2){
+        JK_MIN(window_dimensions.x, global_chess.square_side_length * 10),
+        JK_MIN(window_dimensions.y, global_chess.square_side_length * 10),
+    };
+
+    int32_t max_dimension_index = window_dimensions.x < window_dimensions.y ? 1 : 0;
+    result.pos.coords[max_dimension_index] =
+            (window_dimensions.coords[max_dimension_index]
+                    - result.dimensions.coords[max_dimension_index])
+            / 2;
+
+    return result;
+}
+
+// clang-format off
 static char const *const shaders_code =
         "#include <metal_stdlib>\n"
         "using namespace metal;\n"
         "\n"
-        "constexpr sampler texture_sampler (coord::pixel, min_filter::nearest, "
-        "mag_filter::nearest);\n"
+        "constexpr sampler texture_sampler (coord::pixel, min_filter::nearest, mag_filter::nearest);\n"
         "\n"
         "struct Vertex {\n"
         "    float4 position [[position]];\n"
         "    float2 texture_coordinate;\n"
         "};\n"
         "\n"
-        "vertex Vertex vertex_main(const device Vertex *verticies [[buffer(0)]], uint vid "
-        "[[vertex_id]]) {\n"
+        "vertex Vertex vertex_main(const device Vertex *verticies [[buffer(0)]], uint vid [[vertex_id]]) {\n"
         "    return verticies[vid];\n"
         "}\n"
         "\n"
-        "fragment half4 fragment_main(texture2d<half> tex [[texture(0)]],\n"
-        "        Vertex in [[stage_in]]) {\n"
+        "fragment half4 fragment_main(texture2d<half> tex [[texture(0)]], Vertex in [[stage_in]]) {\n"
         "    return tex.sample(texture_sampler, in.texture_coordinate);\n"
         "}\n";
+// clang-format on
 
 @interface MetalView : MTKView
 @property(nonatomic, strong) id<MTLRenderPipelineState> pipeline;
@@ -73,72 +105,58 @@ static char const *const shaders_code =
 @property(nonatomic, strong) id<MTLBuffer> vertex_buffer;
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) CVDisplayLinkRef display_link;
-@property(nonatomic) ScreenInfo screen_info;
+@property(nonatomic) CGFloat scale_factor;
 
-- (instancetype)initWithFrame:(CGRect)frameRect screen_info:(ScreenInfo)screen_info;
+- (instancetype)initWithFrame:(CGRect)frameRect scale_factor:(CGFloat)scale_factor;
 @end
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property(strong, nonatomic) NSWindow *window;
-@property(nonatomic) ScreenInfo screen_info;
+@property(nonatomic) CGFloat scale_factor;
 
-- (instancetype)initWithScreenInfo:(ScreenInfo)screen_info;
+- (instancetype)initWithScaleFactor:(CGFloat)scale_factor;
 @end
 
-ScreenInfo screen_info_get(void)
+static void debug_print(char *string)
 {
-    NSScreen *mainScreen = [NSScreen mainScreen];
-    NSRect screenFrame = [mainScreen frame];
-    CGFloat scaleFactor = mainScreen.backingScaleFactor;
-
-    NSSize nativeResolution;
-    nativeResolution.width = screenFrame.size.width * scaleFactor;
-    nativeResolution.height = screenFrame.size.height * scaleFactor;
-
-    return (ScreenInfo){.resolution = nativeResolution, .scale_factor = scaleFactor};
+    printf("%s", string);
 }
 
 int main(void)
 {
-    @autoreleasepool {
-        ScreenInfo screen_info = screen_info_get();
+    jk_platform_set_working_directory_to_executable_directory();
 
-        uint64_t audio_buffer_size = SAMPLES_PER_SECOND * 2 * sizeof(AudioSample);
-        uint64_t video_buffer_size =
-                screen_info.resolution.width * screen_info.resolution.height * sizeof(Color);
-        void *memory = mmap(NULL,
-                audio_buffer_size + video_buffer_size,
-                PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANON,
-                -1,
-                0);
-        global_chess.audio.sample_buffer = memory;
-        global_chess.bitmap.memory = (Color *)((uint8_t *)memory + audio_buffer_size);
+    uint64_t audio_buffer_size = SAMPLES_PER_SECOND * 2 * sizeof(AudioSample);
+    global_chess.render_memory.size = 1 * JK_GIGABYTE;
+    uint8_t *memory = mmap(NULL,
+            audio_buffer_size + DRAW_BUFFER_SIZE + global_chess.render_memory.size,
+            PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANON,
+            -1,
+            0);
+    global_chess.audio.sample_buffer = (AudioSample *)memory;
+    global_chess.draw_buffer = (JkColor *)(memory + audio_buffer_size);
+    global_chess.render_memory.data = memory + audio_buffer_size + DRAW_BUFFER_SIZE;
+
+    global_chess.os_timer_frequency = jk_platform_os_timer_frequency();
+    global_chess.debug_print = debug_print;
+
+    @autoreleasepool {
+        CGFloat scale_factor = [NSScreen mainScreen].backingScaleFactor;
 
         // Load image data
         JkPlatformArenaVirtualRoot arena_root;
         JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
-        if (jk_arena_valid(storage)) {
-            JkBuffer image_file = jk_platform_file_read_full(&storage, "chess_atlas.bmp");
-            if (image_file.size) {
-                BitmapHeader *header = (BitmapHeader *)image_file.data;
-                Color *pixels = (Color *)(image_file.data + header->offset);
-                for (uint64_t y = 0; y < ATLAS_HEIGHT; y++) {
-                    uint64_t atlas_y = ATLAS_HEIGHT - y - 1;
-                    for (uint64_t x = 0; x < ATLAS_WIDTH; x++) {
-                        global_chess.atlas[atlas_y * ATLAS_WIDTH + x] =
-                                pixels[y * ATLAS_WIDTH + x].a;
-                    }
-                }
-            } else {
-                fprintf(stderr, "Failed to load chess_atlas.bmp\n");
-            }
-            jk_platform_arena_terminate(&storage);
+        if (jk_arena_valid(&storage)) {
+            global_assets =
+                    (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
+        } else {
+            fprintf(stderr, "Failed to initialize arena\n");
         }
 
         NSApplication *application = [NSApplication sharedApplication];
 
-        AppDelegate *applicationDelegate = [[AppDelegate alloc] initWithScreenInfo:screen_info];
+        AppDelegate *applicationDelegate = [[AppDelegate alloc] initWithScaleFactor:scale_factor];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         [NSApp activateIgnoringOtherApps:YES];
         [application setDelegate:applicationDelegate];
@@ -226,10 +244,10 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 @end
 
 @implementation AppDelegate
-- (instancetype)initWithScreenInfo:(ScreenInfo)screen_info
+- (instancetype)initWithScaleFactor:(CGFloat)scale_factor
 {
     if (self = [super init]) {
-        self.screen_info = screen_info;
+        self.scale_factor = scale_factor;
     }
     return self;
 }
@@ -247,7 +265,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     [self.window setTitle:@"Chess"];
     [self.window setOpaque:YES];
     [self.window setContentView:[[MetalView alloc] initWithFrame:contentSize
-                                                     screen_info:self.screen_info]];
+                                                    scale_factor:self.scale_factor]];
     [self.window makeMainWindow];
     [self.window makeKeyAndOrderFront:nil];
 }
@@ -259,10 +277,10 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 @end
 
 @implementation MetalView
-- (instancetype)initWithFrame:(CGRect)frameRect screen_info:(ScreenInfo)screen_info
+- (instancetype)initWithFrame:(CGRect)frameRect scale_factor:(CGFloat)scale_factor
 {
     if ((self = [super initWithFrame:frameRect])) {
-        self.screen_info = screen_info;
+        self.scale_factor = scale_factor;
 
         self.device = MTLCreateSystemDefaultDevice();
         if (!self.device) {
@@ -299,11 +317,11 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         self.vertex_buffer = [self.device newBufferWithLength:4
                                                       options:MTLResourceCPUCacheModeDefaultCache];
 
-        MTLTextureDescriptor *texture_descriptor = [MTLTextureDescriptor
-                texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-                                             width:self.screen_info.resolution.width
-                                            height:self.screen_info.resolution.height
-                                         mipmapped:NO];
+        MTLTextureDescriptor *texture_descriptor =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                                   width:DRAW_BUFFER_SIDE_LENGTH
+                                                                  height:DRAW_BUFFER_SIDE_LENGTH
+                                                               mipmapped:NO];
         self.texture = [self.device newTextureWithDescriptor:texture_descriptor];
 
         self.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
@@ -321,47 +339,62 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
 - (void)drawRect:(NSRect)dirtyRect
 {
-    global_chess.bitmap.width = (uint32_t)self.drawableSize.width;
-    global_chess.bitmap.height = (uint32_t)self.drawableSize.height;
+    JkIntVector2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
+    IntArray4 bounds = {
+        window_dimensions.x,
+        window_dimensions.y,
+        DRAW_BUFFER_SIDE_LENGTH,
+        DRAW_BUFFER_SIDE_LENGTH,
+    };
+    global_chess.square_side_length = square_side_length_get(bounds);
+    MyRect draw_rect = draw_rect_get(window_dimensions);
 
     if (self.window) {
         NSPoint mouse_location = [NSEvent mouseLocation];
-        NSPoint window_location = [self.window frame].origin;
-        CGFloat x = mouse_location.x - window_location.x;
-        CGFloat y = mouse_location.y - window_location.y;
-        global_chess.input.mouse_pos.x = x * self.screen_info.scale_factor;
-        global_chess.input.mouse_pos.y =
-                self.drawableSize.height - y * self.screen_info.scale_factor;
+        NSRect window_rect = [self.window contentRectForFrameRect:self.window.frame];
+        CGFloat x = mouse_location.x - window_rect.origin.x;
+        CGFloat y = window_rect.size.height - (mouse_location.y - window_rect.origin.y);
+        global_chess.input.mouse_pos.x = x * self.scale_factor - draw_rect.pos.x;
+        global_chess.input.mouse_pos.y = y * self.scale_factor - draw_rect.pos.y;
     }
 
     global_chess.input.flags = 0;
-    global_chess.input.flags |= ((global_buttons_down >> BUTTON_MOUSE) & 1) << INPUT_CONFIRM;
-    global_chess.input.flags |= ((global_buttons_down >> BUTTON_R) & 1) << INPUT_RESET;
+    global_chess.input.flags |= ((global_buttons_down >> MACOS_INPUT_MOUSE) & 1) << INPUT_CONFIRM;
+    global_chess.input.flags |= ((global_buttons_down >> MACOS_INPUT_R) & 1) << INPUT_RESET;
 
-    update(&global_chess);
-    render(&global_chess);
+    global_chess.os_time = jk_platform_os_timer_get();
+
+    update(global_assets, &global_chess);
+    render(global_assets, &global_chess);
 
     // Copy bitmap buffer into texture
-    [self.texture
-            replaceRegion:MTLRegionMake2D(0, 0, self.drawableSize.width, self.drawableSize.height)
-              mipmapLevel:0
-                withBytes:global_chess.bitmap.memory
-              bytesPerRow:global_chess.bitmap.width * sizeof(Color)];
+    [self.texture replaceRegion:MTLRegionMake2D(0, 0, window_dimensions.x, window_dimensions.y)
+                    mipmapLevel:0
+                      withBytes:global_chess.draw_buffer
+                    bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * sizeof(JkColor)];
+
+    JkVector2 pos;
+    pos.x = (draw_rect.pos.x * 2.0f / window_dimensions.x) - 1.0f;
+    pos.y = -((draw_rect.pos.y * 2.0f / window_dimensions.y) - 1.0f);
+
+    JkVector2 dimensions;
+    dimensions.x = ((global_chess.square_side_length * 10) * 2.0f / window_dimensions.x);
+    dimensions.y = -(((global_chess.square_side_length * 10) * 2.0f / window_dimensions.y));
 
     Vertex verticies[4];
+    verticies[0].position = simd_make_float4(pos.x, pos.y + dimensions.y, 0.0f, 1.0f);
+    verticies[0].texture_coordinate = simd_make_float2(0.0f, global_chess.square_side_length * 10);
 
-    verticies[0].position = simd_make_float4(-1.0f, -1.0f, 0.0f, 1.0f);
-    verticies[0].texture_coordinate = simd_make_float2(0.0f, self.drawableSize.height);
+    verticies[1].position =
+            simd_make_float4(pos.x + dimensions.x, pos.y + dimensions.y, 0.0f, 1.0f);
+    verticies[1].texture_coordinate = simd_make_float2(
+            global_chess.square_side_length * 10, global_chess.square_side_length * 10);
 
-    verticies[1].position = simd_make_float4(1.0f, -1.0f, 0.0f, 1.0f);
-    verticies[1].texture_coordinate =
-            simd_make_float2(self.drawableSize.width, self.drawableSize.height);
-
-    verticies[2].position = simd_make_float4(-1.0f, 1.0f, 0.0f, 1.0f);
+    verticies[2].position = simd_make_float4(pos.x, pos.y, 0.0f, 1.0f);
     verticies[2].texture_coordinate = simd_make_float2(0.0f, 0.0f);
 
-    verticies[3].position = simd_make_float4(1.0f, 1.0f, 0.0f, 1.0f);
-    verticies[3].texture_coordinate = simd_make_float2(self.drawableSize.width, 0.0f);
+    verticies[3].position = simd_make_float4(pos.x + dimensions.x, pos.y, 0.0f, 1.0f);
+    verticies[3].texture_coordinate = simd_make_float2(global_chess.square_side_length * 10, 0.0f);
 
     memcpy([self.vertex_buffer contents], verticies, sizeof(verticies));
 
@@ -371,8 +404,8 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     MTLRenderPassDescriptor *passDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
     passDescriptor.colorAttachments[0].texture = texture;
     passDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-    // passDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
-    passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.85, 0.85, 0.85, 1.0);
+    passDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(
+            CLEAR_COLOR_R / 255.0f, CLEAR_COLOR_G / 255.0f, CLEAR_COLOR_B / 255.0f, 1);
 
     id<MTLCommandBuffer> commandBuffer = [self.command_queue commandBuffer];
 

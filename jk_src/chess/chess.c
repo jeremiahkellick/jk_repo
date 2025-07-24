@@ -878,8 +878,6 @@ uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
 
 #define MAX_STAGNATION 9
 
-#pragma optimize("", off)
-
 static void update_search_scores(Ai *ctx, MoveNode *node, Team team, b32 verify)
 {
     AiTarget target = ctx->targets[node->top_level_index];
@@ -917,8 +915,6 @@ static void update_search_scores(Ai *ctx, MoveNode *node, Team team, b32 verify)
         node->search_score = search_score;
     }
 }
-
-#pragma optimize("", on)
 
 typedef struct ScoreIndexPair {
     int32_t index;
@@ -1081,7 +1077,6 @@ static b32 expand_node(Ai *ctx, MoveNode *node)
 
     return 1;
 }
-#pragma optimize("", on)
 
 typedef struct MoveTreeStats {
     uint64_t node_count;
@@ -1329,7 +1324,7 @@ b32 ai_running(Ai *ai)
                     max_score_depth);
 
             debug_printf(ai->debug_print, "max_line:\n");
-            for (int32_t i = 0; i < stats.max_depth; i++) {
+            for (uint64_t i = 0; i < stats.max_depth; i++) {
                 debug_printf(ai->debug_print, "\t0x%x\n", (uint32_t)stats.max_line[i].bits);
             }
 
@@ -1675,7 +1670,7 @@ void update(ChessAssets *assets, Chess *chess)
                             absolute_value(mouse_pos.y - chess->promo_square.y);
                     if (input_button_pressed(chess, INPUT_CONFIRM)) {
                         if (mouse_pos.x == chess->promo_square.x
-                                && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                                && dist_from_promo_square < (int32_t)JK_ARRAY_COUNT(promo_order)) {
                             move.src = board_index_get(chess->selected_square);
                             move.dest = board_index_get(chess->promo_square);
                             move.piece.team = board_current_team_get(chess->board);
@@ -1928,7 +1923,7 @@ static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scal
 {
     TextLayout result = {0};
     result.dimensions.x = 0.0f;
-    for (int32_t i = 0; i < text.size; i++) {
+    for (uint64_t i = 0; i < text.size; i++) {
         JkShape *shape = assets->shapes + text.data[i] + CHARACTER_SHAPE_OFFSET;
         if (i == 0) {
             result.offset.x = -shape->offset.x;
@@ -1957,7 +1952,7 @@ static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scal
 static void draw_text(
         JkShapesRenderer *renderer, JkBuffer text, JkVector2 cursor, float scale, JkColor color)
 {
-    for (int32_t i = 0; i < text.size; i++) {
+    for (uint64_t i = 0; i < text.size; i++) {
         cursor.x += jk_shapes_draw(
                 renderer, text.data[i] + CHARACTER_SHAPE_OFFSET, cursor, scale, color);
     }
@@ -2132,7 +2127,7 @@ static void draw_radio_buttons(ChessAssets *assets,
     position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
     float text_y_offset = BUTTON_PADDING + RECT_THICKNESS + base_layout.offset.y;
     float text_y = position.y + text_y_offset;
-    for (int32_t choice_id = 0; choice_id < choice_count;
+    for (uint64_t choice_id = 0; choice_id < choice_count;
             choice_id++, position.x += base_dimensions.x + spacing) {
         JkBuffer text = choice_strings[choice_id];
         Button *button = chess->buttons + (first_button_id + choice_id);
@@ -2156,14 +2151,11 @@ static void draw_radio_buttons(ChessAssets *assets,
             };
             draw_text(renderer, text, cursor, scale_factor * BUTTON_TEXT_SCALE, color_move_prev);
         } else {
-            JkColor text_color;
             JkColor outline_color;
             button->rect = jk_shapes_pixel_rect_get(renderer, position, base_dimensions);
             if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
-                text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
             } else {
-                text_color = color_light_squares;
                 outline_color = color_light_squares;
                 outline_color.a = 185;
             }
@@ -2268,7 +2260,7 @@ void render(ChessAssets *assets, Chess *chess)
                         square_color = color_background;
                     } else {
                         if (promoting && board_pos.x == chess->promo_square.x
-                                && dist_from_promo_square < JK_ARRAY_COUNT(promo_order)) {
+                                && dist_from_promo_square < (int32_t)JK_ARRAY_COUNT(promo_order)) {
                             square_color = color_background;
                             piece.team = team;
                             piece.type = promo_order[dist_from_promo_square];
@@ -2316,7 +2308,7 @@ void render(ChessAssets *assets, Chess *chess)
                 square_size - padding_top,
                 (square_size * 9.0f) + padding_bottom,
             };
-            for (int32_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
+            for (uint64_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
                 jk_shapes_draw(&renderer,
                         shape_id,
                         (JkVector2){cursor_x, cursor_ys[i]},
@@ -2340,7 +2332,7 @@ void render(ChessAssets *assets, Chess *chess)
             float cursor_y = square_size * (y + 1) + (square_size - dimensions.y) * 0.5f - offset.y;
             JkColor color = color_light_squares;
             color.a = 200;
-            for (int32_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
+            for (uint64_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
                 jk_shapes_draw(&renderer,
                         shape_id,
                         (JkVector2){cursor_xs[i], cursor_y},
@@ -2377,7 +2369,7 @@ void render(ChessAssets *assets, Chess *chess)
                 JkVector2 digit_pos = {.y = bar_text_y[team_index]};
                 float raw_x = 64.0f;
                 float width = 13.2f;
-                for (int32_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
+                for (uint64_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
                     int32_t shape_index;
                     if (i == 2) { // Draw colon separator
                         shape_index = ':' + CHARACTER_SHAPE_OFFSET;
@@ -2689,8 +2681,8 @@ void render(ChessAssets *assets, Chess *chess)
     JK_PLATFORM_PROFILE_ZONE_END(draw_vectors);
 
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(fill_draw_buffer);
-    int32_t cs = 0;
-    int32_t ce = 0;
+    uint64_t cs = 0;
+    uint64_t ce = 0;
     JkIntVector2 pos_in_square;
     JkIntVector2 square_pos;
     JkIntVector2 mouse_square_pos =
@@ -2727,7 +2719,7 @@ void render(ChessAssets *assets, Chess *chess)
                 }
             }
 
-            for (int32_t i = cs; i < ce; i++) {
+            for (uint64_t i = cs; i < ce; i++) {
                 JkShapesDrawCommand *command = draw_commands.items + i;
                 JkIntVector2 pos_in_rect = jk_int_vector_2_sub(pos, command->position);
                 if (0 <= pos_in_rect.x && pos_in_rect.x < command->dimensions.x

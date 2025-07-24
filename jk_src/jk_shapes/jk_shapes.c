@@ -331,7 +331,7 @@ static JkShapesEdgeArray jk_shapes_edges_get(JkArena *arena,
 
     JkShapesPointListNode *current_node = start_node;
 
-    for (int32_t i = 0; i < commands.count; i++) {
+    for (uint64_t i = 0; i < commands.count; i++) {
         JkShapesPenCommand *command = commands.items + i;
 
         switch (command->type) {
@@ -569,7 +569,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
 
                 float scan_y_top = (float)y;
                 float scan_y_bottom = scan_y_top + 1.0f;
-                for (int32_t i = 0; i < edges.count; i++) {
+                for (uint64_t i = 0; i < edges.count; i++) {
                     float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
                     float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
                     if (y_top < y_bottom) {
