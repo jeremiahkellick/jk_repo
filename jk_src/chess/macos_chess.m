@@ -1,4 +1,5 @@
-#include <simd/simd.h>
+#include <AudioToolbox/AudioToolbox.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <sys/mman.h>
 
@@ -10,7 +11,7 @@
 // #jk_build single_translation_unit
 
 // clang-format off
-// #jk_build compiler_arguments -framework Cocoa -framework Metal -framework MetalKit -framework QuartzCore
+// #jk_build compiler_arguments -framework Cocoa -framework AudioToolbox -framework Metal -framework MetalKit -framework QuartzCore
 // clang-format on
 
 // #jk_build dependencies_begin
@@ -26,9 +27,26 @@ typedef enum MacosInput {
 #define BUTTON_FLAG_MOUSE (1 << MACOS_INPUT_MOUSE)
 #define BUTTON_FLAG_R (1 << MACOS_INPUT_R)
 
-static Chess global_chess;
-static ChessAssets *global_assets;
-static uint64_t global_buttons_down;
+typedef struct AudioThread {
+    uint64_t time;
+} AudioThread;
+
+typedef struct MainThread {
+    uint64_t buttons_down;
+    Chess chess;
+    AudioState audio_state;
+    pthread_mutex_t audio_state_lock;
+} MainThread;
+
+typedef struct Global {
+    _Alignas(64) ChessAssets *assets;
+
+    _Alignas(64) MainThread main;
+
+    _Alignas(64) AudioThread audio;
+} Global;
+
+static Global g = {.main.audio_state_lock = PTHREAD_MUTEX_INITIALIZER};
 
 typedef struct Vertex {
     simd_float4 position;
@@ -65,8 +83,8 @@ static MyRect draw_rect_get(JkIntVector2 window_dimensions)
     MyRect result = {0};
 
     result.dimensions = (JkIntVector2){
-        JK_MIN(window_dimensions.x, global_chess.square_side_length * 10),
-        JK_MIN(window_dimensions.y, global_chess.square_side_length * 10),
+        JK_MIN(window_dimensions.x, g.main.chess.square_side_length * 10),
+        JK_MIN(window_dimensions.y, g.main.chess.square_side_length * 10),
     };
 
     int32_t max_dimension_index = window_dimensions.x < window_dimensions.y ? 1 : 0;
@@ -76,6 +94,29 @@ static MyRect draw_rect_get(JkIntVector2 window_dimensions)
             / 2;
 
     return result;
+}
+
+static void audio_callback(void *context, AudioQueueRef queue, AudioQueueBufferRef buffer)
+{
+    buffer->mAudioDataByteSize = buffer->mAudioDataBytesCapacity;
+    uint32_t sample_count = buffer->mAudioDataByteSize / sizeof(AudioSample);
+
+    pthread_mutex_lock(&g.main.audio_state_lock);
+    AudioState state = g.main.audio_state;
+    pthread_mutex_unlock(&g.main.audio_state_lock);
+
+    audio(g.assets, state, g.audio.time, sample_count, buffer->mAudioData);
+    g.audio.time += sample_count;
+
+    OSStatus error = AudioQueueEnqueueBuffer(queue, buffer, 0, 0);
+    if (error) {
+        fprintf(stderr, "Failed to re-enqueue an audio buffer (%d)\n", error);
+    }
+}
+
+static void debug_print(char *string)
+{
+    printf("%s", string);
 }
 
 // clang-format off
@@ -117,42 +158,98 @@ static char const *const shaders_code =
 - (instancetype)initWithScaleFactor:(CGFloat)scale_factor;
 @end
 
-static void debug_print(char *string)
-{
-    printf("%s", string);
-}
-
 int main(void)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
     uint64_t audio_buffer_size = SAMPLES_PER_SECOND * 2 * sizeof(AudioSample);
-    global_chess.render_memory.size = 1 * JK_GIGABYTE;
+    g.main.chess.render_memory.size = 1 * JK_GIGABYTE;
     uint8_t *memory = mmap(NULL,
-            audio_buffer_size + DRAW_BUFFER_SIZE + global_chess.render_memory.size,
+            audio_buffer_size + DRAW_BUFFER_SIZE + g.main.chess.render_memory.size,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANON,
             -1,
             0);
-    global_chess.audio.sample_buffer = (AudioSample *)memory;
-    global_chess.draw_buffer = (JkColor *)(memory + audio_buffer_size);
-    global_chess.render_memory.data = memory + audio_buffer_size + DRAW_BUFFER_SIZE;
+    if (!memory) {
+        fprintf(stderr, "Failed to allocate memory\n");
+        exit(1);
+    }
+    g.main.chess.draw_buffer = (JkColor *)(memory + audio_buffer_size);
+    g.main.chess.render_memory.data = memory + audio_buffer_size + DRAW_BUFFER_SIZE;
 
-    global_chess.os_timer_frequency = jk_platform_os_timer_frequency();
-    global_chess.debug_print = debug_print;
+    g.main.chess.os_timer_frequency = jk_platform_os_timer_frequency();
+    g.main.chess.debug_print = debug_print;
+
+    // Load image data
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    if (jk_arena_valid(&storage)) {
+        g.assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
+    } else {
+        fprintf(stderr, "Failed to initialize arena\n");
+    }
+
+    { // Set up audio callback
+        AudioStreamBasicDescription format = {0};
+        format.mSampleRate = SAMPLES_PER_SECOND;
+        format.mFormatID = kAudioFormatLinearPCM;
+        format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
+        format.mBitsPerChannel = 16;
+        format.mChannelsPerFrame = AUDIO_CHANNEL_COUNT;
+        format.mBytesPerFrame = sizeof(AudioSample);
+        format.mFramesPerPacket = 1;
+        format.mBytesPerPacket = format.mFramesPerPacket * format.mBytesPerFrame;
+
+        AudioQueueRef auQueue = 0;
+        AudioQueueBufferRef auBuffers[2] = {0};
+
+        OSStatus error;
+
+        // most of the 0 and nullptr params here are for compressed sound formats etc.
+        error = AudioQueueNewOutput(&format, audio_callback, 0, 0, 0, 0, &auQueue);
+        if (error) {
+            fprintf(stderr, "Failed to create audio output queue (%d)\n", error);
+        }
+
+        if (!error) {
+            AudioStreamBasicDescription actualFormat;
+            UInt32 dataSize = sizeof(actualFormat);
+
+            error = AudioQueueGetProperty(
+                    auQueue, kAudioQueueProperty_StreamDescription, &actualFormat, &dataSize);
+
+            printf("%.2f\n", actualFormat.mSampleRate);
+        }
+
+        // generate buffers holding at most 1 second of data
+        uint32_t bufferSize = format.mBytesPerFrame * format.mSampleRate / 16;
+
+        if (!error) {
+            error = AudioQueueAllocateBuffer(auQueue, bufferSize, auBuffers + 0);
+            if (error) {
+                fprintf(stderr, "Failed to allocate audio buffer 0 (%d)\n", error);
+            }
+        }
+
+        if (!error) {
+            error = AudioQueueAllocateBuffer(auQueue, bufferSize, auBuffers + 1);
+            if (error) {
+                fprintf(stderr, "Failed to allocate audio buffer 1 (%d)\n", error);
+            }
+        }
+
+        if (!error) {
+            audio_callback(0, auQueue, auBuffers[0]);
+            audio_callback(0, auQueue, auBuffers[1]);
+            error = AudioQueueStart(auQueue, 0);
+            if (error) {
+                fprintf(stderr, "Failed to start audio queue (%d)\n", error);
+            }
+        }
+    }
 
     @autoreleasepool {
         CGFloat scale_factor = [NSScreen mainScreen].backingScaleFactor;
-
-        // Load image data
-        JkPlatformArenaVirtualRoot arena_root;
-        JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
-        if (jk_arena_valid(&storage)) {
-            global_assets =
-                    (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
-        } else {
-            fprintf(stderr, "Failed to initialize arena\n");
-        }
 
         NSApplication *application = [NSApplication sharedApplication];
 
@@ -220,7 +317,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         [self close];
     }
     if (keyCode == 15) {
-        global_buttons_down |= BUTTON_FLAG_R;
+        g.main.buttons_down |= BUTTON_FLAG_R;
     }
 }
 
@@ -228,18 +325,18 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 {
     unsigned short keyCode = [anEvent keyCode];
     if (keyCode == 15) {
-        global_buttons_down &= ~BUTTON_FLAG_R;
+        g.main.buttons_down &= ~BUTTON_FLAG_R;
     }
 }
 
 - (void)mouseDown:(NSEvent *)anEvent
 {
-    global_buttons_down |= BUTTON_FLAG_MOUSE;
+    g.main.buttons_down |= BUTTON_FLAG_MOUSE;
 }
 
 - (void)mouseUp:(NSEvent *)anEvent
 {
-    global_buttons_down &= ~BUTTON_FLAG_MOUSE;
+    g.main.buttons_down &= ~BUTTON_FLAG_MOUSE;
 }
 @end
 
@@ -346,7 +443,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         DRAW_BUFFER_SIDE_LENGTH,
         DRAW_BUFFER_SIDE_LENGTH,
     };
-    global_chess.square_side_length = square_side_length_get(bounds);
+    g.main.chess.square_side_length = square_side_length_get(bounds);
     MyRect draw_rect = draw_rect_get(window_dimensions);
 
     if (self.window) {
@@ -354,23 +451,32 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         NSRect window_rect = [self.window contentRectForFrameRect:self.window.frame];
         CGFloat x = mouse_location.x - window_rect.origin.x;
         CGFloat y = window_rect.size.height - (mouse_location.y - window_rect.origin.y);
-        global_chess.input.mouse_pos.x = x * self.scale_factor - draw_rect.pos.x;
-        global_chess.input.mouse_pos.y = y * self.scale_factor - draw_rect.pos.y;
+        g.main.chess.input.mouse_pos.x = x * self.scale_factor - draw_rect.pos.x;
+        g.main.chess.input.mouse_pos.y = y * self.scale_factor - draw_rect.pos.y;
     }
 
-    global_chess.input.flags = 0;
-    global_chess.input.flags |= ((global_buttons_down >> MACOS_INPUT_MOUSE) & 1) << INPUT_CONFIRM;
-    global_chess.input.flags |= ((global_buttons_down >> MACOS_INPUT_R) & 1) << INPUT_RESET;
+    g.main.chess.input.flags = 0;
+    g.main.chess.input.flags |= ((g.main.buttons_down >> MACOS_INPUT_MOUSE) & 1) << INPUT_CONFIRM;
+    g.main.chess.input.flags |= ((g.main.buttons_down >> MACOS_INPUT_R) & 1) << INPUT_RESET;
 
-    global_chess.os_time = jk_platform_os_timer_get();
+    g.main.chess.os_time = jk_platform_os_timer_get();
 
-    update(global_assets, &global_chess);
-    render(global_assets, &global_chess);
+    g.main.chess.audio_time = g.audio.time;
+
+    update(g.assets, &g.main.chess);
+
+    if (memcmp(&g.main.chess.audio_state, &g.main.audio_state, sizeof(g.main.audio_state)) != 0) {
+        pthread_mutex_lock(&g.main.audio_state_lock);
+        g.main.audio_state = g.main.chess.audio_state;
+        pthread_mutex_unlock(&g.main.audio_state_lock);
+    }
+
+    render(g.assets, &g.main.chess);
 
     // Copy bitmap buffer into texture
     [self.texture replaceRegion:MTLRegionMake2D(0, 0, window_dimensions.x, window_dimensions.y)
                     mipmapLevel:0
-                      withBytes:global_chess.draw_buffer
+                      withBytes:g.main.chess.draw_buffer
                     bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * sizeof(JkColor)];
 
     JkVector2 pos;
@@ -378,23 +484,23 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     pos.y = -((draw_rect.pos.y * 2.0f / window_dimensions.y) - 1.0f);
 
     JkVector2 dimensions;
-    dimensions.x = ((global_chess.square_side_length * 10) * 2.0f / window_dimensions.x);
-    dimensions.y = -(((global_chess.square_side_length * 10) * 2.0f / window_dimensions.y));
+    dimensions.x = ((g.main.chess.square_side_length * 10) * 2.0f / window_dimensions.x);
+    dimensions.y = -(((g.main.chess.square_side_length * 10) * 2.0f / window_dimensions.y));
 
     Vertex verticies[4];
     verticies[0].position = simd_make_float4(pos.x, pos.y + dimensions.y, 0.0f, 1.0f);
-    verticies[0].texture_coordinate = simd_make_float2(0.0f, global_chess.square_side_length * 10);
+    verticies[0].texture_coordinate = simd_make_float2(0.0f, g.main.chess.square_side_length * 10);
 
     verticies[1].position =
             simd_make_float4(pos.x + dimensions.x, pos.y + dimensions.y, 0.0f, 1.0f);
     verticies[1].texture_coordinate = simd_make_float2(
-            global_chess.square_side_length * 10, global_chess.square_side_length * 10);
+            g.main.chess.square_side_length * 10, g.main.chess.square_side_length * 10);
 
     verticies[2].position = simd_make_float4(pos.x, pos.y, 0.0f, 1.0f);
     verticies[2].texture_coordinate = simd_make_float2(0.0f, 0.0f);
 
     verticies[3].position = simd_make_float4(pos.x + dimensions.x, pos.y, 0.0f, 1.0f);
-    verticies[3].texture_coordinate = simd_make_float2(global_chess.square_side_length * 10, 0.0f);
+    verticies[3].texture_coordinate = simd_make_float2(g.main.chess.square_side_length * 10, 0.0f);
 
     memcpy([self.vertex_buffer contents], verticies, sizeof(verticies));
 

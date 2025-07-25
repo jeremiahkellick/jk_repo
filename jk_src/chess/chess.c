@@ -1358,24 +1358,28 @@ b32 ai_running(Ai *ai)
 
 // ---- AI end -----------------------------------------------------------------
 
-static void audio_write(ChessAssets *assets, Audio *audio)
+void audio(ChessAssets *assets,
+        AudioState state,
+        uint64_t time,
+        uint64_t sample_count,
+        AudioSample *sample_buffer)
 {
-    int64_t sound_sample_count = (int64_t)assets->sounds[audio->sound].size / sizeof(uint16_t);
-    uint16_t *sound_samples = (uint16_t *)((uint8_t *)assets + assets->sounds[audio->sound].offset);
+    uint64_t sound_sample_count = assets->sounds[state.sound].size / sizeof(uint16_t);
+    uint16_t *sound_samples = (uint16_t *)((uint8_t *)assets + assets->sounds[state.sound].offset);
 
-    int64_t samples_since_sound_started = audio->time - audio->sound_started_time;
-    int64_t sound_samples_remaining = sound_sample_count - samples_since_sound_started;
+    uint64_t samples_since_sound_started = time - state.started_time;
+    int64_t sound_samples_remaining =
+            (int64_t)sound_sample_count - (int64_t)samples_since_sound_started;
 
-    for (int64_t sample_index = 0; sample_index < audio->sample_count; sample_index++) {
+    for (int64_t sample_index = 0; sample_index < (int64_t)sample_count; sample_index++) {
         for (int64_t channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
             if (sample_index < sound_samples_remaining) {
-                audio->sample_buffer[sample_index].channels[channel_index] =
+                sample_buffer[sample_index].channels[channel_index] =
                         sound_samples[samples_since_sound_started + sample_index];
             } else {
-                audio->sample_buffer[sample_index].channels[channel_index] = 0;
+                sample_buffer[sample_index].channels[channel_index] = 0;
             }
         }
-        audio->time++;
     }
 }
 
@@ -1618,9 +1622,8 @@ void update(ChessAssets *assets, Chess *chess)
         // chess->board = parse_fen(wtf9_fen);
         moves_get(&chess->moves, chess->board);
 
-        chess->audio.time = 0;
-        chess->audio.sound = 0;
-        chess->audio.sound_started_time = 0;
+        chess->audio_state.sound = 0;
+        chess->audio_state.started_time = 0;
 
         chess->os_time_turn_start = chess->os_time;
         for (Team team = 0; team < TEAM_COUNT; team++) {
@@ -1780,8 +1783,8 @@ void update(ChessAssets *assets, Chess *chess)
                 } else {
                     sound = SOUND_MOVE;
                 }
-                chess->audio.sound = sound;
-                chess->audio.sound_started_time = chess->audio.time;
+                chess->audio_state.sound = sound;
+                chess->audio_state.started_time = chess->audio_time;
             }
         }
     } break;
@@ -1798,8 +1801,6 @@ void update(ChessAssets *assets, Chess *chess)
         chess->board = parse_fen(king_fight_fen);
         moves_get(&chess->moves, chess->board);
     }
-
-    audio_write(assets, &chess->audio);
 
     // Do some end-of-frame updating of data
     chess->flags = JK_FLAG_SET(chess->flags,

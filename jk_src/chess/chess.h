@@ -48,17 +48,6 @@ typedef enum SoundIndex {
     SOUND_COUNT,
 } SoundIndex;
 
-typedef struct Audio {
-    // Platform read-write, game read-only
-    int64_t sample_count;
-    AudioSample *sample_buffer;
-
-    // Platform doesn't access, game read-write
-    int64_t time;
-    SoundIndex sound;
-    int64_t sound_started_time;
-} Audio;
-
 typedef struct Bitmap {
     JkColor *memory;
     int32_t width;
@@ -247,9 +236,12 @@ typedef struct Ai {
     void (*debug_print)(char *);
 } Ai;
 
-typedef struct Chess {
-    Audio audio;
+typedef struct AudioState {
+    SoundIndex sound;
+    uint64_t started_time;
+} AudioState;
 
+typedef struct Chess {
     // Platform read-write, game read-only
     Input input;
     int32_t square_side_length;
@@ -257,6 +249,7 @@ typedef struct Chess {
     JkBuffer render_memory;
     AiResponse ai_response;
     uint64_t time;
+    uint64_t audio_time;
     uint64_t os_time;
     uint64_t os_timer_frequency;
     void (*debug_print)(char *);
@@ -279,6 +272,7 @@ typedef struct Chess {
     Screen screen;
     Button buttons[BUTTON_COUNT];
     Settings settings;
+    AudioState audio_state;
 } Chess;
 
 typedef void AiInitFunction(JkArena *arena,
@@ -294,6 +288,13 @@ AiRunningFunction ai_running;
 
 typedef void UpdateFunction(ChessAssets *assets, Chess *chess);
 UpdateFunction update;
+
+typedef void AudioFunction(ChessAssets *assets,
+        AudioState state,
+        uint64_t time,
+        uint64_t sample_count,
+        AudioSample *sample_buffer);
+AudioFunction audio;
 
 typedef void RenderFunction(ChessAssets *assets, Chess *chess);
 RenderFunction render;
