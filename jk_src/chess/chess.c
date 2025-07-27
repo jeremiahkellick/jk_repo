@@ -10,7 +10,7 @@
 // clang-format off
 
 // #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:render /EXPORT:ai_init /EXPORT:ai_running /EXPORT:profile_print
+// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:audio /EXPORT:render /EXPORT:ai_init /EXPORT:ai_running /EXPORT:profile_print
 // #jk_build single_translation_unit
 
 // clang-format on
