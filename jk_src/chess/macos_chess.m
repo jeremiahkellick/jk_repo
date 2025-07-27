@@ -27,16 +27,22 @@ typedef enum MacosInput {
 #define BUTTON_FLAG_MOUSE (1 << MACOS_INPUT_MOUSE)
 #define BUTTON_FLAG_R (1 << MACOS_INPUT_R)
 
+typedef struct MainThread {
+    b32 running;
+    uint64_t buttons_down;
+    Chess chess;
+    AudioState audio_state;
+    AiRequest ai_request;
+} MainThread;
+
 typedef struct AudioThread {
     uint64_t time;
 } AudioThread;
 
-typedef struct MainThread {
-    uint64_t buttons_down;
-    Chess chess;
-    AudioState audio_state;
-    pthread_mutex_t audio_state_lock;
-} MainThread;
+typedef struct AiThread {
+    JkBuffer memory;
+    AiResponse response;
+} AiThread;
 
 typedef struct Global {
     _Alignas(64) ChessAssets *assets;
@@ -44,9 +50,24 @@ typedef struct Global {
     _Alignas(64) MainThread main;
 
     _Alignas(64) AudioThread audio;
+
+    _Alignas(64) AiThread ai;
+
+    _Alignas(64) pthread_mutex_t audio_state_lock;
+
+    _Alignas(64) pthread_mutex_t ai_request_lock;
+
+    _Alignas(64) pthread_mutex_t ai_response_lock;
+
+    _Alignas(64) pthread_cond_t wants_ai_move;
 } Global;
 
-static Global g = {.main.audio_state_lock = PTHREAD_MUTEX_INITIALIZER};
+static Global g = {
+    .audio_state_lock = PTHREAD_MUTEX_INITIALIZER,
+    .ai_request_lock = PTHREAD_MUTEX_INITIALIZER,
+    .ai_response_lock = PTHREAD_MUTEX_INITIALIZER,
+    .wants_ai_move = PTHREAD_COND_INITIALIZER,
+};
 
 typedef struct Vertex {
     simd_float4 position;
@@ -101,9 +122,9 @@ static void audio_callback(void *context, AudioQueueRef queue, AudioQueueBufferR
     buffer->mAudioDataByteSize = buffer->mAudioDataBytesCapacity;
     uint32_t sample_count = buffer->mAudioDataByteSize / sizeof(AudioSample);
 
-    pthread_mutex_lock(&g.main.audio_state_lock);
+    pthread_mutex_lock(&g.audio_state_lock);
     AudioState state = g.main.audio_state;
-    pthread_mutex_unlock(&g.main.audio_state_lock);
+    pthread_mutex_unlock(&g.audio_state_lock);
 
     audio(g.assets, state, g.audio.time, sample_count, buffer->mAudioData);
     g.audio.time += sample_count;
@@ -117,6 +138,51 @@ static void audio_callback(void *context, AudioQueueRef queue, AudioQueueBufferR
 static void debug_print(char *string)
 {
     printf("%s", string);
+}
+
+void *ai_thread(void *param)
+{
+    while (g.main.running) {
+        pthread_mutex_lock(&g.ai_request_lock);
+        while (!(g.main.ai_request.wants_ai_move
+                && memcmp(&g.main.ai_request.board, &g.ai.response.board, sizeof(Board)) != 0)) {
+            pthread_cond_wait(&g.wants_ai_move, &g.ai_request_lock);
+        }
+        Board board = g.main.ai_request.board;
+        pthread_mutex_unlock(&g.ai_request_lock);
+
+        JkArenaRoot arena_root;
+        JkArena arena = jk_arena_fixed_init(&arena_root, g.ai.memory);
+
+        Ai ai;
+        ai_init(&arena,
+                &ai,
+                board,
+                jk_platform_os_timer_get(),
+                jk_platform_os_timer_frequency(),
+                debug_print);
+
+        while (ai_running(&ai)) {
+            pthread_mutex_lock(&g.ai_request_lock);
+            b32 cancel = !g.main.ai_request.wants_ai_move
+                    || memcmp(&g.main.ai_request.board, &board, sizeof(Board)) != 0;
+            pthread_mutex_unlock(&g.ai_request_lock);
+            if (cancel) {
+                break;
+            }
+
+            ai.time = jk_platform_os_timer_get();
+        }
+
+        if (ai.response.move.src || ai.response.move.dest) {
+            pthread_mutex_lock(&g.ai_response_lock);
+            g.ai.response.board = board;
+            g.ai.response.move = ai.response.move;
+            pthread_mutex_unlock(&g.ai_response_lock);
+        }
+    }
+
+    return 0;
 }
 
 // clang-format off
@@ -164,8 +230,10 @@ int main(void)
 
     uint64_t audio_buffer_size = SAMPLES_PER_SECOND * 2 * sizeof(AudioSample);
     g.main.chess.render_memory.size = 1 * JK_GIGABYTE;
+    g.ai.memory.size = 8 * JK_GIGABYTE;
     uint8_t *memory = mmap(NULL,
-            audio_buffer_size + DRAW_BUFFER_SIZE + g.main.chess.render_memory.size,
+            audio_buffer_size + DRAW_BUFFER_SIZE + g.main.chess.render_memory.size
+                    + g.ai.memory.size,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANON,
             -1,
@@ -176,6 +244,8 @@ int main(void)
     }
     g.main.chess.draw_buffer = (JkColor *)(memory + audio_buffer_size);
     g.main.chess.render_memory.data = memory + audio_buffer_size + DRAW_BUFFER_SIZE;
+    g.ai.memory.data =
+            memory + audio_buffer_size + DRAW_BUFFER_SIZE + g.main.chess.render_memory.size;
 
     g.main.chess.os_timer_frequency = jk_platform_os_timer_frequency();
     g.main.chess.debug_print = debug_print;
@@ -248,6 +318,15 @@ int main(void)
         }
     }
 
+    g.main.running = 1;
+
+    { // Start up AI thread
+        pthread_t thread;
+        if (pthread_create(&thread, 0, ai_thread, 0)) {
+            fprintf(stderr, "Failed to start AI thread\n");
+        }
+    }
+
     @autoreleasepool {
         CGFloat scale_factor = [NSScreen mainScreen].backingScaleFactor;
 
@@ -260,6 +339,8 @@ int main(void)
 
         [application run];
     }
+
+    g.main.running = 0;
 }
 
 static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
@@ -459,6 +540,10 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     g.main.chess.input.flags |= ((g.main.buttons_down >> MACOS_INPUT_MOUSE) & 1) << INPUT_CONFIRM;
     g.main.chess.input.flags |= ((g.main.buttons_down >> MACOS_INPUT_R) & 1) << INPUT_RESET;
 
+    pthread_mutex_lock(&g.ai_response_lock);
+    g.main.chess.ai_response = g.ai.response;
+    pthread_mutex_unlock(&g.ai_response_lock);
+
     g.main.chess.os_time = jk_platform_os_timer_get();
 
     g.main.chess.audio_time = g.audio.time;
@@ -466,9 +551,21 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     update(g.assets, &g.main.chess);
 
     if (memcmp(&g.main.chess.audio_state, &g.main.audio_state, sizeof(g.main.audio_state)) != 0) {
-        pthread_mutex_lock(&g.main.audio_state_lock);
+        pthread_mutex_lock(&g.audio_state_lock);
         g.main.audio_state = g.main.chess.audio_state;
-        pthread_mutex_unlock(&g.main.audio_state_lock);
+        pthread_mutex_unlock(&g.audio_state_lock);
+    }
+
+    if (!g.main.ai_request.wants_ai_move
+                    != !JK_FLAG_GET(g.main.chess.flags, CHESS_FLAG_WANTS_AI_MOVE)
+            || memcmp(&g.main.ai_request.board, &g.main.chess.board, sizeof(Board)) != 0) {
+        pthread_mutex_lock(&g.ai_request_lock);
+        g.main.ai_request.wants_ai_move = JK_FLAG_GET(g.main.chess.flags, CHESS_FLAG_WANTS_AI_MOVE);
+        g.main.ai_request.board = g.main.chess.board;
+        if (g.main.ai_request.wants_ai_move) {
+            pthread_cond_broadcast(&g.wants_ai_move);
+        }
+        pthread_mutex_unlock(&g.ai_request_lock);
     }
 
     render(g.assets, &g.main.chess);

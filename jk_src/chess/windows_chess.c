@@ -67,11 +67,6 @@ static int win32_debug_printf(char *format, ...)
     return result;
 }
 
-typedef struct AiRequest {
-    Board board;
-    b32 wants_ai_move;
-} AiRequest;
-
 typedef struct Shared {
     // Game read-write, AI read-only
     _Alignas(64) AiRequest ai_request;
@@ -642,7 +637,11 @@ DWORD game_thread(LPVOID param)
             ReleaseSRWLockExclusive(&g_shared.ai_request_lock);
         }
 
-        g_audio(g_assets, g_chess.audio_state, g_chess.audio_time, sample_count, g_audio_buffer_tmp);
+        g_audio(g_assets,
+                g_chess.audio_state,
+                g_chess.audio_time,
+                sample_count,
+                g_audio_buffer_tmp);
         g_chess.audio_time += sample_count;
 
         { // Write audio to the DirectSound buffer
@@ -755,15 +754,6 @@ DWORD game_thread(LPVOID param)
     OutputDebugStringA(g_string_buffer);
 
     return 0;
-}
-
-static b32 ai_request_is_canceled(void)
-{
-    AcquireSRWLockShared(&g_shared.ai_request_lock);
-    b32 result = !g_shared.ai_request.wants_ai_move
-            || memcmp(&g_shared.ai_request.board, &g_shared.ai_response.board, sizeof(Board)) != 0;
-    ReleaseSRWLockShared(&g_shared.ai_request_lock);
-    return result;
 }
 
 DWORD ai_thread(LPVOID param)

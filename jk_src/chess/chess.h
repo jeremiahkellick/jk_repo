@@ -212,6 +212,11 @@ typedef struct Settings {
     Timer timer;
 } Settings;
 
+typedef struct AiRequest {
+    Board board;
+    b32 wants_ai_move;
+} AiRequest;
+
 typedef struct AiResponse {
     Board board;
     Move move;
