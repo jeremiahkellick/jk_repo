@@ -8,6 +8,7 @@
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/QuartzCore.h>
 
+// #jk_build run jk_src/chess/chess_assets_pack.c
 // #jk_build single_translation_unit
 
 // clang-format off
@@ -18,6 +19,10 @@
 #include <jk_src/chess/chess.h>
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
+
+#if JK_BUILD_MODE == JK_RELEASE
+#include <jk_gen/chess/assets.c>
+#endif
 
 typedef enum MacosInput {
     MACOS_INPUT_MOUSE,
@@ -250,7 +255,9 @@ int main(void)
     g.main.chess.os_timer_frequency = jk_platform_os_timer_frequency();
     g.main.chess.debug_print = debug_print;
 
-    // Load image data
+#if JK_BUILD_MODE == JK_RELEASE
+    g.assets = (ChessAssets *)chess_assets_byte_array;
+#else
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
     if (jk_arena_valid(&storage)) {
@@ -258,6 +265,7 @@ int main(void)
     } else {
         fprintf(stderr, "Failed to initialize arena\n");
     }
+#endif
 
     { // Set up audio callback
         AudioStreamBasicDescription format = {0};
