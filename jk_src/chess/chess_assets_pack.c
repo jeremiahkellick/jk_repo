@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -208,8 +209,8 @@ int main(int argc, char **argv)
             assets->shapes[PIECE_TYPE_COUNT].advance_width = (float)advance_width;
         }
 
-        assets->font_ascent = INT32_MAX;
-        assets->font_descent = INT32_MIN;
+        assets->font_ascent = INFINITY;
+        assets->font_descent = -INFINITY;
         for (int32_t shape_index = PIECE_TYPE_COUNT + 1;
                 shape_index < (int32_t)JK_ARRAY_COUNT(assets->shapes);
                 shape_index++) {

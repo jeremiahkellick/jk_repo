@@ -1,4 +1,3 @@
-#include "jk_src/jk_lib/jk_lib.h"
 #include <stddef.h>
 
 // clang-format off
@@ -10,7 +9,7 @@
 // clang-format on
 
 // #jk_build dependencies_begin
-#include <jk_src\chess\chess.h>
+#include <jk_src/chess/chess.h>
 // #jk_build dependencies_end
 
 #include <jk_gen/chess/assets.c>

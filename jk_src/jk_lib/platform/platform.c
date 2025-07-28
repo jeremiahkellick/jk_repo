@@ -24,7 +24,6 @@
 
 typedef struct JkPlatformData {
     b32 initialized;
-    uint64_t large_page_size;
     HANDLE process;
 } JkPlatformData;
 
@@ -33,7 +32,6 @@ static JkPlatformData jk_platform_globals;
 static void jk_platform_globals_init(void)
 {
     jk_platform_globals.initialized = 1;
-    jk_platform_globals.large_page_size = jk_platform_large_pages_try_enable();
     jk_platform_globals.process = OpenProcess(PROCESS_QUERY_INFORMATION, 0, GetCurrentProcessId());
 }
 
@@ -57,37 +55,6 @@ JK_PUBLIC size_t jk_platform_file_size(char *file_name)
 JK_PUBLIC size_t jk_platform_page_size(void)
 {
     return 4096;
-}
-
-JK_PUBLIC uint64_t jk_platform_large_pages_try_enable(void)
-{
-    static b32 has_been_called = 0;
-    JK_ASSERT(!has_been_called);
-    has_been_called = 1;
-
-    uint64_t result = 0;
-
-    HANDLE process_token;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &process_token)) {
-        TOKEN_PRIVILEGES privileges = {0};
-        privileges.PrivilegeCount = 1;
-        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-        if (LookupPrivilegeValue(0, SE_LOCK_MEMORY_NAME, &privileges.Privileges[0].Luid)) {
-            AdjustTokenPrivileges(process_token, 0, &privileges, 0, 0, 0);
-            if (GetLastError() == ERROR_SUCCESS) {
-                result = GetLargePageMinimum();
-            }
-        }
-        CloseHandle(process_token);
-    }
-
-    return result;
-}
-
-JK_PUBLIC uint64_t jk_platform_large_page_size(void)
-{
-    JK_PLATFORMS_ENSURE_GLOBALS_INIT();
-    return jk_platform_globals.large_page_size;
 }
 
 JK_PUBLIC void *jk_platform_memory_reserve(size_t size)
@@ -136,7 +103,7 @@ typedef struct _PROCESS_MEMORY_COUNTERS {
 
 typedef BOOL (*GetProcessMemoryInfoPointer)(HANDLE, PROCESS_MEMORY_COUNTERS *, DWORD);
 
-PROCESS_MEMORY_COUNTERS jk_process_memory_info_get()
+static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
 {
     JK_PLATFORMS_ENSURE_GLOBALS_INIT();
 
@@ -238,8 +205,8 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
 
     STARTUPINFO si = {.cb = sizeof(si)};
     PROCESS_INFORMATION pi = {0};
-    int string_i = 0;
-    for (int args_i = 0; args_i < command.count; args_i++) {
+    uint64_t string_i = 0;
+    for (uint64_t args_i = 0; args_i < command.count; args_i++) {
         string_i += snprintf(&command_buffer[string_i],
                 JK_ARRAY_COUNT(command_buffer) - string_i,
                 jk_string_contains_whitespace(command.items[args_i]) ? "%s\"%.*s\"" : "%s%.*s",

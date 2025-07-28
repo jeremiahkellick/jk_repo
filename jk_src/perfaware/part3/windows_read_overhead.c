@@ -6,6 +6,7 @@
 #include <windows.h>
 
 // #jk_build single_translation_unit
+// #jk_build link Advapi32
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
@@ -26,6 +27,8 @@ typedef struct ReadParams {
 } ReadParams;
 
 typedef void ReadFunction(JkPlatformRepetitionTest *test, ReadParams params);
+
+static uint64_t large_page_size;
 
 static void *global_buffer;
 
@@ -51,7 +54,6 @@ static b32 handle_allocation(JkPlatformRepetitionTest *test, ReadParams *params)
         DWORD flAllocationType = MEM_COMMIT | MEM_RESERVE;
 
         if (params->alloc == VIRTUAL_ALLOC_LARGE_PAGES) {
-            size_t large_page_size = jk_platform_large_page_size();
             if (large_page_size > 0) {
                 flAllocationType |= MEM_LARGE_PAGES;
                 size = (size + large_page_size - 1) & ~(large_page_size - 1);
@@ -260,6 +262,20 @@ static JkPlatformRepetitionTest tests[ALLOC_COUNT][JK_ARRAY_COUNT(candidates)];
 
 int main(int argc, char **argv)
 {
+    HANDLE process_token;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &process_token)) {
+        TOKEN_PRIVILEGES privileges = {0};
+        privileges.PrivilegeCount = 1;
+        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+        if (LookupPrivilegeValueA(0, SE_LOCK_MEMORY_NAME, &privileges.Privileges[0].Luid)) {
+            AdjustTokenPrivileges(process_token, 0, &privileges, 0, 0, 0);
+            if (GetLastError() == ERROR_SUCCESS) {
+                large_page_size = GetLargePageMinimum();
+            }
+        }
+        CloseHandle(process_token);
+    }
+
     if (argc != 2) {
         fprintf(stderr, "%s: Expected 1 file argument, got %d\n", argv[0], argc - 1);
         exit(1);

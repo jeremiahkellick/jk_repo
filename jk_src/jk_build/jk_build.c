@@ -18,11 +18,23 @@ typedef enum Mode {
     JK_RELEASE,
 } Mode;
 
+typedef enum Flag {
+    FLAG_SINGLE_TRANSLATION_UNIT,
+    FLAG_LIBRARY,
+} Flag;
+
 #define GIGABYTE (1llu << 30)
 
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 #define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#define JK_MASK(index) (1llu << (index))
+
+#define JK_FLAG_GET(bitfield, flag) (((bitfield) >> (flag)) & 1)
+
+#define JK_FLAG_SET(bitfield, flag, value) \
+    (((bitfield) & ~JK_MASK(flag)) | (((uint64_t)(!!(value))) << (flag)))
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -680,6 +692,12 @@ typedef struct Paths {
 /** argv[0] */
 static char *program_name = NULL;
 
+#ifdef _WIN32
+static b32 windows = 1;
+#else
+static b32 windows = 0;
+#endif
+
 static JkBuffer basename(JkBuffer path)
 {
     JkBuffer result;
@@ -847,7 +865,7 @@ typedef struct Options {
 
 static int jk_build(Options options, JkBuffer source_file_relative_path);
 
-static b32 parse_files(JkArena *storage,
+static uint64_t parse_files(JkArena *storage,
         JkArena *scratch_arena,
         Options options,
         Paths paths,
@@ -856,7 +874,7 @@ static b32 parse_files(JkArena *storage,
         StringArrayBuilder *compiler_arguments,
         StringArrayBuilder *linker_arguments)
 {
-    b32 single_translation_unit = 0;
+    uint64_t flags = 0;
 
     uint64_t path_index = 0;
     JkBuffer path = paths.source_file;
@@ -928,10 +946,12 @@ static b32 parse_files(JkArena *storage,
                 b32 cmd_compiler_arguments =
                         jk_buffer_compare(command, JKS("compiler_arguments")) == 0;
                 b32 cmd_linker_arguments = jk_buffer_compare(command, JKS("linker_arguments")) == 0;
+                b32 cmd_link = jk_buffer_compare(command, JKS("link")) == 0;
+                b32 cmd_export = jk_buffer_compare(command, JKS("export")) == 0;
                 b32 cmd_build = jk_buffer_compare(command, JKS("build")) == 0;
                 b32 cmd_run = jk_buffer_compare(command, JKS("run")) == 0;
 
-                if (cmd_compiler_arguments || cmd_linker_arguments) {
+                if (cmd_compiler_arguments || cmd_linker_arguments || cmd_link || cmd_export) {
                     if (path_index == 0) {
                         for (;;) {
                             int a0;
@@ -957,6 +977,25 @@ static b32 parse_files(JkArena *storage,
                                 }
                                 argument.size = pos - start;
                                 argument.data = file.data + start;
+                            }
+                            if (cmd_link) {
+                                if (options.compiler == COMPILER_MSVC) {
+                                    argument = concat_strings(scratch_arena, argument, JKS(".lib"));
+                                } else {
+                                    argument = concat_strings(scratch_arena, JKS("-l"), argument);
+                                }
+                            } else if (cmd_export) {
+                                if (options.compiler == COMPILER_MSVC) {
+                                    argument = concat_strings(
+                                            scratch_arena, JKS("/EXPORT:"), argument);
+                                } else {
+#ifdef _WIN32
+                                    JkBuffer prefix = JKSI("-Wl,/EXPORT:");
+#else
+                                    JkBuffer prefix = JKSI("-Wl,--export=");
+#endif
+                                    argument = concat_strings(scratch_arena, prefix, argument);
+                                }
                             }
                             string_array_builder_push(
                                     cmd_compiler_arguments ? compiler_arguments : linker_arguments,
@@ -1006,7 +1045,11 @@ static b32 parse_files(JkArena *storage,
                     printf("\n");
                 } else if (jk_buffer_compare(command, JKS("single_translation_unit")) == 0) {
                     if (path_index == 0) {
-                        single_translation_unit = 1;
+                        flags = JK_FLAG_SET(flags, FLAG_SINGLE_TRANSLATION_UNIT, 1);
+                    }
+                } else if (jk_buffer_compare(command, JKS("library")) == 0) {
+                    if (path_index == 0) {
+                        flags = JK_FLAG_SET(flags, FLAG_LIBRARY, 1);
                     }
                 } else if (jk_buffer_compare(command, JKS("dependencies_begin")) == 0) {
                     if (dependencies_open) {
@@ -1149,7 +1192,7 @@ static b32 parse_files(JkArena *storage,
                 string_array_builder_at_index(dependencies, path_index++));
     } while (path_index <= dependencies->count);
 
-    return single_translation_unit;
+    return flags;
 }
 
 static int jk_build(Options options, JkBuffer source_file_relative_path)
@@ -1187,7 +1230,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
     b32 is_objective_c_file = paths.source_file.data[paths.source_file.size - 1] == 'm';
 
-    b32 single_translation_unit = parse_files(&storage,
+    uint64_t flags = parse_files(&storage,
             &scratch_arena,
             options,
             paths,
@@ -1195,6 +1238,18 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
             &nasm_files,
             &compiler_arguments,
             &linker_arguments);
+
+    JkBuffer extension = {0};
+#ifdef _WIN32
+    extension = JK_FLAG_GET(flags, FLAG_LIBRARY) ? JKS(".dll") : JKS(".exe");
+#else
+    if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+        extension = JKS(".so");
+    }
+#endif
+    if (extension.size) {
+        paths.basename = concat_strings(&storage, paths.basename, extension);
+    }
 
     JkBufferArray nasm_files_array = string_array_builder_build(&nasm_files);
     for (uint64_t i = 0; i < nasm_files_array.count; i++) {
@@ -1260,6 +1315,10 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "/EHa-");
         append(&command, "/D", mode_define);
 
+        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+            append(&command, "/LD");
+        }
+
         switch (options.mode) {
         case JK_DEBUG_SLOW: {
             append(&command, "/MTd");
@@ -1279,7 +1338,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         } break;
         }
 
-        if (!single_translation_unit) {
+        if (!JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
             append(&command, "/D", "JK_PUBLIC=");
         }
         if (options.no_profile) {
@@ -1306,7 +1365,10 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "-Werror=vla");
         append(&command, "-Wno-missing-braces");
         append(&command, "-Wno-unused-parameter");
-        if (single_translation_unit) {
+        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+            append(&command, "-shared");
+        }
+        if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
             append(&command, "-Wno-unused-function");
         } else {
             append(&command, "-D", "JK_PUBLIC=");
@@ -1330,20 +1392,18 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     case COMPILER_TCC: {
         append(&command, "tcc");
 
-#ifdef _WIN32
-        JkBuffer basename = concat_strings(&storage, paths.basename, JKS(".exe"));
-#else
-        JkBuffer basename = paths.basename;
-#endif
         append(&command, "-o");
-        string_array_builder_push(&command, basename);
+        string_array_builder_push(&command, paths.basename);
 
         append(&command, "-std=c11");
         append(&command, "-Wall");
         append(&command, "-g");
+        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+            append(&command, "-shared");
+        }
         append(&command, "-D", mode_define);
 
-        if (!single_translation_unit) {
+        if (!JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
             append(&command, "-D", "JK_PUBLIC=");
         }
         if (options.no_profile) {
@@ -1357,13 +1417,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     case COMPILER_CLANG: {
         append(&command, "clang");
 
-#ifdef _WIN32
-        JkBuffer basename = concat_strings(&storage, paths.basename, JKS(".exe"));
-#else
-        JkBuffer basename = paths.basename;
-#endif
         append(&command, "-o");
-        string_array_builder_push(&command, basename);
+        string_array_builder_push(&command, paths.basename);
 
         append(&command,
                 "-Wall",
@@ -1373,11 +1428,15 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 "-Wno-missing-field-initializers",
                 "-Wno-unused-command-line-argument",
                 "-Wno-unused-parameter");
+        append(&command, "-mfma");
         append(&command, "-g");
         if (!is_objective_c_file) {
             append(&command, "-std=c11");
         }
-        if (single_translation_unit) {
+        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+            append(&command, "-shared");
+        }
+        if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
             append(&command, "-Wno-unused-function");
         } else {
             append(&command, "-D", "JK_PUBLIC=");
@@ -1394,6 +1453,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
+        append(&command, "-D", "_CRT_SECURE_NO_WARNINGS");
 
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);
@@ -1407,7 +1467,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
     string_array_builder_concat(&command, &compiler_arguments);
 
-    if (single_translation_unit) {
+    if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
         // Get path for the single translation unit root source file
         JkBuffer stu_file_path;
         {
@@ -1484,27 +1544,19 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     case COMPILER_MSVC: {
         append(&command, "/link");
 
-        JkBuffer out_option = concat_strings(
-                &storage, concat_strings(&storage, JKS("/OUT:"), paths.basename), JKS(".exe"));
-        string_array_builder_push(&command, out_option);
+        string_array_builder_push(&command, concat_strings(&storage, JKS("/OUT:"), paths.basename));
 
         append(&command, "/INCREMENTAL:NO");
 
         JkBuffer lib_path = concat_strings(
                 &storage, concat_strings(&storage, JKS("/LIBPATH:\""), paths.repo_root), JKS("\""));
         string_array_builder_push(&command, lib_path);
-
-        append(&command, "Advapi32.lib");
     } break;
 
     case COMPILER_GCC: {
-        append(&command, "-lm");
     } break;
 
     case COMPILER_TCC: {
-#ifndef _WIN32
-        append(&command, "-lm");
-#endif
     } break;
 
     case COMPILER_CLANG: {

@@ -1,4 +1,3 @@
-#include "jk_src/jk_lib/jk_lib.h"
 #include <stdlib.h>
 
 // #jk_build single_translation_unit

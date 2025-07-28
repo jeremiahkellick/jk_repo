@@ -45,10 +45,6 @@ JK_PUBLIC void jk_platform_memory_free(void *address, size_t size);
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void);
 
-JK_PUBLIC uint64_t jk_platform_large_pages_try_enable(void);
-
-JK_PUBLIC uint64_t jk_platform_large_page_size(void);
-
 JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void);
 
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void);

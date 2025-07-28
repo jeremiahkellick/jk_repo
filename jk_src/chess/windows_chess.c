@@ -1,4 +1,4 @@
-// #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
+// #jk_build link User32 Gdi32 Winmm
 
 #include <dsound.h>
 #include <jk_src/chess/chess.h>
@@ -117,7 +117,7 @@ typedef struct IntArray4 {
 static int32_t square_side_length_get(IntArray4 dimensions)
 {
     int32_t min_dimension = INT32_MAX;
-    for (int32_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
+    for (uint64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
         if (dimensions.a[i] < min_dimension) {
             min_dimension = dimensions.a[i];
         }
@@ -155,7 +155,7 @@ typedef struct Rect {
     };
 } Rect;
 
-static Rect draw_rect_get()
+static Rect draw_rect_get(void)
 {
     Rect result = {0};
 
