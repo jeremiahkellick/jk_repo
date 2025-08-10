@@ -1,9 +1,7 @@
 #ifndef JK_LIB_H
 #define JK_LIB_H
 
-#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 typedef uint32_t b32;
 
@@ -43,6 +41,8 @@ typedef struct JkSpan {
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
+JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer);
+
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
 JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
@@ -51,13 +51,107 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
 JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b);
 
-JK_PUBLIC b32 jk_char_is_whitespace(uint8_t c);
+JK_PUBLIC b32 jk_char_is_whitespace(int c);
+
+JK_PUBLIC b32 jk_char_is_digit(int c);
+
+JK_PUBLIC int jk_char_to_lower(int c);
 
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string);
 
 JK_PUBLIC int64_t jk_string_find(JkBuffer string, JkBuffer substring);
 
+typedef enum JkFormatItemType {
+    JK_FORMAT_ITEM_NULL_TERMINATED,
+    JK_FORMAT_ITEM_STRING,
+    JK_FORMAT_ITEM_INT,
+    JK_FORMAT_ITEM_UNSIGNED,
+    JK_FORMAT_ITEM_HEX,
+    JK_FORMAT_ITEM_BINARY,
+
+    JK_FORMAT_ITEM_TYPE_COUNT,
+} JkFormatItemType;
+
+typedef struct JkFormatItem {
+    JkFormatItemType type;
+    union {
+        char *null_terminated;
+        JkBuffer string;
+        int64_t signed_value;
+        uint64_t unsigned_value;
+    };
+    int16_t min_width;
+} JkFormatItem;
+
+typedef struct JkFormatItemArray {
+    uint64_t count;
+    JkFormatItem *items;
+} JkFormatItemArray;
+
+JK_PUBLIC JkFormatItem jkfn(char *null_termianted);
+
+JK_PUBLIC JkFormatItem jkfs(JkBuffer string);
+
+JK_PUBLIC JkFormatItem jkfi(int64_t signed_value);
+
+JK_PUBLIC JkFormatItem jkfu(uint64_t unsigned_value);
+
+JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width);
+
+JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width);
+
 // ---- Buffer end -------------------------------------------------------------
+
+// ---- Math begin -------------------------------------------------------------
+
+#define JK_FLOAT_EXPONENT_SPECIAL INT32_MAX
+
+typedef struct JkFloatUnpacked {
+    b32 sign;
+
+    // Note the exponent and signficand work differently here than what you are probably used to
+    // with floating point formats. Generally, the significand thought of as a fixed-point number
+    // with one bit to the left of the binary decimal and all the other bits to the right.
+    // For example, 1.001b * 2^e. (I'm using b as a suffix to denote binary numbers).
+    //
+    // Now notice how we can write 1.001b as an integer multiplied by 2 raised to some power
+    // 1.001b = 1001b * 2^-3
+    // Inserting this back into the original expression we get the following
+    // 1.001b * 2^e = 1001b * 2^-3 * 2^e = 1001b * 2^(e-3)
+    //
+    // So we can use an integer significand, as long as we use an exponent that's 3 less than the
+    // traditional floating-point exponent. Why 3? Because in our example that was the bit-width of
+    // the fractional portion of the significand (the mantissa).
+    //
+    // In this struct, "exponent" refers to this reduced exponent. If e is the traditional exponent,
+    // then exponent = e - bit_width_of_mantissa. And "significand" refers to the significant bits
+    // of the floating point value, including the leading bit (which is generally only implied in
+    // the binary representation). However, there's no implied binary point in the significand. We
+    // interpret it as an unsigned integer. Then the value represented by some JkFloatUnpacked f
+    // is (f.sign ? -1 : 1) * f.significand * pow(2, f.exponent)
+    //
+    // Also note that in this scheme, the number of bits in the significand that will represent a
+    // non-integer quantity in the final value is simply -exponent
+
+    int32_t exponent;
+    uint64_t significand;
+} JkFloatUnpacked;
+
+JK_PUBLIC JkFloatUnpacked jk_zero_unpacked;
+
+JK_PUBLIC JkFloatUnpacked jk_one_unpacked;
+
+JK_PUBLIC JkFloatUnpacked jk_f32_unpack(float value);
+
+JK_PUBLIC float jk_f32_pack(JkFloatUnpacked f);
+
+JK_PUBLIC JkFloatUnpacked jk_ceil_unpacked(JkFloatUnpacked f);
+
+JK_PUBLIC float jk_ceil_f32(float f);
+
+JK_PUBLIC float jk_sqrt_f32(float value);
+
+// ---- Math end ---------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
@@ -88,9 +182,31 @@ JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
 // ---- Arena end --------------------------------------------------------------
 
+// These things conceptually belong to the buffer code but depend on the JkArena declaration so
+// we'll just let them hang out down here I guess...
+
 JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer);
 
 JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
+
+JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
+
+JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value);
+
+JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
+        JkArena *arena, uint64_t value, int16_t min_width);
+
+JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width);
+
+JK_PUBLIC JkFormatItem jkf_nl;
+
+JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
+
+#define JK_FORMAT(arena, ...)                                                          \
+    jk_format(arena,                                                                   \
+            (JkFormatItemArray){                                                       \
+                .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
+                .items = (JkFormatItem[]){__VA_ARGS__}})
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
@@ -114,56 +230,6 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
         JkBuffer buffer, uint64_t *pos, JkUtf8Codepoint *codepoint);
 
 // ---- UTF-8 end --------------------------------------------------------------
-
-// ---- Command line arguments parsing begin -----------------------------------
-
-typedef struct JkOption {
-    /**
-     * Character used as the short-option flag. The null character means there is no short form of
-     * this option. An option must have some way to refer to it. If this is the null character,
-     * long_name must not be null.
-     */
-    char flag;
-
-    /**
-     * The long name of this option. NULL means there is no long name for this option. An option
-     * must have some way to refer to it. If this is NULL, flag must not be the null character.
-     */
-    char *long_name;
-
-    /** Name of the argument for this option. NULL if this option does not accept an argument. */
-    char *arg_name;
-
-    /** Description of this option used to print help text */
-    char *description;
-} JkOption;
-
-typedef struct JkOptionResult {
-    b32 present;
-    char *arg;
-} JkOptionResult;
-
-typedef struct JkOptionsParseResult {
-    /** Pointer to the first operand (first non-option argument) */
-    char **operands;
-    size_t operand_count;
-    b32 usage_error;
-} JkOptionsParseResult;
-
-JK_PUBLIC void jk_options_parse(int argc,
-        char **argv,
-        JkOption *options_in,
-        JkOptionResult *options_out,
-        size_t option_count,
-        JkOptionsParseResult *result);
-
-JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count);
-
-JK_PUBLIC int jk_parse_positive_integer(char *string);
-
-JK_PUBLIC double jk_parse_double(JkBuffer number_string);
-
-// ---- Command line arguments parsing end -------------------------------------
 
 // ---- Quicksort begin --------------------------------------------------------
 
@@ -249,6 +315,21 @@ JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 
 
 // ---- JkVector2 end ----------------------------------------------------------
 
+// ---- Random generator begin -------------------------------------------------
+
+typedef struct JkRandomGeneratorU64 {
+    uint64_t a;
+    uint64_t b;
+    uint64_t c;
+    uint64_t d;
+} JkRandomGeneratorU64;
+
+JK_PUBLIC JkRandomGeneratorU64 jk_random_generator_new_u64(uint64_t seed);
+
+JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g);
+
+// ---- Random generator end ---------------------------------------------------
+
 #define JK_KILOBYTE (1llu << 10)
 #define JK_MEGABYTE (1llu << 20)
 #define JK_GIGABYTE (1llu << 30)
@@ -275,10 +356,10 @@ typedef struct JkIntRect {
     JkIntVector2 dimensions;
 } JkIntRect;
 
-JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
+JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 
 #define JK_ASSERT(expression) \
-    (void)((!!(expression)) || (jk_assert(#expression, __FILE__, (int64_t)(__LINE__)), 0))
+    (void)((!!(expression)) || (jk_assert_failed(#expression, __FILE__, (int64_t)(__LINE__)), 0))
 
 #if JK_BUILD_MODE == JK_RELEASE
 #define JK_DEBUG_ASSERT(...)
@@ -292,6 +373,10 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 
 #define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define JK_MAX(a, b) ((a) < (b) ? (b) : (a))
+
+#define JK_CLAMP(v, min, max) ((v) < (min) ? (min) : ((max) < (v) ? (max) : (v)))
+
+#define JK_ABS(value) ((value) < 0 ? -(value) : (value))
 
 #define JK_SWAP(a, b, type)   \
     do {                      \
@@ -310,9 +395,21 @@ JK_PUBLIC void jk_assert(char *message, char *file, int64_t line);
 #define JK_PI 3.14159265358979323846264338327950288419716939937510582097494459230781640628
 #define JK_INV_SQRT_2 0.70710678118654752440084
 
+#define JK_EOF (-1)
+
+JK_PUBLIC int jk_parse_positive_integer(char *string);
+
+JK_PUBLIC void jk_memset(void *address, uint8_t value, uint64_t size);
+
+JK_PUBLIC void jk_memcpy(void *dest, void *src, uint64_t size);
+
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
+
+JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value);
+
+JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int8_t amount);
 
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
 
@@ -322,10 +419,6 @@ JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x);
 
 JK_PUBLIC int32_t jk_round(float value);
 
-JK_PUBLIC float jk_abs(float value);
-
-JK_PUBLIC double jk_abs_64(double value);
-
 JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance);
 
 JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance);
@@ -333,9 +426,5 @@ JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance);
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);
-
-JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count);
-
-JK_PUBLIC void jk_print_bytes_double(FILE *file, char *format, double byte_count);
 
 #endif

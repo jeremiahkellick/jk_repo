@@ -259,7 +259,7 @@ int main(int argc, char **argv)
             JkPlatformRepetitionTest *test = &tests[i][j];
 
             printf("\nFunction: %s, buffer size: ", functions[j].name);
-            jk_print_bytes_uint64(stdout, "%.0f", buffer_size);
+            jk_platform_print_bytes_uint64(stdout, "%.0f", buffer_size);
             printf("\n");
 
             jk_platform_repetition_test_run_wave(test, file_size, frequency, 10);
@@ -284,7 +284,7 @@ int main(int argc, char **argv)
     }
     printf("\n");
     for (size_t i = 0, size = STARTING_SIZE; i < JK_ARRAY_COUNT(tests); i++, size *= 2) {
-        jk_print_bytes_uint64(stdout, "%.0f", size);
+        jk_platform_print_bytes_uint64(stdout, "%.0f", size);
         for (size_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
             printf(",%.3f",
                     jk_platform_repetition_test_bandwidth(tests[i][j].min, frequency)

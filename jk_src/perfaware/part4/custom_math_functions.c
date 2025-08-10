@@ -31,7 +31,7 @@ JK_PUBLIC double jk_sin_core(double x)
 JK_PUBLIC double jk_sin(double x)
 {
     double sign = x < 0 ? -1.0 : 1.0;
-    return sign * jk_sin_core(jk_abs_64(x));
+    return sign * jk_sin_core(JK_ABS(x));
 }
 
 JK_PUBLIC double jk_cos(double x)

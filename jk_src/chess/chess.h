@@ -231,6 +231,7 @@ typedef struct Ai {
     AiResponse response;
     Board board;
     JkArena *arena;
+    JkRandomGeneratorU64 generator;
     uint8_t top_level_node_count;
     MoveNode top_level_nodes[256];
     AiTarget targets[256];
@@ -258,6 +259,7 @@ typedef struct Chess {
     uint64_t os_time;
     uint64_t os_timer_frequency;
     void (*debug_print)(char *);
+    float (*floor)(float);
 
     // Game read-write, platform read-only
     uint64_t flags;
@@ -278,6 +280,7 @@ typedef struct Chess {
     Button buttons[BUTTON_COUNT];
     Settings settings;
     AudioState audio_state;
+    JkRandomGeneratorU64 generator;
 } Chess;
 
 typedef void AiInitFunction(JkArena *arena,
@@ -291,9 +294,6 @@ AiInitFunction ai_init;
 typedef b32 AiRunningFunction(Ai *ai);
 AiRunningFunction ai_running;
 
-typedef void UpdateFunction(ChessAssets *assets, Chess *chess);
-UpdateFunction update;
-
 typedef void AudioFunction(ChessAssets *assets,
         AudioState state,
         uint64_t time,
@@ -301,10 +301,13 @@ typedef void AudioFunction(ChessAssets *assets,
         AudioSample *sample_buffer);
 AudioFunction audio;
 
+typedef b32 BoardEqualFunction(Board *a, Board *b);
+BoardEqualFunction board_equal;
+
+typedef void UpdateFunction(ChessAssets *assets, Chess *chess);
+UpdateFunction update;
+
 typedef void RenderFunction(ChessAssets *assets, Chess *chess);
 RenderFunction render;
-
-typedef void ProfilePrintFunction(void (*print)(char *));
-ProfilePrintFunction profile_print;
 
 #endif

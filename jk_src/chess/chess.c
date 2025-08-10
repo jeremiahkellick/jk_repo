@@ -1,27 +1,19 @@
-#include <ctype.h>
-#include <math.h>
 #include <stdarg.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
 
 // clang-format off
 
-// #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:chess.dll /EXPORT:update /EXPORT:audio /EXPORT:render /EXPORT:ai_init /EXPORT:ai_running /EXPORT:profile_print
+// #jk_build compiler_arguments -o chess_wasm --target=wasm32
+// #jk_build linker_arguments -Wl,--export=update,--export=audio,--export=render,--export=ai_init,--export=ai_running
 // #jk_build single_translation_unit
 
 // clang-format on
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/platform/platform.h>
+#include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_shapes/jk_shapes.h>
 // #jk_build dependencies_end
 
 #include "chess.h"
-#include "jk_src/jk_lib/jk_lib.h"
 
 typedef enum Column {
     A,
@@ -98,17 +90,24 @@ static JkBuffer king_fight_fen = JKSI("8/8/8/4k3/8/8/8/3QK3 w - - 0 1");
 
 static char debug_print_buffer[4096];
 
-static int32_t piece_counts[PIECE_TYPE_COUNT] = {0, 1, 1, 2, 2, 2, 8};
+typedef struct PieceCounts {
+    int32_t a[PIECE_TYPE_COUNT];
+} PieceCounts;
 
-static int debug_printf(void (*debug_print)(char *), char *format, ...)
+static PieceCounts piece_counts = {.a = {0, 1, 1, 2, 2, 2, 8}};
+
+static void debug_print_jkf(JkArena *arena, void (*debug_print)(char *), JkFormatItemArray items)
 {
-    va_list args;
-    va_start(args, format);
-    int result = vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
-    va_end(args);
-    debug_print(debug_print_buffer);
-    return result;
+    JkArena tmp_arena = jk_arena_child_get(arena);
+    JkBuffer string = jk_format(&tmp_arena, items);
+    debug_print(jk_buffer_to_null_terminated(&tmp_arena, string));
 }
+
+#define DEBUG_PRINT_JKF(arena, debug_print, ...)                                       \
+    jk_format(arena,                                                                   \
+            (JkFormatItemArray){                                                       \
+                .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
+                .items = (JkFormatItem[]){__VA_ARGS__}})
 
 static Chess debug_chess;
 
@@ -311,12 +310,12 @@ static Board parse_fen(JkBuffer fen)
     uint64_t i = 0;
     JkIntVector2 pos = {0, 7};
 
-    while (isspace(fen.data[i])) {
+    while (jk_char_is_whitespace(fen.data[i])) {
         i++;
     }
 
     // Parse piece positions
-    for (; i < fen.size && !isspace(fen.data[i]); i++) {
+    for (; i < fen.size && !jk_char_is_whitespace(fen.data[i]); i++) {
         uint8_t c = fen.data[i];
         Team team = WHITE;
         if (c >= 'a') {
@@ -352,22 +351,22 @@ static Board parse_fen(JkBuffer fen)
         }
     }
 
-    while (isspace(fen.data[i])) {
+    while (jk_char_is_whitespace(fen.data[i])) {
         i++;
     }
 
     // Parse current player
-    if (tolower(fen.data[i++]) == 'b') {
+    if (jk_char_to_lower(fen.data[i++]) == 'b') {
         board.flags |= JK_MASK(BOARD_FLAG_CURRENT_PLAYER);
     }
 
-    while (isspace(fen.data[i])) {
+    while (jk_char_is_whitespace(fen.data[i])) {
         i++;
     }
 
     // Parse castling rights. Flag set means disallowed.
     uint8_t c;
-    while (!isspace(c = fen.data[i++])) {
+    while (!jk_char_is_whitespace(c = fen.data[i++])) {
         if (c == 'Q') {
             board.flags &= ~JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS);
         } else if (c == 'K') {
@@ -379,7 +378,7 @@ static Board parse_fen(JkBuffer fen)
         }
     }
 
-    while (isspace(fen.data[i])) {
+    while (jk_char_is_whitespace(fen.data[i])) {
         i++;
     }
 
@@ -964,10 +963,10 @@ static void update_search_scores_root(Ai *ctx, b32 verify)
     }
 }
 
-static void moves_shuffle(MoveArray *moves)
+static void moves_shuffle(JkRandomGeneratorU64 *generator, MoveArray *moves)
 {
     for (int32_t i = 0; i < moves->count; i++) {
-        int32_t swap_index = i + rand() % (moves->count - i);
+        int32_t swap_index = i + (int32_t)jk_random_u64(generator) % (moves->count - i);
         MovePacked tmp = moves->data[swap_index];
         moves->data[swap_index] = moves->data[i];
         moves->data[i] = tmp;
@@ -1120,16 +1119,6 @@ static uint64_t debug_time_current_get(void)
     return debug_nodes_found;
 }
 
-static void custom_profile_print(void *data, char *format, ...)
-{
-    void (*print)(char *) = (void (*)(char *))data;
-    va_list args;
-    va_start(args, format);
-    vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
-    va_end(args);
-    print(debug_print_buffer);
-}
-
 void ai_init(JkArena *arena,
         Ai *ai,
         Board board,
@@ -1140,6 +1129,7 @@ void ai_init(JkArena *arena,
     ai->arena = arena;
     ai->response.board = (Board){0};
     ai->response.move = (Move){0};
+    ai->generator = jk_random_generator_new_u64(0xd5717cc6);
 
     ai->board = board;
     ai->time = time;
@@ -1165,7 +1155,7 @@ void ai_init(JkArena *arena,
         // If there's only one legal move, take it
         ai->response.move = move_unpack(moves.data[0]);
     } else {
-        moves_shuffle(&moves);
+        moves_shuffle(&ai->generator, &moves);
         MoveNode *prev_child = 0;
         for (uint8_t i = 0; i < moves.count; i++) {
             MoveNode *new_child = ai->top_level_nodes + i;
@@ -1282,11 +1272,13 @@ b32 ai_running(Ai *ai)
             *line_move = ancestor->move;
         }
 
-        debug_printf(ai->debug_print, "node_count: %llu\n", stats.node_count);
-        debug_printf(ai->debug_print, "seconds_elapsed: %.1f\n", seconds_elapsed);
-        debug_printf(ai->debug_print,
-                "%.4f Mn/s\n",
-                ((double)stats.node_count / 1000000.0) / seconds_elapsed);
+        double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
+        // clang-format off
+        DEBUG_PRINT_JKF(ai->arena, ai->debug_print,
+                jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
+                jkfn("seconds_elapsed: "), jkff(seconds_elapsed), jkf_nl,
+                jkff(mnps), jkfn("Mn/s"), jkf_nl);
+        // clang-format on
 
         if (stats.max_depth < 300) {
             uint64_t max_score_depth = 0;
@@ -1312,20 +1304,21 @@ b32 ai_running(Ai *ai)
                 }
             }
 
-            debug_printf(ai->debug_print,
-                    "node_count\t%llu\nleaf_count\t%llu\nmin_depth\t%llu\navg_depth\t%llu\nmax_"
-                    "depth\t%"
-                    "llu\nmax_score_depth\t%llu\n",
-                    stats.node_count,
-                    stats.leaf_count,
-                    stats.min_depth,
-                    stats.depth_sum / stats.leaf_count,
-                    stats.max_depth,
-                    max_score_depth);
+            // clang-format off
+            DEBUG_PRINT_JKF(ai->arena, ai->debug_print,
+                    jkfn("node_count\t"), jkfu(stats.node_count), jkf_nl,
+                    jkfn("leaf_count\t"), jkfu(stats.leaf_count), jkf_nl,
+                    jkfn("min_depth\t"), jkfu(stats.min_depth), jkf_nl,
+                    jkfn("avg_depth\t"), jkfu(stats.depth_sum / stats.leaf_count), jkf_nl,
+                    jkfn("max_depth\t"), jkfu(stats.max_depth), jkf_nl,
+                    jkfn("max_score_depth\t"), jkfu(max_score_depth), jkf_nl);
+            // clang-format on
 
-            debug_printf(ai->debug_print, "max_line:\n");
+            ai->debug_print("max_line:\n");
             for (uint64_t i = 0; i < stats.max_depth; i++) {
-                debug_printf(ai->debug_print, "\t0x%x\n", (uint32_t)stats.max_line[i].bits);
+                uint16_t move_bits = stats.max_line[i].bits;
+                DEBUG_PRINT_JKF(
+                        ai->arena, ai->debug_print, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
             }
 
             /*
@@ -1357,6 +1350,18 @@ b32 ai_running(Ai *ai)
 }
 
 // ---- AI end -----------------------------------------------------------------
+
+b32 board_equal(Board *a, Board *b)
+{
+    for (uint64_t i = 0; i < JK_ARRAY_COUNT(a->bytes) / 8; i++) {
+        uint64_t a_bytes = *(uint64_t *)(a->bytes + (i * 8));
+        uint64_t b_bytes = *(uint64_t *)(b->bytes + (i * 8));
+        if (a_bytes != b_bytes) {
+            return 0;
+        }
+    }
+    return a->flags == b->flags && a->move_prev.bits == b->move_prev.bits;
+}
 
 void audio(ChessAssets *assets,
         AudioState state,
@@ -1465,16 +1470,14 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-static void print_nodes(void (*print)(char *), MoveNode *node, uint32_t depth)
+static void print_nodes(JkArena *arena, void (*print)(char *), MoveNode *node, uint32_t depth)
 {
-    char buffer[1024];
     for (uint32_t i = 0; i < depth; i++) {
         print(" ");
     }
-    snprintf(buffer, JK_ARRAY_COUNT(buffer), "%d, %u\n", node->score, node->search_score);
-    print(buffer);
+    DEBUG_PRINT_JKF(arena, print, jkfi(node->score), jkfn(", "), jkfu(node->search_score));
     for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-        print_nodes(print, child, depth + 1);
+        print_nodes(arena, print, child, depth + 1);
     }
 }
 
@@ -1490,7 +1493,7 @@ void update(ChessAssets *assets, Chess *chess)
 {
     if (!debug_assets) {
         debug_assets = assets;
-        memset(&debug_chess, 0, sizeof(debug_chess));
+        debug_chess = (Chess){0};
         debug_chess.square_side_length = 64;
         debug_chess.selected_square = (JkIntVector2){-1, -1};
         debug_chess.promo_square = (JkIntVector2){-1, -1};
@@ -1589,8 +1592,15 @@ void update(ChessAssets *assets, Chess *chess)
         update_search_scores_root(&ctx, WHITE);
         // JK_ASSERT(ctx.top_level_nodes[0].search_score == 6);
         // JK_ASSERT(ctx.top_level_nodes[1].search_score == 7);
-        print_nodes(chess->debug_print, ctx.top_level_nodes, 0);
-        print_nodes(chess->debug_print, ctx.top_level_nodes + 1, 0);
+        {
+            uint8_t buffer[4096];
+            JkArenaRoot arena_root;
+            JkArena arena = jk_arena_fixed_init(
+                    &arena_root, (JkBuffer){.size = sizeof(buffer), .data = buffer});
+
+            print_nodes(&arena, chess->debug_print, ctx.top_level_nodes, 0);
+            print_nodes(&arena, chess->debug_print, ctx.top_level_nodes + 1, 0);
+        }
 
         if (!JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
             // If we got here because the state is not initialized (as opposed to the player
@@ -1599,14 +1609,14 @@ void update(ChessAssets *assets, Chess *chess)
             chess->settings.team_choice = TEAM_CHOICE_WHITE;
             chess->settings.opponent_type = PLAYER_AI;
             chess->settings.timer = TIMER_10_MIN;
+            chess->generator = jk_random_generator_new_u64(chess->os_time);
         }
 
         chess->flags = JK_MASK(CHESS_FLAG_INITIALIZED);
         chess->turn_index = 0;
 
         if (chess->settings.team_choice == TEAM_CHOICE_RANDOM) {
-            srand((unsigned int)time(0));
-            chess->perspective = rand() % 2;
+            chess->perspective = jk_random_u64(&chess->generator) % 2;
         } else {
             chess->perspective = chess->settings.team_choice == TEAM_CHOICE_BLACK;
         }
@@ -1618,7 +1628,7 @@ void update(ChessAssets *assets, Chess *chess)
         chess->result = 0;
         chess->piece_prev_type = NONE;
         chess->time_move_prev = 0;
-        memcpy(&chess->board, &starting_state, sizeof(chess->board));
+        chess->board = starting_state;
         // chess->board = parse_fen(wtf9_fen);
         moves_get(&chess->moves, chess->board);
 
@@ -1632,8 +1642,6 @@ void update(ChessAssets *assets, Chess *chess)
         }
 
         chess->screen = SCREEN_GAME;
-
-        srand(0xd5717cc6);
 
         JK_DEBUG_ASSERT(board_castling_rights_mask_get(WHITE, 0)
                 == JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS));
@@ -1722,7 +1730,7 @@ void update(ChessAssets *assets, Chess *chess)
                     }
                 }
             } else { // Current player is an AI
-                if (memcmp(&chess->ai_response.board, &chess->board, sizeof(Board)) == 0) {
+                if (board_equal(&chess->ai_response.board, &chess->board)) {
                     move = chess->ai_response.move;
                 }
             }
@@ -1744,8 +1752,6 @@ void update(ChessAssets *assets, Chess *chess)
                 chess->turn_index++;
 
                 chess->board = board_move_perform(chess->board, move_pack(move));
-                debug_printf(chess->debug_print, "move.bits: %x\n", (uint32_t)move_pack(move).bits);
-                debug_printf(chess->debug_print, "score: %d\n", board_score(chess->board, 0));
 
                 chess->selected_square = (JkIntVector2){-1, -1};
                 chess->promo_square = (JkIntVector2){-1, -1};
@@ -1860,61 +1866,6 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
     return result;
 }
 
-static uint8_t atlas_piece_get_alpha(
-        uint8_t *atlas, int32_t square_side_length, PieceType piece_type, JkIntVector2 pos)
-{
-    int32_t y_offset = (piece_type - 1) * square_side_length;
-    return atlas[(pos.y + y_offset) * square_side_length * 5 + pos.x];
-}
-
-static void scale_alpha_map(uint8_t *dest,
-        int32_t dest_width,
-        int32_t dest_height,
-        uint8_t *src,
-        int32_t src_width,
-        int32_t src_height)
-{
-    float scale_factor = (float)src_width / (float)dest_width;
-    float scale_factor_squared = scale_factor * scale_factor;
-    for (int32_t dy = 0; dy < dest_height; dy++) {
-        for (int32_t dx = 0; dx < dest_width; dx++) {
-            float y1 = (float)dy * scale_factor;
-            float x1 = (float)dx * scale_factor;
-            float y2 = y1 + scale_factor;
-            float x2 = x1 + scale_factor;
-            float min_y = floorf(y1);
-            float min_x = floorf(x1);
-            float max_y = ceilf(y2);
-            float max_x = ceilf(x2);
-            float alpha = 0.0;
-            for (int32_t sy = (int32_t)min_y; sy < (int32_t)max_y; sy++) {
-                float height;
-                if (sy == (int32_t)min_y) {
-                    height = 1.0f - (y1 - min_y);
-                } else if (sy == (int32_t)max_y - 1) {
-                    height = 1.0f - (max_y - y2);
-                } else {
-                    height = 1.0f;
-                }
-                for (int32_t sx = (int32_t)min_x; sx < (int32_t)max_x; sx++) {
-                    float width;
-                    if (sx == min_x) {
-                        width = 1.0f - (x1 - min_x);
-                    } else if (sx == (int32_t)max_x - 1) {
-                        width = 1.0f - (max_x - x2);
-                    } else {
-                        width = 1.0f;
-                    }
-
-                    float multiplier = (width * height) / scale_factor_squared;
-                    alpha += multiplier * (float)src[sy * src_width + sx];
-                }
-            }
-            dest[dy * dest_width + dx] = (uint8_t)alpha;
-        }
-    }
-}
-
 typedef struct TextLayout {
     JkVector2 offset;
     JkVector2 dimensions;
@@ -2002,14 +1953,14 @@ static b32 clip_to_draw_region(float side_length, JkVector2 *a, JkVector2 *b)
     }
 }
 
-static float fpart(float x)
+static float fpart(Chess *chess, float x)
 {
-    return x - floorf(x);
+    return x - chess->floor(x);
 }
 
-static float fpart_complement(float x)
+static float fpart_complement(Chess *chess, float x)
 {
-    return 1.0f - fpart(x);
+    return 1.0f - fpart(chess, x);
 }
 
 static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness)
@@ -2031,7 +1982,7 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
 
     JkColor *draw_buffer = chess->draw_buffer;
 
-    b32 steep = jk_abs(b.y - a.y) > jk_abs(b.x - a.x);
+    b32 steep = JK_ABS(b.y - a.y) > JK_ABS(b.x - a.x);
 
     if (steep) {
         JK_SWAP(a.x, a.y, float);
@@ -2056,14 +2007,22 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
     {
         x_pixel_1 = jk_round(a.x);
         float yend = a.y + gradient * (x_pixel_1 - a.x);
-        float xcoverage = fpart_complement(a.x + 0.5f);
+        float xcoverage = fpart_complement(chess, a.x + 0.5f);
         int32_t y_pixel_1 = (int32_t)yend;
         if (steep) {
-            plot(draw_buffer, color, y_pixel_1, x_pixel_1, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, y_pixel_1 + 1, x_pixel_1, fpart(yend) * xcoverage);
+            plot(draw_buffer,
+                    color,
+                    y_pixel_1,
+                    x_pixel_1,
+                    fpart_complement(chess, yend) * xcoverage);
+            plot(draw_buffer, color, y_pixel_1 + 1, x_pixel_1, fpart(chess, yend) * xcoverage);
         } else {
-            plot(draw_buffer, color, x_pixel_1, y_pixel_1, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, x_pixel_1, y_pixel_1 + 1, fpart(yend) * xcoverage);
+            plot(draw_buffer,
+                    color,
+                    x_pixel_1,
+                    y_pixel_1,
+                    fpart_complement(chess, yend) * xcoverage);
+            plot(draw_buffer, color, x_pixel_1, y_pixel_1 + 1, fpart(chess, yend) * xcoverage);
         }
         intery = yend + gradient;
     }
@@ -2073,27 +2032,35 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
     {
         x_pixel_2 = jk_round(b.x);
         float yend = b.y + gradient * (x_pixel_2 - b.x);
-        float xcoverage = fpart(b.x + 0.5f);
+        float xcoverage = fpart(chess, b.x + 0.5f);
         int32_t y_pixel_2 = (int32_t)yend;
         if (steep) {
-            plot(draw_buffer, color, y_pixel_2, x_pixel_2, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, y_pixel_2 + 1, x_pixel_2, fpart(yend) * xcoverage);
+            plot(draw_buffer,
+                    color,
+                    y_pixel_2,
+                    x_pixel_2,
+                    fpart_complement(chess, yend) * xcoverage);
+            plot(draw_buffer, color, y_pixel_2 + 1, x_pixel_2, fpart(chess, yend) * xcoverage);
         } else {
-            plot(draw_buffer, color, x_pixel_2, y_pixel_2, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, x_pixel_2, y_pixel_2 + 1, fpart(yend) * xcoverage);
+            plot(draw_buffer,
+                    color,
+                    x_pixel_2,
+                    y_pixel_2,
+                    fpart_complement(chess, yend) * xcoverage);
+            plot(draw_buffer, color, x_pixel_2, y_pixel_2 + 1, fpart(chess, yend) * xcoverage);
         }
     }
 
     if (steep) {
         for (int32_t x = x_pixel_1 + 1; x < x_pixel_2; x++) {
-            plot(draw_buffer, color, (int32_t)intery, x, fpart_complement(intery));
-            plot(draw_buffer, color, (int32_t)intery + 1, x, fpart(intery));
+            plot(draw_buffer, color, (int32_t)intery, x, fpart_complement(chess, intery));
+            plot(draw_buffer, color, (int32_t)intery + 1, x, fpart(chess, intery));
             intery += gradient;
         }
     } else {
         for (int32_t x = x_pixel_1 + 1; x < x_pixel_2; x++) {
-            plot(draw_buffer, color, x, (int32_t)intery, fpart_complement(intery));
-            plot(draw_buffer, color, x, (int32_t)intery + 1, fpart(intery));
+            plot(draw_buffer, color, x, (int32_t)intery, fpart_complement(chess, intery));
+            plot(draw_buffer, color, x, (int32_t)intery + 1, fpart(chess, intery));
             intery += gradient;
         }
     }
@@ -2177,8 +2144,6 @@ static void draw_radio_buttons(ChessAssets *assets,
 
 void render(ChessAssets *assets, Chess *chess)
 {
-    jk_platform_profile_frame_begin();
-
     JkIntVector2 pos;
 
     JkArenaRoot arena_root;
@@ -2215,19 +2180,17 @@ void render(ChessAssets *assets, Chess *chess)
     JkIntVector2 result_dimensions = {4, 2};
     JkIntVector2 result_extent = jk_int_vector_2_add(result_origin, result_dimensions);
 
-    int32_t captured_pieces[TEAM_COUNT][PIECE_TYPE_COUNT];
-    memcpy(captured_pieces[0], piece_counts, sizeof(int32_t) * PIECE_TYPE_COUNT);
-    memcpy(captured_pieces[1], piece_counts, sizeof(int32_t) * PIECE_TYPE_COUNT);
+    PieceCounts captured_pieces[TEAM_COUNT];
+    captured_pieces[0] = piece_counts;
+    captured_pieces[1] = piece_counts;
     for (pos.y = 0; pos.y < 8; pos.y++) {
         for (pos.x = 0; pos.x < 8; pos.x++) {
             Piece piece = board_piece_get(chess->board, pos);
-            captured_pieces[piece.team][piece.type]--;
+            captured_pieces[piece.team].a[piece.type]--;
         }
     }
 
     // Do vector drawing
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(draw_vectors);
-
     JkShapesRenderer renderer;
     JkShapeArray shapes =
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
@@ -2390,8 +2353,8 @@ void render(ChessAssets *assets, Chess *chess)
                 for (PieceType piece_type = 1; piece_type < PIECE_TYPE_COUNT; piece_type++) {
                     JkColor color = color_teams[team_index];
                     color.a = 200;
-                    if (captured_pieces[team_index][piece_type] < 3) {
-                        for (int32_t i = 0; i < captured_pieces[team_index][piece_type]; i++) {
+                    if (captured_pieces[team_index].a[piece_type] < 3) {
+                        for (int32_t i = 0; i < captured_pieces[team_index].a[piece_type]; i++) {
                             jk_shapes_draw(&renderer, piece_type, draw_pos, 0.5f, color);
                             draw_pos.x += 32.0f;
                         }
@@ -2400,7 +2363,7 @@ void render(ChessAssets *assets, Chess *chess)
 
                         char characters[2];
                         characters[0] = 'x';
-                        characters[1] = '0' + (uint8_t)captured_pieces[team_index][piece_type];
+                        characters[1] = '0' + (uint8_t)captured_pieces[team_index].a[piece_type];
                         JkBuffer text = {
                             .size = JK_ARRAY_COUNT(characters),
                             .data = (uint8_t *)characters,
@@ -2679,9 +2642,7 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
-    JK_PLATFORM_PROFILE_ZONE_END(draw_vectors);
 
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(fill_draw_buffer);
     uint64_t cs = 0;
     uint64_t ce = 0;
     JkIntVector2 pos_in_square;
@@ -2753,7 +2714,6 @@ void render(ChessAssets *assets, Chess *chess)
             square_pos.y++;
         }
     }
-    JK_PLATFORM_PROFILE_ZONE_END(fill_draw_buffer);
 
     if (holding_piece) {
         Piece piece = board_piece_get_index(chess->board, selected_index);
@@ -2819,12 +2779,4 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
     }
-
-    jk_platform_profile_frame_end();
-}
-
-void profile_print(void (*print)(char *))
-{
-    print("\n");
-    jk_platform_profile_print_custom(custom_profile_print, (void *)print);
 }

@@ -2,6 +2,7 @@
 #define JK_PLATFORM_H
 
 #include <jk_src/jk_lib/jk_lib.h>
+#include <stdio.h>
 
 // ---- Copy-paste from windows headers to avoid importing windows.h begin -----
 
@@ -270,6 +271,54 @@ JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test,
 
 // ---- Repetition test end ----------------------------------------------------
 
+// ---- Command line arguments parsing begin -----------------------------------
+
+typedef struct JkOption {
+    /**
+     * Character used as the short-option flag. The null character means there is no short form of
+     * this option. An option must have some way to refer to it. If this is the null character,
+     * long_name must not be null.
+     */
+    char flag;
+
+    /**
+     * The long name of this option. NULL means there is no long name for this option. An option
+     * must have some way to refer to it. If this is NULL, flag must not be the null character.
+     */
+    char *long_name;
+
+    /** Name of the argument for this option. NULL if this option does not accept an argument. */
+    char *arg_name;
+
+    /** Description of this option used to print help text */
+    char *description;
+} JkOption;
+
+typedef struct JkOptionResult {
+    b32 present;
+    char *arg;
+} JkOptionResult;
+
+typedef struct JkOptionsParseResult {
+    /** Pointer to the first operand (first non-option argument) */
+    char **operands;
+    size_t operand_count;
+    b32 usage_error;
+} JkOptionsParseResult;
+
+JK_PUBLIC void jk_options_parse(int argc,
+        char **argv,
+        JkOption *options_in,
+        JkOptionResult *options_out,
+        size_t option_count,
+        JkOptionsParseResult *result);
+
+JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count);
+
+JK_PUBLIC double jk_parse_double(JkBuffer number_string);
+
+// ---- Command line arguments parsing end -------------------------------------
+
 // ---- File formats begin -----------------------------------------------------
 
 #ifdef _MSC_VER
@@ -368,5 +417,9 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name);
 JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name);
 
 JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait);
+
+JK_PUBLIC void jk_platform_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count);
+
+JK_PUBLIC void jk_platform_print_bytes_double(FILE *file, char *format, double byte_count);
 
 #endif

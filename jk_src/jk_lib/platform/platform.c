@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -666,9 +667,9 @@ static void jk_platform_profile_frame_print(void (*print)(void *data, char *form
         if (frame->byte_count) {
             double seconds = (double)frame->elapsed_inclusive / frequency;
             print(data, " ");
-            jk_print_bytes_uint64(stdout, "%.3f", frame->byte_count / frame_count);
+            jk_platform_print_bytes_uint64(stdout, "%.3f", frame->byte_count / frame_count);
             print(data, " at ");
-            jk_print_bytes_double(stdout, "%.3f", (double)frame->byte_count / seconds);
+            jk_platform_print_bytes_double(stdout, "%.3f", (double)frame->byte_count / seconds);
             print(data, "/s");
         }
 
@@ -872,13 +873,13 @@ static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *t
     printf(")");
     if (sample->byte_count) {
         printf(" ");
-        jk_print_bytes_double(
+        jk_platform_print_bytes_double(
                 stdout, "%.2f", ((double)sample->byte_count / (double)count) / seconds);
         printf("/s");
     }
     if (sample->page_fault_count) {
         printf(" %.2f page faults (", (double)sample->page_fault_count / (double)count);
-        jk_print_bytes_double(
+        jk_platform_print_bytes_double(
                 stdout, "%.2f", (double)sample->byte_count / (double)sample->page_fault_count);
         printf("/fault)");
     }
@@ -975,6 +976,218 @@ JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test,
 }
 
 // ---- Repetition test end ----------------------------------------------------
+
+// ---- Command line arguments parsing begin -----------------------------------
+
+static void jk_argv_swap_to_front(char **argv, char **arg)
+{
+    for (; arg > argv; arg--) {
+        char *tmp = *arg;
+        *arg = *(arg - 1);
+        *(arg - 1) = tmp;
+    }
+}
+
+JK_PUBLIC void jk_options_parse(int argc,
+        char **argv,
+        JkOption *options_in,
+        JkOptionResult *options_out,
+        size_t option_count,
+        JkOptionsParseResult *result)
+{
+    b32 options_ended = 0;
+    result->operands = &argv[argc];
+    result->operand_count = 0;
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
+            b32 i_plus_one_is_arg = 0;
+            if (argv[i][1] == '-') {
+                if (argv[i][2] == '\0') { // -- encountered
+                    options_ended = 1;
+                } else { // Double hyphen option
+                    char *name = &argv[i][2];
+                    int end = 0;
+                    while (name[end] != '=' && name[end] != '\0') {
+                        end++;
+                    }
+                    b32 matched = 0;
+                    for (size_t j = 0; !matched && j < option_count; j++) {
+                        if (options_in[j].long_name
+                                && strncmp(name, options_in[j].long_name, end) == 0) {
+                            matched = 1;
+                            options_out[j].present = 1;
+
+                            if (options_in[j].arg_name) {
+                                if (name[end] == '=') {
+                                    if (name[end + 1] != '\0') {
+                                        options_out[j].arg = &name[end + 1];
+                                    }
+                                } else {
+                                    i_plus_one_is_arg = 1;
+                                    options_out[j].arg = argv[i + 1];
+                                }
+                            } else {
+                                if (name[end] == '=') {
+                                    fprintf(stderr,
+                                            "%s: Error in '%s': Option does not accept an "
+                                            "argument\n",
+                                            argv[0],
+                                            argv[i]);
+                                    result->usage_error = 1;
+                                }
+                            }
+                        }
+                    }
+                    if (!matched) {
+                        fprintf(stderr, "%s: Invalid option '%s'\n", argv[0], argv[i]);
+                        result->usage_error = 1;
+                    }
+                }
+            } else { // Single-hypen option(s)
+                b32 has_argument = 0;
+                for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
+                    b32 matched = 0;
+                    for (size_t j = 0; !matched && j < option_count; j++) {
+                        if (*c == options_in[j].flag) {
+                            matched = 1;
+                            options_out[j].present = 1;
+                            has_argument = options_in[j].arg_name != NULL;
+
+                            if (has_argument) {
+                                options_out[j].arg = ++c;
+                                if (options_out[j].arg[0] == '\0') {
+                                    i_plus_one_is_arg = 1;
+                                    options_out[j].arg = argv[i + 1];
+                                }
+                            }
+                        }
+                    }
+                    if (!matched) {
+                        fprintf(stderr, "%s: Invalid option '%c' in '%s'\n", argv[0], *c, argv[i]);
+                        result->usage_error = 1;
+                        break;
+                    }
+                }
+            }
+            if (&argv[i] > result->operands) {
+                jk_argv_swap_to_front(result->operands, &argv[i]);
+                result->operands++;
+            }
+            if (i_plus_one_is_arg) {
+                if (argv[i + 1]) {
+                    i++;
+                    if (&argv[i] > result->operands) {
+                        jk_argv_swap_to_front(result->operands, &argv[i]);
+                        result->operands++;
+                    }
+                } else {
+                    fprintf(stderr,
+                            "%s: Option '%s' missing required argument\n",
+                            argv[0],
+                            argv[i - 1]);
+                    result->usage_error = 1;
+                }
+            }
+        } else { // Regular argument
+            result->operand_count++;
+            if (&argv[i] < result->operands) {
+                result->operands = &argv[i];
+            }
+        }
+    }
+}
+
+JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count)
+{
+    fprintf(file, "OPTIONS\n");
+    for (int i = 0; i < option_count; i++) {
+        if (i != 0) {
+            fprintf(file, "\n");
+        }
+        printf("\t");
+        if (options[i].flag) {
+            fprintf(file,
+                    "-%c%s%s",
+                    options[i].flag,
+                    options[i].arg_name ? " " : "",
+                    options[i].arg_name ? options[i].arg_name : "");
+        }
+        if (options[i].long_name) {
+            fprintf(file,
+                    "%s--%s%s%s",
+                    options[i].flag ? ", " : "",
+                    options[i].long_name,
+                    options[i].arg_name ? "=" : "",
+                    options[i].arg_name ? options[i].arg_name : "");
+        }
+        fprintf(file, "%s", options[i].description);
+    }
+}
+
+JK_PUBLIC double jk_parse_double(JkBuffer number_string)
+{
+    double significand_sign = 1.0;
+    double significand = 0.0;
+    double exponent_sign = 1.0;
+    double exponent = 0.0;
+
+    uint64_t pos = 0;
+    int c = jk_buffer_character_next(number_string, &pos);
+
+    if (c == '-') {
+        significand_sign = -1.0;
+
+        c = jk_buffer_character_next(number_string, &pos);
+
+        if (!jk_char_is_digit(c)) {
+            return NAN;
+        }
+    }
+
+    // Parse integer
+    do {
+        significand = (significand * 10.0) + (c - '0');
+    } while (jk_char_is_digit((c = jk_buffer_character_next(number_string, &pos))));
+
+    // Parse fraction if there is one
+    if (c == '.') {
+        c = jk_buffer_character_next(number_string, &pos);
+
+        if (!jk_char_is_digit(c)) {
+            return NAN;
+        }
+
+        double multiplier = 0.1;
+        do {
+            significand += (c - '0') * multiplier;
+            multiplier /= 10.0;
+        } while (jk_char_is_digit((c = jk_buffer_character_next(number_string, &pos))));
+    }
+
+    // Parse exponent if there is one
+    if (c == 'e' || c == 'E') {
+        c = jk_buffer_character_next(number_string, &pos);
+
+        if ((c == '-' || c == '+')) {
+            if (c == '-') {
+                exponent_sign = -1.0;
+            }
+            c = jk_buffer_character_next(number_string, &pos);
+        }
+
+        if (!jk_char_is_digit(c)) {
+            return NAN;
+        }
+
+        do {
+            exponent = (exponent * 10.0) + (c - '0');
+        } while (jk_char_is_digit((c = jk_buffer_character_next(number_string, &pos))));
+    }
+
+    return significand_sign * significand * pow(10.0, exponent_sign * exponent);
+}
+
+// ---- Command line arguments parsing end -------------------------------------
 
 // ---- File formats begin -----------------------------------------------------
 
@@ -1090,4 +1303,36 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t millisecond
     uint64_t cpu_elapsed = cpu_end - cpu_start;
 
     return os_freq * cpu_elapsed / os_elapsed;
+}
+
+JK_PUBLIC void jk_platform_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)
+{
+    if (byte_count < 1024) {
+        fprintf(file, "%llu bytes", (long long)byte_count);
+    } else if (byte_count < 1024 * 1024) {
+        fprintf(file, format, (double)byte_count / 1024.0);
+        fprintf(file, " KiB");
+    } else if (byte_count < 1024 * 1024 * 1024) {
+        fprintf(file, format, (double)byte_count / (1024.0 * 1024.0));
+        fprintf(file, " MiB");
+    } else {
+        fprintf(file, format, (double)byte_count / (1024.0 * 1024.0 * 1024.0));
+        fprintf(file, " GiB");
+    }
+}
+
+JK_PUBLIC void jk_platform_print_bytes_double(FILE *file, char *format, double byte_count)
+{
+    if (byte_count < 1024.0) {
+        fprintf(file, "%.0f bytes", byte_count);
+    } else if (byte_count < 1024.0 * 1024.0) {
+        fprintf(file, format, byte_count / 1024.0);
+        fprintf(file, " KiB");
+    } else if (byte_count < 1024.0 * 1024.0 * 1024.0) {
+        fprintf(file, format, byte_count / (1024.0 * 1024.0));
+        fprintf(file, " MiB");
+    } else {
+        fprintf(file, format, byte_count / (1024.0 * 1024.0 * 1024.0));
+        fprintf(file, " GiB");
+    }
 }
