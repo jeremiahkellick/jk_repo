@@ -9,7 +9,7 @@
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
-#include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
 #define OPCODE_MOV_REG_RM_MASK 0xfc

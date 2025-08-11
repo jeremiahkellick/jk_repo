@@ -77,7 +77,7 @@ int main(int argc, char **argv)
         sum_reference += sum_coefficient * value_reference;
         sum += sum_coefficient * value;
 
-        double diff = jk_abs_64(sum - sum_reference);
+        double diff = JK_ABS(sum - sum_reference);
         diff_count++;
         diff_total += diff;
         if (diff_max < diff) {

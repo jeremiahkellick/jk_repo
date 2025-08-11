@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,7 +23,7 @@ static int32_t unicode_codepoints[] = {
 
 static void print_buffer(JkBuffer buffer)
 {
-    for (size_t i = 0; i < buffer.size; i++) {
+    for (uint64_t i = 0; i < buffer.size; i++) {
         putc(buffer.data[i], stdout);
     }
 }
@@ -106,6 +107,25 @@ static void print_string_arrays_side_by_side(char **a, char **b, int length, int
     }
 }
 
+static void expect_string(JkBuffer expected, JkBuffer actual)
+{
+    if (jk_buffer_compare(expected, actual) != 0) {
+        printf("FAIL: expected \"%.*s\" but got \"%.*s\"\n",
+                (int)expected.size,
+                expected.data,
+                (int)actual.size,
+                actual.data);
+    }
+}
+
+typedef union FloatUnion {
+    float f;
+    uint32_t bits;
+} FloatUnion;
+
+FloatUnion infinity = {.bits = 0x7f800000};
+FloatUnion some_nan = {.bits = 0x7fE9605C};
+
 int main(void)
 {
     jk_platform_console_utf8_enable();
@@ -113,29 +133,35 @@ int main(void)
     // ---- Arena begin --------------------------------------------------------
     printf("Arena\n");
 
-    size_t page_size = jk_platform_page_size();
+    uint64_t page_size = jk_platform_page_size();
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, page_size * 3);
     JK_ASSERT(jk_arena_valid(&arena));
 
-    uint8_t *push1 = jk_arena_push(&arena, sizeof(string1));
-    JK_ASSERT(push1);
-    memcpy(push1, string1, sizeof(string1));
-    printf("%s", push1);
+    {
+        JkArena child = jk_arena_child_get(&arena);
 
-    uint8_t *push2 = jk_arena_push(&arena, page_size * 2);
-    JK_ASSERT(push2);
-    uint8_t *print = &push2[page_size * 2 - sizeof(string2)];
-    memcpy(print, string2, sizeof(string2));
-    printf("%s", print);
+        uint8_t *push1 = jk_arena_push(&child, sizeof(string1));
+        JK_ASSERT(push1);
+        memcpy(push1, string1, sizeof(string1));
+        printf("%s", push1);
 
-    size_t size_before = arena.root->memory.size;
-    uint8_t *push3 = jk_arena_push(&arena, page_size * 2);
-    size_t size_after = arena.root->memory.size;
-    JK_ASSERT(push3 == NULL);
-    JK_ASSERT(size_before == size_after);
+        uint8_t *push2 = jk_arena_push(&child, page_size * 2);
+        JK_ASSERT(push2);
+        uint8_t *print = &push2[page_size * 2 - sizeof(string2)];
+        memcpy(print, string2, sizeof(string2));
+        printf("%s", print);
 
-    jk_platform_arena_virtual_release(&arena_root);
+        uint64_t size_before = child.root->memory.size;
+        uint64_t pos_before = child.pos;
+        uint8_t *push3 = jk_arena_push(&child, page_size * 2);
+        uint64_t size_after = child.root->memory.size;
+        uint64_t pos_after = child.pos;
+        JK_ASSERT(push3 == NULL);
+        JK_ASSERT(size_before == size_after);
+        JK_ASSERT(pos_before == pos_after);
+    }
+
     // ---- Arena end ----------------------------------------------------------
 
     // ---- Buffer begin -------------------------------------------------------
@@ -158,7 +184,70 @@ int main(void)
     JK_ASSERT(jk_string_find(JKS("start end"), JKS("start")) == 0);
     JK_ASSERT(jk_string_find(JKS("start end"), JKS("end")) == 6);
 
+    printf("\n");
+
+    expect_string(JKS("8699171359359057110"), jk_int_to_string(&arena, 8699171359359057110ll));
+    expect_string(JKS("-12"), jk_int_to_string(&arena, -12));
+    expect_string(JKS("1"), jk_int_to_string(&arena, 1));
+    expect_string(JKS("0"), jk_int_to_string(&arena, 0));
+
+    expect_string(
+            JKS("16210279753379821762"), jk_unsigned_to_string(&arena, 16210279753379821762llu));
+    expect_string(JKS("1"), jk_unsigned_to_string(&arena, 1));
+    expect_string(JKS("0"), jk_unsigned_to_string(&arena, 0));
+
+    expect_string(JKS("c5d530ba1de82861"),
+            jk_unsigned_to_hexadecimal_string(&arena, 0xc5d530ba1de82861llu, 0));
+    expect_string(JKS("0001"), jk_unsigned_to_hexadecimal_string(&arena, 1, 4));
+    expect_string(JKS("0"), jk_unsigned_to_hexadecimal_string(&arena, 0, 0));
+
+    expect_string(JKS("1101101010010110001100101010110110111111110101011001011110011011"),
+            jk_unsigned_to_binary_string(&arena, 0xda9632adbfd5979b, 0));
+    expect_string(JKS("0001"), jk_unsigned_to_binary_string(&arena, 1, 4));
+    expect_string(JKS("0"), jk_unsigned_to_binary_string(&arena, 0, 0));
+
+    expect_string(JKS("5 + -3 = 2"),
+            JK_FORMAT(&arena, jkfu(5), jkfn(" + "), jkfi(-3), jkfn(" = "), jkfi(2)));
+    expect_string(JKS("0x00ff"), JK_FORMAT(&arena, jkfn("0x"), jkfh(0xff, 4)));
+    expect_string(
+            JKS("Hello, sailor!"), JK_FORMAT(&arena, jkfs(JKS("Hello, ")), jkfs(JKS("sailor!"))));
+
     // ---- Buffer end ---------------------------------------------------------
+
+    // ---- Math begin ---------------------------------------------------------
+
+    printf("\nsome_nan: %f\n", (double)some_nan.f);
+    printf("infinity: %f\n", (double)infinity.f);
+
+    JK_ASSERT(jk_ceil_f32(5.2f) == ceilf(5.2f));
+    JK_ASSERT(jk_ceil_f32(-5.2f) == ceilf(-5.2f));
+    JK_ASSERT(jk_ceil_f32(0.0f) == ceilf(0.0f));
+    JK_ASSERT(jk_ceil_f32(-0.0f) == ceilf(-0.0f));
+    JK_ASSERT(jk_ceil_f32(1.0f) == ceilf(1.0f));
+    JK_ASSERT(jk_ceil_f32(-1.0f) == ceilf(-1.0f));
+    JK_ASSERT(jk_ceil_f32(infinity.f) == ceilf(infinity.f));
+    JK_ASSERT(jk_ceil_f32(-infinity.f) == ceilf(-infinity.f));
+
+    FloatUnion my_nan_ceil = {.f = jk_ceil_f32(some_nan.f)};
+    FloatUnion reference_nan_ceil = {.f = ceilf(some_nan.f)};
+    JK_ASSERT(my_nan_ceil.bits == reference_nan_ceil.bits);
+
+    FloatUnion my_nan_ceil_negative = {.f = jk_ceil_f32(-some_nan.f)};
+    FloatUnion reference_nan_ceil_negative = {.f = ceilf(-some_nan.f)};
+    JK_ASSERT(my_nan_ceil_negative.bits == reference_nan_ceil_negative.bits);
+
+    JkRandomGeneratorU64 generator = jk_random_generator_new_u64(3523520312864767571);
+    for (uint64_t i = 0; i < 10000; i++) {
+        FloatUnion value = {.bits = jk_random_u64(&generator)};
+        double reference = ceilf(value.f);
+        if (isnan(reference)) {
+            JK_ASSERT(isnan(jk_ceil_f32(value.f)));
+        } else {
+            JK_ASSERT(jk_ceil_f32(value.f) == reference);
+        }
+    }
+
+    // ---- Math end -----------------------------------------------------------
 
     // ---- UTF-8 begin --------------------------------------------------------
     printf("\nUTF-8\n");
@@ -214,6 +303,8 @@ int main(void)
     JK_ASSERT(!jk_is_power_of_two(18));
     JK_ASSERT(jk_round_up_to_power_of_2(18) == 32);
     JK_ASSERT(jk_round_down_to_power_of_2(18) == 16);
+
+    jk_platform_arena_virtual_release(&arena_root);
 
     return 0;
 }

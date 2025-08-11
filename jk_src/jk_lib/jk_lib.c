@@ -1,28 +1,127 @@
-#include <ctype.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
-
 #include "jk_lib.h"
+
+// ---- Compiler-specific implementations begin --------------------------------
+
+#if defined(_MSC_VER) && !defined(__clang__)
+
+// copied from intrin.h
+#ifndef __INTRIN_H_
+uint64_t __lzcnt64(uint64_t);
+typedef union __declspec(intrin_type) __declspec(align(16)) __m128 {
+    float m128_f32[4];
+    unsigned __int64 m128_u64[2];
+    __int8 m128_i8[16];
+    __int16 m128_i16[8];
+    __int32 m128_i32[4];
+    __int64 m128_i64[2];
+    unsigned __int8 m128_u8[16];
+    unsigned __int16 m128_u16[8];
+    unsigned __int32 m128_u32[4];
+} __m128;
+extern __m128 _mm_setzero_ps(void);
+extern __m128 _mm_set_ss(float _A);
+extern __m128 _mm_sqrt_ss(__m128 _A);
+extern float _mm_cvtss_f32(__m128 _A);
+#define _MM_FROUND_TO_NEAREST_INT 0x00
+#define _MM_FROUND_TO_NEG_INF 0x01
+#define _MM_FROUND_TO_POS_INF 0x02
+#define _MM_FROUND_RAISE_EXC 0x00
+#define _MM_FROUND_FLOOR _MM_FROUND_TO_NEG_INF | _MM_FROUND_RAISE_EXC
+#define _MM_FROUND_CEIL _MM_FROUND_TO_POS_INF | _MM_FROUND_RAISE_EXC
+extern __m128 _mm_round_ss(__m128, __m128, int);
+#endif
+
+JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value)
+{
+    return __lzcnt64(value);
+}
+
+JK_PUBLIC float jk_round_f32(float value)
+{
+    return _mm_cvtss_f32(
+            _mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_TO_NEAREST_INT));
+}
+
+JK_PUBLIC float jk_floor_f32(float value)
+{
+    return _mm_cvtss_f32(_mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_FLOOR));
+}
+
+JK_PUBLIC float jk_ceil_f32(float value)
+{
+    return _mm_cvtss_f32(_mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_CEIL));
+}
+
+JK_PUBLIC float jk_sqrt_f32(float value)
+{
+    return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value)));
+}
+
+#elif defined(__GNUC__) || defined(__clang__)
+
+JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value)
+{
+    return __builtin_clzl(value);
+}
+
+JK_PUBLIC float jk_round_f32(float value)
+{
+    return __builtin_roundf(value);
+}
+
+JK_PUBLIC float jk_floor_f32(float value)
+{
+    return __builtin_floorf(value);
+}
+
+JK_PUBLIC float jk_ceil_f32(float value)
+{
+    return __builtin_ceilf(value);
+}
+
+JK_PUBLIC float jk_sqrt_f32(float value)
+{
+    return __builtin_sqrtf(value);
+}
+
+#endif
+
+// ---- Compiler-specific implementations end ----------------------------------
 
 // ---- Buffer begin -----------------------------------------------------------
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer)
 {
-    memset(buffer.data, 0, buffer.size);
+    jk_memset(buffer.data, 0, buffer.size);
 }
 
 JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer)
 {
     JkBuffer result = {.size = buffer.size, .data = jk_arena_push(arena, buffer.size)};
-    memcpy(result.data, buffer.data, buffer.size);
+    jk_memcpy(result.data, buffer.data, buffer.size);
     return result;
+}
+
+JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer)
+{
+    for (uint64_t i = 0; i < buffer.size / 2; i++) {
+        JK_SWAP(buffer.data[i], buffer.data[buffer.size - 1 - i], uint8_t);
+    }
+}
+
+static uint64_t jk_strlen(char *string)
+{
+    char *pointer = string;
+    while (*pointer) {
+        pointer++;
+    }
+    return pointer - string;
 }
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
 {
     if (string) {
-        return (JkBuffer){.size = strlen(string), .data = (uint8_t *)string};
+        return (JkBuffer){.size = jk_strlen(string), .data = (uint8_t *)string};
     } else {
         return (JkBuffer){0};
     }
@@ -32,13 +131,13 @@ JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
 {
     char *result = jk_arena_push(arena, buffer.size + 1);
     result[buffer.size] = '\0';
-    memcpy(result, buffer.data, buffer.size);
+    jk_memcpy(result, buffer.data, buffer.size);
     return result;
 }
 
 JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
 {
-    return pos < buffer.size ? buffer.data[pos] : EOF;
+    return pos < buffer.size ? buffer.data[pos] : JK_EOF;
 }
 
 JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
@@ -57,15 +156,29 @@ JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b)
             return -1;
         } else if (a_char > b_char) {
             return 1;
-        } else if (a_char == EOF && b_char == EOF) {
+        } else if (a_char == JK_EOF && b_char == JK_EOF) {
             return 0;
         }
     }
 }
 
-JK_PUBLIC b32 jk_char_is_whitespace(uint8_t c)
+JK_PUBLIC b32 jk_char_is_whitespace(int c)
 {
     return c == ' ' || ('\t' <= c && c <= '\r');
+}
+
+JK_PUBLIC b32 jk_char_is_digit(int c)
+{
+    return '0' <= c && c <= '9';
+}
+
+JK_PUBLIC int jk_char_to_lower(int c)
+{
+    if ('A' <= c && c <= 'Z') {
+        return c + ('a' - 'A');
+    } else {
+        return c;
+    }
 }
 
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
@@ -99,7 +212,286 @@ JK_PUBLIC int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
     return -1;
 }
 
+JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value)
+{
+    JkBuffer result;
+    result.data = jk_arena_pointer_current(arena);
+
+    b32 negative = value < 0;
+    value = JK_ABS(value);
+    do {
+        uint8_t digit = value % 10;
+        uint8_t *c = jk_arena_push(arena, 1);
+        if (c) {
+            *c = '0' + digit;
+        } else {
+            return (JkBuffer){0};
+        }
+        value /= 10;
+    } while (value);
+
+    if (negative) {
+        uint8_t *c = jk_arena_push(arena, 1);
+        if (c) {
+            *c = '-';
+        } else {
+            return (JkBuffer){0};
+        }
+    }
+
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+
+    jk_buffer_reverse(result);
+
+    return result;
+}
+
+JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value)
+{
+    JkBuffer result;
+    result.data = jk_arena_pointer_current(arena);
+
+    do {
+        uint8_t digit = value % 10;
+        uint8_t *c = jk_arena_push(arena, 1);
+        if (c) {
+            *c = '0' + digit;
+        } else {
+            return (JkBuffer){0};
+        }
+        value /= 10;
+    } while (value);
+
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+
+    jk_buffer_reverse(result);
+
+    return result;
+}
+
+static uint8_t jk_hex_char[16] = {
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+
+JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
+        JkArena *arena, uint64_t value, int16_t min_width)
+{
+    JkBuffer result;
+    result.data = jk_arena_pointer_current(arena);
+
+    int16_t width_remaining = min_width;
+    do {
+        uint8_t *c = jk_arena_push(arena, 1);
+        if (c) {
+            *c = jk_hex_char[value & 0xf];
+        } else {
+            return (JkBuffer){0};
+        }
+        value >>= 4;
+        width_remaining--;
+    } while (0 < width_remaining || value);
+
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+
+    jk_buffer_reverse(result);
+
+    return result;
+}
+
+JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width)
+{
+    JkBuffer result;
+    result.data = jk_arena_pointer_current(arena);
+
+    int16_t width_remaining = min_width;
+    do {
+        uint8_t *c = jk_arena_push(arena, 1);
+        if (c) {
+            *c = '0' + (value & 1);
+        } else {
+            return (JkBuffer){0};
+        }
+        value >>= 1;
+        width_remaining--;
+    } while (0 < width_remaining || value);
+
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+
+    jk_buffer_reverse(result);
+
+    return result;
+}
+
+// Include a null terminated string in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfn(char *null_terminated)
+{
+    return (JkFormatItem){
+        .type = JK_FORMAT_ITEM_NULL_TERMINATED,
+        .null_terminated = null_terminated,
+    };
+}
+
+// Include a JkBuffer in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfs(JkBuffer string)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_STRING, .string = string};
+}
+
+// Include a signed integer JK_FORMAT
+JK_PUBLIC JkFormatItem jkfi(int64_t signed_value)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_INT, .signed_value = signed_value};
+}
+
+// Include an unsigned integer in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfu(uint64_t unsigned_value)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_UNSIGNED, .unsigned_value = unsigned_value};
+}
+
+// Include a hexadecimal value in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width)
+{
+    return (JkFormatItem){
+        .type = JK_FORMAT_ITEM_HEX, .unsigned_value = hex_value, .min_width = min_width};
+}
+
+// Include a binary value in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width)
+{
+    return (JkFormatItem){
+        .type = JK_FORMAT_ITEM_BINARY, .unsigned_value = binary_value, .min_width = min_width};
+}
+
+// JK_FORMAT argument representing a newline
+JK_PUBLIC JkFormatItem jkf_nl = {.type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
+
+JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
+{
+    JkBuffer result;
+    result.data = jk_arena_pointer_current(arena);
+
+    for (uint64_t i = 0; i < items.count; i++) {
+        JkFormatItem *item = items.items + i;
+        switch (item->type) {
+        case JK_FORMAT_ITEM_NULL_TERMINATED: {
+            jk_buffer_copy(arena, jk_buffer_from_null_terminated(item->null_terminated));
+        } break;
+
+        case JK_FORMAT_ITEM_STRING: {
+            jk_buffer_copy(arena, item->string);
+        } break;
+
+        case JK_FORMAT_ITEM_INT: {
+            jk_int_to_string(arena, item->signed_value);
+        } break;
+
+        case JK_FORMAT_ITEM_UNSIGNED: {
+            jk_unsigned_to_string(arena, item->unsigned_value);
+        } break;
+
+        case JK_FORMAT_ITEM_HEX: {
+            jk_unsigned_to_hexadecimal_string(arena, item->unsigned_value, item->min_width);
+        } break;
+
+        case JK_FORMAT_ITEM_BINARY: {
+            jk_unsigned_to_binary_string(arena, item->unsigned_value, item->min_width);
+        } break;
+
+        case JK_FORMAT_ITEM_TYPE_COUNT: {
+            JK_ASSERT(0 && "Invalid JkFormatItem type");
+        } break;
+        }
+    }
+
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+    return result;
+}
+
 // ---- Buffer end -------------------------------------------------------------
+
+// ---- Math begin -------------------------------------------------------------
+
+JK_PUBLIC float jk_remainder_f32(float x, float y)
+{
+    return x - y * jk_round_f32(x / y);
+}
+
+JK_PUBLIC float jk_sin_core_f32(float x)
+{
+    float result = -0x1.f647bep-11f;
+    result = result * x + 0x1.501da2p-7f;
+    result = result * x + -0x1.017a88p-9f;
+    result = result * x + -0x1.5332bcp-3f;
+    result = result * x + -0x1.1624cep-12f;
+    result = result * x + 0x1.0001aap+0f;
+    result = result * x + -0x1.aaa5e8p-22f;
+    return result;
+}
+
+JK_PUBLIC float jk_sin_f32(float x)
+{
+    x = jk_remainder_f32(x, 2 * JK_PI);
+
+    b32 positive = 0 <= x;
+    if (!positive) {
+        x = -x;
+    }
+    if (JK_PI / 2 < x) {
+        x = JK_PI - x;
+    }
+
+    float result = jk_sin_core_f32(x);
+
+    if (!positive) {
+        result = -result;
+    }
+
+    return result;
+}
+
+JK_PUBLIC float jk_cos_f32(float x)
+{
+    return jk_sin_f32(x + JK_PI / 2);
+}
+
+JK_PUBLIC float jk_acos_core_f32(float x)
+{
+    float result = -0x1.056a66p+0f;
+    result = result * x + 0x1.1fa76cp+1f;
+    result = result * x + -0x1.1b0890p+1f;
+    result = result * x + 0x1.10ded6p+0f;
+    result = result * x + -0x1.53d396p-2f;
+    result = result * x + -0x1.d112acp-4f;
+    result = result * x + -0x1.14d2a8p-8f;
+    result = result * x + -0x1.ffef0cp-1f;
+    result = result * x + 0x1.921faap+0f;
+    return result;
+}
+
+JK_PUBLIC float jk_acos_f32(float x)
+{
+    b32 positive = 0.0f <= x;
+    if (!positive) {
+        x = -x;
+    }
+    b32 in_standard_range = x <= (float)JK_INV_SQRT_2;
+    if (!in_standard_range) {
+        x = jk_sqrt_f32(1.0f - x * x);
+    }
+
+    float result = jk_acos_core_f32(x);
+
+    if (!in_standard_range) {
+        result = (float)(JK_PI / 2.0) - result;
+    }
+    if (!positive) {
+        result = (float)JK_PI - result;
+    }
+
+    return result;
+}
+
+// ---- Math end ---------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
@@ -124,7 +516,7 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size)
     uint64_t new_pos = arena->pos + size;
     if (arena->root->memory.size < new_pos) {
         if (!arena->grow(arena, new_pos)) {
-            return NULL;
+            return 0;
         }
     }
     void *address = arena->root->memory.data + arena->pos;
@@ -135,7 +527,7 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size)
 JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size)
 {
     void *address = jk_arena_push(arena, size);
-    memset(address, 0, size);
+    jk_memset(address, 0, size);
     return address;
 }
 
@@ -225,264 +617,19 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
 
 // ---- UTF-8 end --------------------------------------------------------------
 
-// ---- Command line arguments parsing begin -----------------------------------
-
-static void jk_argv_swap_to_front(char **argv, char **arg)
-{
-    for (; arg > argv; arg--) {
-        char *tmp = *arg;
-        *arg = *(arg - 1);
-        *(arg - 1) = tmp;
-    }
-}
-
-JK_PUBLIC void jk_options_parse(int argc,
-        char **argv,
-        JkOption *options_in,
-        JkOptionResult *options_out,
-        size_t option_count,
-        JkOptionsParseResult *result)
-{
-    b32 options_ended = 0;
-    result->operands = &argv[argc];
-    result->operand_count = 0;
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-' && argv[i][1] != '\0' && !options_ended) { // Option argument
-            b32 i_plus_one_is_arg = 0;
-            if (argv[i][1] == '-') {
-                if (argv[i][2] == '\0') { // -- encountered
-                    options_ended = 1;
-                } else { // Double hyphen option
-                    char *name = &argv[i][2];
-                    int end = 0;
-                    while (name[end] != '=' && name[end] != '\0') {
-                        end++;
-                    }
-                    b32 matched = 0;
-                    for (size_t j = 0; !matched && j < option_count; j++) {
-                        if (options_in[j].long_name
-                                && strncmp(name, options_in[j].long_name, end) == 0) {
-                            matched = 1;
-                            options_out[j].present = 1;
-
-                            if (options_in[j].arg_name) {
-                                if (name[end] == '=') {
-                                    if (name[end + 1] != '\0') {
-                                        options_out[j].arg = &name[end + 1];
-                                    }
-                                } else {
-                                    i_plus_one_is_arg = 1;
-                                    options_out[j].arg = argv[i + 1];
-                                }
-                            } else {
-                                if (name[end] == '=') {
-                                    fprintf(stderr,
-                                            "%s: Error in '%s': Option does not accept an "
-                                            "argument\n",
-                                            argv[0],
-                                            argv[i]);
-                                    result->usage_error = 1;
-                                }
-                            }
-                        }
-                    }
-                    if (!matched) {
-                        fprintf(stderr, "%s: Invalid option '%s'\n", argv[0], argv[i]);
-                        result->usage_error = 1;
-                    }
-                }
-            } else { // Single-hypen option(s)
-                b32 has_argument = 0;
-                for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
-                    b32 matched = 0;
-                    for (size_t j = 0; !matched && j < option_count; j++) {
-                        if (*c == options_in[j].flag) {
-                            matched = 1;
-                            options_out[j].present = 1;
-                            has_argument = options_in[j].arg_name != NULL;
-
-                            if (has_argument) {
-                                options_out[j].arg = ++c;
-                                if (options_out[j].arg[0] == '\0') {
-                                    i_plus_one_is_arg = 1;
-                                    options_out[j].arg = argv[i + 1];
-                                }
-                            }
-                        }
-                    }
-                    if (!matched) {
-                        fprintf(stderr, "%s: Invalid option '%c' in '%s'\n", argv[0], *c, argv[i]);
-                        result->usage_error = 1;
-                        break;
-                    }
-                }
-            }
-            if (&argv[i] > result->operands) {
-                jk_argv_swap_to_front(result->operands, &argv[i]);
-                result->operands++;
-            }
-            if (i_plus_one_is_arg) {
-                if (argv[i + 1]) {
-                    i++;
-                    if (&argv[i] > result->operands) {
-                        jk_argv_swap_to_front(result->operands, &argv[i]);
-                        result->operands++;
-                    }
-                } else {
-                    fprintf(stderr,
-                            "%s: Option '%s' missing required argument\n",
-                            argv[0],
-                            argv[i - 1]);
-                    result->usage_error = 1;
-                }
-            }
-        } else { // Regular argument
-            result->operand_count++;
-            if (&argv[i] < result->operands) {
-                result->operands = &argv[i];
-            }
-        }
-    }
-}
-
-JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count)
-{
-    fprintf(file, "OPTIONS\n");
-    for (int i = 0; i < option_count; i++) {
-        if (i != 0) {
-            fprintf(file, "\n");
-        }
-        printf("\t");
-        if (options[i].flag) {
-            fprintf(file,
-                    "-%c%s%s",
-                    options[i].flag,
-                    options[i].arg_name ? " " : "",
-                    options[i].arg_name ? options[i].arg_name : "");
-        }
-        if (options[i].long_name) {
-            fprintf(file,
-                    "%s--%s%s%s",
-                    options[i].flag ? ", " : "",
-                    options[i].long_name,
-                    options[i].arg_name ? "=" : "",
-                    options[i].arg_name ? options[i].arg_name : "");
-        }
-        fprintf(file, "%s", options[i].description);
-    }
-}
-
-/**
- * Attempt to parse a positive integer
- *
- * @return The parsed integer if successful, -1 if failed
- */
-JK_PUBLIC int jk_parse_positive_integer(char *string)
-{
-    int multiplier = 1;
-    int result = 0;
-    for (int i = (int)strlen(string) - 1; i >= 0; i--) {
-        if (isdigit(string[i])) {
-            result += (string[i] - '0') * multiplier;
-            multiplier *= 10;
-        } else if (!(string[i] == ',' || string[i] == '\'' || string[i] == '_')) {
-            // Error if character is not a digit or one of the permitted separators
-            return -1;
-        }
-    }
-    return result;
-}
-
-JK_PUBLIC double jk_parse_double(JkBuffer number_string)
-{
-    double significand_sign = 1.0;
-    double significand = 0.0;
-    double exponent_sign = 1.0;
-    double exponent = 0.0;
-
-    uint64_t pos = 0;
-    int c = jk_buffer_character_next(number_string, &pos);
-
-    if (c == '-') {
-        significand_sign = -1.0;
-
-        c = jk_buffer_character_next(number_string, &pos);
-
-        if (!isdigit(c)) {
-            return NAN;
-        }
-    }
-
-    // Parse integer
-    do {
-        significand = (significand * 10.0) + (c - '0');
-    } while (isdigit((c = jk_buffer_character_next(number_string, &pos))));
-
-    // Parse fraction if there is one
-    if (c == '.') {
-        c = jk_buffer_character_next(number_string, &pos);
-
-        if (!isdigit(c)) {
-            return NAN;
-        }
-
-        double multiplier = 0.1;
-        do {
-            significand += (c - '0') * multiplier;
-            multiplier /= 10.0;
-        } while (isdigit((c = jk_buffer_character_next(number_string, &pos))));
-    }
-
-    // Parse exponent if there is one
-    if (c == 'e' || c == 'E') {
-        c = jk_buffer_character_next(number_string, &pos);
-
-        if ((c == '-' || c == '+')) {
-            if (c == '-') {
-                exponent_sign = -1.0;
-            }
-            c = jk_buffer_character_next(number_string, &pos);
-        }
-
-        if (!isdigit(c)) {
-            return NAN;
-        }
-
-        do {
-            exponent = (exponent * 10.0) + (c - '0');
-        } while (isdigit((c = jk_buffer_character_next(number_string, &pos))));
-    }
-
-    return significand_sign * significand * pow(10.0, exponent_sign * exponent);
-}
-
-// ---- Command line arguments parsing end -------------------------------------
-
 // ---- Quicksort begin --------------------------------------------------------
 
-static void jk_bytes_swap(void *a, void *b, size_t element_size, void *tmp)
+static void jk_bytes_swap(void *a, void *b, uint64_t element_size, void *tmp)
 {
-    memcpy(tmp, a, element_size);
-    memcpy(a, b, element_size);
-    memcpy(b, tmp, element_size);
+    jk_memcpy(tmp, a, element_size);
+    jk_memcpy(a, b, element_size);
+    jk_memcpy(b, tmp, element_size);
 }
 
-/**
- * @brief Sorts elements in the given array.
- *
- * See the definition of quicksort_ints or quicksort_strings for example usage.
- *
- * @param array pointer to the start of the array
- * @param element_count number of elements in the array
- * @param element_size size of a single element in bytes
- * @param tmp pointer to temporary storage the size of a single element
- * @param compare Function used to compare two elements given pointers to them.
- *     Return less than zero if a should come before b, greater than zero if a
- *     should come after b, and zero if they are equal.
- */
-JK_PUBLIC void jk_quicksort(void *array_void,
-        size_t element_count,
-        size_t element_size,
+static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
+        void *array_void,
+        uint64_t element_count,
+        uint64_t element_size,
         void *tmp,
         int (*compare)(void *a, void *b))
 {
@@ -496,7 +643,7 @@ JK_PUBLIC void jk_quicksort(void *array_void,
     char *high = array + (element_count - 1) * element_size;
 
     // Move random element to start to use as pivot
-    char *random_element = array + (rand() % element_count) * element_size;
+    char *random_element = array + (jk_random_u64(generator) % element_count) * element_size;
     jk_bytes_swap(array, random_element, element_size, tmp);
 
     while (mid <= high) {
@@ -515,10 +662,33 @@ JK_PUBLIC void jk_quicksort(void *array_void,
         }
     }
 
-    size_t left_count = (size_t)(low - array) / element_size;
-    size_t right_count = element_count - (size_t)(mid - array) / element_size;
-    jk_quicksort(array, left_count, element_size, tmp, compare);
-    jk_quicksort(mid, right_count, element_size, tmp, compare);
+    uint64_t left_count = (uint64_t)(low - array) / element_size;
+    uint64_t right_count = element_count - (uint64_t)(mid - array) / element_size;
+    jk_quicksort_internal(generator, array, left_count, element_size, tmp, compare);
+    jk_quicksort_internal(generator, mid, right_count, element_size, tmp, compare);
+}
+
+/**
+ * @brief Sorts elements in the given array.
+ *
+ * See the definition of quicksort_ints or quicksort_strings for example usage.
+ *
+ * @param array pointer to the start of the array
+ * @param element_count number of elements in the array
+ * @param element_size size of a single element in bytes
+ * @param tmp pointer to temporary storage the size of a single element
+ * @param compare Function used to compare two elements given pointers to them.
+ *     Return less than zero if a should come before b, greater than zero if a
+ *     should come after b, and zero if they are equal.
+ */
+JK_PUBLIC void jk_quicksort(void *array_void,
+        uint64_t element_count,
+        uint64_t element_size,
+        void *tmp,
+        int (*compare)(void *a, void *b))
+{
+    JkRandomGeneratorU64 generator = jk_random_generator_new_u64(0x9646e4db8d81f399);
+    jk_quicksort_internal(&generator, array_void, element_count, element_size, tmp, compare);
 }
 
 static int jk_int_compare(void *a, void *b)
@@ -546,7 +716,17 @@ JK_PUBLIC void jk_quicksort_floats(float *array, int length)
 
 static int jk_string_compare(void *a, void *b)
 {
-    return strcmp(*(char **)a, *(char **)b);
+    uint8_t *a_ptr = *(uint8_t **)a;
+    uint8_t *b_ptr = *(uint8_t **)b;
+    for (; *a_ptr || *b_ptr; a_ptr++, b_ptr++) {
+        if (*a_ptr < *b_ptr) {
+            return -1;
+        }
+        if (*b_ptr < *a_ptr) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 JK_PUBLIC void jk_quicksort_strings(char **array, int length)
@@ -615,7 +795,7 @@ JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
 
 JK_PUBLIC JkVector2 jk_vector_2_ceil(JkVector2 v)
 {
-    return (JkVector2){ceilf(v.x), ceilf(v.y)};
+    return (JkVector2){jk_ceil_f32(v.x), jk_ceil_f32(v.y)};
 }
 
 JK_PUBLIC JkIntVector2 jk_vector_2_ceil_i(JkVector2 v)
@@ -631,7 +811,7 @@ JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v)
 
 JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v)
 {
-    return sqrtf(jk_vector_2_magnitude_sqr(v));
+    return jk_sqrt_f32(jk_vector_2_magnitude_sqr(v));
 }
 
 JK_PUBLIC JkVector2 jk_vector_2_normalized(JkVector2 v)
@@ -648,7 +828,8 @@ JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v)
 {
     float sign = u.x * v.y - u.y * v.x < 0.0f ? -1.0f : 1.0f;
     return sign
-            * acosf(jk_vector_2_dot(u, v) / (jk_vector_2_magnitude(u) * jk_vector_2_magnitude(v)));
+            * jk_acos_f32(
+                    jk_vector_2_dot(u, v) / (jk_vector_2_magnitude(u) * jk_vector_2_magnitude(v)));
 }
 
 JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t)
@@ -683,10 +864,87 @@ JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 
 
 // ---- JkVector2 end ----------------------------------------------------------
 
-JK_PUBLIC void jk_assert(char *message, char *file, int64_t line)
+// ---- Random generator begin -------------------------------------------------
+
+// Bob Jenkins's pseudorandom number generator aka JSF64 from
+// https://burtleburtle.net/bob/rand/talksmall.html
+
+static uint64_t jk_rotate_left(uint64_t value, uint64_t shift)
 {
-    fprintf(stderr, "Assertion failed: %s, %s:%lld\n", message, file, (long long)line);
-    abort();
+    return (value << shift) | (value >> (64 - shift));
+}
+
+JK_PUBLIC JkRandomGeneratorU64 jk_random_generator_new_u64(uint64_t seed)
+{
+    JkRandomGeneratorU64 g = {
+        g.a = 0xf1ea5eed,
+        g.b = seed,
+        g.c = seed,
+        g.d = seed,
+    };
+
+    for (uint64_t i = 0; i < 20; i++) {
+        jk_random_u64(&g);
+    }
+
+    return g;
+}
+
+JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
+{
+    uint64_t e = g->a - jk_rotate_left(g->b, 7);
+    g->a = g->b ^ jk_rotate_left(g->c, 13);
+    g->b = g->c + jk_rotate_left(g->d, 37);
+    g->c = g->d + e;
+    g->d = e + g->a;
+    return g->d;
+}
+
+// ---- Random generator end ---------------------------------------------------
+
+JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
+{
+    for (;;) {
+        // Panic
+    }
+}
+
+/**
+ * Attempt to parse a positive integer
+ *
+ * @return The parsed integer if successful, -1 if failed
+ */
+JK_PUBLIC int jk_parse_positive_integer(char *string)
+{
+    int multiplier = 1;
+    int result = 0;
+    for (uint64_t i = jk_strlen(string) - 1; i >= 0; i--) {
+        if (jk_char_is_digit(string[i])) {
+            result += (string[i] - '0') * multiplier;
+            multiplier *= 10;
+        } else if (!(string[i] == ',' || string[i] == '\'' || string[i] == '_')) {
+            // Error if character is not a digit or one of the permitted separators
+            return -1;
+        }
+    }
+    return result;
+}
+
+JK_PUBLIC void jk_memset(void *address, uint8_t value, uint64_t size)
+{
+    uint8_t *bytes = address;
+    for (uint64_t i = 0; i < size; i++) {
+        bytes[i] = value;
+    }
+}
+
+JK_PUBLIC void jk_memcpy(void *dest, void *src, uint64_t size)
+{
+    uint8_t *dest_bytes = dest;
+    uint8_t *src_bytes = src;
+    for (uint64_t i = 0; i < size; i++) {
+        dest_bytes[i] = src_bytes[i];
+    }
 }
 
 /**
@@ -752,54 +1010,12 @@ JK_PUBLIC int32_t jk_round(float value)
     return (int32_t)(value + 0.5f);
 }
 
-JK_PUBLIC float jk_abs(float value)
-{
-    return value < 0.0f ? -value : value;
-}
-
-JK_PUBLIC double jk_abs_64(double value)
-{
-    return value < 0.0f ? -value : value;
-}
-
 JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance)
 {
-    return jk_abs(b - a) < tolerance;
+    return JK_ABS(b - a) < tolerance;
 }
 
 JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
 {
-    return jk_abs_64(b - a) < tolerance;
-}
-
-JK_PUBLIC void jk_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)
-{
-    if (byte_count < 1024) {
-        fprintf(file, "%llu bytes", (long long)byte_count);
-    } else if (byte_count < 1024 * 1024) {
-        fprintf(file, format, (double)byte_count / 1024.0);
-        fprintf(file, " KiB");
-    } else if (byte_count < 1024 * 1024 * 1024) {
-        fprintf(file, format, (double)byte_count / (1024.0 * 1024.0));
-        fprintf(file, " MiB");
-    } else {
-        fprintf(file, format, (double)byte_count / (1024.0 * 1024.0 * 1024.0));
-        fprintf(file, " GiB");
-    }
-}
-
-JK_PUBLIC void jk_print_bytes_double(FILE *file, char *format, double byte_count)
-{
-    if (byte_count < 1024.0) {
-        fprintf(file, "%.0f bytes", byte_count);
-    } else if (byte_count < 1024.0 * 1024.0) {
-        fprintf(file, format, byte_count / 1024.0);
-        fprintf(file, " KiB");
-    } else if (byte_count < 1024.0 * 1024.0 * 1024.0) {
-        fprintf(file, format, byte_count / (1024.0 * 1024.0));
-        fprintf(file, " MiB");
-    } else {
-        fprintf(file, format, byte_count / (1024.0 * 1024.0 * 1024.0));
-        fprintf(file, " GiB");
-    }
+    return JK_ABS(b - a) < tolerance;
 }

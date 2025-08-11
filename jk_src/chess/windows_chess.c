@@ -104,7 +104,6 @@ static AiRunningFunction *g_ai_running = 0;
 static UpdateFunction *g_update = 0;
 static AudioFunction *g_audio = 0;
 static RenderFunction *g_render = 0;
-static ProfilePrintFunction *g_profile_print = 0;
 
 static JkColor window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
 
@@ -420,7 +419,6 @@ DWORD game_thread(LPVOID param)
     g_update = update;
     g_audio = audio;
     g_render = render;
-    g_profile_print = profile_print;
 #else
     HINSTANCE chess_library = 0;
     FILETIME chess_dll_last_modified_time = {0};
@@ -451,7 +449,6 @@ DWORD game_thread(LPVOID param)
                     g_update = 0;
                     g_audio = 0;
                     g_render = 0;
-                    g_profile_print = 0;
                     FreeLibrary(chess_library);
                 }
                 if (!CopyFileA("chess.dll", "chess_tmp.dll", FALSE)) {
@@ -464,8 +461,6 @@ DWORD game_thread(LPVOID param)
                     g_update = (UpdateFunction *)GetProcAddress(chess_library, "update");
                     g_audio = (AudioFunction *)GetProcAddress(chess_library, "audio");
                     g_render = (RenderFunction *)GetProcAddress(chess_library, "render");
-                    g_profile_print =
-                            (ProfilePrintFunction *)GetProcAddress(chess_library, "profile_print");
                 } else {
                     OutputDebugStringA("Failed to load chess_tmp.dll\n");
                 }
@@ -729,7 +724,6 @@ DWORD game_thread(LPVOID param)
         target_flip_time += ticks_per_frame;
         prev_keys = keys_down;
     }
-    g_profile_print(g_chess.debug_print);
 
     snprintf(g_string_buffer,
             JK_ARRAY_COUNT(g_string_buffer),

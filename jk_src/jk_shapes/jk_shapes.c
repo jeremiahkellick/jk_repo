@@ -1,6 +1,3 @@
-#include <math.h>
-#include <string.h>
-
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
@@ -9,7 +6,7 @@
 
 // ---- Hash table begin -------------------------------------------------------
 
-static b32 jk_shapes_is_load_factor_exceeded(size_t count, size_t capacity)
+static b32 jk_shapes_is_load_factor_exceeded(uint64_t count, uint64_t capacity)
 {
     return count > (capacity * JK_SHAPES_HASH_TABLE_LOAD_FACTOR / 10);
 }
@@ -30,10 +27,10 @@ JK_PUBLIC JkShapesHashTableSlot *jk_shapes_hash_table_probe(JkShapesHashTable *t
 {
     // Hash and mask off bits to get a result in the range 0..capacity-1. Assumes capacity is a
     // power if 2.
-    size_t slot_i = jk_hash_uint32((uint32_t)(key >> 32) ^ (uint32_t)key) & (t->capacity - 1);
+    uint64_t slot_i = jk_hash_uint32((uint32_t)(key >> 32) ^ (uint32_t)key) & (t->capacity - 1);
 
 #if JK_BUILD_MODE != JK_RELEASE
-    size_t iterations = 0;
+    uint64_t iterations = 0;
 #endif
 
     while (t->slots[slot_i].filled && t->slots[slot_i].key != key) {
@@ -163,14 +160,14 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         return r;
     }
 
-    r.rotation_matrix[0][0] = cosf(a.rotation);
-    r.rotation_matrix[0][1] = -sinf(a.rotation);
-    r.rotation_matrix[1][0] = sinf(a.rotation);
-    r.rotation_matrix[1][1] = cosf(a.rotation);
+    r.rotation_matrix[0][0] = jk_cos_f32(a.rotation);
+    r.rotation_matrix[0][1] = -jk_sin_f32(a.rotation);
+    r.rotation_matrix[1][0] = jk_sin_f32(a.rotation);
+    r.rotation_matrix[1][1] = jk_cos_f32(a.rotation);
 
     float inverse_rotation_matrix[2][2] = {
-        {cosf(a.rotation), sinf(a.rotation)},
-        {-sinf(a.rotation), cosf(a.rotation)},
+        {jk_cos_f32(a.rotation), jk_sin_f32(a.rotation)},
+        {-jk_sin_f32(a.rotation), jk_cos_f32(a.rotation)},
     };
 
     // Transform point_start into ellipse space
@@ -185,12 +182,12 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
             r.treat_as_line = 1;
             return r;
         }
-        r.dimensions.coords[i] = fabsf(a.dimensions.coords[i]);
+        r.dimensions.coords[i] = JK_ABS(a.dimensions.coords[i]);
         lambda += (point_prime.coords[i] * point_prime.coords[i])
                 / (r.dimensions.coords[i] * r.dimensions.coords[i]);
     }
     if (1.0f < lambda) {
-        r.dimensions = jk_vector_2_mul(sqrtf(lambda), r.dimensions);
+        r.dimensions = jk_vector_2_mul(jk_sqrt_f32(lambda), r.dimensions);
     }
 
     b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_LARGE) & 1;
@@ -205,7 +202,7 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         float y_sqr = point_prime.y * point_prime.y;
         float expr = (rx_sqr * ry_sqr - rx_sqr * y_sqr - ry_sqr * x_sqr)
                 / (rx_sqr * y_sqr + ry_sqr * x_sqr);
-        float scalar = sqrtf(JK_MAX(0.0f, expr));
+        float scalar = jk_sqrt_f32(JK_MAX(0.0f, expr));
         JkVector2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
             -(r.dimensions.y * point_prime.x) / r.dimensions.x};
         float sign = flag_large == flag_sweep ? -1.0f : 1.0f;
@@ -243,9 +240,9 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
 static JkVector2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc)
 {
     float angle = arc.angle_start + t * arc.angle_delta;
-    return jk_vector_2_add(
-            jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
-                    (JkVector2){arc.dimensions.x * cosf(angle), arc.dimensions.y * sinf(angle)}),
+    return jk_vector_2_add(jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
+                                   (JkVector2){arc.dimensions.x * jk_cos_f32(angle),
+                                       arc.dimensions.y * jk_sin_f32(angle)}),
             arc.center);
 }
 
@@ -565,7 +562,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                     jk_shapes_edges_get(&arena, commands, negative_offset_ceil, pixel_scale, 0.25f);
 
             for (int32_t y = 0; y < bitmap.dimensions.y; y++) {
-                memset(coverage, 0, coverage_size * 2);
+                jk_memset(coverage, 0, coverage_size * 2);
 
                 float scan_y_top = (float)y;
                 float scan_y_bottom = scan_y_top + 1.0f;
@@ -620,7 +617,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                                     edges.items[i].segment, first_pixel_right);
                             float first_pixel_y_offset = first_x_intersection - y_start;
                             float first_pixel_area = (first_pixel_right - x_start)
-                                    * fabsf(first_pixel_y_offset) / 2.0f;
+                                    * JK_ABS(first_pixel_y_offset) / 2.0f;
                             coverage[first_pixel_index] +=
                                     edges.items[i].direction * first_pixel_area;
 
@@ -628,14 +625,14 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                             float y_offset = first_pixel_y_offset;
                             int32_t pixel_index = first_pixel_index + 1;
                             for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
-                                coverage[pixel_index] +=
-                                        edges.items[i].direction * fabsf(y_offset + delta_y / 2.0f);
+                                coverage[pixel_index] += edges.items[i].direction
+                                        * JK_ABS(y_offset + delta_y / 2.0f);
                                 y_offset += delta_y;
                             }
 
                             // Handle last pixel
                             float last_x_intersection = y_start + y_offset;
-                            float uncovered_triangle = fabsf(y_end - last_x_intersection)
+                            float uncovered_triangle = JK_ABS(y_end - last_x_intersection)
                                     * (x_end - (float)pixel_index) / 2.0f;
                             coverage[pixel_index] +=
                                     edges.items[i].direction * (height - uncovered_triangle);
@@ -650,7 +647,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                 float acc = 0.0f;
                 for (int32_t x = 0; x < bitmap.dimensions.x; x++) {
                     acc += fill[x];
-                    int32_t value = (int32_t)(fabsf((coverage[x] + acc) * 255.0f));
+                    int32_t value = (int32_t)(JK_ABS((coverage[x] + acc) * 255.0f));
                     if (255 < value) {
                         value = 255;
                     }

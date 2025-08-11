@@ -118,8 +118,8 @@ static double haversine_sum_4(HaversineContext context)
         double lat1_cos = jk_sin_core(lat1 + JK_PI / 2.0);
         double lat2_cos = jk_sin_core(lat2 + JK_PI / 2.0);
 
-        double half_d_lat_sin = jk_sin_core(jk_abs_64(d_lat / 2.0));
-        double half_d_lon_sin = jk_sin_core(jk_abs_64(d_lon / 2.0));
+        double half_d_lat_sin = jk_sin_core(JK_ABS(d_lat / 2.0));
+        double half_d_lon_sin = jk_sin_core(JK_ABS(d_lon / 2.0));
 
         double a = square(half_d_lat_sin) + lat1_cos * lat2_cos * square(half_d_lon_sin);
 
@@ -149,8 +149,8 @@ static double haversine_sum_5(HaversineContext context)
         double lat1_cos = jk_sin_core(RADIANS_PER_DEGREE * lat1_deg + JK_PI / 2.0);
         double lat2_cos = jk_sin_core(RADIANS_PER_DEGREE * lat2_deg + JK_PI / 2.0);
 
-        double half_d_lat_sin = jk_sin_core(jk_abs_64(half_d_lat));
-        double half_d_lon_sin = jk_sin_core(jk_abs_64(half_d_lon));
+        double half_d_lat_sin = jk_sin_core(JK_ABS(half_d_lat));
+        double half_d_lon_sin = jk_sin_core(JK_ABS(half_d_lon));
 
         double a = lat1_cos * lat2_cos * square(half_d_lon_sin) + square(half_d_lat_sin);
 
@@ -182,8 +182,8 @@ static double haversine_sum_6(HaversineContext context)
         double lat2_cos =
                 jk_sin_core(jk_platform_fma_64(RADIANS_PER_DEGREE, lat2_deg, JK_PI / 2.0));
 
-        double half_d_lat_sin = jk_sin_core(jk_abs_64(half_d_lat));
-        double half_d_lon_sin = jk_sin_core(jk_abs_64(half_d_lon));
+        double half_d_lat_sin = jk_sin_core(JK_ABS(half_d_lat));
+        double half_d_lon_sin = jk_sin_core(JK_ABS(half_d_lon));
 
         double a = jk_platform_fma_64(
                 lat1_cos * lat2_cos, square(half_d_lon_sin), square(half_d_lat_sin));

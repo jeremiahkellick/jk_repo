@@ -1249,6 +1249,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "/wd4244");
         append(&command, "/wd4305");
         append(&command, "/wd4324");
+        append(&command, "/wd4459");
         append(&command, "/wd4706");
         append(&command, "/nologo");
         append(&command, "/Gm-");
@@ -1387,7 +1388,9 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
             append(&command, "-Og");
         } else {
             append(&command, "-O3");
+#ifndef _WIN32
             append(&command, "-flto");
+#endif
         }
         if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
