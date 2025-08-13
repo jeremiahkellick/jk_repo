@@ -66,7 +66,7 @@ JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value)
 
 JK_PUBLIC float jk_round_f32(float value)
 {
-    return __builtin_roundf(value);
+    return __builtin_roundevenf(value);
 }
 
 JK_PUBLIC float jk_floor_f32(float value)
@@ -930,21 +930,23 @@ JK_PUBLIC int jk_parse_positive_integer(char *string)
     return result;
 }
 
-JK_PUBLIC void jk_memset(void *address, uint8_t value, uint64_t size)
+JK_PUBLIC void *jk_memset(void *address, uint8_t value, uint64_t size)
 {
     uint8_t *bytes = address;
     for (uint64_t i = 0; i < size; i++) {
         bytes[i] = value;
     }
+    return address;
 }
 
-JK_PUBLIC void jk_memcpy(void *dest, void *src, uint64_t size)
+JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size)
 {
     uint8_t *dest_bytes = dest;
     uint8_t *src_bytes = src;
     for (uint64_t i = 0; i < size; i++) {
         dest_bytes[i] = src_bytes[i];
     }
+    return dest;
 }
 
 /**

@@ -372,9 +372,9 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 
 JK_PUBLIC int jk_parse_positive_integer(char *string);
 
-JK_PUBLIC void jk_memset(void *address, uint8_t value, uint64_t size);
+JK_PUBLIC void *jk_memset(void *address, uint8_t value, uint64_t size);
 
-JK_PUBLIC void jk_memcpy(void *dest, void *src, uint64_t size);
+JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
