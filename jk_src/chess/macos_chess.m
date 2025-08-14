@@ -12,7 +12,7 @@
 // #jk_build single_translation_unit
 
 // clang-format off
-// #jk_build compiler_arguments -framework Cocoa -framework AudioToolbox -framework Metal -framework MetalKit -framework QuartzCore
+// #jk_build compiler_arguments -Wno-deprecated-declarations -framework Cocoa -framework AudioToolbox -framework Metal -framework MetalKit -framework QuartzCore
 // clang-format on
 
 // #jk_build dependencies_begin

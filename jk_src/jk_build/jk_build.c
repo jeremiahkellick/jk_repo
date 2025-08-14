@@ -1365,7 +1365,6 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "-o");
         string_array_builder_push(&command, basename);
 
-        append(&command, "-mfma");
         append(&command,
                 "-Wall",
                 "-Wextra",

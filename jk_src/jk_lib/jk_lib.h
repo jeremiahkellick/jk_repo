@@ -394,8 +394,4 @@ JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance);
 
 JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance);
 
-JK_PUBLIC uint64_t jk_platform_page_size_round_up(uint64_t n);
-
-JK_PUBLIC uint64_t jk_platform_page_size_round_down(uint64_t n);
-
 #endif
