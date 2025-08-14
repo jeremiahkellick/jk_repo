@@ -34,7 +34,7 @@ static b32 global_running;
 
 static BezierRenderFunction *global_bezier_render = 0;
 
-static JkColor clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
+static JkColor clear_color = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 
 typedef struct IntArray4 {
     int32_t a[4];

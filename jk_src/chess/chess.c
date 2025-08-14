@@ -1819,23 +1819,20 @@ void update(ChessAssets *assets, Chess *chess)
     chess->input_prev = chess->input;
 }
 
-static JkColor color_background = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R, 0xff};
+static JkColor color_background = {
+    .r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-// JkColor light_squares = {0xde, 0xe2, 0xde};
-// JkColor dark_squares = {0x39, 0x41, 0x3a};
-
-static JkColor color_light_squares = {0xe2, 0xdb, 0xd0, 0xff};
-static JkColor color_dark_squares = {0x50, 0x41, 0x2b, 0xff};
+static JkColor color_light_squares = {.r = 0xd0, .g = 0xdb, .b = 0xe2, .a = 0xff};
+static JkColor color_dark_squares = {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff};
 
 // Blended halfway between the base square colors and #E26D5C
 
-static JkColor color_selection = {0x5c, 0x6d, 0xe2, 0xff};
-static JkColor color_move_prev = {0x11, 0x88, 0xff, 0xff};
+static JkColor color_selection = {.r = 0xe2, .g = 0x6d, .b = 0x5c, .a = 0xff};
+static JkColor color_move_prev = {.r = 0xff, .g = 0x88, .b = 0x11, .a = 0xff};
 
-// JkColor white = {0x8e, 0x8e, 0x8e};
 static JkColor color_teams[TEAM_COUNT] = {
-    {0x82, 0x92, 0x85, 0xff},
-    {0xfb, 0x6f, 0x9d, 0xff},
+    {.r = 0x85, .g = 0x92, .b = 0x82, .a = 0xff},
+    {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
 };
 
 static uint8_t uint8_average(uint8_t a, uint8_t b)

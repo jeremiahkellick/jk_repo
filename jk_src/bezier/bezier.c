@@ -27,22 +27,20 @@ static int debug_printf(void (*debug_print)(char *), char *format, ...)
     return result;
 }
 
-static JkColor color_background = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
+static JkColor color_background = {
+    .r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 
-// JkColor light_squares = {0xde, 0xe2, 0xde};
-// JkColor dark_squares = {0x39, 0x41, 0x3a};
-
-static JkColor color_light_squares = {0xe9, 0xe2, 0xd7};
-static JkColor color_dark_squares = {0x50, 0x41, 0x2b};
+static JkColor color_light_squares = {.r = 0xd7, .g = 0xe2, .b = 0xe9, .a = 0xff};
+static JkColor color_dark_squares = {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff};
 
 // Blended halfway between the base square colors and #E26D5C
 
-static JkColor color_selection = {0x5c, 0x6d, 0xe2};
-static JkColor color_move_prev = {0x2b, 0xa6, 0xff};
+static JkColor color_selection = {.r = 0xe2, .g = 0x6d, .b = 0x5c, .a = 0xff};
+static JkColor color_move_prev = {.r = 0xff, .g = 0xa6, .b = 0x2b, .a = 0xff};
 
 // JkColor white = {0x8e, 0x8e, 0x8e};
-static JkColor color_white_pieces = {0x82, 0x92, 0x85};
-static JkColor color_black_pieces = {0xff, 0x73, 0xa2};
+static JkColor color_white_pieces = {.r = 0x85, .g = 0x92, .b = 0x82, .a = 0xff};
+static JkColor color_black_pieces = {.r = 0xa2, .g = 0x73, .b = 0xff, .a = 0xff};
 
 static JkColor blend(JkColor a, JkColor b)
 {

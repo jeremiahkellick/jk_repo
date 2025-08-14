@@ -105,7 +105,8 @@ static UpdateFunction *g_update = 0;
 static AudioFunction *g_audio = 0;
 static RenderFunction *g_render = 0;
 
-static JkColor window_chess_clear_color = {CLEAR_COLOR_B, CLEAR_COLOR_G, CLEAR_COLOR_R};
+static JkColor window_chess_clear_color = {
+    .r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 
 typedef struct IntArray4 {
     int32_t a[4];
