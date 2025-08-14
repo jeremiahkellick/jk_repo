@@ -86,6 +86,12 @@ static JkBuffer wtf9_fen = JKSI("r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R
 
 static JkBuffer king_fight_fen = JKSI("8/8/8/4k3/8/8/8/3QK3 w - - 0 1");
 
+static uint64_t ai_arena_pos_max;
+static uint64_t render_arena_pos_max;
+static uint64_t bitmap_count_max;
+
+#define TRACK_MAX(max, current) (max = (max) < (current) ? (current) : (max))
+
 static char debug_print_buffer[4096];
 
 typedef struct PieceCounts {
@@ -1241,6 +1247,8 @@ b32 ai_running(Ai *ai)
     }
 
     if (!running) {
+        TRACK_MAX(ai_arena_pos_max, ai->arena->pos);
+
         int32_t max_score_i = 0;
         MovePacked move = {0};
         {
@@ -2765,4 +2773,7 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
     }
+
+    TRACK_MAX(render_arena_pos_max, arena.pos);
+    TRACK_MAX(bitmap_count_max, renderer.hash_table.count);
 }
