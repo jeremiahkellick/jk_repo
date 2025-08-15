@@ -43,14 +43,14 @@ let display_width = 640;
 let display_height = 480;
 
 // from https://webglfundamentals.org/webgl/lessons/webgl-resizing-the-canvas.html
-function resize_canvas_to_display_size(canvas) {
+function resize_canvas_to_display_size(gl) {
     // Check if the canvas is not the same size
-    const need_resize = canvas.width != display_width || canvas.height != display_height;
+    const need_resize = gl.canvas.width != display_width || gl.canvas.height != display_height;
 
     if (need_resize) {
         // Make the canvas the same size
-        canvas.width  = display_width;
-        canvas.height = display_height;
+        gl.canvas.width  = display_width;
+        gl.canvas.height = display_height;
     }
 
     return need_resize;
@@ -103,24 +103,62 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
         let mouse_x = -1;
         let mouse_y = -1;
         let mouse_down = false;
-        canvas.addEventListener('mousemove', event => {
-            mouse_x = event.offsetX;
-            mouse_y = event.offsetY;
-        });
-        canvas.addEventListener('mouseout', event => {
-            mouse_x = -1;
-            mouse_y = -1;
-        });
-        window.addEventListener('mousedown', even => {
-            if (event.button == 0) {
+
+        const is_touch_device = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        if (is_touch_device) {
+            function update_mouse_pos(touches) {
+                mouse_x = 0;
+                mouse_y = 0;
+                for (const touch of touches) {
+                    mouse_x += touch.pageX;
+                    mouse_y += touch.pageY;
+                }
+                mouse_x /= touches.length;
+                mouse_y /= touches.length;
+            }
+            canvas.addEventListener('touchmove', event => {
+                update_mouse_pos(event.touches);
+            });
+            window.addEventListener('touchstart', event => {
                 mouse_down = true;
-            }
-        });
-        window.addEventListener('mouseup', even => {
-            if (event.button == 0) {
-                mouse_down = false;
-            }
-        });
+                update_mouse_pos(event.touches);
+            });
+            window.addEventListener('touchend', event => {
+                if (event.touches.length == 0) {
+                    mouse_down = false;
+                } else {
+                    update_mouse_pos(event.touches);
+                }
+            });
+            window.addEventListener('touchcancel', event => {
+                if (event.touches.length == 0) {
+                    mouse_x = -1;
+                    mouse_y = -1;
+                    mouse_down = false;
+                } else {
+                    update_mouse_pos(event.touches);
+                }
+            });
+        } else {
+            canvas.addEventListener('mousemove', event => {
+                mouse_x = event.offsetX;
+                mouse_y = event.offsetY;
+            });
+            canvas.addEventListener('mouseout', event => {
+                mouse_x = -1;
+                mouse_y = -1;
+            });
+            window.addEventListener('mousedown', even => {
+                if (event.button == 0) {
+                    mouse_down = true;
+                }
+            });
+            window.addEventListener('mouseup', even => {
+                if (event.button == 0) {
+                    mouse_down = false;
+                }
+            });
+        }
 
         const gl = canvas.getContext('webgl2');
 
@@ -162,9 +200,10 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                     requestAnimationFrame(draw);
 
                     function draw(now) {
-                        resize_canvas_to_display_size(gl.canvas);
-                        gl.uniform2f(resolution_uniform_loc, gl.canvas.width, gl.canvas.height);
-                        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+                        resize_canvas_to_display_size(gl);
+                        gl.uniform2f(resolution_uniform_loc,
+                                gl.drawingBufferWidth, gl.drawingBufferHeight);
+                        gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 
                         const square_side_length = Math.max(8,
                                 Math.floor(Math.min(gl.canvas.width, gl.canvas.height, 4096) / 10));
@@ -179,7 +218,7 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                             x = Math.floor((gl.canvas.width - width) / 2);
                         }
 
-                        const ratio = gl.canvas.width / gl.canvas.clientWidth;
+                        const ratio = gl.drawingBufferWidth / gl.canvas.clientWidth;
 
                         wasm.exports.tick(
                                 square_side_length,
