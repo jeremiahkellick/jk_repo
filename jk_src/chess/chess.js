@@ -100,6 +100,28 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
             resize_observer.observe(canvas, {box: 'content-box'});
         }
 
+        let mouse_x = -1;
+        let mouse_y = -1;
+        let mouse_down = false;
+        canvas.addEventListener('mousemove', event => {
+            mouse_x = event.offsetX;
+            mouse_y = event.offsetY;
+        });
+        canvas.addEventListener('mouseout', event => {
+            mouse_x = -1;
+            mouse_y = -1;
+        });
+        window.addEventListener('mousedown', even => {
+            if (event.button == 0) {
+                mouse_down = true;
+            }
+        });
+        window.addEventListener('mouseup', even => {
+            if (event.button == 0) {
+                mouse_down = false;
+            }
+        });
+
         const gl = canvas.getContext('webgl2');
 
         if (gl) {
@@ -147,17 +169,6 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                         const square_side_length = Math.max(8,
                                 Math.floor(Math.min(gl.canvas.width, gl.canvas.height, 4096) / 10));
 
-                        wasm.exports.tick(square_side_length);
-
-                        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 4096);
-                        gl.texSubImage2D(
-                                gl.TEXTURE_2D, 0,
-                                0, 0, square_side_length * 10, square_side_length * 10,
-                                gl.RGBA, gl.UNSIGNED_BYTE, draw_buf);
-                        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
-
-                        gl.clear(gl.COLOR_BUFFER_BIT);
-
                         const width = Math.min(gl.canvas.width, square_side_length * 10);
                         const height = Math.min(gl.canvas.height, square_side_length * 10);
                         let x = 0;
@@ -167,6 +178,23 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                         } else {
                             x = Math.floor((gl.canvas.width - width) / 2);
                         }
+
+                        const ratio = gl.canvas.width / gl.canvas.clientWidth;
+
+                        wasm.exports.tick(
+                                square_side_length,
+                                mouse_x * ratio - x,
+                                mouse_y * ratio - y,
+                                mouse_down);
+
+                        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 4096);
+                        gl.texSubImage2D(
+                                gl.TEXTURE_2D, 0,
+                                0, 0, square_side_length * 10, square_side_length * 10,
+                                gl.RGBA, gl.UNSIGNED_BYTE, draw_buf);
+                        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+
+                        gl.clear(gl.COLOR_BUFFER_BIT);
 
                         const positions = new Float32Array([
                             x, y,

@@ -76,9 +76,12 @@ uint8_t *init(void)
     return __heap_base;
 }
 
-void tick(int32_t square_side_length)
+void tick(int32_t square_side_length, int32_t mouse_x, int32_t mouse_y, b32 mouse_down)
 {
     g_chess.square_side_length = square_side_length;
+    g_chess.input.mouse_pos.x = mouse_x;
+    g_chess.input.mouse_pos.y = mouse_y;
+    g_chess.input.flags = JK_FLAG_SET(g_chess.input.flags, INPUT_CONFIRM, mouse_down);
     update(g_assets, &g_chess);
     render(g_assets, &g_chess);
 }
