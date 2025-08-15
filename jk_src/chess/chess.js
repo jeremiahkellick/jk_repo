@@ -185,7 +185,8 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                                 square_side_length,
                                 mouse_x * ratio - x,
                                 mouse_y * ratio - y,
-                                mouse_down);
+                                mouse_down,
+                                BigInt(Math.trunc(now)));
 
                         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 4096);
                         gl.texSubImage2D(

@@ -57,31 +57,23 @@ uint8_t *init(void)
 
     g_chess.draw_buffer = (JkColor *)__heap_base;
     g_chess.render_memory.data = __heap_base + DRAW_BUFFER_SIZE;
-
-    // TODO: implement properly
-    g_chess.os_timer_frequency = 1;
+    g_chess.os_timer_frequency = 1000;
     g_chess.debug_print = debug_print;
-
-    for (int32_t y = 0; y < DRAW_BUFFER_SIDE_LENGTH; y++) {
-        for (int32_t x = 0; x < DRAW_BUFFER_SIDE_LENGTH; x++) {
-            g_chess.draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = (JkColor){
-                .r = x * 255 / DRAW_BUFFER_SIDE_LENGTH,
-                .g = 0,
-                .b = y * 255 / DRAW_BUFFER_SIDE_LENGTH,
-                .a = 255,
-            };
-        }
-    }
 
     return __heap_base;
 }
 
-void tick(int32_t square_side_length, int32_t mouse_x, int32_t mouse_y, b32 mouse_down)
+void tick(int32_t square_side_length,
+        int32_t mouse_x,
+        int32_t mouse_y,
+        b32 mouse_down,
+        int64_t os_time)
 {
     g_chess.square_side_length = square_side_length;
     g_chess.input.mouse_pos.x = mouse_x;
     g_chess.input.mouse_pos.y = mouse_y;
     g_chess.input.flags = JK_FLAG_SET(g_chess.input.flags, INPUT_CONFIRM, mouse_down);
+    g_chess.os_time = os_time;
     update(g_assets, &g_chess);
     render(g_assets, &g_chess);
 }
