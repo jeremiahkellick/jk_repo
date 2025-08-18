@@ -88,7 +88,7 @@ function on_resize(entries) {
 WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
     window.wasm = w.instance;
 
-    const draw_buffer_offset = wasm.exports.init();
+    const draw_buffer_offset = wasm.exports.init_main();
 
     if (draw_buffer_offset) {
         const canvas = document.getElementById('chess');
@@ -103,6 +103,26 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
         let mouse_x = -1;
         let mouse_y = -1;
         let mouse_down = false;
+
+        let audio_initialized = false;
+        let audio_context;
+        let worklet;
+
+        async function ensure_audio() {
+            if (!audio_initialized) {
+                audio_initialized = true;
+                try {
+                    audio_context = new AudioContext({sampleRate: 48000});
+                    await audio_context.audioWorklet.addModule('/jk_src/chess/audio_worklet.js');
+                    worklet = new AudioWorkletNode(
+                            audio_context, 'worklet', {outputChannelCount: [2]});
+                    worklet.connect(audio_context.destination);
+                    worklet.port.postMessage(w.module);
+                } catch (e) {
+                    console.log('Failed to initialize audio');
+                }
+            }
+        }
 
         const is_touch_device = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         if (is_touch_device) {
@@ -122,6 +142,7 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
             window.addEventListener('touchstart', event => {
                 mouse_down = true;
                 update_mouse_pos(event.touches);
+                ensure_audio();
             });
             window.addEventListener('touchend', event => {
                 if (event.touches.length == 0) {
@@ -152,6 +173,7 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                 if (event.button == 0) {
                     mouse_down = true;
                 }
+                ensure_audio();
             });
             window.addEventListener('mouseup', even => {
                 if (event.button == 0) {
@@ -225,7 +247,17 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                                 mouse_x * ratio - x,
                                 mouse_y * ratio - y,
                                 mouse_down,
-                                BigInt(Math.trunc(now)));
+                                now,
+                                audio_context ? audio_context.currentTime * 48000 : 0);
+
+                        if (audio_context && worklet) {
+                            const sound = worklet.parameters.get('sound');
+                            const started_time_0 = worklet.parameters.get('started_time_0');
+                            const started_time_1 = worklet.parameters.get('started_time_1');
+                            sound.value = wasm.exports.get_sound();
+                            started_time_0.value = wasm.exports.get_started_time_0();
+                            started_time_1.value = wasm.exports.get_started_time_1();
+                        }
 
                         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 4096);
                         gl.texSubImage2D(
