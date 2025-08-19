@@ -4,7 +4,7 @@ class ChessAudioWorklet extends AudioWorkletProcessor {
         this.wasm_exports = null;
         this.audio_buffer = null;
         this.port.onmessage = async (event) => {
-            this.wasm_exports = (await WebAssembly.instantiate(event.data, {})).exports;
+            this.wasm_exports = (await WebAssembly.instantiate(event.data)).instance.exports;
             if (this.wasm_exports) {
                 const audio_buffer_offset = this.wasm_exports.init_audio();
                 if (audio_buffer_offset) {

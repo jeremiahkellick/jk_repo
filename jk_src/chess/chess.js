@@ -85,8 +85,9 @@ function on_resize(entries) {
     }
 }
 
-WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
-    window.wasm = w.instance;
+async function main() {
+    const wasm_buffer = await (await fetch('/build/chess.wasm')).arrayBuffer();
+    const wasm = (await WebAssembly.instantiate(wasm_buffer)).instance;
 
     const draw_buffer_offset = wasm.exports.init_main();
 
@@ -117,7 +118,7 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                     worklet = new AudioWorkletNode(
                             audio_context, 'worklet', {outputChannelCount: [2]});
                     worklet.connect(audio_context.destination);
-                    worklet.port.postMessage(w.module);
+                    worklet.port.postMessage(wasm_buffer);
                 } catch (e) {
                     console.log('Failed to initialize audio');
                 }
@@ -142,7 +143,6 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
             window.addEventListener('touchstart', event => {
                 mouse_down = true;
                 update_mouse_pos(event.touches);
-                ensure_audio();
             });
             window.addEventListener('touchend', event => {
                 if (event.touches.length == 0) {
@@ -150,6 +150,7 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
                 } else {
                     update_mouse_pos(event.touches);
                 }
+                ensure_audio();
             });
             window.addEventListener('touchcancel', event => {
                 if (event.touches.length == 0) {
@@ -302,4 +303,6 @@ WebAssembly.instantiateStreaming(fetch('/build/chess.wasm'), {}).then(w => {
             console.log('WebGL not supported');
         }
     }
-});
+}
+
+main();
