@@ -782,7 +782,7 @@ DWORD ai_thread(LPVOID param)
         while (g_ai_running(&ai)) {
             AcquireSRWLockShared(&g_shared.ai_request_lock);
             b32 cancel = !g_shared.ai_request.wants_ai_move
-                    || memcmp(&g_shared.ai_request.board, &board, sizeof(Board)) != 0;
+                    || memcmp(&g_shared.ai_request.board, &ai.response.board, sizeof(Board)) != 0;
             ReleaseSRWLockShared(&g_shared.ai_request_lock);
             if (cancel) {
                 break;
@@ -795,8 +795,7 @@ DWORD ai_thread(LPVOID param)
 
         if (ai.response.move.src || ai.response.move.dest) {
             AcquireSRWLockExclusive(&g_shared.ai_response_lock);
-            g_shared.ai_response.board = board;
-            g_shared.ai_response.move = ai.response.move;
+            g_shared.ai_response = ai.response;
             ReleaseSRWLockExclusive(&g_shared.ai_response_lock);
         }
     }

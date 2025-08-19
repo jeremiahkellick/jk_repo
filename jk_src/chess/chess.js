@@ -92,6 +92,19 @@ async function main() {
     const draw_buffer_offset = wasm.exports.init_main();
 
     if (draw_buffer_offset) {
+        const ai_request_offset = wasm.exports.get_ai_request();
+        const ai_response_bytes = new Uint8Array(
+                wasm.exports.memory.buffer, wasm.exports.get_ai_response_main_thread(), 64);
+
+        const ai_worker = new Worker('/jk_src/chess/ai_worker.js');
+        ai_worker.onmessage = e => {
+            const source_bytes = new Uint8Array(e.data, 0, 64);
+            for (let i = 0; i < 64; i++) {
+                ai_response_bytes[i] = source_bytes[i];
+            }
+        };
+        ai_worker.postMessage({type: 'wasm', buffer: wasm_buffer});
+
         const canvas = document.getElementById('chess');
 
         const resize_observer = new ResizeObserver(on_resize);
@@ -119,6 +132,7 @@ async function main() {
                             audio_context, 'worklet', {outputChannelCount: [2]});
                     worklet.connect(audio_context.destination);
                     worklet.port.postMessage(wasm_buffer);
+                    await audio_context.resume();
                 } catch (e) {
                     console.log('Failed to initialize audio');
                 }
@@ -150,7 +164,11 @@ async function main() {
                 } else {
                     update_mouse_pos(event.touches);
                 }
-                ensure_audio();
+                if (audio_context) {
+                    audio_context.resume();
+                } else {
+                    ensure_audio();
+                }
             });
             window.addEventListener('touchcancel', event => {
                 if (event.touches.length == 0) {
@@ -243,7 +261,7 @@ async function main() {
 
                         const ratio = gl.drawingBufferWidth / gl.canvas.clientWidth;
 
-                        wasm.exports.tick(
+                        const ai_request_changed = wasm.exports.tick(
                                 square_side_length,
                                 mouse_x * ratio - x,
                                 mouse_y * ratio - y,
@@ -258,6 +276,15 @@ async function main() {
                             sound.value = wasm.exports.get_sound();
                             started_time_0.value = wasm.exports.get_started_time_0();
                             started_time_1.value = wasm.exports.get_started_time_1();
+                        }
+
+                        if (ai_request_changed) {
+                            const ai_request_buffer = wasm.exports.memory.buffer.slice(
+                                    ai_request_offset, ai_request_offset + 56);
+                            ai_worker.postMessage({
+                                type: 'ai_request',
+                                buffer: ai_request_buffer,
+                            }, [ai_request_buffer]);
                         }
 
                         gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 4096);
@@ -302,7 +329,13 @@ async function main() {
         } else {
             console.log('WebGL not supported');
         }
+    } else {
+        console.log('Failed to allocate required memory');
     }
 }
 
-main();
+if (typeof(Worker) !== 'undefined' && typeof(WebAssembly) !== 'undefined') {
+    main();
+} else {
+    console.log('Sorry this application is not supported on this browser');
+}

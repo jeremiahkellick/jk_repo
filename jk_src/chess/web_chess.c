@@ -1,10 +1,11 @@
+#include "jk_src/jk_lib/jk_lib.h"
 #include <stddef.h>
 
 // clang-format off
 
 // #jk_build single_translation_unit
 // #jk_build compiler_arguments -o chess.wasm --target=wasm32 --no-standard-libraries
-// #jk_build linker_arguments -Wl,--no-entry,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=init_audio,--export=fill_audio_buffer
+// #jk_build linker_arguments -Wl,--no-entry,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick
 
 // clang-format on
 
@@ -13,6 +14,9 @@
 // #jk_build dependencies_end
 
 #include <jk_gen/chess/assets.c>
+
+#define WEB_AUDIO_BUFFER_SIZE (sizeof(AudioSample) * SAMPLES_PER_SECOND / 5)
+#define AI_MEMORY_SIZE (64 * JK_MEGABYTE)
 
 extern uint8_t __heap_base[];
 
@@ -39,6 +43,12 @@ __attribute__((no_builtin("memcpy"))) void *memcpy(void *dest, void const *src, 
 
 static ChessAssets *g_assets = (ChessAssets *)chess_assets_byte_array;
 static Chess g_chess;
+
+static Ai g_ai;
+static int32_t g_ai_request_id;
+static AiRequest g_ai_request;
+static JkArenaRoot g_ai_arena_root;
+static JkArena g_ai_arena;
 
 typedef union FloatConvert {
     float f32s[2];
@@ -77,7 +87,8 @@ uint8_t *init_main(void)
     }
 }
 
-void tick(int32_t square_side_length,
+// Return whether or not the ai_request changed
+b32 tick(int32_t square_side_length,
         int32_t mouse_x,
         int32_t mouse_y,
         b32 mouse_down,
@@ -90,9 +101,19 @@ void tick(int32_t square_side_length,
     g_chess.input.flags = JK_FLAG_SET(g_chess.input.flags, INPUT_CONFIRM, mouse_down);
     g_chess.os_time = os_time;
     g_chess.audio_time = audio_time;
+
     update(g_assets, &g_chess);
     render(g_assets, &g_chess);
+
     g_started_time.f64 = (double)g_chess.audio_state.started_time;
+    if (!g_ai_request.wants_ai_move != !JK_FLAG_GET(g_chess.flags, CHESS_FLAG_WANTS_AI_MOVE)
+            || !board_equal(&g_ai_request.board, &g_chess.board)) {
+        g_ai_request.board = g_chess.board;
+        g_ai_request.wants_ai_move = JK_FLAG_GET(g_chess.flags, CHESS_FLAG_WANTS_AI_MOVE);
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 SoundIndex get_sound(void)
@@ -110,7 +131,20 @@ float get_started_time_1(void)
     return g_started_time.f32s[1];
 }
 
-#define WEB_AUDIO_BUFFER_SIZE (sizeof(AudioSample) * SAMPLES_PER_SECOND / 5)
+AiRequest *get_ai_request(void)
+{
+    return &g_ai_request;
+}
+
+AiResponse *get_ai_response_ai_thread(void)
+{
+    return &g_ai.response;
+}
+
+AiResponse *get_ai_response_main_thread(void)
+{
+    return &g_chess.ai_response;
+}
 
 static AudioSample *audio_buffer;
 
@@ -132,4 +166,31 @@ void fill_audio_buffer(SoundIndex sound,
 {
     FloatConvert started_time = {.f32s = {started_time_0, started_time_1}};
     audio(g_assets, (AudioState){sound, started_time.f64}, time, sample_count, audio_buffer);
+}
+
+b32 ai_alloc_memory(void)
+{
+    if (ensure_memory(AI_MEMORY_SIZE)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+b32 ai_begin_request(double os_time)
+{
+    if (g_ai_request.wants_ai_move) {
+        g_ai_arena = jk_arena_fixed_init(
+                &g_ai_arena_root, (JkBuffer){.size = AI_MEMORY_SIZE, .data = __heap_base});
+        ai_init(&g_ai_arena, &g_ai, g_ai_request.board, os_time, 1000, debug_print);
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+b32 ai_tick(double os_time)
+{
+    g_ai.time = os_time;
+    return ai_running(&g_ai);
 }

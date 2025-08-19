@@ -170,7 +170,7 @@ void *ai_thread(void *param)
         while (ai_running(&ai)) {
             pthread_mutex_lock(&g.ai_request_lock);
             b32 cancel = !g.main.ai_request.wants_ai_move
-                    || memcmp(&g.main.ai_request.board, &board, sizeof(Board)) != 0;
+                    || memcmp(&g.main.ai_request.board, &ai.response.board, sizeof(Board)) != 0;
             pthread_mutex_unlock(&g.ai_request_lock);
             if (cancel) {
                 break;
@@ -181,8 +181,7 @@ void *ai_thread(void *param)
 
         if (ai.response.move.src || ai.response.move.dest) {
             pthread_mutex_lock(&g.ai_response_lock);
-            g.ai.response.board = board;
-            g.ai.response.move = ai.response.move;
+            g.ai.response = ai.response;
             pthread_mutex_unlock(&g.ai_response_lock);
         }
     }

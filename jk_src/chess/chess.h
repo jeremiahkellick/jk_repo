@@ -229,7 +229,6 @@ typedef struct AiTarget {
 
 typedef struct Ai {
     AiResponse response;
-    Board board;
     JkArena *arena;
     JkRandomGeneratorU64 generator;
     uint8_t top_level_node_count;

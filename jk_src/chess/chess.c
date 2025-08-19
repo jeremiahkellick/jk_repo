@@ -926,7 +926,7 @@ static int score_index_pair_compare(void *a, void *b)
 
 static void update_search_scores_root(Ai *ctx, b32 verify)
 {
-    Team team = board_current_team_get(ctx->board);
+    Team team = board_current_team_get(ctx->response.board);
 
     ScoreIndexPair top_two_pairs[2] = {{.score = INT32_MIN}, {.score = INT32_MIN}};
     for (int32_t i = 0; i < ctx->top_level_node_count; i++) {
@@ -976,7 +976,7 @@ static uint64_t debug_nodes_found;
 
 static b32 expand_node(Ai *ctx, MoveNode *node)
 {
-    Board node_board_state = ctx->board;
+    Board node_board_state = ctx->response.board;
     {
         MoveArray prev_moves;
         prev_moves.count = 0;
@@ -1130,7 +1130,7 @@ void ai_init(JkArena *arena,
     ai->response.move = (Move){0};
     ai->generator = jk_random_generator_new_u64(0xd5717cc6);
 
-    ai->board = board;
+    ai->response.board = board;
     ai->time = time;
     ai->time_frequency = time_frequency;
     ai->time_started = time;
@@ -1138,7 +1138,7 @@ void ai_init(JkArena *arena,
     ai->debug_print = debug_print;
 
     MoveArray moves;
-    moves_get(&moves, ai->board);
+    moves_get(&moves, ai->response.board);
 
     debug_nodes_found = 0;
 
@@ -1165,8 +1165,8 @@ void ai_init(JkArena *arena,
             new_child->parent = 0;
             new_child->next_sibling = 0;
             new_child->first_child = 0;
-            new_child->board_score =
-                    board_score(board_move_perform(ai->board, moves.data[i]), new_child->depth);
+            new_child->board_score = board_score(
+                    board_move_perform(ai->response.board, moves.data[i]), new_child->depth);
             new_child->score = new_child->board_score;
             new_child->search_score = UINT32_MAX;
             new_child->top_level_index = i;
@@ -1207,7 +1207,7 @@ b32 ai_running(Ai *ai)
             JK_ASSERT(node);
 
             {
-                Team team = !board_current_team_get(ai->board);
+                Team team = !board_current_team_get(ai->response.board);
                 uint32_t min_search_score = UINT32_MAX;
                 while (node->first_child) {
                     min_search_score = UINT32_MAX;
@@ -1245,7 +1245,7 @@ b32 ai_running(Ai *ai)
         MovePacked move = {0};
         {
             // Pick move with the best score
-            Team team = board_current_team_get(ai->board);
+            Team team = board_current_team_get(ai->response.board);
             int32_t max_score = INT32_MIN;
             for (int32_t i = 0; i < ai->top_level_node_count; i++) {
                 int32_t score = team_multiplier[team] * ai->top_level_nodes[i].score;
@@ -1285,8 +1285,8 @@ b32 ai_running(Ai *ai)
         if (stats.max_depth < 300) {
             uint64_t max_score_depth = 0;
             {
-                Team team = board_current_team_get(ai->board);
-                Board board = ai->board;
+                Team team = board_current_team_get(ai->response.board);
+                Board board = ai->response.board;
                 MoveNode *node = ai->top_level_nodes + max_score_i;
                 while (node) {
                     max_score_depth++;
