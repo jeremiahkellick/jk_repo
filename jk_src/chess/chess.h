@@ -6,7 +6,6 @@
 #include <stdint.h>
 
 #define SAMPLES_PER_SECOND 48000
-#define FRAME_RATE 60
 
 #define SAMPLES_PER_FRAME (SAMPLES_PER_SECOND / FRAME_RATE)
 
@@ -271,7 +270,7 @@ typedef struct Chess {
     MoveArray moves;
     Result result;
     PieceType piece_prev_type;
-    uint64_t time_move_prev;
+    uint64_t os_time_move_prev;
     int64_t os_time_player[TEAM_COUNT];
     uint64_t os_time_turn_start;
     Screen screen;

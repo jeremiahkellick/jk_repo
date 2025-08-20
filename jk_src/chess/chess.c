@@ -1629,7 +1629,7 @@ void update(ChessAssets *assets, Chess *chess)
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->result = 0;
         chess->piece_prev_type = NONE;
-        chess->time_move_prev = 0;
+        chess->os_time_move_prev = 0;
         chess->board = starting_state;
         // chess->board = parse_fen(wtf9_fen);
         moves_get(&chess->moves, chess->board);
@@ -1743,7 +1743,7 @@ void update(ChessAssets *assets, Chess *chess)
             if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
                 chess->promo_square = dest;
             } else { // Make a move
-                chess->time_move_prev = chess->time;
+                chess->os_time_move_prev = chess->os_time;
                 chess->piece_prev_type = board_piece_get_index(chess->board, move.dest).type;
 
                 if (chess->turn_index) {
@@ -2719,8 +2719,9 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
-    int64_t frames_since_last_move = chess->time - chess->time_move_prev;
-    if (frames_since_last_move < 43 && chess->piece_prev_type) {
+    int64_t ms_since_last_move =
+            (chess->os_time - chess->os_time_move_prev) * 1000 / chess->os_timer_frequency;
+    if (ms_since_last_move < 720 && chess->piece_prev_type) {
         JkColor piece_color = color_teams[team];
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);
@@ -2732,13 +2733,13 @@ void render(ChessAssets *assets, Chess *chess)
                 jk_vector_2_add(jk_vector_2_add(canvas_pos, (JkVector2){32.0f, 32.0f}),
                         jk_vector_2_mul(64.0f, origin_direction));
 
-        float speed = 30.0f;
-        float deceleration = 0.32f;
-        float distance = speed * frames_since_last_move
-                - deceleration * (frames_since_last_move * frames_since_last_move);
-        int64_t prev_frames_since_last_move = JK_MAX(0, frames_since_last_move - 2);
-        float prev_distance = speed * prev_frames_since_last_move
-                - deceleration * (prev_frames_since_last_move * prev_frames_since_last_move);
+        float speed = 1.8f;
+        float deceleration = 0.001152f;
+        float distance = speed * ms_since_last_move
+                - deceleration * (ms_since_last_move * ms_since_last_move);
+        int64_t prev_ms_since_last_move = JK_MAX(0, ms_since_last_move - 34);
+        float prev_distance = speed * prev_ms_since_last_move
+                - deceleration * (prev_ms_since_last_move * prev_ms_since_last_move);
 
         int32_t skip = 1 + (chess->square_side_length * 2 / 100);
         for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y += skip) {

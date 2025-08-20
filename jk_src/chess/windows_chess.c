@@ -23,6 +23,8 @@
 #include <jk_src/jk_shapes/jk_shapes.c>
 #endif
 
+#define FRAME_RATE 60
+
 typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
 typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration);
 
