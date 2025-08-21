@@ -101,6 +101,8 @@ static char g_string_buffer[1024];
 
 static SRWLOCK g_dll_lock = SRWLOCK_INIT;
 
+static HCURSOR g_cursor;
+
 static AiInitFunction *g_ai_init = 0;
 static AiRunningFunction *g_ai_running = 0;
 static UpdateFunction *g_update = 0;
@@ -315,6 +317,14 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         HDC device_context = BeginPaint(window, &paint);
         copy_draw_buffer_to_window(window, device_context, draw_rect_get());
         EndPaint(window, &paint);
+    } break;
+
+    case WM_SETCURSOR: {
+        if (LOWORD(lparam) == HTCLIENT) {
+            SetCursor(g_cursor);
+        } else {
+            result = DefWindowProcA(window, message, wparam, lparam);
+        }
     } break;
 
     default: {
@@ -808,6 +818,8 @@ DWORD ai_thread(LPVOID param)
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
     jk_platform_set_working_directory_to_executable_directory();
+
+    g_cursor = LoadCursorA(0, IDC_ARROW);
 
     HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
     if (!xinput_library) {
