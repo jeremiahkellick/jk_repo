@@ -1,4 +1,4 @@
--mfma
 -I.
 -D JK_PUBLIC=
 -D _CRT_SECURE_NO_WARNINGS
+--target=wasm32
