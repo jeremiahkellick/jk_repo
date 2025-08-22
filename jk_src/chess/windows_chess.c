@@ -327,6 +327,13 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         }
     } break;
 
+    case WM_GETMINMAXINFO: {
+        MINMAXINFO *info = (MINMAXINFO *)lparam;
+        info->ptMinTrackSize.x = 180;
+        info->ptMinTrackSize.y = 220;
+        return 0;
+    } break;
+
     default: {
         result = DefWindowProcA(window, message, wparam, lparam);
     } break;
