@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
-#include <xinput.h>
 
 // #jk_build run jk_src/chess/chess_assets_pack.c
 // #jk_build build jk_src/chess/chess.c
@@ -25,12 +24,6 @@
 
 #define FRAME_RATE 60
 
-typedef DWORD (*XInputGetStatePointer)(DWORD dwUserIndex, XINPUT_STATE *pState);
-typedef DWORD (*XInputSetStatePointer)(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration);
-
-XInputGetStatePointer xinput_get_state;
-XInputSetStatePointer xinput_set_state;
-
 typedef HRESULT (*DirectSoundCreatePointer)(
         LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter);
 
@@ -40,34 +33,11 @@ typedef struct AudioBufferRegion {
 } AudioBufferRegion;
 
 typedef enum Key {
-    KEY_UP,
-    KEY_DOWN,
-    KEY_LEFT,
-    KEY_RIGHT,
-    KEY_W,
-    KEY_S,
-    KEY_A,
-    KEY_D,
     KEY_R,
     KEY_C,
-    KEY_ENTER,
-    KEY_SPACE,
-    KEY_ESCAPE,
 } Key;
 
 #define AUDIO_DELAY_MS 30
-
-static char debug_print_buffer[4096];
-
-static int win32_debug_printf(char *format, ...)
-{
-    va_list args;
-    va_start(args, format);
-    int result = vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
-    va_end(args);
-    OutputDebugStringA(debug_print_buffer);
-    return result;
-}
 
 typedef struct Shared {
     // Game read-write, AI read-only
@@ -95,8 +65,8 @@ static JkBuffer g_ai_memory;
 
 static b32 g_running;
 static int64_t g_keys_down;
-static LPDIRECTSOUNDBUFFER g_audio_buffer;
-static AudioSample *g_audio_buffer_tmp;
+static uint64_t g_audio_buffer_size;
+static AudioSample *g_audio_buffer;
 static char g_string_buffer[1024];
 
 static SRWLOCK g_dll_lock = SRWLOCK_INIT;
@@ -243,56 +213,12 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     case WM_KEYUP: {
         int64_t flag = 0;
         switch (wparam) {
-        case VK_UP: {
-            flag = JK_MASK(KEY_UP);
-        } break;
-
-        case VK_DOWN: {
-            flag = JK_MASK(KEY_DOWN);
-        } break;
-
-        case VK_LEFT: {
-            flag = JK_MASK(KEY_LEFT);
-        } break;
-
-        case VK_RIGHT: {
-            flag = JK_MASK(KEY_RIGHT);
-        } break;
-
-        case 'W': {
-            flag = JK_MASK(KEY_W);
-        } break;
-
-        case 'S': {
-            flag = JK_MASK(KEY_S);
-        } break;
-
-        case 'A': {
-            flag = JK_MASK(KEY_A);
-        } break;
-
-        case 'D': {
-            flag = JK_MASK(KEY_D);
-        } break;
-
         case 'R': {
             flag = JK_MASK(KEY_R);
         } break;
 
         case 'C': {
             flag = JK_MASK(KEY_C);
-        } break;
-
-        case VK_RETURN: {
-            flag = JK_MASK(KEY_ENTER);
-        } break;
-
-        case VK_SPACE: {
-            flag = JK_MASK(KEY_SPACE);
-        } break;
-
-        case VK_ESCAPE: {
-            flag = JK_MASK(KEY_ESCAPE);
         } break;
 
         case VK_F4: {
@@ -369,10 +295,9 @@ DWORD game_thread(LPVOID param)
     // Set the Windows scheduler granularity to 1ms
     b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
 
-    uint32_t audio_buffer_seconds = 2;
-    uint32_t audio_buffer_sample_count = SAMPLES_PER_SECOND * audio_buffer_seconds;
-    uint32_t audio_buffer_size = audio_buffer_sample_count * sizeof(AudioSample);
     uint32_t audio_position = 0;
+
+    LPDIRECTSOUNDBUFFER win_audio_buffer = 0;
 
     HDC device_context = GetDC(window);
     update_dimensions(window);
@@ -415,13 +340,13 @@ DWORD game_thread(LPVOID param)
             {
                 DSBUFFERDESC buffer_description = {
                     .dwSize = sizeof(buffer_description),
-                    .dwBufferBytes = audio_buffer_size,
+                    .dwBufferBytes = g_audio_buffer_size,
                     .lpwfxFormat = &wave_format,
                 };
                 if (direct_sound->lpVtbl->CreateSoundBuffer(
-                            direct_sound, &buffer_description, &g_audio_buffer, 0)
+                            direct_sound, &buffer_description, &win_audio_buffer, 0)
                         == DS_OK) {
-                    g_audio_buffer->lpVtbl->Play(g_audio_buffer, 0, 0, DSBPLAY_LOOPING);
+                    win_audio_buffer->lpVtbl->Play(win_audio_buffer, 0, 0, DSBPLAY_LOOPING);
                 } else {
                     OutputDebugStringA("Failed to create secondary buffer\n");
                 }
@@ -454,7 +379,9 @@ DWORD game_thread(LPVOID param)
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     b32 reset_audio_position = TRUE;
+#if JK_BUILD_MODE != JK_RELEASE
     uint64_t prev_keys = 0;
+#endif
     while (g_running) {
 #if JK_BUILD_MODE != JK_RELEASE
         // Hot reloading
@@ -495,38 +422,7 @@ DWORD game_thread(LPVOID param)
 
         // Keyboard input
         int64_t keys_down = g_keys_down;
-        {
-            g_chess.input.flags |= (((keys_down >> KEY_UP) | (keys_down >> KEY_W)) & 1) << INPUT_UP;
-            g_chess.input.flags |= (((keys_down >> KEY_DOWN) | (keys_down >> KEY_S)) & 1)
-                    << INPUT_DOWN;
-            g_chess.input.flags |= (((keys_down >> KEY_LEFT) | (keys_down >> KEY_A)) & 1)
-                    << INPUT_LEFT;
-            g_chess.input.flags |= (((keys_down >> KEY_RIGHT) | (keys_down >> KEY_D)) & 1)
-                    << INPUT_RIGHT;
-            g_chess.input.flags |= (((keys_down >> KEY_ENTER) | (keys_down >> KEY_SPACE)) & 1)
-                    << INPUT_CONFIRM;
-            g_chess.input.flags |= ((keys_down >> KEY_ESCAPE) & 1) << INPUT_CANCEL;
-            g_chess.input.flags |= ((keys_down >> KEY_R) & 1) << INPUT_RESET;
-        }
-
-        // Controller input
-        if (xinput_get_state) {
-            for (int32_t i = 0; i < XUSER_MAX_COUNT; i++) {
-                XINPUT_STATE state;
-                if (xinput_get_state(i, &state) == ERROR_SUCCESS) {
-                    XINPUT_GAMEPAD *pad = &state.Gamepad;
-                    g_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_UP) << INPUT_UP;
-                    g_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN)
-                            << INPUT_DOWN;
-                    g_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT)
-                            << INPUT_LEFT;
-                    g_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)
-                            << INPUT_RIGHT;
-                    g_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_A) << INPUT_CONFIRM;
-                    g_chess.input.flags |= !!(pad->wButtons & XINPUT_GAMEPAD_B) << INPUT_CANCEL;
-                }
-            }
-        }
+        g_chess.input.flags |= ((keys_down >> KEY_R) & 1) << INPUT_RESET;
 
         g_chess.square_side_length = square_side_length_get((IntArray4){g_window_dimensions.x,
             g_window_dimensions.y,
@@ -557,22 +453,22 @@ DWORD game_thread(LPVOID param)
         {
             DWORD play_cursor;
             DWORD write_cursor;
-            if (g_audio_buffer->lpVtbl->GetCurrentPosition(
-                        g_audio_buffer, &play_cursor, &write_cursor)
+            if (win_audio_buffer->lpVtbl->GetCurrentPosition(
+                        win_audio_buffer, &play_cursor, &write_cursor)
                     == DS_OK) {
                 uint32_t safe_start_point = (write_cursor
                                                     + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
                                                             * sizeof(AudioSample))
-                        % audio_buffer_size;
+                        % g_audio_buffer_size;
                 if (reset_audio_position) {
                     reset_audio_position = FALSE;
                     audio_position = safe_start_point;
                 }
                 uint32_t end_point = (safe_start_point + SAMPLES_PER_FRAME * sizeof(AudioSample))
-                        % audio_buffer_size;
+                        % g_audio_buffer_size;
                 uint32_t size;
                 if (end_point < audio_position) {
-                    size = audio_buffer_size - audio_position + end_point;
+                    size = g_audio_buffer_size - audio_position + end_point;
                 } else {
                     size = end_point - audio_position;
                 }
@@ -583,6 +479,7 @@ DWORD game_thread(LPVOID param)
             }
         }
 
+#if JK_BUILD_MODE != JK_RELEASE
         if (JK_FLAG_GET(keys_down, KEY_C) && !JK_FLAG_GET(prev_keys, KEY_C)) {
             g_record_state = (g_record_state + 1) % RECORD_STATE_COUNT;
             switch (g_record_state) {
@@ -630,6 +527,7 @@ DWORD game_thread(LPVOID param)
             OutputDebugStringA("Invalid RecordState\n");
         } break;
         }
+#endif
 
         AcquireSRWLockShared(&g_shared.ai_response_lock);
         g_chess.ai_response = g_shared.ai_response;
@@ -652,16 +550,12 @@ DWORD game_thread(LPVOID param)
             ReleaseSRWLockExclusive(&g_shared.ai_request_lock);
         }
 
-        g_audio(g_assets,
-                g_chess.audio_state,
-                g_chess.audio_time,
-                sample_count,
-                g_audio_buffer_tmp);
+        g_audio(g_assets, g_chess.audio_state, g_chess.audio_time, sample_count, g_audio_buffer);
         g_chess.audio_time += sample_count;
 
         { // Write audio to the DirectSound buffer
             AudioBufferRegion regions[2] = {0};
-            if (g_audio_buffer->lpVtbl->Lock(g_audio_buffer,
+            if (win_audio_buffer->lpVtbl->Lock(win_audio_buffer,
                         audio_position,
                         sample_count * sizeof(AudioSample),
                         &regions[0].data,
@@ -679,14 +573,14 @@ DWORD game_thread(LPVOID param)
                     for (DWORD region_offset_index = 0;
                             region_offset_index < region->size / sizeof(region_samples[0]);
                             region_offset_index++) {
-                        region_samples[region_offset_index] = g_audio_buffer_tmp[buffer_index++];
+                        region_samples[region_offset_index] = g_audio_buffer[buffer_index++];
                     }
                 }
 
                 audio_position =
-                        (audio_position + sample_count * sizeof(AudioSample)) % audio_buffer_size;
+                        (audio_position + sample_count * sizeof(AudioSample)) % g_audio_buffer_size;
 
-                g_audio_buffer->lpVtbl->Unlock(g_audio_buffer,
+                win_audio_buffer->lpVtbl->Unlock(win_audio_buffer,
                         regions[0].data,
                         regions[0].size,
                         regions[1].data,
@@ -742,7 +636,10 @@ DWORD game_thread(LPVOID param)
 
         counter_previous = counter_current;
         target_flip_time += ticks_per_frame;
+
+#if JK_BUILD_MODE != JK_RELEASE
         prev_keys = keys_down;
+#endif
     }
 
     snprintf(g_string_buffer,
@@ -824,39 +721,26 @@ DWORD ai_thread(LPVOID param)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
+#if JK_BUILD_MODE != JK_RELEASE
     jk_platform_set_working_directory_to_executable_directory();
+#endif
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     g_cursor = LoadCursorA(0, IDC_ARROW);
 
-    HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
-    if (!xinput_library) {
-        xinput_library = LoadLibraryA("xinput9_1_0.dll");
-    }
-    if (!xinput_library) {
-        xinput_library = LoadLibraryA("xinput1_3.dll");
-    }
-    if (xinput_library) {
-        xinput_get_state = (XInputGetStatePointer)GetProcAddress(xinput_library, "XInputGetState");
-        xinput_set_state = (XInputSetStatePointer)GetProcAddress(xinput_library, "XInputSetState");
-    } else {
-        OutputDebugStringA("Failed to load XInput\n");
-    }
-
-    uint64_t audio_buffer_size =
-            jk_round_up_to_power_of_2(10 * SAMPLES_PER_FRAME * sizeof(AudioSample));
-    g_chess.render_memory.size = 64 * JK_MEGABYTE;
-    g_ai_memory.size = 8 * JK_GIGABYTE;
+    g_audio_buffer_size = jk_round_up_to_power_of_2(2 * SAMPLES_PER_SECOND * sizeof(AudioSample));
+    g_chess.render_memory.size = 2 * JK_MEGABYTE;
+    g_ai_memory.size = 64 * JK_MEGABYTE;
     uint8_t *memory = VirtualAlloc(0,
-            audio_buffer_size + DRAW_BUFFER_SIZE + g_chess.render_memory.size + g_ai_memory.size,
+            g_audio_buffer_size + DRAW_BUFFER_SIZE + g_chess.render_memory.size + g_ai_memory.size,
             MEM_COMMIT,
             PAGE_READWRITE);
     if (!memory) {
         OutputDebugStringA("Failed to allocate memory\n");
     }
-    g_audio_buffer_tmp = (AudioSample *)memory;
-    memory += audio_buffer_size;
+    g_audio_buffer = (AudioSample *)memory;
+    memory += g_audio_buffer_size;
     g_chess.draw_buffer = (JkColor *)memory;
     memory += DRAW_BUFFER_SIZE;
     g_chess.render_memory.data = memory;

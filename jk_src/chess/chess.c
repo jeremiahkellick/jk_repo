@@ -27,7 +27,7 @@ typedef enum Column {
 
 static Board starting_state = {
     // clang-format off
-    // Byte array encoding the chess starting positions
+    // Byte array encoding the chess starting position
     .bytes = {
         0x53, 0x24, 0x41, 0x35,
         0x66, 0x66, 0x66, 0x66,
@@ -43,7 +43,6 @@ static Board starting_state = {
 
 static Board puzzle_state = {
     // clang-format off
-    // Byte array encoding the chess starting positions
     .bytes = {
         0x00, 0x00, 0x00, 0x30,
         0x66, 0x16, 0x00, 0x00,
@@ -57,37 +56,7 @@ static Board puzzle_state = {
     // clang-format on
 };
 
-static Board bug_state = {
-    // clang-format off
-    // Byte array encoding the chess starting positions
-    .bytes = {
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0xD0, 0xB0, 0x00,
-        0x00, 0x00, 0x00, 0x16,
-        0x60, 0x00, 0x00, 0x00,
-        0xE0, 0x00, 0xE0, 0x00,
-        0x00, 0x00, 0x09, 0xE0,
-        0x00, 0x00, 0x00, 0x00,
-    },
-    // clang-format on
-    .flags = 0x1e,
-};
-
 static JkBuffer puzzle_fen = JKSI("8/1bp1rkp1/p4p2/1p1p1QPR/3q3P/8/5PK1/8 b - - 0 1");
-
-static JkBuffer wtf_fen = JKSI("rnb1kbnr/pppp1ppp/5q2/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b - - 0 1");
-
-static JkBuffer wtf2_fen =
-        JKSI("1nb1k1nr/r2p1qp1/1pp3B1/3pP1Qp/p4p2/2N2N2/PPP2PPP/R4RK1 b k - 1 1");
-
-static JkBuffer wtf5_fen = JKSI("r1b1k1nr/1p4pp/p3p3/5p2/5B2/nP4P1/PbP2P1P/1R1R2K1 b kq - 4 3");
-
-static JkBuffer wtf9_fen = JKSI("r2k1b2/p3r3/npp2p2/1P1p4/P4Bb1/1BP3P1/3RNP1P/4R1K1 b - - 0 2");
-
-static JkBuffer king_fight_fen = JKSI("8/8/8/4k3/8/8/8/3QK3 w - - 0 1");
-
-static char debug_print_buffer[4096];
 
 typedef struct PieceCounts {
     int32_t a[PIECE_TYPE_COUNT];
@@ -109,9 +78,11 @@ static void debug_print_jkf(JkArena *arena, void (*debug_print)(char *), JkForma
                 .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
                 .items = (JkFormatItem[]){__VA_ARGS__}})
 
+#if JK_BUILD_MODE != JK_RELEASE
+
 static Chess debug_chess;
 
-static uint8_t debug_render_memory[1024 * 1024 * 1024];
+static uint8_t debug_render_memory[2 * JK_MEGABYTE];
 
 static ChessAssets *debug_assets;
 
@@ -121,13 +92,10 @@ static void debug_render(Board board)
 {
     debug_chess.board = board;
 
-    // We'll crash if we don't fill out the following
-    debug_chess.os_timer_frequency = 1;
-    debug_chess.render_memory.size = sizeof(debug_render_memory);
-    debug_chess.render_memory.data = debug_render_memory;
-
     render(debug_assets, &debug_chess);
 }
+
+#endif
 
 static Team board_current_team_get(Board board)
 {
@@ -973,8 +941,6 @@ static void moves_shuffle(JkRandomGeneratorU64 *generator, MoveArray *moves)
     }
 }
 
-static uint64_t debug_nodes_found;
-
 static b32 expand_node(Ai *ctx, MoveNode *node)
 {
     Board node_board_state = ctx->response.board;
@@ -994,7 +960,6 @@ static b32 expand_node(Ai *ctx, MoveNode *node)
     moves_get(&moves, node_board_state);
     MoveNode *prev_child = 0;
     MoveNode *first_child = 0;
-    debug_nodes_found += moves.count;
     for (uint8_t i = 0; i < moves.count; i++) {
         MoveNode *new_child = jk_arena_push(ctx->arena, sizeof(*new_child));
         if (!new_child) {
@@ -1077,6 +1042,8 @@ static b32 expand_node(Ai *ctx, MoveNode *node)
     return 1;
 }
 
+#if JK_BUILD_MODE != JK_RELEASE
+
 typedef struct MoveTreeStats {
     uint64_t node_count;
     uint64_t leaf_count;
@@ -1114,10 +1081,7 @@ void move_tree_stats_calculate(JkArena *arena, MoveTreeStats *stats, MoveNode *n
     }
 }
 
-static uint64_t debug_time_current_get(void)
-{
-    return debug_nodes_found;
-}
+#endif
 
 void ai_init(JkArena *arena,
         Ai *ai,
@@ -1140,12 +1104,6 @@ void ai_init(JkArena *arena,
 
     MoveArray moves;
     moves_get(&moves, ai->response.board);
-
-    debug_nodes_found = 0;
-
-    // ai->time_current_get = debug_time_current_get;
-    // ai->time_limit = 298441;
-    // ai->time_limit = 100;
 
     ai->top_level_node_count = moves.count;
 
@@ -1242,8 +1200,7 @@ b32 ai_running(Ai *ai)
     }
 
     if (!running) {
-        int32_t max_score_i = 0;
-        MovePacked move = {0};
+        int32_t max_score_index = 0;
         {
             // Pick move with the best score
             Team team = board_current_team_get(ai->response.board);
@@ -1251,13 +1208,14 @@ b32 ai_running(Ai *ai)
             for (int32_t i = 0; i < ai->top_level_node_count; i++) {
                 int32_t score = team_multiplier[team] * ai->top_level_nodes[i].score;
                 if (max_score < score) {
-                    max_score_i = i;
+                    max_score_index = i;
                     max_score = score;
-                    move = ai->top_level_nodes[i].move;
                 }
             }
         }
+        ai->response.move = move_unpack(ai->top_level_nodes[max_score_index].move);
 
+#if JK_BUILD_MODE != JK_RELEASE
         // uint64_t time_elapsed = ai->time - ai->time_started;
         // double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
@@ -1288,11 +1246,11 @@ b32 ai_running(Ai *ai)
             {
                 Team team = board_current_team_get(ai->response.board);
                 Board board = ai->response.board;
-                MoveNode *node = ai->top_level_nodes + max_score_i;
+                MoveNode *node = ai->top_level_nodes + max_score_index;
                 while (node) {
                     max_score_depth++;
                     board = board_move_perform(board, node->move);
-                    // debug_render(board);
+                    debug_render(board);
                     team = !team;
                     int32_t max_score = INT32_MIN;
                     MoveNode *max_score_node = 0;
@@ -1324,9 +1282,8 @@ b32 ai_running(Ai *ai)
                         ai->arena, ai->debug_print, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
             }
 
-            /*
             {
-                Board board = ai->board;
+                Board board = ai->response.board;
                 for (int32_t i = stats.min_line.count - 1; i >= 0; i--) {
                     board = board_move_perform(board, stats.min_line.data[i]);
                     debug_render(board);
@@ -1334,19 +1291,19 @@ b32 ai_running(Ai *ai)
             }
 
             {
-                Board board = ai->board;
+                Board board = ai->response.board;
                 for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
                     board = board_move_perform(board, stats.max_line[i]);
-                    debug_printf(ai->debug_print,
-                            "score: %d\n",
-                            board_score(board, stats.max_depth - 1 - i));
+                    DEBUG_PRINT_JKF(ai->arena,
+                            ai->debug_print,
+                            jkfn("score: "),
+                            jkfi(board_score(board, stats.max_depth - 1 - i)),
+                            jkf_nl);
                     debug_render(board);
                 }
             }
-            */
         }
-
-        ai->response.move = move_unpack(move);
+#endif
     }
 
     return running;
@@ -1473,17 +1430,6 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-static void print_nodes(JkArena *arena, void (*print)(char *), MoveNode *node, uint32_t depth)
-{
-    for (uint32_t i = 0; i < depth; i++) {
-        print(" ");
-    }
-    DEBUG_PRINT_JKF(arena, print, jkfi(node->score), jkfn(", "), jkfu(node->search_score), jkf_nl);
-    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-        print_nodes(arena, print, child, depth + 1);
-    }
-}
-
 static void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
 {
     node->top_level_index = top_level_index;
@@ -1494,6 +1440,7 @@ static void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
 
 void update(ChessAssets *assets, Chess *chess)
 {
+#if JK_BUILD_MODE != JK_RELEASE
     if (!debug_assets) {
         debug_assets = assets;
         debug_chess = (Chess){0};
@@ -1501,12 +1448,15 @@ void update(ChessAssets *assets, Chess *chess)
         debug_chess.selected_square = (JkIntVector2){-1, -1};
         debug_chess.promo_square = (JkIntVector2){-1, -1};
         debug_chess.draw_buffer = debug_draw_buffer;
+        debug_chess.render_memory.size = sizeof(debug_render_memory);
+        debug_chess.render_memory.data = debug_render_memory;
+        debug_chess.os_timer_frequency = 1;
     }
 
-    // Debug reset
     if (input_button_pressed(chess, INPUT_RESET)) {
         chess->flags &= ~JK_MASK(CHESS_FLAG_INITIALIZED);
     }
+#endif
 
     b32 start_new_game = 0;
 
@@ -1560,62 +1510,16 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
     }
 
-    if (start_new_game || !JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
-        // Test search score calculation
-        Ai ctx = {
-            .top_level_node_count = 2,
-            .top_level_nodes =
-                    {
-                        {.score = -1},
-                        {.score = 3},
-                        {.score = 3},
-                        {.score = -1},
-                        {.score = 3},
-                        {.score = 11},
-                        {.score = 3},
-                        {.score = 1},
-                        {.score = -1},
-                        {.score = -4},
-                        {.score = 0},
-                        {.score = 3},
-                        {.score = 11},
-                        {.score = 6},
-                    },
-        };
-        for (int32_t i = 0; i < 14; i++) {
-            if (i % 2 == 0 && i) {
-                ctx.top_level_nodes[i / 2 - 1].first_child = ctx.top_level_nodes + i;
-            } else {
-                ctx.top_level_nodes[i - 1].next_sibling = ctx.top_level_nodes + i;
-            }
-        }
-        for (uint8_t i = 0; i < ctx.top_level_node_count; i++) {
-            debug_set_top_level_index(ctx.top_level_nodes + i, i);
-        }
-        update_search_scores_root(&ctx, WHITE);
-        // JK_ASSERT(ctx.top_level_nodes[0].search_score == 6);
-        // JK_ASSERT(ctx.top_level_nodes[1].search_score == 7);
-        {
-            uint8_t buffer[4096];
-            JkArenaRoot arena_root;
-            JkArena arena = jk_arena_fixed_init(
-                    &arena_root, (JkBuffer){.size = sizeof(buffer), .data = buffer});
-
-            print_nodes(&arena, chess->debug_print, ctx.top_level_nodes, 0);
-            print_nodes(&arena, chess->debug_print, ctx.top_level_nodes + 1, 0);
-        }
-
-        if (!JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
-            // If we got here because the state is not initialized (as opposed to the player
-            // clicking the "Start new game" button in the UI), then we should initialize the
-            // settings to their default values.
-            chess->settings.team_choice = TEAM_CHOICE_WHITE;
-            chess->settings.opponent_type = PLAYER_AI;
-            chess->settings.timer = TIMER_10_MIN;
-            chess->generator = jk_random_generator_new_u64(chess->os_time);
-        }
-
+    if (!JK_FLAG_GET(chess->flags, CHESS_FLAG_INITIALIZED)) {
         chess->flags = JK_MASK(CHESS_FLAG_INITIALIZED);
+        chess->settings.team_choice = TEAM_CHOICE_WHITE;
+        chess->settings.opponent_type = PLAYER_AI;
+        chess->settings.timer = TIMER_10_MIN;
+        chess->generator = jk_random_generator_new_u64(chess->os_time);
+        start_new_game = 1;
+    }
+
+    if (start_new_game) {
         chess->turn_index = 0;
 
         if (chess->settings.team_choice == TEAM_CHOICE_RANDOM) {
@@ -1804,11 +1708,6 @@ void update(ChessAssets *assets, Chess *chess)
     case SCREEN_COUNT: {
         chess->debug_print("Invalid chess->screen value\n");
     } break;
-    }
-
-    if (input_button_pressed(chess, INPUT_LEFT)) {
-        chess->board = parse_fen(king_fight_fen);
-        moves_get(&chess->moves, chess->board);
     }
 
     // Do some end-of-frame updating of data
