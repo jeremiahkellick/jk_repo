@@ -826,6 +826,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 {
     jk_platform_set_working_directory_to_executable_directory();
 
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     g_cursor = LoadCursorA(0, IDC_ARROW);
 
     HINSTANCE xinput_library = LoadLibraryA("xinput1_4.dll");
