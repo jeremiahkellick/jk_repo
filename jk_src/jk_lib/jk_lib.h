@@ -76,6 +76,7 @@ typedef enum JkFormatItemType {
     JK_FORMAT_ITEM_UNSIGNED,
     JK_FORMAT_ITEM_HEX,
     JK_FORMAT_ITEM_BINARY,
+    JK_FORMAT_ITEM_FLOAT,
 
     JK_FORMAT_ITEM_TYPE_COUNT,
 } JkFormatItemType;
@@ -87,8 +88,9 @@ typedef struct JkFormatItem {
         JkBuffer string;
         int64_t signed_value;
         uint64_t unsigned_value;
+        double float_value;
     };
-    int16_t min_width;
+    int16_t param;
 } JkFormatItem;
 
 typedef struct JkFormatItemArray {
@@ -104,13 +106,54 @@ JK_PUBLIC JkFormatItem jkfi(int64_t signed_value);
 
 JK_PUBLIC JkFormatItem jkfu(uint64_t unsigned_value);
 
+JK_PUBLIC JkFormatItem jkfuw(uint64_t unsigned_value, int16_t min_width);
+
 JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width);
 
 JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width);
 
+JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places);
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Math begin -------------------------------------------------------------
+
+#define JK_FLOAT_EXPONENT_SPECIAL INT32_MAX
+
+typedef struct JkFloatUnpacked {
+    b32 sign;
+
+    // Note the exponent and signficand work differently here than what you are probably used to
+    // with floating point formats. Generally, the significand is thought of as a fixed-point number
+    // with one bit to the left of the binary decimal and all the other bits to the right.
+    // For example, 1.001b * 2^e. (I'm using b as a suffix to denote binary numbers).
+    //
+    // Now notice how we can write 1.001b as an integer multiplied by 2 raised to some power
+    // 1.001b = 1001b * 2^-3
+    // Inserting this back into the original expression we get the following
+    // 1.001b * 2^e = 1001b * 2^-3 * 2^e = 1001b * 2^(e-3)
+    //
+    // So we can use an integer significand, as long as we use an exponent that's 3 less than the
+    // traditional floating-point exponent. Why 3? Because in our example that was the bit-width of
+    // the fractional portion of the significand (the mantissa).
+    //
+    // In this struct, "exponent" refers to this reduced exponent. If e is the traditional exponent,
+    // then exponent = e - bit_width_of_mantissa. And "significand" refers to the significant bits
+    // of the floating point value, including the leading bit (which is generally only implied in
+    // the binary representation). However, there's no implied binary point in the significand. We
+    // interpret it as an unsigned integer. Then the value represented by some JkFloatUnpacked f
+    // is (f.sign ? -1 : 1) * f.significand * pow(2, f.exponent)
+    //
+    // Also note that in this scheme, the number of bits in the significand that will represent a
+    // fractional quantity in the final value is simply -exponent
+
+    int32_t exponent;
+    uint64_t significand;
+} JkFloatUnpacked;
+
+JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value);
+
+JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f);
 
 JK_PUBLIC float jk_round_f32(float value);
 
@@ -172,12 +215,14 @@ JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
 
 JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
 
-JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value);
+JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
 
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
         JkArena *arena, uint64_t value, int16_t min_width);
 
 JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width);
+
+JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, uint16_t decimal_places);
 
 JK_PUBLIC JkFormatItem jkf_nl;
 
@@ -397,6 +442,8 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
 
 JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value);
+
+JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int8_t amount);
 
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
 

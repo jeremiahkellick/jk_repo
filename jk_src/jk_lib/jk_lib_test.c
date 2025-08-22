@@ -107,24 +107,36 @@ static void print_string_arrays_side_by_side(char **a, char **b, int length, int
     }
 }
 
-static void expect_string(JkBuffer expected, JkBuffer actual)
+static b32 expect_string(JkBuffer expected, JkBuffer actual)
 {
-    if (jk_buffer_compare(expected, actual) != 0) {
+    if (jk_buffer_compare(expected, actual) == 0) {
+        return 1;
+    } else {
         printf("FAIL: expected \"%.*s\" but got \"%.*s\"\n",
                 (int)expected.size,
                 expected.data,
                 (int)actual.size,
                 actual.data);
+        return 0;
     }
 }
+
+typedef union DoubleUnion {
+    double f;
+    uint64_t bits;
+} DoubleUnion;
+
+DoubleUnion infinity_64 = {.bits = 0x7ff0000000000000llu};
+DoubleUnion some_nan_64 = {.bits = 0x7ffb83f05b73e306llu};
+DoubleUnion unprintable_64 = {.bits = 0x7feb83f05b73e306llu};
 
 typedef union FloatUnion {
     float f;
     uint32_t bits;
 } FloatUnion;
 
-FloatUnion infinity = {.bits = 0x7f800000};
-FloatUnion some_nan = {.bits = 0x7fE9605C};
+FloatUnion infinity_32 = {.bits = 0x7f800000};
+FloatUnion some_nan_32 = {.bits = 0x7fE9605C};
 
 int main(void)
 {
@@ -192,9 +204,10 @@ int main(void)
     expect_string(JKS("0"), jk_int_to_string(&arena, 0));
 
     expect_string(
-            JKS("16210279753379821762"), jk_unsigned_to_string(&arena, 16210279753379821762llu));
-    expect_string(JKS("1"), jk_unsigned_to_string(&arena, 1));
-    expect_string(JKS("0"), jk_unsigned_to_string(&arena, 0));
+            JKS("16210279753379821762"), jk_unsigned_to_string(&arena, 16210279753379821762llu, 0));
+    expect_string(JKS("1"), jk_unsigned_to_string(&arena, 1, 0));
+    expect_string(JKS("0001"), jk_unsigned_to_string(&arena, 1, 4));
+    expect_string(JKS("0"), jk_unsigned_to_string(&arena, 0, 0));
 
     expect_string(JKS("c5d530ba1de82861"),
             jk_unsigned_to_hexadecimal_string(&arena, 0xc5d530ba1de82861llu, 0));
@@ -206,18 +219,58 @@ int main(void)
     expect_string(JKS("0001"), jk_unsigned_to_binary_string(&arena, 1, 4));
     expect_string(JKS("0"), jk_unsigned_to_binary_string(&arena, 0, 0));
 
+    expect_string(JKS("inf"), jk_f64_to_string(&arena, infinity_64.f, 8));
+    expect_string(JKS("-inf"), jk_f64_to_string(&arena, -infinity_64.f, 8));
+    expect_string(JKS("nan"), jk_f64_to_string(&arena, some_nan_64.f, 8));
+    expect_string(JKS("-nan"), jk_f64_to_string(&arena, -some_nan_64.f, 8));
+    expect_string(JKS("unprintable"), jk_f64_to_string(&arena, unprintable_64.f, 8));
+    expect_string(JKS("-unprintable"), jk_f64_to_string(&arena, -unprintable_64.f, 8));
+    expect_string(JKS("1.3333333"), jk_f64_to_string(&arena, 4.0 / 3.0, 7));
+    expect_string(JKS("2.666667"), jk_f64_to_string(&arena, 8.0 / 3.0, 6));
+    expect_string(JKS("123"), jk_f64_to_string(&arena, 123.25, 0));
+    expect_string(JKS("124"), jk_f64_to_string(&arena, 123.5, 0));
+
     expect_string(JKS("5 + -3 = 2"),
             JK_FORMAT(&arena, jkfu(5), jkfn(" + "), jkfi(-3), jkfn(" = "), jkfi(2)));
     expect_string(JKS("0x00ff"), JK_FORMAT(&arena, jkfn("0x"), jkfh(0xff, 4)));
     expect_string(
             JKS("Hello, sailor!"), JK_FORMAT(&arena, jkfs(JKS("Hello, ")), jkfs(JKS("sailor!"))));
+    expect_string(
+            JKS("1010 : 123.75"), JK_FORMAT(&arena, jkfb(10, 4), jkfn(" : "), jkff(123.75, 2)));
 
     // ---- Buffer end ---------------------------------------------------------
 
     // ---- Math begin ---------------------------------------------------------
 
-    printf("\nsome_nan: %f\n", (double)some_nan.f);
-    printf("infinity: %f\n", (double)infinity.f);
+    JkRandomGeneratorU64 generator = jk_random_generator_new_u64(3523520312864767571);
+
+    printf("\nsome_nan_64: %f\n", (double)some_nan_64.f);
+    printf("infinity_64: %f\n", (double)infinity_64.f);
+    printf("some_nan_32: %f\n", (double)some_nan_32.f);
+    printf("infinity_32: %f\n", (double)infinity_32.f);
+
+    JK_ASSERT(0.0 == jk_pack_f64(jk_unpack_f64(0.0)));
+    JK_ASSERT(-0.0 == jk_pack_f64(jk_unpack_f64(-0.0)));
+    JK_ASSERT(1.0 == jk_pack_f64(jk_unpack_f64(1.0)));
+    JK_ASSERT(-1.0 == jk_pack_f64(jk_unpack_f64(-1.0)));
+    JK_ASSERT(infinity_64.f == jk_pack_f64(jk_unpack_f64(infinity_64.f)));
+    JK_ASSERT(-infinity_64.f == jk_pack_f64(jk_unpack_f64(-infinity_64.f)));
+
+    DoubleUnion round_trip_nan = {.f = jk_pack_f64(jk_unpack_f64(some_nan_64.f))};
+    JK_ASSERT(some_nan_64.bits == round_trip_nan.bits);
+    DoubleUnion nan_negative = {.f = -some_nan_64.f};
+    DoubleUnion round_trip_nan_negative = {.f = jk_pack_f64(jk_unpack_f64(nan_negative.f))};
+    JK_ASSERT(nan_negative.bits == round_trip_nan_negative.bits);
+
+    for (uint64_t i = 0; i < 10000; i++) {
+        DoubleUnion value = {.bits = jk_random_u64(&generator)};
+        if (isnan(value.f)) {
+            DoubleUnion round_trip = {.f = jk_pack_f64(jk_unpack_f64(value.f))};
+            JK_ASSERT(value.bits == round_trip.bits);
+        } else {
+            JK_ASSERT(value.f == jk_pack_f64(jk_unpack_f64(value.f)));
+        }
+    }
 
     JK_ASSERT(jk_ceil_f32(5.2f) == ceilf(5.2f));
     JK_ASSERT(jk_ceil_f32(-5.2f) == ceilf(-5.2f));
@@ -225,18 +278,17 @@ int main(void)
     JK_ASSERT(jk_ceil_f32(-0.0f) == ceilf(-0.0f));
     JK_ASSERT(jk_ceil_f32(1.0f) == ceilf(1.0f));
     JK_ASSERT(jk_ceil_f32(-1.0f) == ceilf(-1.0f));
-    JK_ASSERT(jk_ceil_f32(infinity.f) == ceilf(infinity.f));
-    JK_ASSERT(jk_ceil_f32(-infinity.f) == ceilf(-infinity.f));
+    JK_ASSERT(jk_ceil_f32(infinity_32.f) == ceilf(infinity_32.f));
+    JK_ASSERT(jk_ceil_f32(-infinity_32.f) == ceilf(-infinity_32.f));
 
-    FloatUnion my_nan_ceil = {.f = jk_ceil_f32(some_nan.f)};
-    FloatUnion reference_nan_ceil = {.f = ceilf(some_nan.f)};
+    FloatUnion my_nan_ceil = {.f = jk_ceil_f32(some_nan_32.f)};
+    FloatUnion reference_nan_ceil = {.f = ceilf(some_nan_32.f)};
     JK_ASSERT(my_nan_ceil.bits == reference_nan_ceil.bits);
 
-    FloatUnion my_nan_ceil_negative = {.f = jk_ceil_f32(-some_nan.f)};
-    FloatUnion reference_nan_ceil_negative = {.f = ceilf(-some_nan.f)};
+    FloatUnion my_nan_ceil_negative = {.f = jk_ceil_f32(-some_nan_32.f)};
+    FloatUnion reference_nan_ceil_negative = {.f = ceilf(-some_nan_32.f)};
     JK_ASSERT(my_nan_ceil_negative.bits == reference_nan_ceil_negative.bits);
 
-    JkRandomGeneratorU64 generator = jk_random_generator_new_u64(3523520312864767571);
     for (uint64_t i = 0; i < 10000; i++) {
         FloatUnion value = {.bits = jk_random_u64(&generator)};
         double reference = ceilf(value.f);

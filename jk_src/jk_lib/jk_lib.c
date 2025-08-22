@@ -246,11 +246,12 @@ JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value)
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value)
+JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width)
 {
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
+    int16_t width_remaining = min_width;
     do {
         uint8_t digit = value % 10;
         uint8_t *c = jk_arena_push(arena, 1);
@@ -260,7 +261,8 @@ JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value)
             return (JkBuffer){0};
         }
         value /= 10;
-    } while (value);
+        width_remaining--;
+    } while (0 < width_remaining || value);
 
     result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
 
@@ -321,6 +323,51 @@ JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, 
     return result;
 }
 
+JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, uint16_t decimal_places)
+{
+    JK_DEBUG_ASSERT(0 <= decimal_places && decimal_places <= 8);
+    JkFloatUnpacked unpacked = jk_unpack_f64(value);
+    if (unpacked.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
+        if (unpacked.significand) {
+            return unpacked.sign ? JKS("-nan") : JKS("nan");
+        } else {
+            return unpacked.sign ? JKS("-inf") : JKS("inf");
+        }
+    } else {
+        int32_t int_shift = JK_MAX(-64, unpacked.exponent);
+        if ((int32_t)jk_count_leading_zeros(unpacked.significand) < int_shift) {
+            return unpacked.sign ? JKS("-unprintable") : JKS("unprintable");
+        } else {
+            uint64_t integer = jk_signed_shift(unpacked.significand, int_shift);
+            JkBuffer sign = unpacked.sign ? JKS("-") : JKS("");
+            int32_t frac_shift = JK_CLAMP(unpacked.exponent + 34, -64, 64);
+            uint64_t binary_fraction =
+                    jk_signed_shift(unpacked.significand, frac_shift) & 0x3ffffffffllu;
+            uint64_t decimal_fraction =
+                    (binary_fraction * 1000000000llu + 0x200000000llu) / 0x400000000llu;
+
+            if (decimal_places) {
+                uint64_t divisor = 10;
+                for (uint64_t i = 0; i < 8 - decimal_places; i++) {
+                    divisor *= 10;
+                }
+
+                uint64_t rounded_fraction = (decimal_fraction + divisor / 2) / divisor;
+                return JK_FORMAT(arena,
+                        jkfs(sign),
+                        jkfu(integer),
+                        jkfn("."),
+                        jkfuw(rounded_fraction, decimal_places));
+            } else {
+                if (500000000llu <= decimal_fraction) {
+                    integer++;
+                }
+                return JK_FORMAT(arena, jkfs(sign), jkfu(integer));
+            }
+        }
+    }
+}
+
 // Include a null terminated string in JK_FORMAT
 JK_PUBLIC JkFormatItem jkfn(char *null_terminated)
 {
@@ -348,18 +395,32 @@ JK_PUBLIC JkFormatItem jkfu(uint64_t unsigned_value)
     return (JkFormatItem){.type = JK_FORMAT_ITEM_UNSIGNED, .unsigned_value = unsigned_value};
 }
 
+// Include an unsigned integer in JK_FORMAT and supply a width
+JK_PUBLIC JkFormatItem jkfuw(uint64_t unsigned_value, int16_t min_width)
+{
+    return (JkFormatItem){
+        .type = JK_FORMAT_ITEM_UNSIGNED, .unsigned_value = unsigned_value, .param = min_width};
+}
+
 // Include a hexadecimal value in JK_FORMAT
 JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width)
 {
     return (JkFormatItem){
-        .type = JK_FORMAT_ITEM_HEX, .unsigned_value = hex_value, .min_width = min_width};
+        .type = JK_FORMAT_ITEM_HEX, .unsigned_value = hex_value, .param = min_width};
 }
 
 // Include a binary value in JK_FORMAT
 JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width)
 {
     return (JkFormatItem){
-        .type = JK_FORMAT_ITEM_BINARY, .unsigned_value = binary_value, .min_width = min_width};
+        .type = JK_FORMAT_ITEM_BINARY, .unsigned_value = binary_value, .param = min_width};
+}
+
+// Include a floating point value in JK_FORMAT
+JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places)
+{
+    return (JkFormatItem){
+        .type = JK_FORMAT_ITEM_FLOAT, .float_value = float_value, .param = decimal_places};
 }
 
 // JK_FORMAT argument representing a newline
@@ -386,15 +447,19 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
         } break;
 
         case JK_FORMAT_ITEM_UNSIGNED: {
-            jk_unsigned_to_string(arena, item->unsigned_value);
+            jk_unsigned_to_string(arena, item->unsigned_value, item->param);
         } break;
 
         case JK_FORMAT_ITEM_HEX: {
-            jk_unsigned_to_hexadecimal_string(arena, item->unsigned_value, item->min_width);
+            jk_unsigned_to_hexadecimal_string(arena, item->unsigned_value, item->param);
         } break;
 
         case JK_FORMAT_ITEM_BINARY: {
-            jk_unsigned_to_binary_string(arena, item->unsigned_value, item->min_width);
+            jk_unsigned_to_binary_string(arena, item->unsigned_value, item->param);
+        } break;
+
+        case JK_FORMAT_ITEM_FLOAT: {
+            jk_f64_to_string(arena, item->float_value, item->param);
         } break;
 
         case JK_FORMAT_ITEM_TYPE_COUNT: {
@@ -410,6 +475,55 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Math begin -------------------------------------------------------------
+
+JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value)
+{
+    JkFloatUnpacked result;
+
+    uint64_t bits = *(uint64_t *)&value;
+
+    result.sign = (bits >> 63) & 1;
+    result.significand = bits & 0xfffffffffffffllu;
+
+    int32_t raw_exponent = (bits >> 52) & 0x7ff;
+    if (raw_exponent == 0x7ff) {
+        result.exponent = JK_FLOAT_EXPONENT_SPECIAL;
+    } else {
+        // Subtract the bit-width of the mantissa from the exponent in addition to the usual bias
+        // because we want to treat the significand as an unsigned integer instead of fixed-point
+        result.exponent = JK_MAX(1, raw_exponent) - 1023 - 52;
+        if (raw_exponent) {
+            result.significand |= 0x10000000000000llu;
+        }
+    }
+
+    return result;
+}
+
+JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f)
+{
+    uint64_t result = f.sign ? (1llu << 63) : 0;
+
+    if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
+        result |= (0x7ffllu << 52) | (f.significand & 0xfffffffffffffllu);
+    } else {
+        int8_t target_shift = jk_count_leading_zeros(f.significand) - 12 + 1;
+        int32_t new_exponent = JK_MAX(1 - 1023 - 52, f.exponent - target_shift);
+        if (1023 - 52 < new_exponent) { // Exceeded max exponent, return infinity
+            result |= 0x7f800000;
+        } else {
+            uint64_t shifted_significand =
+                    jk_signed_shift(f.significand, f.exponent - new_exponent);
+            result |= shifted_significand & 0xfffffffffffffllu;
+
+            if (shifted_significand & 0x10000000000000llu) {
+                result |= (uint64_t)((new_exponent + 1023 + 52) & 0x7ff) << 52;
+            }
+        }
+    }
+
+    return *(double *)&result;
+}
 
 JK_PUBLIC float jk_remainder_f32(float x, float y)
 {
@@ -973,6 +1087,15 @@ JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point)
     JkIntVector2 delta = jk_int_vector_2_sub(point, rect.position);
     return 0 <= delta.x && delta.x < rect.dimensions.x && 0 <= delta.y
             && delta.y < rect.dimensions.y;
+}
+
+JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int8_t amount)
+{
+    if (amount < 0) {
+        return amount <= -64 ? 0 : value >> -amount;
+    } else {
+        return 64 <= amount ? 0 : value << amount;
+    }
 }
 
 JK_PUBLIC b32 jk_is_power_of_two(uint64_t x)
