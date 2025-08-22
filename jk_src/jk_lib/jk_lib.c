@@ -902,11 +902,15 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
 
 // ---- Random generator end ---------------------------------------------------
 
-JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
+JK_NOINLINE JK_PUBLIC void jk_panic(void)
 {
     for (;;) {
-        // Panic
     }
+}
+
+JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
+{
+    jk_panic();
 }
 
 /**

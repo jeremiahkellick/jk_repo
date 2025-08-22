@@ -10,6 +10,14 @@ typedef uint32_t b32;
 #define JK_DEBUG_FAST 1
 #define JK_RELEASE 2
 
+#if defined(_WIN32)
+#define JK_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define JK_NOINLINE __attribute__((noinline))
+#else
+#define JK_NOINLINE
+#endif
+
 // ---- Buffer begin -----------------------------------------------------------
 
 typedef struct JkBuffer {
@@ -334,6 +342,8 @@ typedef struct JkIntRect {
     JkIntVector2 position;
     JkIntVector2 dimensions;
 } JkIntRect;
+
+JK_PUBLIC void jk_panic(void);
 
 JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 
