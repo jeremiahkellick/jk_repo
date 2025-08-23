@@ -251,7 +251,6 @@ typedef struct JkShapesLinearizer {
     float tolerance_squared;
     JkShapesPointListNode **current_node;
     JkShapesPointListNode *start_node;
-    b32 has_new_nodes;
 
     float t;
 } JkShapesLinearizer;
@@ -275,24 +274,16 @@ static void jk_shapes_linearizer_init(JkShapesLinearizer *l,
     l->start_node = *l->current_node;
     l->start_node->next = end_node;
     l->start_node->t = 0.0f;
-
-    l->has_new_nodes = 0;
 }
 
 static b32 jk_shapes_linearizer_running(JkShapesLinearizer *l)
 {
-    if (!(*l->current_node)->next) {
-        if (l->has_new_nodes) {
-            *l->current_node = l->start_node;
-            l->has_new_nodes = 0;
-        } else {
-            return 0;
-        }
+    if ((*l->current_node)->next) {
+        l->t = ((*l->current_node)->t + (*l->current_node)->next->t) / 2.0f;
+        return 1;
+    } else {
+        return 0;
     }
-
-    l->t = ((*l->current_node)->t + (*l->current_node)->next->t) / 2.0f;
-
-    return 1;
 }
 
 static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point)
@@ -300,9 +291,9 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point
     JkShapesPointListNode *next = (*l->current_node)->next;
     JkVector2 approx_point = jk_vector_2_lerp((*l->current_node)->point, next->point, 0.5f);
 
-    if (l->tolerance_squared < jk_vector_2_distance_squared(approx_point, point)) {
-        l->has_new_nodes = 1;
-
+    if (jk_vector_2_distance_squared(approx_point, point) <= l->tolerance_squared) {
+        *l->current_node = next;
+    } else {
         JkShapesPointListNode *new_node = jk_arena_push(l->arena, sizeof(*new_node));
         new_node->next = next;
         new_node->point = point;
@@ -311,8 +302,6 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point
 
         (*l->current_node)->next = new_node;
     }
-
-    *l->current_node = next;
 }
 
 static JkShapesEdgeArray jk_shapes_edges_get(JkArena *arena,

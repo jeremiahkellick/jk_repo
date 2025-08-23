@@ -1216,8 +1216,8 @@ b32 ai_running(Ai *ai)
         ai->response.move = move_unpack(ai->top_level_nodes[max_score_index].move);
 
 #if JK_BUILD_MODE != JK_RELEASE
-        // uint64_t time_elapsed = ai->time - ai->time_started;
-        // double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
+        uint64_t time_elapsed = ai->time - ai->time_started;
+        double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
         // Print min and max depth
         MoveTreeStats stats = {.min_depth = UINT64_MAX};
@@ -1230,16 +1230,14 @@ b32 ai_running(Ai *ai)
             *line_move = ancestor->move;
         }
 
-        /*
         double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
 
         // clang-format off
         DEBUG_PRINT_JKF(ai->arena, ai->debug_print,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
-                jkfn("seconds_elapsed: "), jkff(seconds_elapsed), jkf_nl,
-                jkff(mnps), jkfn("Mn/s"), jkf_nl);
+                jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
+                jkff(mnps, 4), jkfn("Mn/s"), jkf_nl);
         // clang-format on
-        */
 
         if (stats.max_depth < 300) {
             uint64_t max_score_depth = 0;
