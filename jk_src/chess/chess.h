@@ -266,6 +266,7 @@ typedef struct Chess {
     MoveArray moves;
     Result result;
     PieceType piece_prev_type;
+    uint64_t os_time_prev;
     uint64_t os_time_move_prev;
     int64_t os_time_player[TEAM_COUNT];
     uint64_t os_time_turn_start;

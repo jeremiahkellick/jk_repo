@@ -1646,7 +1646,7 @@ void update(ChessAssets *assets, Chess *chess)
             if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
                 chess->promo_square = dest;
             } else { // Make a move
-                chess->os_time_move_prev = chess->os_time;
+                chess->os_time_move_prev = chess->os_time_prev;
                 chess->piece_prev_type = board_piece_get_index(chess->board, move.dest).type;
 
                 if (chess->turn_index) {
@@ -1715,6 +1715,7 @@ void update(ChessAssets *assets, Chess *chess)
                     && chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI);
     chess->time++;
     chess->input_prev = chess->input;
+    chess->os_time_prev = chess->os_time;
 }
 
 static JkColor color_background = {
@@ -2639,10 +2640,19 @@ void render(ChessAssets *assets, Chess *chess)
         float prev_distance = speed * prev_ms_since_last_move
                 - deceleration * (prev_ms_since_last_move * prev_ms_since_last_move);
 
+        JkRandomGeneratorU64 generator = jk_random_generator_new_u64(0x516950f73ccfff53);
+
         int32_t skip = 1 + (chess->square_side_length * 2 / 100);
         for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y += skip) {
             for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x += skip) {
-                JkVector2 offset = {(float)pos.x / pixels_per_unit, (float)pos.y / pixels_per_unit};
+                uint64_t rand64 = jk_random_u64(&generator);
+                JkIntVector2 rand_offset_i = {
+                    (int32_t)(rand64 % 256) - 128, (uint32_t)((rand64 >> 32) % 256) - 128};
+                JkVector2 rand_offset =
+                        jk_vector_2_mul(1.0f / 128.0f, jk_vector_2_from_int(rand_offset_i));
+
+                JkVector2 offset = jk_vector_2_mul(1.0f / pixels_per_unit,
+                        jk_vector_2_add(jk_vector_2_from_int(pos), rand_offset));
                 JkVector2 pixel_pos = jk_vector_2_add(canvas_pos, offset);
                 JkVector2 direction =
                         jk_vector_2_normalized(jk_vector_2_sub(pixel_pos, blast_center));
