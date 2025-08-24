@@ -241,6 +241,21 @@ typedef struct AudioState {
     uint64_t started_time;
 } AudioState;
 
+typedef struct RenderState {
+    int32_t square_side_length;
+    b32 holding_piece;
+    Board board;
+    Team perspective;
+    JkIntVector2 mouse_pos;
+    uint8_t selected_index;
+    JkIntVector2 promo_square;
+    Result result;
+    int64_t time_player_seconds[2];
+    Screen screen;
+    Settings settings;
+    uint64_t animation_time;
+} RenderState;
+
 typedef struct Chess {
     // Platform read-write, game read-only
     Input input;
@@ -275,6 +290,7 @@ typedef struct Chess {
     Settings settings;
     AudioState audio_state;
     JkRandomGeneratorU64 generator;
+    RenderState render_state_prev;
 } Chess;
 
 typedef void AiInitFunction(JkArena *arena,

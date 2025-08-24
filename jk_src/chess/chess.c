@@ -84,6 +84,8 @@ static Chess debug_chess;
 
 static uint8_t debug_render_memory[2 * JK_MEGABYTE];
 
+static uint8_t debug_misc_memory[16 * JK_KILOBYTE];
+
 static ChessAssets *debug_assets;
 
 static JkColor debug_draw_buffer[DRAW_BUFFER_SIZE];
@@ -1055,12 +1057,12 @@ typedef struct MoveTreeStats {
     MovePacked *max_line;
 } MoveTreeStats;
 
-void move_tree_stats_calculate(JkArena *arena, MoveTreeStats *stats, MoveNode *node, uint64_t depth)
+void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t depth)
 {
     stats->node_count++;
     if (node->first_child) {
         for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-            move_tree_stats_calculate(arena, stats, child, depth + 1);
+            move_tree_stats_calculate(stats, child, depth + 1);
         }
     } else if (!node->expanded) {
         stats->leaf_count++;
@@ -1216,24 +1218,28 @@ b32 ai_running(Ai *ai)
         ai->response.move = move_unpack(ai->top_level_nodes[max_score_index].move);
 
 #if JK_BUILD_MODE != JK_RELEASE
+        JkArenaRoot debug_arena_root;
+        JkArena debug_arena = jk_arena_fixed_init(&debug_arena_root,
+                (JkBuffer){.size = sizeof(debug_misc_memory), .data = debug_misc_memory});
+
         uint64_t time_elapsed = ai->time - ai->time_started;
         double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
         // Print min and max depth
         MoveTreeStats stats = {.min_depth = UINT64_MAX};
         for (int32_t i = 0; i < ai->top_level_node_count; i++) {
-            move_tree_stats_calculate(ai->arena, &stats, ai->top_level_nodes + i, 1);
+            move_tree_stats_calculate(&stats, ai->top_level_nodes + i, 1);
         }
-        stats.max_line = jk_arena_pointer_current(ai->arena);
+        stats.max_line = jk_arena_pointer_current(&debug_arena);
         for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
-            MovePacked *line_move = jk_arena_push(ai->arena, sizeof(*line_move));
+            MovePacked *line_move = jk_arena_push(&debug_arena, sizeof(*line_move));
             *line_move = ancestor->move;
         }
 
         double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
 
         // clang-format off
-        DEBUG_PRINT_JKF(ai->arena, ai->debug_print,
+        DEBUG_PRINT_JKF(&debug_arena, ai->debug_print,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
                 jkff(mnps, 4), jkfn("Mn/s"), jkf_nl);
@@ -1264,7 +1270,7 @@ b32 ai_running(Ai *ai)
             }
 
             // clang-format off
-            DEBUG_PRINT_JKF(ai->arena, ai->debug_print,
+            DEBUG_PRINT_JKF(&debug_arena, ai->debug_print,
                     jkfn("node_count\t"), jkfu(stats.node_count), jkf_nl,
                     jkfn("leaf_count\t"), jkfu(stats.leaf_count), jkf_nl,
                     jkfn("min_depth\t"), jkfu(stats.min_depth), jkf_nl,
@@ -1277,7 +1283,7 @@ b32 ai_running(Ai *ai)
             for (uint64_t i = 0; i < stats.max_depth; i++) {
                 uint16_t move_bits = stats.max_line[i].bits;
                 DEBUG_PRINT_JKF(
-                        ai->arena, ai->debug_print, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
+                        &debug_arena, ai->debug_print, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
             }
 
             {
@@ -1292,7 +1298,7 @@ b32 ai_running(Ai *ai)
                 Board board = ai->response.board;
                 for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
                     board = board_move_perform(board, stats.max_line[i]);
-                    DEBUG_PRINT_JKF(ai->arena,
+                    DEBUG_PRINT_JKF(&debug_arena,
                             ai->debug_print,
                             jkfn("score: "),
                             jkfi(board_score(board, stats.max_depth - 1 - i)),
@@ -1449,6 +1455,7 @@ void update(ChessAssets *assets, Chess *chess)
         debug_chess.render_memory.size = sizeof(debug_render_memory);
         debug_chess.render_memory.data = debug_render_memory;
         debug_chess.os_timer_frequency = 1;
+        debug_chess.debug_print = chess->debug_print;
     }
 
     if (input_button_pressed(chess, INPUT_RESET)) {
@@ -2026,37 +2033,85 @@ static void draw_radio_buttons(ChessAssets *assets,
 
 void render(ChessAssets *assets, Chess *chess)
 {
+    RenderState state = {
+        .square_side_length = chess->square_side_length,
+        .holding_piece = JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE),
+        .board = chess->board,
+        .perspective = chess->perspective,
+        .mouse_pos = chess->input.mouse_pos,
+        .selected_index = board_index_get_unbounded(chess->selected_square),
+        .promo_square = chess->promo_square,
+        .result = chess->result,
+        .screen = chess->screen,
+        .settings = chess->settings,
+        .animation_time = 0,
+    };
+
+    // If the mouse position is far enough off-screen such that we know it cannot affect anything,
+    // set it to a consistent value so irrelevant mouse movements won't trigger a re-render
+    if (state.mouse_pos.x < -state.square_side_length
+            || state.square_side_length * 11 < state.mouse_pos.x
+            || state.mouse_pos.y < -state.square_side_length
+            || state.square_side_length * 11 < state.mouse_pos.y) {
+        state.mouse_pos.x = -128;
+        state.mouse_pos.y = -128;
+    }
+
+    Team team = board_current_team_get(state.board);
+
+    for (Team i = 0; i < TEAM_COUNT; i++) {
+        int64_t time = chess->os_time_player[i];
+        if (i == team && state.result == RESULT_NONE && chess->turn_index) {
+            time -= (int64_t)(chess->os_time - chess->os_time_turn_start);
+        }
+        state.time_player_seconds[i] =
+                (time + chess->os_timer_frequency - 1) / chess->os_timer_frequency;
+    }
+
+    if (chess->piece_prev_type) {
+        int64_t ms_since_last_move =
+                (chess->os_time - chess->os_time_move_prev) * 1000 / chess->os_timer_frequency;
+        if (ms_since_last_move < 720) {
+            state.animation_time = ms_since_last_move;
+        }
+    }
+
+    // If the render state is the same as last frame, skip rendering
+    if (jk_buffer_compare((JkBuffer){.size = sizeof(state), .data = (uint8_t *)&state},
+                (JkBuffer){.size = sizeof(chess->render_state_prev),
+                    .data = (uint8_t *)&chess->render_state_prev})
+            == 0) {
+        return;
+    }
+    chess->render_state_prev = state;
+
     JkIntVector2 pos;
 
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
 
+    /*
+    static uint64_t render_count;
+    DEBUG_PRINT_JKF(
+            &arena, chess->debug_print, jkfn("render_count "), jkfu(++render_count), jkf_nl);
+    */
+
     // Figure out which squares should be highlighted
-    Team team = board_current_team_get(chess->board);
-    uint8_t selected_index = board_index_get_unbounded(chess->selected_square);
-    uint64_t destinations = destinations_get_by_src(chess, selected_index);
-    JkIntVector2 mouse_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
-    uint8_t mouse_index = board_index_get_unbounded(mouse_pos);
-    JkColor drop_indicator_color =
-            mouse_pos.x % 2 == mouse_pos.y % 2 ? color_light_squares : color_dark_squares;
-    int32_t drop_indicator_width = JK_MAX(1, chess->square_side_length / 18);
-    b32 promoting = board_in_bounds(chess->promo_square);
-    b32 holding_piece = JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE) && selected_index < 64;
+    uint64_t destinations = destinations_get_by_src(chess, state.selected_index);
+    JkIntVector2 mouse_board_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
+    uint8_t mouse_index = board_index_get_unbounded(mouse_board_pos);
+    JkColor drop_indicator_color = mouse_board_pos.x % 2 == mouse_board_pos.y % 2
+            ? color_light_squares
+            : color_dark_squares;
+    int32_t drop_indicator_width = JK_MAX(1, state.square_side_length / 18);
+    b32 promoting = board_in_bounds(state.promo_square);
+    b32 holding_piece = state.holding_piece && state.selected_index < 64;
     b32 ready_to_drop = holding_piece && mouse_index < 64 && ((destinations >> mouse_index) & 1);
 
-    int64_t time_player_seconds[TEAM_COUNT];
-    for (Team i = 0; i < TEAM_COUNT; i++) {
-        int64_t time = chess->os_time_player[i];
-        if (i == team && chess->result == RESULT_NONE && chess->turn_index) {
-            time -= (int64_t)(chess->os_time - chess->os_time_turn_start);
-        }
-        time_player_seconds[i] = (time + chess->os_timer_frequency - 1) / chess->os_timer_frequency;
-    }
-
     // uint64_t threatened = board_threatened_squares_get(
-    //         chess->board, !((chess->board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1));
+    //         state.board, !((state.board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1));
 
-    Move move_prev = move_unpack(chess->board.move_prev);
+    Move move_prev = move_unpack(state.board.move_prev);
 
     JkIntVector2 result_origin = {2, 3};
     JkIntVector2 result_dimensions = {4, 2};
@@ -2067,7 +2122,7 @@ void render(ChessAssets *assets, Chess *chess)
     captured_pieces[1] = piece_counts;
     for (pos.y = 0; pos.y < 8; pos.y++) {
         for (pos.x = 0; pos.x < 8; pos.x++) {
-            Piece piece = board_piece_get(chess->board, pos);
+            Piece piece = board_piece_get(state.board, pos);
             captured_pieces[piece.team].a[piece.type]--;
         }
     }
@@ -2077,7 +2132,7 @@ void render(ChessAssets *assets, Chess *chess)
     JkShapeArray shapes =
             (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
     float square_size = 64.0f;
-    float pixels_per_unit = (float)chess->square_side_length / square_size;
+    float pixels_per_unit = (float)state.square_side_length / square_size;
     jk_shapes_renderer_init(&renderer, pixels_per_unit, assets, shapes, &arena);
 
     JkColor square_colors[10][10];
@@ -2085,32 +2140,32 @@ void render(ChessAssets *assets, Chess *chess)
     JkColor color_faded = color_light_squares;
     color_faded.a = 185;
 
-    switch (chess->screen) {
+    switch (state.screen) {
     case SCREEN_GAME: {
         // Draw pieces on board and compute square colors
         for (pos.y = 0; pos.y < 10; pos.y++) {
             for (pos.x = 0; pos.x < 10; pos.x++) {
                 JkIntVector2 board_pos = apply_perspective(
-                        chess->perspective, jk_int_vector_2_add(pos, (JkIntVector2){-1, -1}));
+                        state.perspective, jk_int_vector_2_add(pos, (JkIntVector2){-1, -1}));
                 int32_t index = board_index_get_unbounded(board_pos);
                 if (index < 64) {
-                    Piece piece = board_piece_get(chess->board, board_pos);
+                    Piece piece = board_piece_get(state.board, board_pos);
                     int32_t dist_from_promo_square =
-                            absolute_value(board_pos.y - chess->promo_square.y);
+                            absolute_value(board_pos.y - state.promo_square.y);
                     JkColor square_color = board_pos.x % 2 == board_pos.y % 2 ? color_dark_squares
                                                                               : color_light_squares;
 
-                    if (chess->result && result_origin.x <= board_pos.x
+                    if (state.result && result_origin.x <= board_pos.x
                             && board_pos.x < result_extent.x && result_origin.y <= board_pos.y
                             && board_pos.y < result_extent.y) {
                         square_color = color_background;
                     } else {
-                        if (promoting && board_pos.x == chess->promo_square.x
+                        if (promoting && board_pos.x == state.promo_square.x
                                 && dist_from_promo_square < (int32_t)JK_ARRAY_COUNT(promo_order)) {
                             square_color = color_background;
                             piece.team = team;
                             piece.type = promo_order[dist_from_promo_square];
-                        } else if (index == selected_index) {
+                        } else if (index == state.selected_index) {
                             square_color = blend(color_selection, square_color);
                         } else if (destinations & (1llu << index)) {
                             square_color = blend(color_selection, square_color);
@@ -2120,14 +2175,14 @@ void render(ChessAssets *assets, Chess *chess)
                         }
 
                         JkColor piece_color = color_teams[piece.team];
-                        if (board_index_get(board_pos) == selected_index
-                                && JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE)) {
+                        if (board_index_get(board_pos) == state.selected_index
+                                && state.holding_piece) {
                             piece_color.a /= 2;
                         }
 
                         jk_shapes_draw(&renderer,
                                 piece.type,
-                                board_to_canvas_pos(chess->perspective, square_size, board_pos),
+                                board_to_canvas_pos(state.perspective, square_size, board_pos),
                                 1.0f,
                                 piece_color);
                     }
@@ -2142,7 +2197,7 @@ void render(ChessAssets *assets, Chess *chess)
         // Draw horizontal square coordinates
         float coords_scale = 0.0192f;
         for (int32_t x = 0; x < 8; x++) {
-            uint32_t shape_id = 'a' + apply_perspective(chess->perspective, (JkIntVector2){x, 0}).x
+            uint32_t shape_id = 'a' + apply_perspective(state.perspective, (JkIntVector2){x, 0}).x
                     + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             float width = coords_scale * shape->dimensions.x;
@@ -2165,7 +2220,7 @@ void render(ChessAssets *assets, Chess *chess)
 
         // Draw vertical square coordinates
         for (int32_t y = 0; y < 8; y++) {
-            uint32_t shape_id = '1' + apply_perspective(chess->perspective, (JkIntVector2){0, y}).y
+            uint32_t shape_id = '1' + apply_perspective(state.perspective, (JkIntVector2){0, y}).y
                     + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             JkVector2 dimensions = jk_vector_2_mul(coords_scale, shape->dimensions);
@@ -2191,8 +2246,8 @@ void render(ChessAssets *assets, Chess *chess)
         float timer_scale = 0.025f;
         float bar_padding = 5.0f;
         float y_value[TEAM_COUNT];
-        y_value[!chess->perspective] = bar_padding;
-        y_value[chess->perspective] = 640.0f - 32.0f - bar_padding;
+        y_value[!state.perspective] = bar_padding;
+        y_value[state.perspective] = 640.0f - 32.0f - bar_padding;
         float bar_text_y[TEAM_COUNT];
         for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
             JkShape *zero_shape = assets->shapes + ('0' + CHARACTER_SHAPE_OFFSET);
@@ -2203,7 +2258,7 @@ void render(ChessAssets *assets, Chess *chess)
         {
             for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
                 // Draw timer
-                uint64_t remaining = time_player_seconds[team_index];
+                uint64_t remaining = state.time_player_seconds[team_index];
                 uint8_t digits[5];
                 digits[4] = remaining % 10; // seconds
                 remaining /= 10;
@@ -2276,7 +2331,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkVector2 top_left = {.x = 64.0f * 9.0f - dimensions.x};
             JkVector2 cursor = {
                 top_left.x + BUTTON_PADDING + RECT_THICKNESS + layout.offset.x,
-                bar_text_y[!chess->perspective],
+                bar_text_y[!state.perspective],
             };
             top_left.y = cursor.y - layout.offset.y - (BUTTON_PADDING + RECT_THICKNESS);
 
@@ -2284,8 +2339,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor outline_color;
             chess->buttons[BUTTON_MENU_OPEN].rect =
                     jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
-            if (jk_int_rect_point_test(
-                        chess->buttons[BUTTON_MENU_OPEN].rect, chess->input.mouse_pos)) {
+            if (jk_int_rect_point_test(chess->buttons[BUTTON_MENU_OPEN].rect, state.mouse_pos)) {
                 text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
             } else {
@@ -2301,12 +2355,12 @@ void render(ChessAssets *assets, Chess *chess)
         }
 
         // If the game is over, display the result
-        if (chess->result) {
+        if (state.result) {
             float result_scale = 0.05f;
             JkVector2 result_origin_f = {192.0f, 256.0f};
             JkVector2 result_dimensions_f = {256.0f, 128.0f};
 
-            if (chess->result == RESULT_STALEMATE) {
+            if (state.result == RESULT_STALEMATE) {
                 JkBuffer text = JKS("Stalemate");
 
                 TextLayout layout = text_layout_get(assets, text, result_scale);
@@ -2319,7 +2373,7 @@ void render(ChessAssets *assets, Chess *chess)
             } else {
                 JkBuffer victor = team ? JKS("White won") : JKS("Black won");
                 JkBuffer condition =
-                        chess->result == RESULT_CHECKMATE ? JKS("by checkmate") : JKS("on time");
+                        state.result == RESULT_CHECKMATE ? JKS("by checkmate") : JKS("on time");
                 float condition_scale = 0.03f;
                 float padding = 8.0f;
 
@@ -2384,8 +2438,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor outline_color;
             chess->buttons[BUTTON_MENU_CLOSE].rect =
                     jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
-            if (jk_int_rect_point_test(
-                        chess->buttons[BUTTON_MENU_CLOSE].rect, chess->input.mouse_pos)) {
+            if (jk_int_rect_point_test(chess->buttons[BUTTON_MENU_CLOSE].rect, state.mouse_pos)) {
                 text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
             } else {
@@ -2433,7 +2486,7 @@ void render(ChessAssets *assets, Chess *chess)
                 &renderer,
                 &top_left,
                 TEAM_CHOICE_COUNT,
-                chess->settings.team_choice,
+                state.settings.team_choice,
                 team_choice_strings,
                 BUTTON_WHITE);
 
@@ -2454,7 +2507,7 @@ void render(ChessAssets *assets, Chess *chess)
                 &renderer,
                 &top_left,
                 PLAYER_TYPE_COUNT,
-                chess->settings.opponent_type,
+                state.settings.opponent_type,
                 opponent_type_strings,
                 BUTTON_YOU);
 
@@ -2475,7 +2528,7 @@ void render(ChessAssets *assets, Chess *chess)
                 &renderer,
                 &top_left,
                 TIMER_COUNT,
-                chess->settings.timer,
+                state.settings.timer,
                 timer_strings,
                 BUTTON_1_MIN);
 
@@ -2499,8 +2552,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor outline_color;
             chess->buttons[BUTTON_START_GAME].rect =
                     jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
-            if (jk_int_rect_point_test(
-                        chess->buttons[BUTTON_START_GAME].rect, chess->input.mouse_pos)) {
+            if (jk_int_rect_point_test(chess->buttons[BUTTON_START_GAME].rect, state.mouse_pos)) {
                 text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
             } else {
@@ -2519,7 +2571,7 @@ void render(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        chess->debug_print("Invalid chess->screen value\n");
+        chess->debug_print("Invalid screen value\n");
     } break;
     }
 
@@ -2529,9 +2581,8 @@ void render(ChessAssets *assets, Chess *chess)
     uint64_t ce = 0;
     JkIntVector2 pos_in_square;
     JkIntVector2 square_pos;
-    JkIntVector2 mouse_square_pos =
-            jk_int_vector_2_div(chess->square_side_length, chess->input.mouse_pos);
-    for (pos.y = 0, pos_in_square.y = 0, square_pos.y = 0; pos.y < chess->square_side_length * 10;
+    JkIntVector2 mouse_square_pos = jk_int_vector_2_div(state.square_side_length, state.mouse_pos);
+    for (pos.y = 0, pos_in_square.y = 0, square_pos.y = 0; pos.y < state.square_side_length * 10;
             pos.y++) {
         while (ce < draw_commands.count && draw_commands.items[ce].position.y <= pos.y) {
             ce++;
@@ -2543,18 +2594,18 @@ void render(ChessAssets *assets, Chess *chess)
         }
 
         for (pos.x = 0, pos_in_square.x = 0, square_pos.x = 0;
-                pos.x < chess->square_side_length * 10;
+                pos.x < state.square_side_length * 10;
                 pos.x++) {
             JkColor color = square_colors[square_pos.y][square_pos.x];
 
             // Shows a gap in the selection to indicate which square the held piece will drop on
             if (jk_int_vector_2_equal(square_pos, mouse_square_pos) && ready_to_drop) {
-                int32_t x_dist_from_edge = pos_in_square.x < chess->square_side_length / 2
+                int32_t x_dist_from_edge = pos_in_square.x < state.square_side_length / 2
                         ? pos_in_square.x
-                        : chess->square_side_length - 1 - pos_in_square.x;
-                int32_t y_dist_from_edge = pos_in_square.y < chess->square_side_length / 2
+                        : state.square_side_length - 1 - pos_in_square.x;
+                int32_t y_dist_from_edge = pos_in_square.y < state.square_side_length / 2
                         ? pos_in_square.y
-                        : chess->square_side_length - 1 - pos_in_square.y;
+                        : state.square_side_length - 1 - pos_in_square.y;
                 if ((drop_indicator_width <= x_dist_from_edge
                             && drop_indicator_width <= y_dist_from_edge)
                         && (x_dist_from_edge < 2 * drop_indicator_width
@@ -2585,28 +2636,28 @@ void render(ChessAssets *assets, Chess *chess)
             color.a = 255;
             chess->draw_buffer[pos.y * DRAW_BUFFER_SIDE_LENGTH + pos.x] = color;
 
-            if (++pos_in_square.x >= chess->square_side_length) {
+            if (++pos_in_square.x >= state.square_side_length) {
                 pos_in_square.x = 0;
                 square_pos.x++;
             }
         }
 
-        if (++pos_in_square.y >= chess->square_side_length) {
+        if (++pos_in_square.y >= state.square_side_length) {
             pos_in_square.y = 0;
             square_pos.y++;
         }
     }
 
     if (holding_piece) {
-        Piece piece = board_piece_get_index(chess->board, selected_index);
+        Piece piece = board_piece_get_index(state.board, state.selected_index);
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, piece.type, 1.0f);
         if (bitmap.data) {
-            JkIntVector2 held_piece_offset = jk_int_vector_2_sub(chess->input.mouse_pos,
-                    (JkIntVector2){chess->square_side_length / 2, chess->square_side_length / 2});
+            JkIntVector2 held_piece_offset = jk_int_vector_2_sub(state.mouse_pos,
+                    (JkIntVector2){state.square_side_length / 2, state.square_side_length / 2});
             for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y++) {
                 for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x++) {
                     JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
-                    if (screen_in_bounds(chess->square_side_length, screen_pos)) {
+                    if (screen_in_bounds(state.square_side_length, screen_pos)) {
                         int32_t index = screen_pos.y * DRAW_BUFFER_SIDE_LENGTH + screen_pos.x;
                         JkColor color_piece = color_teams[piece.team];
                         JkColor color_bg = chess->draw_buffer[index];
@@ -2618,15 +2669,13 @@ void render(ChessAssets *assets, Chess *chess)
         }
     }
 
-    int64_t ms_since_last_move =
-            (chess->os_time - chess->os_time_move_prev) * 1000 / chess->os_timer_frequency;
-    if (ms_since_last_move < 720 && chess->piece_prev_type) {
+    if (state.animation_time) {
         JkColor piece_color = color_teams[team];
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
         JkIntVector2 src = board_index_to_vector_2(move_prev.src);
         JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
-        JkVector2 src_pos = board_to_canvas_pos(chess->perspective, square_size, src);
-        JkVector2 canvas_pos = board_to_canvas_pos(chess->perspective, square_size, dest);
+        JkVector2 src_pos = board_to_canvas_pos(state.perspective, square_size, src);
+        JkVector2 canvas_pos = board_to_canvas_pos(state.perspective, square_size, dest);
         JkVector2 origin_direction = jk_vector_2_normalized(jk_vector_2_sub(src_pos, canvas_pos));
         JkVector2 blast_center =
                 jk_vector_2_add(jk_vector_2_add(canvas_pos, (JkVector2){32.0f, 32.0f}),
@@ -2634,15 +2683,15 @@ void render(ChessAssets *assets, Chess *chess)
 
         float speed = 1.8f;
         float deceleration = 0.001152f;
-        float distance = speed * ms_since_last_move
-                - deceleration * (ms_since_last_move * ms_since_last_move);
-        int64_t prev_ms_since_last_move = JK_MAX(0, ms_since_last_move - 34);
-        float prev_distance = speed * prev_ms_since_last_move
-                - deceleration * (prev_ms_since_last_move * prev_ms_since_last_move);
+        float distance = speed * state.animation_time
+                - deceleration * (state.animation_time * state.animation_time);
+        int64_t prev_animation_time = JK_MAX(0, state.animation_time - 34);
+        float prev_distance = speed * prev_animation_time
+                - deceleration * (prev_animation_time * prev_animation_time);
 
         JkRandomGeneratorU64 generator = jk_random_generator_new_u64(0x516950f73ccfff53);
 
-        int32_t skip = 1 + (chess->square_side_length * 2 / 100);
+        int32_t skip = 1 + (state.square_side_length * 2 / 100);
         for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y += skip) {
             for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x += skip) {
                 uint64_t rand64 = jk_random_u64(&generator);
