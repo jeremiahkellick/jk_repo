@@ -51,17 +51,22 @@ typedef struct Shared {
     _Alignas(64) SRWLOCK ai_response_lock;
 
     _Alignas(64) CONDITION_VARIABLE wants_ai_move;
+
+    _Alignas(64) SRWLOCK debug_print_lock;
 } Shared;
 
 static Shared g_shared = {
     .ai_request_lock = SRWLOCK_INIT,
     .ai_response_lock = SRWLOCK_INIT,
+    .debug_print_lock = SRWLOCK_INIT,
 };
 
 static JkIntVector2 g_window_dimensions;
 static Chess g_chess = {0};
 static ChessAssets *g_assets;
 static JkBuffer g_ai_memory;
+static JkPlatformArenaVirtualRoot g_storage_root;
+static JkArena g_storage;
 
 static b32 g_running;
 static int64_t g_keys_down;
@@ -268,9 +273,12 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return result;
 }
 
-static void debug_print(char *string)
+static void debug_print(JkBuffer string)
 {
-    OutputDebugStringA(string);
+    AcquireSRWLockExclusive(&g_shared.debug_print_lock);
+    JkArena tmp_arena = jk_arena_child_get(&g_storage);
+    OutputDebugStringA(jk_buffer_to_null_terminated(&tmp_arena, string));
+    ReleaseSRWLockExclusive(&g_shared.debug_print_lock);
 }
 
 typedef enum RecordState {
@@ -408,6 +416,10 @@ DWORD game_thread(LPVOID param)
                     g_update = (UpdateFunction *)GetProcAddress(chess_library, "update");
                     g_audio = (AudioFunction *)GetProcAddress(chess_library, "audio");
                     g_render = (RenderFunction *)GetProcAddress(chess_library, "render");
+
+                    PrintSetFunction *dll_print_set =
+                            (PrintSetFunction *)GetProcAddress(chess_library, "print_set");
+                    dll_print_set(debug_print);
                 } else {
                     OutputDebugStringA("Failed to load chess_tmp.dll\n");
                 }
@@ -688,12 +700,7 @@ DWORD ai_thread(LPVOID param)
         JkArena arena = jk_arena_fixed_init(&arena_root, g_ai_memory);
 
         Ai ai;
-        g_ai_init(&arena,
-                &ai,
-                board,
-                jk_platform_os_timer_get(),
-                jk_platform_os_timer_frequency(),
-                debug_print);
+        g_ai_init(&arena, &ai, board, jk_platform_os_timer_get(), jk_platform_os_timer_frequency());
 
         while (g_ai_running(&ai)) {
             AcquireSRWLockShared(&g_shared.ai_request_lock);
@@ -748,15 +755,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     g_ai_memory.data = memory;
 
     g_chess.os_timer_frequency = jk_platform_os_timer_frequency();
-    g_chess.debug_print = debug_print;
 
 #if JK_BUILD_MODE == JK_RELEASE
     g_assets = (ChessAssets *)chess_assets_byte_array;
 #else
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, JK_GIGABYTE);
-    if (jk_arena_valid(&storage)) {
-        g_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
+    g_storage = jk_platform_arena_virtual_init(&g_storage_root, JK_GIGABYTE);
+    if (jk_arena_valid(&g_storage)) {
+        g_assets = (ChessAssets *)jk_platform_file_read_full(&g_storage, "chess_assets").data;
     } else {
         OutputDebugStringA("Failed to initialize storage arena\n");
     }

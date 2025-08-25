@@ -4,7 +4,18 @@ class ChessAudioWorklet extends AudioWorkletProcessor {
         this.wasm_exports = null;
         this.audio_buffer = null;
         this.port.onmessage = async (event) => {
-            this.wasm_exports = (await WebAssembly.instantiate(event.data)).instance.exports;
+            const imports = {
+                env: {
+                    console_log: (size, data) => {
+                        // 'AudioWorkletProcessor's don't have access to TextDecoder, so to print
+                        // messages from wasm, we'd have to use do postMessage or something.
+                        // However, since I don't currently (and haven't ever?) print anything from
+                        // the audio function, I'll just let this be an empty stub.
+                    }
+                }
+            };
+            this.wasm_exports =
+                (await WebAssembly.instantiate(event.data, imports)).instance.exports;
             if (this.wasm_exports) {
                 const audio_buffer_offset = this.wasm_exports.init_audio();
                 if (audio_buffer_offset) {

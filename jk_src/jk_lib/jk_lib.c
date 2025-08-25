@@ -472,6 +472,17 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
     return result;
 }
 
+static void jk_print_stub(JkBuffer string) {}
+
+JK_PUBLIC void (*jk_print)(JkBuffer string) = jk_print_stub;
+
+JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items)
+{
+    JkArena tmp_arena = jk_arena_child_get(arena);
+    JkBuffer string = jk_format(&tmp_arena, items);
+    jk_print(string);
+}
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Math begin -------------------------------------------------------------

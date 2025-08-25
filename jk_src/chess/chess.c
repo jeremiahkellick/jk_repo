@@ -1,7 +1,7 @@
 // clang-format off
 
 // #jk_build library
-// #jk_build export update audio board_equal render ai_init ai_running
+// #jk_build export update audio board_equal render ai_init ai_running print_set
 
 // #jk_build single_translation_unit
 
@@ -71,13 +71,6 @@ static void debug_print_jkf(JkArena *arena, void (*debug_print)(char *), JkForma
     debug_print(jk_buffer_to_null_terminated(&tmp_arena, string));
 }
 
-#define DEBUG_PRINT_JKF(arena, debug_print, ...)                                       \
-    debug_print_jkf(arena,                                                             \
-            debug_print,                                                               \
-            (JkFormatItemArray){                                                       \
-                .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
-                .items = (JkFormatItem[]){__VA_ARGS__}})
-
 #if JK_BUILD_MODE != JK_RELEASE
 
 static Chess debug_chess;
@@ -92,9 +85,11 @@ static JkColor debug_draw_buffer[DRAW_BUFFER_SIZE];
 
 static void debug_render(Board board)
 {
+#ifndef __wasm__
     debug_chess.board = board;
 
     render(debug_assets, &debug_chess);
+#endif
 }
 
 #endif
@@ -1085,12 +1080,7 @@ void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t de
 
 #endif
 
-void ai_init(JkArena *arena,
-        Ai *ai,
-        Board board,
-        uint64_t time,
-        uint64_t time_frequency,
-        void (*debug_print)(char *))
+void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_frequency)
 {
     ai->arena = arena;
     ai->response.board = (Board){0};
@@ -1102,7 +1092,6 @@ void ai_init(JkArena *arena,
     ai->time_frequency = time_frequency;
     ai->time_started = time;
     ai->time_limit = 5 * time_frequency;
-    ai->debug_print = debug_print;
 
     MoveArray moves;
     moves_get(&moves, ai->response.board);
@@ -1196,7 +1185,7 @@ b32 ai_running(Ai *ai)
         }
 
         if (!expand_node(ai, node)) {
-            ai->debug_print("Out of AI memory\n");
+            jk_print(JKS("Out of AI memory\n"));
             running = 0;
         }
     }
@@ -1239,7 +1228,7 @@ b32 ai_running(Ai *ai)
         double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
 
         // clang-format off
-        DEBUG_PRINT_JKF(&debug_arena, ai->debug_print,
+        JK_PRINT_FMT(&debug_arena,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
                 jkff(mnps, 4), jkfn("Mn/s"), jkf_nl);
@@ -1270,7 +1259,7 @@ b32 ai_running(Ai *ai)
             }
 
             // clang-format off
-            DEBUG_PRINT_JKF(&debug_arena, ai->debug_print,
+            JK_PRINT_FMT(&debug_arena,
                     jkfn("node_count\t"), jkfu(stats.node_count), jkf_nl,
                     jkfn("leaf_count\t"), jkfu(stats.leaf_count), jkf_nl,
                     jkfn("min_depth\t"), jkfu(stats.min_depth), jkf_nl,
@@ -1279,11 +1268,10 @@ b32 ai_running(Ai *ai)
                     jkfn("max_score_depth\t"), jkfu(max_score_depth), jkf_nl);
             // clang-format on
 
-            ai->debug_print("max_line:\n");
+            jk_print(JKS("max_line:\n"));
             for (uint64_t i = 0; i < stats.max_depth; i++) {
                 uint16_t move_bits = stats.max_line[i].bits;
-                DEBUG_PRINT_JKF(
-                        &debug_arena, ai->debug_print, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
+                JK_PRINT_FMT(&debug_arena, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
             }
 
             {
@@ -1298,8 +1286,7 @@ b32 ai_running(Ai *ai)
                 Board board = ai->response.board;
                 for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
                     board = board_move_perform(board, stats.max_line[i]);
-                    DEBUG_PRINT_JKF(&debug_arena,
-                            ai->debug_print,
+                    JK_PRINT_FMT(&debug_arena,
                             jkfn("score: "),
                             jkfi(board_score(board, stats.max_depth - 1 - i)),
                             jkf_nl);
@@ -1455,7 +1442,6 @@ void update(ChessAssets *assets, Chess *chess)
         debug_chess.render_memory.size = sizeof(debug_render_memory);
         debug_chess.render_memory.data = debug_render_memory;
         debug_chess.os_timer_frequency = 1;
-        debug_chess.debug_print = chess->debug_print;
     }
 
     if (input_button_pressed(chess, INPUT_RESET)) {
@@ -1511,7 +1497,7 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        chess->debug_print("Invalid chess->screen value\n");
+        jk_print(JKS("Invalid chess->screen value\n"));
     } break;
     }
 
@@ -1711,7 +1697,7 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        chess->debug_print("Invalid chess->screen value\n");
+        jk_print(JKS("Invalid chess->screen value\n"));
     } break;
     }
 
@@ -2092,8 +2078,7 @@ void render(ChessAssets *assets, Chess *chess)
 
     /*
     static uint64_t render_count;
-    DEBUG_PRINT_JKF(
-            &arena, chess->debug_print, jkfn("render_count "), jkfu(++render_count), jkf_nl);
+    JK_PRINT_FMT(&arena, jkfn("render_count "), jkfu(++render_count), jkf_nl);
     */
 
     // Figure out which squares should be highlighted
@@ -2571,7 +2556,7 @@ void render(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        chess->debug_print("Invalid screen value\n");
+        jk_print(JKS("Invalid screen value\n"));
     } break;
     }
 
@@ -2720,4 +2705,9 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
     }
+}
+
+void print_set(void (*print)(JkBuffer string))
+{
+    jk_print = print;
 }

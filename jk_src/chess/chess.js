@@ -26,6 +26,8 @@ void main()
 }
 `;
 
+const decoder = new TextDecoder('utf-8');
+
 function compile_shader(gl, type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -87,14 +89,28 @@ function on_resize(entries) {
 
 async function main() {
     const wasm_buffer = await (await fetch('/build/chess.wasm')).arrayBuffer();
-    const wasm = (await WebAssembly.instantiate(wasm_buffer)).instance;
 
-    const draw_buffer_offset = wasm.exports.init_main();
+    let wasm_exports;
+    const imports = {
+        env: {
+            console_log: (size, data) => {
+                if (wasm_exports) {
+                    const string = new Uint8Array(wasm_exports.memory.buffer, data, size);
+                    console.log(decoder.decode(string));
+                } else {
+                    console.error('wasm_exports not yet available');
+                }
+            }
+        }
+    };
+    wasm_exports = (await WebAssembly.instantiate(wasm_buffer, imports)).instance.exports;
+
+    const draw_buffer_offset = wasm_exports.init_main();
 
     if (draw_buffer_offset) {
-        const ai_request_offset = wasm.exports.get_ai_request();
+        const ai_request_offset = wasm_exports.get_ai_request();
         const ai_response_bytes = new Uint8Array(
-                wasm.exports.memory.buffer, wasm.exports.get_ai_response_main_thread(), 64);
+                wasm_exports.memory.buffer, wasm_exports.get_ai_response_main_thread(), 64);
 
         const ai_worker = new Worker('/jk_src/chess/ai_worker.js');
         ai_worker.onmessage = e => {
@@ -230,7 +246,7 @@ async function main() {
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
                     const draw_buf = new Uint8Array(
-                            wasm.exports.memory.buffer, draw_buffer_offset, 67108864);
+                            wasm_exports.memory.buffer, draw_buffer_offset, 67108864);
                     gl.texImage2D(
                             gl.TEXTURE_2D, 0,
                             gl.RGBA, 4096, 4096, 0, gl.RGBA,
@@ -261,7 +277,7 @@ async function main() {
 
                         const ratio = gl.drawingBufferWidth / gl.canvas.clientWidth;
 
-                        const ai_request_changed = wasm.exports.tick(
+                        const ai_request_changed = wasm_exports.tick(
                                 square_side_length,
                                 mouse_x * ratio - x,
                                 mouse_y * ratio - y,
@@ -273,13 +289,13 @@ async function main() {
                             const sound = worklet.parameters.get('sound');
                             const started_time_0 = worklet.parameters.get('started_time_0');
                             const started_time_1 = worklet.parameters.get('started_time_1');
-                            sound.value = wasm.exports.get_sound();
-                            started_time_0.value = wasm.exports.get_started_time_0();
-                            started_time_1.value = wasm.exports.get_started_time_1();
+                            sound.value = wasm_exports.get_sound();
+                            started_time_0.value = wasm_exports.get_started_time_0();
+                            started_time_1.value = wasm_exports.get_started_time_1();
                         }
 
                         if (ai_request_changed) {
-                            const ai_request_buffer = wasm.exports.memory.buffer.slice(
+                            const ai_request_buffer = wasm_exports.memory.buffer.slice(
                                     ai_request_offset, ai_request_offset + 56);
                             ai_worker.postMessage({
                                 type: 'ai_request',

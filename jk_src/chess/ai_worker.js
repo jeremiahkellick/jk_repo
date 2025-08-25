@@ -3,6 +3,7 @@ let wasm_exports = null;
 let ai_request_bytes = null;
 let ai_response_offset = null;
 let next_request_id = 0;
+const decoder = new TextDecoder('utf-8');
 
 function yield_to_event_loop() {
     return new Promise(resolve => setTimeout(resolve, 0));
@@ -10,12 +11,24 @@ function yield_to_event_loop() {
 
 onmessage = async e => {
     if (e.data.type == 'wasm') {
-        this.wasm_exports = (await WebAssembly.instantiate(e.data.buffer)).instance.exports;
-        if (this.wasm_exports) {
-            if (this.wasm_exports.ai_alloc_memory()) {
+        const imports = {
+            env: {
+                console_log: (size, data) => {
+                    if (wasm_exports) {
+                        const string = new Uint8Array(wasm_exports.memory.buffer, data, size);
+                        console.log(decoder.decode(string));
+                    } else {
+                        console.error('wasm_exports not yet available');
+                    }
+                }
+            }
+        };
+        wasm_exports = (await WebAssembly.instantiate(e.data.buffer, imports)).instance.exports;
+        if (wasm_exports) {
+            if (wasm_exports.ai_alloc_memory()) {
                 ai_request_bytes = new Uint8Array(
-                        this.wasm_exports.memory.buffer, this.wasm_exports.get_ai_request(), 56);
-                ai_response_offset = this.wasm_exports.get_ai_response_ai_thread();
+                        wasm_exports.memory.buffer, wasm_exports.get_ai_request(), 56);
+                ai_response_offset = wasm_exports.get_ai_response_ai_thread();
                 initialized = true;
             } else {
                 console.log('Failed to allocate memory for AI');
@@ -31,14 +44,14 @@ onmessage = async e => {
                 ai_request_bytes[i] = source_bytes[i];
             }
 
-            if (this.wasm_exports.ai_begin_request(performance.now())) {
+            if (wasm_exports.ai_begin_request(performance.now())) {
                 let cancelled = false;
-                while (!cancelled && this.wasm_exports.ai_tick(performance.now())) {
+                while (!cancelled && wasm_exports.ai_tick(performance.now())) {
                     await yield_to_event_loop();
                     cancelled = request_id + 1 < next_request_id;
                 }
                 if (!cancelled) {
-                    const ai_response_buffer = this.wasm_exports.memory.buffer.slice(
+                    const ai_response_buffer = wasm_exports.memory.buffer.slice(
                             ai_response_offset, ai_response_offset + 64);
                     postMessage(ai_response_buffer, [ai_response_buffer]);
                 }

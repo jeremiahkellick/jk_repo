@@ -114,6 +114,8 @@ JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width);
 
 JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places);
 
+JK_PUBLIC void (*jk_print)(JkBuffer string);
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Math begin -------------------------------------------------------------
@@ -230,6 +232,14 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
 
 #define JK_FORMAT(arena, ...)                                                          \
     jk_format(arena,                                                                   \
+            (JkFormatItemArray){                                                       \
+                .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
+                .items = (JkFormatItem[]){__VA_ARGS__}})
+
+JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
+
+#define JK_PRINT_FMT(arena, ...)                                                       \
+    jk_print_fmt(arena,                                                                \
             (JkFormatItemArray){                                                       \
                 .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
                 .items = (JkFormatItem[]){__VA_ARGS__}})

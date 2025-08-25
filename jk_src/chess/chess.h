@@ -233,7 +233,6 @@ typedef struct Ai {
     uint64_t time_frequency;
     uint64_t time_started;
     uint64_t time_limit;
-    void (*debug_print)(char *);
 } Ai;
 
 typedef struct AudioState {
@@ -267,7 +266,6 @@ typedef struct Chess {
     uint64_t audio_time;
     uint64_t os_time;
     uint64_t os_timer_frequency;
-    void (*debug_print)(char *);
 
     // Game read-write, platform read-only
     uint64_t flags;
@@ -293,12 +291,8 @@ typedef struct Chess {
     RenderState render_state_prev;
 } Chess;
 
-typedef void AiInitFunction(JkArena *arena,
-        Ai *ai,
-        Board board,
-        uint64_t time,
-        uint64_t time_frequency,
-        void (*debug_print)(char *));
+typedef void AiInitFunction(
+        JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_frequency);
 AiInitFunction ai_init;
 
 typedef b32 AiRunningFunction(Ai *ai);
@@ -319,5 +313,8 @@ UpdateFunction update;
 
 typedef void RenderFunction(ChessAssets *assets, Chess *chess);
 RenderFunction render;
+
+typedef void PrintSetFunction(void (*print)(JkBuffer string));
+PrintSetFunction print_set;
 
 #endif

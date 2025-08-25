@@ -4,7 +4,7 @@
 
 // #jk_build single_translation_unit
 // #jk_build compiler_arguments -o chess.wasm --target=wasm32 --no-standard-libraries
-// #jk_build linker_arguments -Wl,--no-entry,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick
+// #jk_build linker_arguments -Wl,--no-entry,--allow-undefined,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick
 
 // clang-format on
 
@@ -56,7 +56,12 @@ typedef union FloatConvert {
 
 static FloatConvert g_started_time;
 
-void debug_print(char *string) {}
+void console_log(uint32_t size, uint8_t *data);
+
+static void debug_print(JkBuffer string)
+{
+    console_log(string.size, string.data);
+}
 
 static b32 ensure_memory(int64_t required_memory)
 {
@@ -74,12 +79,13 @@ static b32 ensure_memory(int64_t required_memory)
 
 uint8_t *init_main(void)
 {
+    jk_print = debug_print;
+
     g_chess.render_memory.size = 2 * JK_MEGABYTE;
     if (ensure_memory(DRAW_BUFFER_SIZE + g_chess.render_memory.size)) {
         g_chess.draw_buffer = (JkColor *)__heap_base;
         g_chess.render_memory.data = __heap_base + DRAW_BUFFER_SIZE;
         g_chess.os_timer_frequency = 1000;
-        g_chess.debug_print = debug_print;
         return __heap_base;
     } else {
         return 0;
@@ -149,6 +155,8 @@ static AudioSample *audio_buffer;
 
 AudioSample *init_audio(void)
 {
+    jk_print = debug_print;
+
     if (ensure_memory(WEB_AUDIO_BUFFER_SIZE)) {
         audio_buffer = (AudioSample *)__heap_base;
         return audio_buffer;
@@ -169,6 +177,8 @@ void fill_audio_buffer(SoundIndex sound,
 
 b32 ai_alloc_memory(void)
 {
+    jk_print = debug_print;
+
     if (ensure_memory(AI_MEMORY_SIZE)) {
         return 1;
     } else {
@@ -181,7 +191,7 @@ b32 ai_begin_request(double os_time)
     if (g_ai_request.wants_ai_move) {
         g_ai_arena = jk_arena_fixed_init(
                 &g_ai_arena_root, (JkBuffer){.size = AI_MEMORY_SIZE, .data = __heap_base});
-        ai_init(&g_ai_arena, &g_ai, g_ai_request.board, os_time, 1000, debug_print);
+        ai_init(&g_ai_arena, &g_ai, g_ai_request.board, os_time, 1000);
         return 1;
     } else {
         return 0;
