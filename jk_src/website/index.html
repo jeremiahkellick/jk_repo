@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Jeremiah Kellick</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+
+@font-face {
+    font-family: "AmiriQuran";
+    src: url(/jk_assets/chess/AmiriQuran-Regular.ttf) format("truetype");
+}
+
+body {
+    background: #162027;
+    color: #d0dbe2;
+    font-family: "AmiriQuran", sans-serif;
+    font-size: 24px;
+    line-height: 1.6;
+    margin: 0;
+}
+
+h1 {
+    margin: 0 10px 0 0;
+    font-weight: normal;
+}
+
+#tagline {
+    margin: 0;
+}
+
+p {
+    margin: 25px 0 0 0;
+}
+
+#content {
+    margin: 64px auto;
+    padding: 0 32px;
+    max-width: 750px;
+}
+
+#intro {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    justify-content: space-between;
+    margin: -12px 0;
+}
+
+#intro > * {
+    margin: 12px 0;
+}
+
+#profile-picture {
+    border-radius: 100%;
+    width: 220px;
+}
+
+@media (min-width: 730px) {
+    #intro {
+        flex-direction: row-reverse;
+        margin: 0 -12px;
+    }
+
+    #intro > * {
+        margin: 0 12px;
+    }
+
+    #profile-picture {
+        width: 280px;
+    }
+}
+
+#chess {
+    aspect-ratio: 1;
+    box-sizing: context-box;
+    display: block;
+    margin: 25px -12.5%;
+    width: 125%;
+}
+
+        </style>
+    </head>
+    <body>
+        <div id="content">
+            <div id="intro">
+                <img id="profile-picture" src="/jk_assets/website/profile-picture.jpg" />
+                <div>
+                    <h1>Hi! I'm Jeremiah,</h1>
+                    <p id="tagline">a web developer turned systems programmer.</p>
+                    <p>
+                        Right now, my biggest "claim to fame" is that I landed a full-time software
+                        development job at Google when I was nineteen. Programming interested me
+                        early-on because I liked to make games. Directly after high school, I
+                        attended a coding bootcamp, App Academy. I was lucky enough to land the
+                        Google role afterwards.
+                    </p>
+                </div>
+            </div>
+            <p>
+                I worked at Google's Pittsburgh office for four years, making UIs for their Cloud
+                Console to accompany several Vertex AI product lauches. I had fun, met some
+                incredible people, and learned about navigating a professional environment. You may
+                have heard Google spoils its employees. That's true. But after a while, I felt that
+                staying there much longer would be bad for my long-term development as a programmer.
+            </p>
+            <p>
+                I used to take what I thought was the pragmatic approach to software development. I
+                didn't need to know the nitty-gritty details of how my software operated. As long as
+                I knew <em>what</em> a dependency did, I didn't need to know <em>how</em> it did it.
+                The only payoff to learning how to do things from scratch would be satisfying my
+                curiosity. I didn't think I could expect to get better end results that way. After
+                all, why would I expect a less-experienced individual to get better results than a
+                more-experienced group of people?
+            </p>
+            <p>
+                But the projects I worked on at Google had poor compilation speed and poor runtime
+                performance. The painfully slow edit-compile-run cycle hurt my productivity and
+                drained much of the joy out of programming. No back-of-the-envelope math can really
+                makes sense of the numbers. It's just what happens when you aren't judicious about
+                taking on dependencies and building on top of layers of abstraction. The CPU spends
+                most of its cycles doing things you didn't strictly need it to do to get the end
+                result.
+            </p>
+            <p>
+                But it's not something I could have really addressed in the ways that would make the
+                most difference. I worked on a massive project at Google that already had its own
+                way of doing things. Understandably, I couldn't shirk the common patterns.
+            </p>
+            <p>
+                This sprouted my interest in systems programming and working at a smaller company.
+                I'm interested in building close to the ground truth of what's happening on the CPU.
+                I want there to be some resonable relationship between what the back-of-the-envelope
+                math says about how fast my code <em>could</em> run and how fast it actually
+                <em>does</em> run. I'd love to work either at a company that alreadly somewhat
+                aligns with my views on what good code is or a company small enough where I can make
+                those decisions for myself, while being judged on the quality of my results, not the
+                details of how the code is written.
+            </p>
+            <p>
+                With this goal in mind, I left my job at Google and took some time off to educate
+                myself on systems programming. Recall that I didn't go to college, so I definitely
+                had some studying to do. This educational arc culminated in my most recent portfolio
+                project, a chess application written from scratch in C. It supports three platforms:
+                Windows, macOS, and the web. You can check out the web version here on this page or
+                download native executables on the GitHub Releases page. I'll talk about some
+                technical details and more of the ways I've educated myself below, but first, try it
+                out!
+            </p>
+            <canvas id="chess"></canvas>
+            <script src="/jk_src/chess/chess.js"></script>
+        </div>
+    </body>
+</html>
