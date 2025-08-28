@@ -33,8 +33,10 @@ typedef enum Flag {
 
 #define JK_FLAG_GET(bitfield, flag) (((bitfield) >> (flag)) & 1)
 
-#define JK_FLAG_SET(bitfield, flag, value) \
-    (((bitfield) & ~JK_MASK(flag)) | (((uint64_t)(!!(value))) << (flag)))
+#define JK_FLAG_SET(bitfield, flag, value)                                                \
+    do {                                                                                  \
+        bitfield = (((bitfield) & ~JK_MASK(flag)) | (((uint64_t)(!!(value))) << (flag))); \
+    } while (0)
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -692,12 +694,6 @@ typedef struct Paths {
 /** argv[0] */
 static char *program_name = NULL;
 
-#ifdef _WIN32
-static b32 windows = 1;
-#else
-static b32 windows = 0;
-#endif
-
 static JkBuffer basename(JkBuffer path)
 {
     JkBuffer result;
@@ -1045,11 +1041,11 @@ static uint64_t parse_files(JkArena *storage,
                     printf("\n");
                 } else if (jk_buffer_compare(command, JKS("single_translation_unit")) == 0) {
                     if (path_index == 0) {
-                        flags = JK_FLAG_SET(flags, FLAG_SINGLE_TRANSLATION_UNIT, 1);
+                        JK_FLAG_SET(flags, FLAG_SINGLE_TRANSLATION_UNIT, 1);
                     }
                 } else if (jk_buffer_compare(command, JKS("library")) == 0) {
                     if (path_index == 0) {
-                        flags = JK_FLAG_SET(flags, FLAG_LIBRARY, 1);
+                        JK_FLAG_SET(flags, FLAG_LIBRARY, 1);
                     }
                 } else if (jk_buffer_compare(command, JKS("dependencies_begin")) == 0) {
                     if (dependencies_open) {
@@ -1428,7 +1424,9 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 "-Wno-missing-field-initializers",
                 "-Wno-unused-command-line-argument",
                 "-Wno-unused-parameter");
+#ifdef __x86_64__
         append(&command, "-mfma");
+#endif
         append(&command, "-g");
         if (!is_objective_c_file) {
             append(&command, "-std=c11");

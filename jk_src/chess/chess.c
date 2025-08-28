@@ -1702,7 +1702,7 @@ void update(ChessAssets *assets, Chess *chess)
     }
 
     // Do some end-of-frame updating of data
-    chess->flags = JK_FLAG_SET(chess->flags,
+    JK_FLAG_SET(chess->flags,
             CHESS_FLAG_WANTS_AI_MOVE,
             chess->result == RESULT_NONE
                     && chess->player_types[board_current_team_get(chess->board)] == PLAYER_AI);

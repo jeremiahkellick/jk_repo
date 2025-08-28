@@ -103,7 +103,7 @@ b32 tick(int32_t square_side_length,
     g_chess.square_side_length = square_side_length;
     g_chess.input.mouse_pos.x = mouse_x;
     g_chess.input.mouse_pos.y = mouse_y;
-    g_chess.input.flags = JK_FLAG_SET(g_chess.input.flags, INPUT_CONFIRM, mouse_down);
+    JK_FLAG_SET(g_chess.input.flags, INPUT_CONFIRM, mouse_down);
     g_chess.os_time = os_time;
     g_chess.audio_time = audio_time;
 
