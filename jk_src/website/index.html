@@ -20,7 +20,7 @@ body {
 }
 
 h1 {
-    margin: 0 10px 0 0;
+    margin: 0;
     font-weight: normal;
 }
 
@@ -30,6 +30,26 @@ h1 {
 
 p {
     margin: 25px 0 0 0;
+}
+
+a {
+    color: #7799ff;
+    position: relative;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 10px;
+    z-index: 10;
+}
+
+a:visited {
+    color: #9d6ffb;
+}
+
+blockquote {
+    border-left: 4px solid #d0dbe2;
+    margin: 0;
+    padding-left: 40px;
+    padding-bottom: 25px;
 }
 
 #content {
@@ -74,7 +94,7 @@ p {
     aspect-ratio: 1;
     box-sizing: context-box;
     display: block;
-    margin: 25px -12.5%;
+    margin: 25px -12.5% 0 -12.5%;
     width: 125%;
 }
 
@@ -90,7 +110,7 @@ p {
                     <p>
                         Right now, my biggest "claim to fame" is that I landed a full-time software
                         development job at Google when I was nineteen. Programming interested me
-                        early-on because I liked to make games. Directly after high school, I
+                        early-on because I loved to make games. Directly after high school, I
                         attended a coding bootcamp, App Academy. I was lucky enough to land the
                         Google role afterwards.
                     </p>
@@ -99,16 +119,17 @@ p {
             <p>
                 I worked at Google's Pittsburgh office for four years, making UIs for their Cloud
                 Console to accompany several Vertex AI product lauches. I had fun, met some
-                incredible people, and learned about navigating a professional environment. You may
-                have heard Google spoils its employees. That's true. But after a while, I felt that
-                staying there much longer would be bad for my long-term development as a programmer.
+                incredible people, and learned about navigating a large team environment. You may
+                have heard about how Google spoils its employees with some wild perks. Most of those
+                rumors are true. But after a while, I felt that staying there much longer would be
+                bad for my long-term development as a programmer.
             </p>
             <p>
                 I used to take what I thought was the pragmatic approach to software development. I
                 didn't need to know the nitty-gritty details of how my software operated. As long as
                 I knew <em>what</em> a dependency did, I didn't need to know <em>how</em> it did it.
-                The only payoff to learning how to do things from scratch would be satisfying my
-                curiosity. I didn't think I could expect to get better end results that way. After
+                I thought the only payoff to learning how to do things from scratch would be
+                satisfying my curiosity. I didn't expect to get better end results that way. After
                 all, why would I expect a less-experienced individual to get better results than a
                 more-experienced group of people?
             </p>
@@ -116,37 +137,126 @@ p {
                 But the projects I worked on at Google had poor compilation speed and poor runtime
                 performance. The painfully slow edit-compile-run cycle hurt my productivity and
                 drained much of the joy out of programming. No back-of-the-envelope math can really
-                makes sense of the numbers. It's just what happens when you aren't judicious about
-                taking on dependencies and building on top of layers of abstraction. The CPU spends
-                most of its cycles doing things you didn't strictly need it to do to get the end
-                result.
+                make sense of the numbers. The performance of our product couldn't be remotely
+                justified by what data we needed to deliver to the user or by what their CPU needed
+                to do to produce our desired result.
             </p>
             <p>
-                But it's not something I could have really addressed in the ways that would make the
-                most difference. I worked on a massive project at Google that already had its own
-                way of doing things. Understandably, I couldn't shirk the common patterns.
+                It's just wasted bandwidth and CPU cycles which stem from the common view that
+                performance is something you should only think about after it gets unbearably bad.
+                Always fix-up performance retroactively, never proactively. The quote "premature
+                optimization is the root of all evil" is misused to justify never planning ahead
+                with regard to the performance of one's software, but the expanded Donald Knuth
+                quote tells a different story (emphasis mine).
+            </p>
+            <blockquote>
+                <p>
+                    We should forget about <strong>small efficiencies</strong>, say about 97% of the
+                    time: premature optimization is the root of all evil.
+                </p>
+                <p>
+                    Yet we <strong>should not pass up our opportunities in that critical
+                    3%.</strong>
+                </p>
+            </blockquote>
+            <p>
+                Small efficiencies! Knuth never meant for the quote to apply to large-scale,
+                difficult-to-reverse decisions like application architecture or the introduction of
+                a huge dependency.
+            </p>
+            <p>
+                Unforunately, I wasn't in a position to address these issues in the ways that would
+                make a big difference. I worked on a massive project at Google that already had its
+                own way of doing things. Understandably, I couldn't shirk the common patterns.
             </p>
             <p>
                 This sprouted my interest in systems programming and working at a smaller company.
                 I'm interested in building close to the ground truth of what's happening on the CPU.
-                I want there to be some resonable relationship between what the back-of-the-envelope
-                math says about how fast my code <em>could</em> run and how fast it actually
-                <em>does</em> run. I'd love to work either at a company that alreadly somewhat
-                aligns with my views on what good code is or a company small enough where I can make
-                those decisions for myself, while being judged on the quality of my results, not the
-                details of how the code is written.
+                I want there to be some resonable relationship between what back-of-the-envelope
+                math says about how fast my code could run and how fast it actually does run. I'm
+                certainly not aiming for optimal in all cases, but I never want to see a 1,000x
+                difference between those numbers.
             </p>
             <p>
-                With this goal in mind, I left my job at Google and took some time off to educate
+                I'd love to work either at a company that alreadly aligns somewhat with these views
+                on what good software development looks like or a company small enough where I can
+                make many of those decisions for myself. If you're hiring and resonant with anything
+                I'm saying here, please <a href="/TODO">reach out!</a>
+            </p>
+            <p>
+                With that goal in mind, I left my job at Google and took some time off to educate
                 myself on systems programming. Recall that I didn't go to college, so I definitely
                 had some studying to do. This educational arc culminated in my most recent portfolio
                 project, a chess application written from scratch in C. It supports three platforms:
                 Windows, macOS, and the web. You can check out the web version here on this page or
-                download native executables on the GitHub Releases page. I'll talk about some
-                technical details and more of the ways I've educated myself below, but first, try it
-                out!
+                download native executables on the <a href="/TODO">GitHub Releases</a> page. I'll
+                talk about some technical details and more of the ways I've educated myself below,
+                but first, try it out!
             </p>
             <canvas id="chess"></canvas>
+            <p>
+                Okay, hope you think that's neat. I had fun making it! Now let's go behind the
+                scenes.
+            </p>
+            <p>
+                Please note that my attitude towards dependencies for educational projects is
+                different from what it is for real products. I do think the average programmer today
+                is far too cavalier with their dependency usage, but of course it's possible to go
+                too far in the other direction. I made decisions on this chess project that would've
+                been bad choices had I been optimizing for value to a customer. Going into
+                <em>extreme</em> "not invented here" territory is an incredible learning exercise,
+                but it's not always best for customers. For that, I would merely prescribe
+                <em>moderate</em> "not invented here" syndrome.
+            </p>
+            <p>
+                With that disclaimer out of the way, let's talk about the chess app's dependencies.
+                I use stb_truetype in my build toolchain, but not the program itself (more on this
+                later). The Windows and macOS versions depend on only the C standard library and
+                APIs provided by their respective operating systems. The web version doesn't even
+                use the C standard library because that's not available to WebAssembly by default.
+                That means none of the platform-independent code can use the standard library, which
+                took me down a couple fun rabbit holes.
+            </p>
+            <p>
+                For floating-point rounding and square root I was able to rely on x86 intrinsics
+                when using MSVC and builtins when using Clang or GCC, but replacing sine and
+                arccosine was more interesting. I used Mathematica to compute constants for
+                <a href="/TODO">polynomial approximations of those functions.</a>
+            </p>
+            <p>
+                I also wrote a printf replacement. The most interesting part was the
+                <a href="/TODO">function that converts a floating-point number to a string,</a>
+                accurate to about eight decimal places.
+            </p>
+            <p>
+                What's the deal with stb_truetype? At one point in development I was using scaled
+                bitmaps to render the game, but it was slow and extrememly memory inefficient. I
+                wanted a resolution-independent way to render my chess pieces and text. The
+                stb_truetype library was alluring, but up until that point I had the deep
+                satisfaction of understanding practically everything my program was doing. Being so
+                close to writing a full program that way, I was loath to let this one feature ruin
+                it.
+            </p>
+            <p>
+                I noticed that stb_truetype is only 5,000 lines of code, and I knew most of that was
+                probably dealing with the intricacies of the truetype file format. The rasterization
+                code can't be too complicated!
+            </p>
+            <p>
+                I settled on a compromise: I would attempt to write my own vector graphic rasterizer
+                that uses a simple data format. To get a font, I would use stb_truetype in my build
+                process to extract data from the font file and convert it to my format. I would also
+                parse a subset of the SVG path format to convert my chess pieces.
+            </p>
+            <p>
+                It was a success! The chess executable doesn't contain any stb_truetype code. The
+                font and chess pieces are built into the executable in a <a href="/TODO">simple
+                vector format</a> and rendered with the <a href="/TODO">rasterizer I wrote.</a>
+                Still, much credit to Sean Barrett, the author of the stb libraries. His
+                <a href="https://nothings.org/gamedev/rasterize/">writeup on how the stb_truetype
+                anti-aliasing works</a> is the reason I was able to understand the rasterization
+                process well enough to write it myself.
+            </p>
             <script src="/jk_src/chess/chess.js"></script>
         </div>
     </body>
