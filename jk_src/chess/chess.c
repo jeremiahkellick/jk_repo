@@ -1138,9 +1138,9 @@ b32 ai_running(Ai *ai)
         return 0;
     }
 
+    uint32_t iterations = 512;
     b32 running = ai->time - ai->time_started < ai->time_limit;
-
-    if (running) {
+    while (iterations-- && running) {
         MoveNode *node = 0;
         { // Find the node with the best search score
             AiTarget target = {0};
