@@ -1035,6 +1035,18 @@ JK_NOINLINE JK_PUBLIC void jk_panic(void)
 
 JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
 {
+    static uint8_t jk_assert_msg_buf[4096];
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(
+            &arena_root, (JkBuffer){.size = sizeof(jk_assert_msg_buf), .data = jk_assert_msg_buf});
+    jk_print(JK_FORMAT(&arena,
+            jkfn("Assertion failed: "),
+            jkfn(message),
+            jkfn(", "),
+            jkfn(file),
+            jkfn(":"),
+            jkfu(line),
+            jkf_nl));
     jk_panic();
 }
 
