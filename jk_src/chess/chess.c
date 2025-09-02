@@ -58,6 +58,9 @@ static Board puzzle_state = {
 
 static JkBuffer puzzle_fen = JKSI("8/1bp1rkp1/p4p2/1p1p1QPR/3q3P/8/5PK1/8 b - - 0 1");
 
+static JkBuffer two_sided_forced_mate_fen =
+        JKSI("3r2q1/b2k4/N1Q1N1n1/2B5/1RpK2Br/3b4/8/3n4 b - - 1 1");
+
 typedef struct PieceCounts {
     int32_t a[PIECE_TYPE_COUNT];
 } PieceCounts;
@@ -367,14 +370,35 @@ static Board parse_fen(JkBuffer fen)
     return board;
 }
 
-static void moves_append(MoveArray *moves, JkIntVector2 src, JkIntVector2 dest, Piece piece)
+// Returns 1 on success. Returns 0 if the destination invalidates the parent move.
+static b32 append_move(MoveArray *moves,
+        JkIntVector2 src,
+        JkIntVector2 dest,
+        Piece piece,
+        uint64_t invalidate_mask)
 {
-    moves->data[moves->count++] = move_pack(
-            (Move){.src = board_index_get(src), .dest = board_index_get(dest), .piece = piece});
+    uint8_t dest_index = board_index_get(dest);
+    if ((invalidate_mask >> dest_index) & 1) {
+        return 0;
+    } else {
+        moves->data[moves->count++] =
+                move_pack((Move){.src = board_index_get(src), .dest = dest_index, .piece = piece});
+        return 1;
+    }
 }
 
-static void moves_append_in_direction_until_stopped(
-        MoveArray *moves, Board board, JkIntVector2 src, JkIntVector2 direction, Piece piece)
+#define TRY(action) \
+    if (!action) {  \
+        return 0;   \
+    }
+
+// Returns 1 on success. Returns 0 if the destination invalidates the parent move.
+static b32 append_moves_in_direction_until_stopped(MoveArray *moves,
+        Board board,
+        JkIntVector2 src,
+        JkIntVector2 direction,
+        Piece piece,
+        uint64_t invalidate_mask)
 {
     JkIntVector2 dest = src;
     for (;;) {
@@ -382,15 +406,15 @@ static void moves_append_in_direction_until_stopped(
         if (board_in_bounds(dest)) {
             Piece dest_piece = board_piece_get(board, dest);
             if (dest_piece.type == NONE) {
-                moves_append(moves, src, dest, piece);
+                TRY(append_move(moves, src, dest, piece, invalidate_mask));
             } else {
                 if (dest_piece.team != board_current_team_get(board)) {
-                    moves_append(moves, src, dest, piece);
+                    TRY(append_move(moves, src, dest, piece, invalidate_mask));
                 }
-                return;
+                return 1;
             }
         } else {
-            return;
+            return 1;
         }
     }
 }
@@ -403,103 +427,6 @@ static uint8_t board_castling_rights_get(Board board, Team team)
 static uint64_t board_castling_rights_mask_get(Team team, b32 king_side)
 {
     return 1llu << (1 + team * 2 + !!king_side);
-}
-
-typedef struct Threats {
-    uint64_t bitfield;
-    int32_t count;
-} Threats;
-
-static void add_threat(Threats *threats, uint64_t index)
-{
-    threats->bitfield |= 1llu << index;
-    threats->count++;
-}
-
-static void threats_in_direction_until_stopped(
-        Board board, Threats *threats, JkIntVector2 src, JkIntVector2 direction)
-{
-    JkIntVector2 dest = src;
-    for (;;) {
-        dest = jk_int_vector_2_add(dest, direction);
-        if (board_in_bounds(dest)) {
-            uint8_t index = board_index_get(dest);
-            add_threat(threats, index);
-            if (board_piece_get_index(board, index).type != NONE) {
-                return;
-            }
-        } else {
-            return;
-        }
-    }
-}
-
-static Threats board_threats_get(Board board, Team threatened_by)
-{
-    Threats result = {0};
-
-    JkIntVector2 src;
-    for (src.y = 0; src.y < 8; src.y++) {
-        for (src.x = 0; src.x < 8; src.x++) {
-            Piece piece = board_piece_get(board, src);
-            if (piece.team == threatened_by) {
-                switch (piece.type) {
-                case NONE:
-                case PIECE_TYPE_COUNT: {
-                } break;
-
-                case KING: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
-                        if (board_in_bounds(dest)) {
-                            add_threat(&result, board_index_get(dest));
-                        }
-                    }
-                } break;
-
-                case QUEEN: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
-                        threats_in_direction_until_stopped(board, &result, src, all_directions[i]);
-                    }
-                } break;
-
-                case ROOK: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
-                        threats_in_direction_until_stopped(board, &result, src, straights[i]);
-                    }
-                } break;
-
-                case BISHOP: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
-                        threats_in_direction_until_stopped(board, &result, src, diagonals[i]);
-                    }
-                } break;
-
-                case KNIGHT: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
-                        if (board_in_bounds(dest)) {
-                            add_threat(&result, board_index_get(dest));
-                        }
-                    }
-                } break;
-
-                case PAWN: {
-                    // Attacks
-                    for (uint8_t i = 0; i < 2; i++) {
-                        JkIntVector2 dest =
-                                jk_int_vector_2_add(src, pawn_attacks[threatened_by][i]);
-                        if (board_in_bounds(dest)) {
-                            add_threat(&result, board_index_get(dest));
-                        }
-                    }
-                } break;
-                }
-            }
-        }
-    }
-
-    return result;
 }
 
 static Board board_move_perform(Board board, MovePacked move_packed)
@@ -550,25 +477,54 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     return board;
 }
 
-static void moves_append_with_promo_potential(
-        MoveArray *moves, JkIntVector2 src, JkIntVector2 dest, Piece piece)
+// Returns 1 on success. Returns 0 if the destination invalidates the parent move.
+static b32 append_moves_with_promo_potential(MoveArray *moves,
+        JkIntVector2 src,
+        JkIntVector2 dest,
+        Piece piece,
+        uint64_t invalidate_mask)
 {
     if (dest.y == 0 || dest.y == 7) { // Promotion
         Piece promo_piece = {.type = QUEEN, .team = piece.team};
         for (; promo_piece.type <= KNIGHT; promo_piece.type++) {
-            moves_append(moves, src, dest, promo_piece);
+            TRY(append_move(moves, src, dest, promo_piece, invalidate_mask));
         }
     } else { // Regular move
-        moves_append(moves, src, dest, piece);
+        TRY(append_move(moves, src, dest, piece, invalidate_mask));
     }
+
+    return 1;
 }
 
-// Returns the number of moves written to the buffer
-static void moves_get(MoveArray *moves, Board board)
+// Adds move candidates to the moves array. This is just a first pass. It can include illegal moves.
+//
+// Returns 1 on success. Returns 0 if we discovered the parent move is illegal while finding the
+// child move candidates.
+static b32 move_candidates_get(MoveArray *moves, Board board)
 {
     moves->count = 0;
 
     Team current_team = board_current_team_get(board);
+    Move move_prev = move_unpack(board.move_prev);
+
+    uint64_t invalidate_mask = 0;
+    for (uint8_t i = 0; i < 64; i++) {
+        Piece piece = board_piece_get_index(board, i);
+        if (piece.type == KING && piece.team != current_team) {
+            invalidate_mask |= 1llu << i;
+            break;
+        }
+    }
+    if (move_prev.piece.type == KING) {
+        JkIntVector2 src = board_index_to_vector_2(move_prev.src);
+        JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
+        if (JK_ABS(src.x - dest.x) == 2) { // The previous move was castling
+            invalidate_mask |= (1llu << move_prev.src)
+                    | (1llu << board_index_get(jk_int_vector_2_add(
+                               src, (JkIntVector2){dest.x < src.x ? -1 : 1, 0})));
+        }
+    }
+
     JkIntVector2 src;
     for (src.y = 0; src.y < 8; src.y++) {
         for (src.x = 0; src.x < 8; src.x++) {
@@ -583,24 +539,14 @@ static void moves_get(MoveArray *moves, Board board)
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
                         if (square_available(board, dest)) {
-                            moves_append(moves, src, dest, piece);
+                            TRY(append_move(moves, src, dest, piece, invalidate_mask));
                         }
                     }
 
                     uint8_t castling_rights = board_castling_rights_get(board, current_team);
                     if (castling_rights != 0x3) {
-                        uint64_t threatened_squares =
-                                board_threats_get(board, !current_team).bitfield;
                         for (b32 king_side = 0; king_side < 2; king_side++) {
                             if (!((castling_rights >> king_side) & 1)) {
-                                // Find out whether any of the castling spaces are threatened
-                                uint8_t step = king_side ? 1 : UINT8_MAX;
-                                uint8_t index = board_index_get(src);
-                                uint64_t threat_check_mask = (1llu << index)
-                                        | (1llu << (index + step))
-                                        | (1llu << (index + step + step));
-                                uint64_t threatened = threatened_squares & threat_check_mask;
-
                                 // Find out whether any of the castling spaces are blocked
                                 b32 blocked = 0;
                                 int32_t x_step = king_side ? 1 : -1;
@@ -610,14 +556,16 @@ static void moves_get(MoveArray *moves, Board board)
                                     pos.x += x_step;
                                     if (board_piece_get(board, pos).type != NONE) {
                                         blocked = 1;
+                                        break;
                                     }
                                 }
 
-                                if (!threatened && !blocked) {
-                                    moves_append(moves,
+                                if (!blocked) {
+                                    TRY(append_move(moves,
                                             src,
                                             jk_int_vector_2_add(src, (JkIntVector2){2 * x_step, 0}),
-                                            piece);
+                                            piece,
+                                            invalidate_mask));
                                 }
                             }
                         }
@@ -626,22 +574,22 @@ static void moves_get(MoveArray *moves, Board board)
 
                 case QUEEN: {
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
-                        moves_append_in_direction_until_stopped(
-                                moves, board, src, all_directions[i], piece);
+                        TRY(append_moves_in_direction_until_stopped(
+                                moves, board, src, all_directions[i], piece, invalidate_mask));
                     }
                 } break;
 
                 case ROOK: {
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
-                        moves_append_in_direction_until_stopped(
-                                moves, board, src, straights[i], piece);
+                        TRY(append_moves_in_direction_until_stopped(
+                                moves, board, src, straights[i], piece, invalidate_mask));
                     }
                 } break;
 
                 case BISHOP: {
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
-                        moves_append_in_direction_until_stopped(
-                                moves, board, src, diagonals[i], piece);
+                        TRY(append_moves_in_direction_until_stopped(
+                                moves, board, src, diagonals[i], piece, invalidate_mask));
                     }
                 } break;
 
@@ -649,7 +597,7 @@ static void moves_get(MoveArray *moves, Board board)
                     for (uint64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
                         if (square_available(board, dest)) {
-                            moves_append(moves, src, dest, piece);
+                            TRY(append_move(moves, src, dest, piece, invalidate_mask));
                         }
                     }
                 } break;
@@ -659,7 +607,8 @@ static void moves_get(MoveArray *moves, Board board)
                     {
                         JkIntVector2 dest = jk_int_vector_2_add(src, pawn_moves[current_team]);
                         if (board_in_bounds(dest) && board_piece_get(board, dest).type == NONE) {
-                            moves_append_with_promo_potential(moves, src, dest, piece);
+                            TRY(append_moves_with_promo_potential(
+                                    moves, src, dest, piece, invalidate_mask));
 
                             // Extended move
                             if ((current_team == WHITE && src.y == 1)
@@ -668,7 +617,8 @@ static void moves_get(MoveArray *moves, Board board)
                                         jk_int_vector_2_add(src, pawn_extended_moves[current_team]);
                                 if (board_in_bounds(extended_move)
                                         && board_piece_get(board, extended_move).type == NONE) {
-                                    moves_append(moves, src, extended_move, piece);
+                                    TRY(append_move(
+                                            moves, src, extended_move, piece, invalidate_mask));
                                 }
                             }
                         }
@@ -680,7 +630,16 @@ static void moves_get(MoveArray *moves, Board board)
                         if (board_in_bounds(dest)) {
                             Piece piece_at_dest = board_piece_get(board, dest);
                             if (piece_at_dest.type != NONE && piece_at_dest.team != current_team) {
-                                moves_append_with_promo_potential(moves, src, dest, piece);
+                                TRY(append_moves_with_promo_potential(
+                                        moves, src, dest, piece, invalidate_mask));
+                            } else {
+                                // Even if the pawn can't actually attack because there's no piece
+                                // there, we still need to check the attacks against the
+                                // invalidate_mask, because pawn attacks can prevent castling.
+                                uint8_t dest_index = board_index_get(dest);
+                                if ((invalidate_mask >> dest_index) & 1) {
+                                    return 0;
+                                }
                             }
                         }
                     }
@@ -691,7 +650,6 @@ static void moves_get(MoveArray *moves, Board board)
     }
 
     // En-passant
-    Move move_prev = move_unpack(board.move_prev);
     if (absolute_value((int32_t)move_prev.src - (int32_t)move_prev.dest) == 16) {
         Piece move_prev_piece = board_piece_get_index(board, move_prev.dest);
         if (move_prev_piece.type == PAWN) {
@@ -705,33 +663,15 @@ static void moves_get(MoveArray *moves, Board board)
                         int32_t y_delta = move_prev.src < move_prev.dest ? -1 : 1;
                         JkIntVector2 en_passant_dest =
                                 jk_int_vector_2_add(pos, (JkIntVector2){0, y_delta});
-                        moves_append(moves, en_passant_src, en_passant_dest, piece);
+                        TRY(append_move(
+                                moves, en_passant_src, en_passant_dest, piece, invalidate_mask));
                     }
                 }
             }
         }
     }
 
-    // Remove moves that leave king in check
-    uint8_t move_index = 0;
-    while (move_index < moves->count) {
-        Board hypothetical = board_move_perform(board, moves->data[move_index]);
-
-        uint8_t king_index = 0;
-        for (uint8_t square_index = 0; square_index < 64; square_index++) {
-            Piece piece = board_piece_get_index(hypothetical, square_index);
-            if (piece.type == KING && piece.team == current_team) {
-                king_index = square_index;
-            }
-        }
-
-        uint64_t threatened = board_threats_get(hypothetical, !current_team).bitfield;
-        if (threatened & (1llu << king_index)) {
-            moves->data[move_index] = moves->data[--moves->count];
-        } else {
-            move_index++;
-        }
-    }
+    return 1;
 }
 
 // ---- AI begin ---------------------------------------------------------------
@@ -739,45 +679,20 @@ static void moves_get(MoveArray *moves, Board board)
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
 
-static int32_t board_score(Board board, uint64_t depth)
+static int32_t board_score(Board board, uint16_t depth)
 {
-    Team current_team = board_current_team_get(board);
     int32_t score = 0;
-    uint8_t king_index = UINT8_MAX;
     for (uint8_t i = 0; i < 64; i++) {
         Piece piece = board_piece_get_index(board, i);
         score += team_multiplier[piece.team] * piece_value[piece.type] * 100;
 
-        if (piece.type == KING && piece.team == current_team) {
-            king_index = i;
-        }
-
         if (piece.type == PAWN) { // Add points based on how far pawn is from promotion
             JkIntVector2 pos = board_index_to_vector_2(i);
             if (piece.team == WHITE) {
-                score += (pos.y - 1) * 2;
+                score += pos.y - 1;
             } else {
-                score -= (6 - pos.y) * 2;
+                score -= 6 - pos.y;
             }
-        }
-    }
-
-    // Add points for the number of threatened squares
-    Threats threats[2];
-    for (Team team = 0; team < 2; team++) {
-        threats[team] = board_threats_get(board, team);
-        score += team_multiplier[team] * threats[team].count;
-    }
-
-    JK_ASSERT(king_index < 64);
-    MoveArray moves = {0};
-    moves_get(&moves, board);
-
-    if (!moves.count) {
-        if ((threats[!current_team].bitfield >> king_index) & 1) { // Checkmate
-            score = team_multiplier[!current_team] * (100000 - (uint32_t)depth);
-        } else { // Stalemate
-            score = (score > 0 ? -1 : 1) * (50000 - (uint32_t)depth);
         }
     }
 
@@ -800,15 +715,14 @@ static uint32_t distance_from_target(int32_t score, AiTarget target)
     } break;
 
     default: {
-        JK_ASSERT(0 && "invalid target.comparison");
+        JK_ASSERT(0 && "invalid target.assisting_team");
         return 0;
     } break;
     }
 }
 
-static uint32_t search_score_get(Ai *ctx, MoveNode *node, Team team)
+static uint32_t search_score_get(MoveNode *node, AiTarget target, Team team)
 {
-    AiTarget target = ctx->targets[node->top_level_index];
     uint32_t search_score;
     if (node->first_child) {
         if (team == target.assisting_team) {
@@ -827,11 +741,11 @@ static uint32_t search_score_get(Ai *ctx, MoveNode *node, Team team)
         }
     } else {
         search_score = distance_from_target(node->score, target);
-        if (node->expanded && search_score) {
-            // If the node has no children after it's been expanded, then it marks the end of the
-            // game (checkmate or stalemate). Therefore, if the score does not already satisfy the
-            // target, we assign maximum search score, because it's impossible for this node to ever
-            // satisfy the target.
+        if (node->age != NODE_AGE_CHILD && search_score) {
+            // If an adult node has no children, then it's the end of the game (checkmate or
+            // stalemate). Therefore, if the score does not already satisfy the target, we assign
+            // maximum search score, because it's impossible for this node to ever satisfy the
+            // target.
             search_score = UINT32_MAX;
         }
     }
@@ -842,15 +756,14 @@ uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
 
 #define MAX_STAGNATION 9
 
-static void update_search_scores(Ai *ctx, MoveNode *node, Team team, b32 verify)
+static void update_search_scores(Ai *ctx, MoveNode *node, AiTarget target, Team team, b32 verify)
 {
-    AiTarget target = ctx->targets[node->top_level_index];
     uint32_t search_score;
     if (node->first_child) {
         if (team == target.assisting_team) {
             search_score = UINT32_MAX;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                update_search_scores(ctx, child, !team, verify);
+                update_search_scores(ctx, child, target, !team, verify);
                 uint32_t child_search_score = (child->search_score * 3) / 2;
                 if (child_search_score < search_score) {
                     search_score = child_search_score;
@@ -859,17 +772,17 @@ static void update_search_scores(Ai *ctx, MoveNode *node, Team team, b32 verify)
         } else {
             search_score = 0;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                update_search_scores(ctx, child, !team, verify);
+                update_search_scores(ctx, child, target, !team, verify);
                 search_score += (child->search_score * 3) / 2;
             }
         }
     } else {
         search_score = distance_from_target(node->score, target);
-        if (node->expanded && search_score) {
-            // If the node has no children after it's been expanded, then it marks the end of the
-            // game (checkmate or stalemate). Therefore, if the score does not already satisfy the
-            // target, we assign maximum search score, because it's impossible for this node to ever
-            // satisfy the target.
+        if (node->age != NODE_AGE_CHILD && search_score) {
+            // If an adult node has no children, then it's the end of the game (checkmate or
+            // stalemate). Therefore, if the score does not already satisfy the target, we assign
+            // maximum search score, because it's impossible for this node to ever satisfy the
+            // target.
             search_score = UINT32_MAX;
         }
     }
@@ -890,41 +803,37 @@ static int score_index_pair_compare(void *a, void *b)
     return ((ScoreIndexPair *)a)->score - ((ScoreIndexPair *)b)->score;
 }
 
-static void update_search_scores_root(Ai *ctx, b32 verify)
+static void update_search_scores_root(Ai *ai, b32 verify)
 {
-    Team team = board_current_team_get(ctx->response.board);
+    Team team = board_current_team_get(ai->response.board);
 
-    ScoreIndexPair top_two_pairs[2] = {{.score = INT32_MIN}, {.score = INT32_MIN}};
-    for (int32_t i = 0; i < ctx->top_level_node_count; i++) {
-        int32_t score = team_multiplier[team] * ctx->top_level_nodes[i].score;
-        if (top_two_pairs[0].score < score) {
-            top_two_pairs[0].score = score;
-            top_two_pairs[0].index = i;
-            if (top_two_pairs[1].score < top_two_pairs[0].score) {
-                ScoreIndexPair tmp = top_two_pairs[1];
-                top_two_pairs[1] = top_two_pairs[0];
-                top_two_pairs[0] = tmp;
+    MoveNode placeholder = {.score = INT32_MIN};
+    ai->favorite_child = &placeholder;
+    MoveNode *second_favorite = &placeholder;
+    for (MoveNode *node = ai->root->first_child; node; node = node->next_sibling) {
+        if (team_multiplier[team] * second_favorite->score < team_multiplier[team] * node->score) {
+            second_favorite = node;
+            if (team_multiplier[team] * ai->favorite_child->score
+                    < team_multiplier[team] * second_favorite->score) {
+                JK_SWAP(ai->favorite_child, second_favorite, MoveNode *);
             }
         }
     }
+    JK_ASSERT(ai->favorite_child != &placeholder);
+    JK_ASSERT(second_favorite != &placeholder);
 
-    int32_t favorite_child_index = top_two_pairs[1].index;
-    AiTarget favorite_target = {
-        .assisting_team = !team,
-        .score = team_multiplier[team] * (top_two_pairs[0].score - 1),
-    };
-    AiTarget target = {
-        .assisting_team = team,
-        .score = team_multiplier[team] * (top_two_pairs[1].score + 1),
-    };
-    for (int32_t i = 0; i < ctx->top_level_node_count; i++) {
-        if (i == favorite_child_index) {
-            ctx->targets[i] = favorite_target;
-        } else {
-            ctx->targets[i] = target;
-        }
-        update_search_scores(ctx, ctx->top_level_nodes + i, !team, verify);
-        JK_ASSERT(ctx->top_level_nodes[i].search_score > 0);
+    ai->favorite_child = ai->favorite_child;
+    ai->favorite_target.assisting_team = !team;
+    ai->favorite_target.score =
+            second_favorite->score + team_multiplier[ai->favorite_target.assisting_team];
+    ai->other_target.assisting_team = team;
+    ai->other_target.score =
+            ai->favorite_child->score + team_multiplier[ai->other_target.assisting_team];
+
+    for (MoveNode *node = ai->root->first_child; node; node = node->next_sibling) {
+        AiTarget target = node == ai->favorite_child ? ai->favorite_target : ai->other_target;
+        update_search_scores(ai, node, target, !team, verify);
+        JK_ASSERT(node->search_score > 0);
     }
 }
 
@@ -936,107 +845,6 @@ static void moves_shuffle(JkRandomGeneratorU64 *generator, MoveArray *moves)
         moves->data[swap_index] = moves->data[i];
         moves->data[i] = tmp;
     }
-}
-
-static b32 expand_node(Ai *ctx, MoveNode *node)
-{
-    Board node_board_state = ctx->response.board;
-    {
-        MoveArray prev_moves;
-        prev_moves.count = 0;
-        for (MoveNode *ancestor = node; ancestor; ancestor = ancestor->parent) {
-            prev_moves.data[prev_moves.count++] = ancestor->move;
-        }
-
-        for (int64_t i = prev_moves.count - 1; i >= 0; i--) {
-            node_board_state = board_move_perform(node_board_state, prev_moves.data[i]);
-        }
-    }
-
-    MoveArray moves;
-    moves_get(&moves, node_board_state);
-    MoveNode *prev_child = 0;
-    MoveNode *first_child = 0;
-    for (uint8_t i = 0; i < moves.count; i++) {
-        MoveNode *new_child = jk_arena_push(ctx->arena, sizeof(*new_child));
-        if (!new_child) {
-            return 0;
-        }
-        new_child->depth = node->depth + 1;
-        new_child->expanded = 0;
-        new_child->move = moves.data[i];
-        new_child->parent = node;
-        new_child->next_sibling = 0;
-        new_child->first_child = 0;
-        new_child->board_score =
-                board_score(board_move_perform(node_board_state, moves.data[i]), new_child->depth);
-        new_child->score = new_child->board_score;
-        new_child->search_score = UINT32_MAX;
-        new_child->top_level_index = node->top_level_index;
-
-        if (prev_child) {
-            prev_child->next_sibling = new_child;
-        } else {
-            first_child = new_child;
-        }
-        prev_child = new_child;
-    }
-    node->first_child = first_child;
-    node->expanded = 1;
-    if (!node->first_child) {
-        node->search_score = UINT32_MAX;
-    }
-
-    // TODO: We probably only need to look at all the children for node. For the ancestors, we
-    // can probably compare node's score with their score to see if it would be an improvement.
-    Team team = board_current_team_get(node_board_state);
-    MoveNode *ancestor;
-    b32 top_level_score_changed = 0;
-    for (ancestor = node; ancestor; ancestor = ancestor->parent, team = !team) {
-        if (ancestor->first_child) {
-            int32_t score = INT32_MIN;
-            for (MoveNode *child = ancestor->first_child; child; child = child->next_sibling) {
-                int32_t child_score = team_multiplier[team] * child->score;
-                if (score < child_score) {
-                    score = child_score;
-                }
-            }
-            score *= team_multiplier[team];
-            if (ancestor->score == score) {
-                break;
-            } else {
-                ancestor->score = score;
-                if (!ancestor->parent) {
-                    top_level_score_changed = 1;
-                }
-            }
-        }
-    }
-
-    if (top_level_score_changed) {
-        update_search_scores_root(ctx, 0);
-    } else {
-        team = board_current_team_get(node_board_state);
-        for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-            child->search_score = search_score_get(ctx, child, !team);
-        }
-        for (ancestor = node; ancestor; ancestor = ancestor->parent, team = !team) {
-            uint32_t search_score = search_score_get(ctx, ancestor, team);
-            if (search_score == ancestor->search_score) {
-                break;
-            } else {
-                ancestor->search_score = search_score;
-            }
-        }
-    }
-
-    // update_search_scores_root(ctx, 1);
-
-    // TODO: Find search score differences in updating only a subtree vs updating from the root
-
-    // TODO: What happens if the AI runs out of moves to look at? E.g. all paths end in checkmate
-
-    return 1;
 }
 
 #if JK_BUILD_MODE != JK_RELEASE
@@ -1059,7 +867,7 @@ void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t de
         for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
             move_tree_stats_calculate(stats, child, depth + 1);
         }
-    } else if (!node->expanded) {
+    } else {
         stats->leaf_count++;
         stats->depth_sum += depth;
         if (depth < stats->min_depth) {
@@ -1080,6 +888,157 @@ void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t de
 
 #endif
 
+typedef enum ExpandFlag {
+    EXPAND_FLAG_SCORE_CHANGED,
+    EXPAND_FLAG_REMOVE_CHILD,
+    EXPAND_FLAG_OUT_OF_MEMORY,
+} ExpandFlag;
+
+static MoveArray ai_move_buffer;
+
+b32 is_in_check(MoveArray *move_buffer, MoveNode *node, Board board)
+{
+    if (!JK_FLAG_GET(node->flags, MOVE_FLAG_CHECK_EVALUATED)) {
+        JK_FLAG_SET(node->flags, MOVE_FLAG_CHECK_EVALUATED, 1);
+
+        // Asking whether the king is in check is equivalent to asking "If we took a null move,
+        // could the king be captured on the next turn?"
+        board.move_prev = (MovePacked){0};
+        board.flags ^= JK_MASK(BOARD_FLAG_CURRENT_PLAYER);
+        JK_FLAG_SET(node->flags, MOVE_FLAG_IN_CHECK, !move_candidates_get(move_buffer, board));
+    }
+
+    return JK_FLAG_GET(node->flags, MOVE_FLAG_IN_CHECK);
+}
+
+// Returns 1 on success. Returns 0 if we ran out of memory.
+uint8_t expand_move_tree(JkArena *arena,
+        MoveArray *move_buffer,
+        MoveNode *node,
+        Board board,
+        AiTarget target,
+        uint16_t depth,
+        uint8_t expansion_size)
+{
+    Team team = board_current_team_get(board);
+    b32 out_of_memory = 0;
+
+    if (expansion_size) {
+        if (node->age == NODE_AGE_ELDER) {
+            uint32_t min_search_score = UINT32_MAX;
+            MoveNode *min_child = 0;
+            uint32_t max_dist_from_target = 0;
+            MoveNode *max_dist_from_target_child = 0;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                if (child->search_score <= min_search_score) {
+                    min_search_score = child->search_score;
+                    min_child = child;
+                }
+                uint32_t dist_from_target = distance_from_target(child->score, target);
+                if (max_dist_from_target <= dist_from_target) {
+                    max_dist_from_target = dist_from_target;
+                    max_dist_from_target_child = child;
+                }
+            }
+            JK_ASSERT(min_child && max_dist_from_target_child);
+            MoveNode *search_candidate =
+                    team == target.assisting_team ? min_child : max_dist_from_target_child;
+            uint8_t flags = expand_move_tree(arena,
+                    move_buffer,
+                    search_candidate,
+                    board_move_perform(board, search_candidate->move),
+                    target,
+                    depth + 1,
+                    expansion_size);
+            out_of_memory |= JK_FLAG_GET(flags, EXPAND_FLAG_OUT_OF_MEMORY);
+        } else {
+            if (node->age == NODE_AGE_CHILD) {
+                if (move_candidates_get(move_buffer, board)) {
+                    MoveNode *prev_child = 0;
+                    MoveNode *first_child = 0;
+                    for (uint8_t i = 0; i < move_buffer->count && !out_of_memory; i++) {
+                        MoveNode *new_child = jk_arena_push(arena, sizeof(*new_child));
+                        if (new_child) {
+                            new_child->parent = node;
+                            new_child->next_sibling = 0;
+                            new_child->first_child = 0;
+
+                            new_child->flags = 0;
+                            new_child->age = NODE_AGE_CHILD;
+                            new_child->move = move_buffer->data[i];
+                            new_child->score = SCORE_UNINITIALIZED;
+                            new_child->search_score = UINT32_MAX;
+
+                            if (prev_child) {
+                                prev_child->next_sibling = new_child;
+                            } else {
+                                first_child = new_child;
+                            }
+                            prev_child = new_child;
+                        } else {
+                            out_of_memory = 1;
+                        }
+                    }
+                    node->first_child = first_child;
+                } else {
+                    return JK_MASK(EXPAND_FLAG_REMOVE_CHILD);
+                }
+            }
+            node->age = JK_MIN(NODE_AGE_ELDER, node->age + expansion_size);
+            MoveNode **link = &node->first_child;
+            while (*link && !out_of_memory) {
+                MoveNode *child = *link;
+                uint8_t flags = expand_move_tree(arena,
+                        move_buffer,
+                        child,
+                        board_move_perform(board, child->move),
+                        target,
+                        depth + 1,
+                        expansion_size - 1);
+                out_of_memory |= JK_FLAG_GET(flags, EXPAND_FLAG_OUT_OF_MEMORY);
+                if (JK_FLAG_GET(flags, EXPAND_FLAG_REMOVE_CHILD)) {
+                    *link = child->next_sibling;
+                } else {
+                    link = &child->next_sibling;
+                }
+            }
+        }
+    }
+
+    uint8_t result = !!out_of_memory << EXPAND_FLAG_OUT_OF_MEMORY;
+
+    if (node->age == NODE_AGE_CHILD) {
+        node->score = board_score(board, depth);
+    } else {
+        int32_t score;
+        if (node->first_child) {
+            score = INT32_MIN;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                int32_t child_score = team_multiplier[team] * child->score;
+                if (score < child_score) {
+                    score = child_score;
+                }
+            }
+            score *= team_multiplier[team];
+        } else {
+            if (is_in_check(move_buffer, node, board)) {
+                score = team_multiplier[!team] * (100000 - depth);
+            } else {
+                score = 0;
+            }
+        }
+        if (node->score != score) {
+            JK_FLAG_SET(result, EXPAND_FLAG_SCORE_CHANGED, 1);
+        }
+        node->score = score;
+    }
+    node->search_score = search_score_get(node, target, team);
+
+    return result;
+}
+
+static uint64_t expand_count = 0;
+
 void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_frequency)
 {
     ai->arena = arena;
@@ -1093,118 +1052,77 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_f
     ai->time_started = time;
     ai->time_limit = 5 * time_frequency;
 
-    MoveArray moves;
-    moves_get(&moves, ai->response.board);
+    ai->root = jk_arena_push_zero(ai->arena, sizeof(*ai->root));
+    expand_move_tree(ai->arena, &ai_move_buffer, ai->root, ai->response.board, (AiTarget){0}, 0, 2);
 
-    ai->top_level_node_count = moves.count;
-
-    if (!moves.count) {
+    if (!ai->root->first_child) {
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
-    } else if (moves.count == 1) {
+    } else if (!ai->root->first_child->next_sibling) {
         // If there's only one legal move, take it
-        ai->response.move = move_unpack(moves.data[0]);
+        ai->response.move = move_unpack(ai->root->first_child->move);
     } else {
-        moves_shuffle(&ai->generator, &moves);
-        MoveNode *prev_child = 0;
-        for (uint8_t i = 0; i < moves.count; i++) {
-            MoveNode *new_child = ai->top_level_nodes + i;
-
-            new_child->depth = 1;
-            new_child->expanded = 0;
-            new_child->move = moves.data[i];
-            new_child->parent = 0;
-            new_child->next_sibling = 0;
-            new_child->first_child = 0;
-            new_child->board_score = board_score(
-                    board_move_perform(ai->response.board, moves.data[i]), new_child->depth);
-            new_child->score = new_child->board_score;
-            new_child->search_score = UINT32_MAX;
-            new_child->top_level_index = i;
-
-            if (i) {
-                prev_child->next_sibling = new_child;
-            }
-
-            prev_child = new_child;
-        }
-
         update_search_scores_root(ai, 0);
     }
+
+    expand_count = 0;
 }
 
 b32 ai_running(Ai *ai)
 {
-    if (ai->top_level_node_count < 2) {
+    if (!ai->root->first_child || !ai->root->first_child->next_sibling) {
         return 0;
     }
 
     uint32_t iterations = 512;
     b32 running = ai->time - ai->time_started < ai->time_limit;
     while (iterations-- && running) {
-        MoveNode *node = 0;
+        MoveNode *search_candidate = 0;
         { // Find the node with the best search score
-            AiTarget target = {0};
-            {
-                uint32_t min_search_score = UINT32_MAX;
-                for (int32_t i = 0; i < ai->top_level_node_count; i++) {
-                    if (ai->top_level_nodes[i].search_score < min_search_score) {
-                        node = ai->top_level_nodes + i;
-                        target = ai->targets[i];
-                        min_search_score = ai->top_level_nodes[i].search_score;
-                    }
-                }
-            }
-            JK_ASSERT(node);
-
-            {
-                Team team = !board_current_team_get(ai->response.board);
-                uint32_t min_search_score = UINT32_MAX;
-                while (node->first_child) {
-                    min_search_score = UINT32_MAX;
-                    MoveNode *min_child = 0;
-                    uint32_t max_dist_from_target = 0;
-                    MoveNode *max_dist_from_target_child = 0;
-                    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                        if (child->first_child || !child->expanded) {
-                            if (child->search_score <= min_search_score) {
-                                min_search_score = child->search_score;
-                                min_child = child;
-                            }
-                            uint32_t dist_from_target = distance_from_target(child->score, target);
-                            if (max_dist_from_target <= dist_from_target) {
-                                max_dist_from_target = dist_from_target;
-                                max_dist_from_target_child = child;
-                            }
-                        }
-                    }
-                    JK_ASSERT(min_child && max_dist_from_target_child);
-                    node = team == target.assisting_team ? min_child : max_dist_from_target_child;
-                    team = !team;
+            uint32_t min_search_score = UINT32_MAX;
+            for (MoveNode *child = ai->root->first_child; child; child = child->next_sibling) {
+                if (child->search_score < min_search_score) {
+                    min_search_score = child->search_score;
+                    search_candidate = child;
                 }
             }
         }
+        JK_ASSERT(search_candidate);
 
-        if (!expand_node(ai, node)) {
+        expand_count++;
+        uint8_t flags = expand_move_tree(ai->arena,
+                &ai_move_buffer,
+                search_candidate,
+                board_move_perform(ai->response.board, search_candidate->move),
+                search_candidate == ai->favorite_child ? ai->favorite_target : ai->other_target,
+                1,
+                2);
+        if (JK_FLAG_GET(flags, EXPAND_FLAG_SCORE_CHANGED)) {
+            update_search_scores_root(ai, 0);
+        } else {
+            // update_search_scores_root(ai, 1);
+        }
+        if (JK_FLAG_GET(flags, EXPAND_FLAG_OUT_OF_MEMORY)) {
             jk_print(JKS("Out of AI memory\n"));
             running = 0;
         }
     }
 
     if (!running) {
-        int32_t max_score_index = 0;
+        MoveNode *favorite_child = 0;
         {
             // Pick move with the best score
             Team team = board_current_team_get(ai->response.board);
             int32_t max_score = INT32_MIN;
-            for (int32_t i = 0; i < ai->top_level_node_count; i++) {
-                int32_t score = team_multiplier[team] * ai->top_level_nodes[i].score;
+            for (MoveNode *child = ai->root->first_child; child; child = child->next_sibling) {
+                int32_t score = team_multiplier[team] * child->score;
                 if (max_score < score) {
-                    max_score_index = i;
                     max_score = score;
+                    favorite_child = child;
                 }
             }
         }
-        ai->response.move = move_unpack(ai->top_level_nodes[max_score_index].move);
+        JK_ASSERT(favorite_child && favorite_child == ai->favorite_child);
+        ai->response.move = move_unpack(favorite_child->move);
 
 #if JK_BUILD_MODE != JK_RELEASE
         JkArenaRoot debug_arena_root;
@@ -1216,9 +1134,7 @@ b32 ai_running(Ai *ai)
 
         // Print min and max depth
         MoveTreeStats stats = {.min_depth = UINT64_MAX};
-        for (int32_t i = 0; i < ai->top_level_node_count; i++) {
-            move_tree_stats_calculate(&stats, ai->top_level_nodes + i, 1);
-        }
+        move_tree_stats_calculate(&stats, ai->root, 0);
         stats.max_line = jk_arena_pointer_current(&debug_arena);
         for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
             MovePacked *line_move = jk_arena_push(&debug_arena, sizeof(*line_move));
@@ -1229,6 +1145,7 @@ b32 ai_running(Ai *ai)
 
         // clang-format off
         JK_PRINT_FMT(&debug_arena,
+                jkfn("expand_count: "), jkfu(expand_count), jkf_nl,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
                 jkff(mnps, 4), jkfn("Mn/s"), jkf_nl);
@@ -1239,8 +1156,9 @@ b32 ai_running(Ai *ai)
             {
                 Team team = board_current_team_get(ai->response.board);
                 Board board = ai->response.board;
-                MoveNode *node = ai->top_level_nodes + max_score_index;
+                MoveNode *node = ai->favorite_child;
                 while (node) {
+                    JK_PRINT_FMT(&debug_arena, jkfn("age: "), jkfu(node->age), jkf_nl);
                     max_score_depth++;
                     board = board_move_perform(board, node->move);
                     debug_render(board);
@@ -1301,6 +1219,20 @@ b32 ai_running(Ai *ai)
 }
 
 // ---- AI end -----------------------------------------------------------------
+
+// Finds legal moves and populates move_buffer with them
+// Returns 1 if the current player's king is in check. Returns 0 otherwise.
+static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
+{
+    MoveNode *root = jk_arena_push_zero(arena, sizeof(*root));
+    expand_move_tree(arena, move_buffer, root, board, (AiTarget){0}, 0, 2);
+    b32 in_check = is_in_check(move_buffer, root, board);
+    move_buffer->count = 0;
+    for (MoveNode *node = root->first_child; node; node = node->next_sibling) {
+        move_buffer->data[move_buffer->count++] = node->move;
+    }
+    return in_check;
+}
 
 b32 board_equal(Board *a, Board *b)
 {
@@ -1421,16 +1353,11 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-static void debug_set_top_level_index(MoveNode *node, int8_t top_level_index)
-{
-    node->top_level_index = top_level_index;
-    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-        debug_set_top_level_index(child, top_level_index);
-    }
-}
-
 void update(ChessAssets *assets, Chess *chess)
 {
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
+
 #if JK_BUILD_MODE != JK_RELEASE
     if (!debug_assets) {
         debug_assets = assets;
@@ -1527,8 +1454,7 @@ void update(ChessAssets *assets, Chess *chess)
         chess->piece_prev_type = NONE;
         chess->os_time_move_prev = 0;
         chess->board = starting_state;
-        // chess->board = parse_fen(wtf9_fen);
-        moves_get(&chess->moves, chess->board);
+        find_legal_moves(&arena, &chess->moves, chess->board);
 
         chess->audio_state.sound = 0;
         chess->audio_state.started_time = 0;
@@ -1654,18 +1580,7 @@ void update(ChessAssets *assets, Chess *chess)
                 chess->selected_square = (JkIntVector2){-1, -1};
                 chess->promo_square = (JkIntVector2){-1, -1};
                 Team current_team = board_current_team_get(chess->board);
-                moves_get(&chess->moves, chess->board);
-
-                uint8_t king_index = 0;
-                for (uint8_t square_index = 0; square_index < 64; square_index++) {
-                    Piece piece = board_piece_get_index(chess->board, square_index);
-                    if (piece.type == KING && piece.team == current_team) {
-                        king_index = square_index;
-                        break;
-                    }
-                }
-                b32 in_check =
-                        (board_threats_get(chess->board, !current_team).bitfield >> king_index) & 1;
+                b32 in_check = find_legal_moves(&arena, &chess->moves, chess->board);
 
                 if (!chess->moves.count) {
                     chess->result = in_check ? RESULT_CHECKMATE : RESULT_STALEMATE;
@@ -2076,10 +1991,8 @@ void render(ChessAssets *assets, Chess *chess)
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
 
-    /*
-    static uint64_t render_count;
-    JK_PRINT_FMT(&arena, jkfn("render_count "), jkfu(++render_count), jkf_nl);
-    */
+    // static uint64_t render_count;
+    // JK_PRINT_FMT(&arena, jkfn("render_count "), jkfu(++render_count), jkf_nl);
 
     // Figure out which squares should be highlighted
     uint64_t destinations = destinations_get_by_src(chess, state.selected_index);
@@ -2092,9 +2005,6 @@ void render(ChessAssets *assets, Chess *chess)
     b32 promoting = board_in_bounds(state.promo_square);
     b32 holding_piece = state.holding_piece && state.selected_index < 64;
     b32 ready_to_drop = holding_piece && mouse_index < 64 && ((destinations >> mouse_index) & 1);
-
-    // uint64_t threatened = board_threatened_squares_get(
-    //         state.board, !((state.board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1));
 
     Move move_prev = move_unpack(state.board.move_prev);
 

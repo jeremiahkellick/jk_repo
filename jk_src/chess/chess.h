@@ -90,19 +90,29 @@ typedef struct MoveArray {
     MovePacked data[UINT8_MAX];
 } MoveArray;
 
+typedef enum MoveFlag {
+    MOVE_FLAG_CHECK_EVALUATED,
+    MOVE_FLAG_IN_CHECK,
+} MoveFlag;
+
+#define SCORE_UNINITIALIZED INT32_MIN
+
+typedef enum NodeAge {
+    NODE_AGE_CHILD,
+    NODE_AGE_ADULT,
+    NODE_AGE_ELDER,
+} NodeAge;
+
 typedef struct MoveNode {
-    b32 expanded;
-    MovePacked move;
     struct MoveNode *parent;
     struct MoveNode *next_sibling;
     struct MoveNode *first_child;
 
-    int32_t board_score;
+    uint16_t flags;
+    MovePacked move;
+    NodeAge age;
     int32_t score;
     uint32_t search_score;
-    uint8_t top_level_index;
-
-    uint64_t depth;
 } MoveNode;
 
 typedef enum BoardFlag {
@@ -226,9 +236,11 @@ typedef struct Ai {
     AiResponse response;
     JkArena *arena;
     JkRandomGeneratorU64 generator;
-    uint8_t top_level_node_count;
-    MoveNode top_level_nodes[256];
-    AiTarget targets[256];
+    MoveNode *root;
+    MoveNode *favorite_child;
+    AiTarget favorite_target;
+    AiTarget other_target;
+
     uint64_t time;
     uint64_t time_frequency;
     uint64_t time_started;
