@@ -61,6 +61,8 @@ static JkBuffer puzzle_fen = JKSI("8/1bp1rkp1/p4p2/1p1p1QPR/3q3P/8/5PK1/8 b - - 
 static JkBuffer two_sided_forced_mate_fen =
         JKSI("3r2q1/b2k4/N1Q1N1n1/2B5/1RpK2Br/3b4/8/3n4 b - - 1 1");
 
+static JkBuffer seven_node_move_tree_fen = JKSI("3q4/8/1b6/6q1/2N5/8/1PP2pp1/1RKBnkr1 w - - 1 1");
+
 typedef struct PieceCounts {
     int32_t a[PIECE_TYPE_COUNT];
 } PieceCounts;
@@ -721,6 +723,11 @@ static uint32_t distance_from_target(int32_t score, AiTarget target)
     }
 }
 
+static uint32_t saturating_add(uint32_t a, uint32_t b)
+{
+    return a + b < a ? UINT32_MAX : a + b;
+}
+
 static uint32_t search_score_get(MoveNode *node, AiTarget target, Team team)
 {
     uint32_t search_score;
@@ -728,7 +735,7 @@ static uint32_t search_score_get(MoveNode *node, AiTarget target, Team team)
         if (team == target.assisting_team) {
             search_score = UINT32_MAX;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                uint32_t child_search_score = (child->search_score * 3) / 2;
+                uint32_t child_search_score = child->search_score;
                 if (child_search_score < search_score) {
                     search_score = child_search_score;
                 }
@@ -736,7 +743,7 @@ static uint32_t search_score_get(MoveNode *node, AiTarget target, Team team)
         } else {
             search_score = 0;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                search_score += (child->search_score * 3) / 2;
+                search_score = saturating_add(search_score, child->search_score);
             }
         }
     } else {
@@ -764,7 +771,7 @@ static void update_search_scores(Ai *ctx, MoveNode *node, AiTarget target, Team 
             search_score = UINT32_MAX;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
                 update_search_scores(ctx, child, target, !team, verify);
-                uint32_t child_search_score = (child->search_score * 3) / 2;
+                uint32_t child_search_score = child->search_score;
                 if (child_search_score < search_score) {
                     search_score = child_search_score;
                 }
@@ -773,7 +780,7 @@ static void update_search_scores(Ai *ctx, MoveNode *node, AiTarget target, Team 
             search_score = 0;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
                 update_search_scores(ctx, child, target, !team, verify);
-                search_score += (child->search_score * 3) / 2;
+                search_score = saturating_add(search_score, child->search_score);
             }
         }
     } else {
@@ -850,6 +857,7 @@ static void moves_shuffle(JkRandomGeneratorU64 *generator, MoveArray *moves)
 #if JK_BUILD_MODE != JK_RELEASE
 
 typedef struct MoveTreeStats {
+    uint64_t elder_count;
     uint64_t node_count;
     uint64_t leaf_count;
     uint64_t depth_sum;
@@ -863,6 +871,9 @@ typedef struct MoveTreeStats {
 void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t depth)
 {
     stats->node_count++;
+    if (node->age == NODE_AGE_ELDER) {
+        stats->elder_count++;
+    }
     if (node->first_child) {
         for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
             move_tree_stats_calculate(stats, child, depth + 1);
@@ -888,12 +899,6 @@ void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t de
 
 #endif
 
-typedef enum ExpandFlag {
-    EXPAND_FLAG_SCORE_CHANGED,
-    EXPAND_FLAG_REMOVE_CHILD,
-    EXPAND_FLAG_OUT_OF_MEMORY,
-} ExpandFlag;
-
 static MoveArray ai_move_buffer;
 
 b32 is_in_check(MoveArray *move_buffer, MoveNode *node, Board board)
@@ -911,8 +916,23 @@ b32 is_in_check(MoveArray *move_buffer, MoveNode *node, Board board)
     return JK_FLAG_GET(node->flags, MOVE_FLAG_IN_CHECK);
 }
 
+typedef enum ExpandFlag {
+    EXPAND_FLAG_SCORE_CHANGED,
+    EXPAND_FLAG_REMOVE_CHILD,
+} ExpandFlag;
+
+typedef enum ExpandError {
+    EXPAND_ERROR_OUT_OF_MEMORY,
+    EXPAND_ERROR_DEAD_END,
+} ExpandError;
+
+typedef struct ExpandResult {
+    uint8_t flags;
+    uint8_t errors;
+} ExpandResult;
+
 // Returns 1 on success. Returns 0 if we ran out of memory.
-uint8_t expand_move_tree(JkArena *arena,
+ExpandResult expand_move_tree(JkArena *arena,
         MoveArray *move_buffer,
         MoveNode *node,
         Board board,
@@ -920,43 +940,48 @@ uint8_t expand_move_tree(JkArena *arena,
         uint16_t depth,
         uint8_t expansion_size)
 {
+    ExpandResult result = {0};
     Team team = board_current_team_get(board);
-    b32 out_of_memory = 0;
 
     if (expansion_size) {
         if (node->age == NODE_AGE_ELDER) {
-            uint32_t min_search_score = UINT32_MAX;
-            MoveNode *min_child = 0;
-            uint32_t max_dist_from_target = 0;
-            MoveNode *max_dist_from_target_child = 0;
-            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                if (child->search_score <= min_search_score) {
-                    min_search_score = child->search_score;
-                    min_child = child;
+            MoveNode *search_candidate = 0;
+            if (team == target.assisting_team) {
+                uint32_t min_search_score = UINT32_MAX;
+                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                    if (child->search_score <= min_search_score) {
+                        min_search_score = child->search_score;
+                        search_candidate = child;
+                    }
                 }
-                uint32_t dist_from_target = distance_from_target(child->score, target);
-                if (max_dist_from_target <= dist_from_target) {
-                    max_dist_from_target = dist_from_target;
-                    max_dist_from_target_child = child;
+            } else {
+                uint32_t max_search_score = 0;
+                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                    if (child->search_score != UINT32_MAX
+                            && max_search_score < child->search_score) {
+                        max_search_score = child->search_score;
+                        search_candidate = child;
+                    }
                 }
             }
-            JK_ASSERT(min_child && max_dist_from_target_child);
-            MoveNode *search_candidate =
-                    team == target.assisting_team ? min_child : max_dist_from_target_child;
-            uint8_t flags = expand_move_tree(arena,
-                    move_buffer,
-                    search_candidate,
-                    board_move_perform(board, search_candidate->move),
-                    target,
-                    depth + 1,
-                    expansion_size);
-            out_of_memory |= JK_FLAG_GET(flags, EXPAND_FLAG_OUT_OF_MEMORY);
+            if (search_candidate) {
+                ExpandResult child_result = expand_move_tree(arena,
+                        move_buffer,
+                        search_candidate,
+                        board_move_perform(board, search_candidate->move),
+                        target,
+                        depth + 1,
+                        expansion_size);
+                result.errors |= child_result.errors;
+            } else {
+                JK_FLAG_SET(result.errors, EXPAND_ERROR_DEAD_END, 1);
+            }
         } else {
             if (node->age == NODE_AGE_CHILD) {
                 if (move_candidates_get(move_buffer, board)) {
                     MoveNode *prev_child = 0;
                     MoveNode *first_child = 0;
-                    for (uint8_t i = 0; i < move_buffer->count && !out_of_memory; i++) {
+                    for (uint8_t i = 0; i < move_buffer->count && !result.errors; i++) {
                         MoveNode *new_child = jk_arena_push(arena, sizeof(*new_child));
                         if (new_child) {
                             new_child->parent = node;
@@ -976,27 +1001,28 @@ uint8_t expand_move_tree(JkArena *arena,
                             }
                             prev_child = new_child;
                         } else {
-                            out_of_memory = 1;
+                            JK_FLAG_SET(result.errors, EXPAND_ERROR_OUT_OF_MEMORY, 1);
                         }
                     }
                     node->first_child = first_child;
                 } else {
-                    return JK_MASK(EXPAND_FLAG_REMOVE_CHILD);
+                    JK_FLAG_SET(result.flags, EXPAND_FLAG_REMOVE_CHILD, 1);
+                    return result;
                 }
             }
             node->age = JK_MIN(NODE_AGE_ELDER, node->age + expansion_size);
             MoveNode **link = &node->first_child;
-            while (*link && !out_of_memory) {
+            while (*link && !result.errors) {
                 MoveNode *child = *link;
-                uint8_t flags = expand_move_tree(arena,
+                ExpandResult child_result = expand_move_tree(arena,
                         move_buffer,
                         child,
                         board_move_perform(board, child->move),
                         target,
                         depth + 1,
                         expansion_size - 1);
-                out_of_memory |= JK_FLAG_GET(flags, EXPAND_FLAG_OUT_OF_MEMORY);
-                if (JK_FLAG_GET(flags, EXPAND_FLAG_REMOVE_CHILD)) {
+                result.errors |= child_result.errors;
+                if (JK_FLAG_GET(child_result.flags, EXPAND_FLAG_REMOVE_CHILD)) {
                     *link = child->next_sibling;
                 } else {
                     link = &child->next_sibling;
@@ -1004,8 +1030,6 @@ uint8_t expand_move_tree(JkArena *arena,
             }
         }
     }
-
-    uint8_t result = !!out_of_memory << EXPAND_FLAG_OUT_OF_MEMORY;
 
     if (node->age == NODE_AGE_CHILD) {
         node->score = board_score(board, depth);
@@ -1028,7 +1052,7 @@ uint8_t expand_move_tree(JkArena *arena,
             }
         }
         if (node->score != score) {
-            JK_FLAG_SET(result, EXPAND_FLAG_SCORE_CHANGED, 1);
+            JK_FLAG_SET(result.flags, EXPAND_FLAG_SCORE_CHANGED, 1);
         }
         node->score = score;
     }
@@ -1073,10 +1097,10 @@ b32 ai_running(Ai *ai)
         return 0;
     }
 
-    uint32_t iterations = 512;
+    uint32_t iterations = 1;
     b32 running = ai->time - ai->time_started < ai->time_limit;
     while (iterations-- && running) {
-        MoveNode *search_candidate = 0;
+        MoveNode *search_candidate = ai->root->first_child;
         { // Find the node with the best search score
             uint32_t min_search_score = UINT32_MAX;
             for (MoveNode *child = ai->root->first_child; child; child = child->next_sibling) {
@@ -1089,21 +1113,26 @@ b32 ai_running(Ai *ai)
         JK_ASSERT(search_candidate);
 
         expand_count++;
-        uint8_t flags = expand_move_tree(ai->arena,
+        ExpandResult result = expand_move_tree(ai->arena,
                 &ai_move_buffer,
                 search_candidate,
                 board_move_perform(ai->response.board, search_candidate->move),
                 search_candidate == ai->favorite_child ? ai->favorite_target : ai->other_target,
                 1,
-                2);
-        if (JK_FLAG_GET(flags, EXPAND_FLAG_SCORE_CHANGED)) {
+                3);
+        if (JK_FLAG_GET(result.flags, EXPAND_FLAG_SCORE_CHANGED)) {
             update_search_scores_root(ai, 0);
         } else {
             // update_search_scores_root(ai, 1);
         }
-        if (JK_FLAG_GET(flags, EXPAND_FLAG_OUT_OF_MEMORY)) {
-            jk_print(JKS("Out of AI memory\n"));
+        if (result.errors) {
             running = 0;
+            if (JK_FLAG_GET(result.errors, EXPAND_ERROR_OUT_OF_MEMORY)) {
+                jk_print(JKS("AI hit the memory limit\n"));
+            }
+            if (JK_FLAG_GET(result.errors, EXPAND_ERROR_DEAD_END)) {
+                jk_print(JKS("AI hit a dead end\n"));
+            }
         }
     }
 
@@ -1146,6 +1175,7 @@ b32 ai_running(Ai *ai)
         // clang-format off
         JK_PRINT_FMT(&debug_arena,
                 jkfn("expand_count: "), jkfu(expand_count), jkf_nl,
+                jkfn("elder_count: "), jkfu(stats.elder_count), jkf_nl,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
                 jkff(mnps, 4), jkfn("Mn/s"), jkf_nl);

@@ -738,7 +738,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
     g_audio_buffer_size = jk_round_up_to_power_of_2(2 * SAMPLES_PER_SECOND * sizeof(AudioSample));
     g_chess.render_memory.size = 2 * JK_MEGABYTE;
-    g_ai_memory.size = 64 * JK_MEGABYTE;
+    g_ai_memory.size = 8 * JK_GIGABYTE;
     uint8_t *memory = VirtualAlloc(0,
             g_audio_buffer_size + DRAW_BUFFER_SIZE + g_chess.render_memory.size + g_ai_memory.size,
             MEM_COMMIT,
