@@ -91,29 +91,32 @@ typedef struct MoveArray {
 } MoveArray;
 
 typedef enum MoveFlag {
+    MOVE_FLAG_AGE_BIT_1,
+    MOVE_FLAG_AGE_BIT_2,
     MOVE_FLAG_CHECK_EVALUATED,
     MOVE_FLAG_IN_CHECK,
 } MoveFlag;
 
-#define SCORE_UNINITIALIZED INT32_MIN
+#define MOVE_FLAGS_AGE_MASK 0x3
 
 typedef enum NodeAge {
-    NODE_AGE_CHILD,
-    NODE_AGE_ADULT,
-    NODE_AGE_ELDER,
+    NODE_AGE_CHILD = 0,
+    NODE_AGE_ADULT = 1,
+    NODE_AGE_ELDER = 2,
 } NodeAge;
 
 typedef struct MoveNode {
+#if JK_BUILD_MODE != JK_RELEASE
     struct MoveNode *parent;
+#endif
     struct MoveNode *next_sibling;
     struct MoveNode *first_child;
     struct MoveNode *search_candidate;
 
-    uint16_t flags;
     MovePacked move;
-    NodeAge age;
+    uint8_t flags;
+    uint8_t line_depth;
     int32_t score;
-    uint32_t line_depth;
 } MoveNode;
 
 typedef enum BoardFlag {

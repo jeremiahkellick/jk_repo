@@ -14,17 +14,6 @@
 
 #include "chess.h"
 
-typedef enum Column {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-} Column;
-
 static Board starting_state = {
     // clang-format off
     // Byte array encoding the chess starting position
@@ -70,13 +59,6 @@ typedef struct PieceCounts {
 } PieceCounts;
 
 static PieceCounts piece_counts = {.a = {0, 1, 1, 2, 2, 2, 8}};
-
-static void debug_print_jkf(JkArena *arena, void (*debug_print)(char *), JkFormatItemArray items)
-{
-    JkArena tmp_arena = jk_arena_child_get(arena);
-    JkBuffer string = jk_format(&tmp_arena, items);
-    debug_print(jk_buffer_to_null_terminated(&tmp_arena, string));
-}
 
 #if JK_BUILD_MODE != JK_RELEASE
 
@@ -158,11 +140,6 @@ static void board_piece_set(Board *board, JkIntVector2 pos, Piece piece)
     } else {
         board->bytes[byte_index] = (board->bytes[byte_index] & 0xf0) | bits;
     }
-}
-
-static int32_t absolute_value(int32_t x)
-{
-    return x < 0 ? -x : x;
 }
 
 static JkIntVector2 all_directions[8] = {
@@ -428,7 +405,7 @@ static uint8_t board_castling_rights_get(Board board, Team team)
     return (board.flags >> (1 + team * 2)) & 0x3;
 }
 
-static uint64_t board_castling_rights_mask_get(Team team, b32 king_side)
+static uint64_t castling_rights_mask_get(Team team, b32 king_side)
 {
     return 1llu << (1 + team * 2 + !!king_side);
 }
@@ -450,13 +427,13 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     // Castling handling
     int32_t delta_x = dest.x - src.x;
     if (move.piece.type == ROOK && src.y == (team ? 7 : 0) && (src.x == 0 || src.x == 7)) {
-        board.flags |= board_castling_rights_mask_get(team, src.x == 7);
+        board.flags |= castling_rights_mask_get(team, src.x == 7);
     }
     if (move.piece.type == KING) {
-        board.flags |= board_castling_rights_mask_get(team, 0);
-        board.flags |= board_castling_rights_mask_get(team, 1);
+        board.flags |= castling_rights_mask_get(team, 0);
+        board.flags |= castling_rights_mask_get(team, 1);
 
-        if (absolute_value(delta_x) == 2) {
+        if (JK_ABS(delta_x) == 2) {
             int32_t rook_from_x, rook_to_x;
             if (delta_x > 0) {
                 rook_from_x = 7;
@@ -654,7 +631,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
     }
 
     // En-passant
-    if (absolute_value((int32_t)move_prev.src - (int32_t)move_prev.dest) == 16) {
+    if (JK_ABS((int32_t)move_prev.src - (int32_t)move_prev.dest) == 16) {
         Piece move_prev_piece = board_piece_get_index(board, move_prev.dest);
         if (move_prev_piece.type == PAWN) {
             JkIntVector2 pos = board_index_to_vector_2(move_prev.dest);
@@ -683,9 +660,13 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
 static int32_t team_multiplier[2] = {1, -1};
 static int32_t piece_value[PIECE_TYPE_COUNT] = {0, 0, 9, 5, 3, 3, 1};
 
-static int32_t board_score(Board board, uint16_t depth)
+typedef struct MoveCounts {
+    int16_t a[2];
+} MoveCounts;
+
+static int32_t board_score(Board board, uint16_t depth, MoveCounts move_counts)
 {
-    int32_t score = 0;
+    int32_t score = move_counts.a[WHITE] - move_counts.a[BLACK];
     for (uint8_t i = 0; i < 64; i++) {
         Piece piece = board_piece_get_index(board, i);
         score += team_multiplier[piece.team] * piece_value[piece.type] * 100;
@@ -703,55 +684,14 @@ static int32_t board_score(Board board, uint16_t depth)
     return score;
 }
 
-typedef struct Scores {
-    int32_t a[2];
-} Scores;
-
-static uint32_t distance_from_target(int32_t score, AiTarget target)
+static uint8_t node_age_get(MoveNode *node)
 {
-    switch (target.assisting_team) {
-    case WHITE: { // White wants higher scores
-        return score < target.score ? target.score - score : 0;
-    } break;
-
-    case BLACK: { // Black wants lower scores
-        return target.score < score ? score - target.score : 0;
-    } break;
-
-    default: {
-        JK_ASSERT(0 && "invalid target.assisting_team");
-        return 0;
-    } break;
-    }
+    return node->flags & MOVE_FLAGS_AGE_MASK;
 }
 
-static uint32_t saturating_add(uint32_t a, uint32_t b)
+static void node_age_set(MoveNode *node, uint8_t age)
 {
-    return a + b < a ? UINT32_MAX : a + b;
-}
-
-uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
-
-#define MAX_STAGNATION 9
-
-typedef struct ScoreIndexPair {
-    int32_t index;
-    int32_t score;
-} ScoreIndexPair;
-
-static int score_index_pair_compare(void *a, void *b)
-{
-    return ((ScoreIndexPair *)a)->score - ((ScoreIndexPair *)b)->score;
-}
-
-static void moves_shuffle(JkRandomGeneratorU64 *generator, MoveArray *moves)
-{
-    for (int32_t i = 0; i < moves->count; i++) {
-        int32_t swap_index = i + (int32_t)(jk_random_u64(generator) % (moves->count - i));
-        MovePacked tmp = moves->data[swap_index];
-        moves->data[swap_index] = moves->data[i];
-        moves->data[i] = tmp;
-    }
+    node->flags = (node->flags & ~MOVE_FLAGS_AGE_MASK) | (age & MOVE_FLAGS_AGE_MASK);
 }
 
 #if JK_BUILD_MODE != JK_RELEASE
@@ -768,10 +708,10 @@ typedef struct MoveTreeStats {
     MovePacked *max_line;
 } MoveTreeStats;
 
-void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t depth)
+static void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t depth)
 {
     stats->node_count++;
-    if (node->age == NODE_AGE_ELDER) {
+    if (node_age_get(node) == NODE_AGE_ELDER) {
         stats->elder_count++;
     }
     if (node->first_child) {
@@ -831,8 +771,8 @@ typedef struct ExpandResult {
     uint8_t errors;
 } ExpandResult;
 
-static int32_t a = 1;
-static int32_t b = -150;
+static int32_t score_coeff = 1;
+static int32_t depth_coeff = -150;
 
 // Returns 1 on success. Returns 0 if we ran out of memory.
 ExpandResult expand_move_tree(JkArena *arena,
@@ -841,41 +781,50 @@ ExpandResult expand_move_tree(JkArena *arena,
         Board board,
         uint16_t depth,
         uint8_t expansion_size,
-        uint8_t errors)
+        uint8_t errors,
+        MoveCounts move_counts)
 {
     ExpandResult result = {.errors = errors};
     Team team = board_current_team_get(board);
 
     if (!result.errors && expansion_size) {
-        if (node->age == NODE_AGE_ELDER) {
+        if (node_age_get(node) == NODE_AGE_ELDER) {
             if (node->search_candidate) {
+
+                move_counts.a[team] = 0;
+                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                    move_counts.a[team]++;
+                }
+
                 ExpandResult child_result = expand_move_tree(arena,
                         move_buffer,
                         node->search_candidate,
                         board_move_perform(board, node->search_candidate->move),
                         depth + 1,
                         expansion_size,
-                        result.errors);
+                        result.errors,
+                        move_counts);
                 result.errors |= child_result.errors;
             } else {
                 JK_FLAG_SET(result.errors, EXPAND_ERROR_DEAD_END, 1);
             }
         } else {
-            if (node->age == NODE_AGE_CHILD) {
+            if (node_age_get(node) == NODE_AGE_CHILD) {
                 if (move_candidates_get(move_buffer, board)) {
                     MoveNode *prev_child = 0;
                     MoveNode *first_child = 0;
                     for (uint8_t i = 0; i < move_buffer->count && !result.errors; i++) {
                         MoveNode *new_child = jk_arena_push(arena, sizeof(*new_child));
                         if (new_child) {
+#if JK_BUILD_MODE != JK_RELEASE
                             new_child->parent = node;
+#endif
                             new_child->next_sibling = 0;
                             new_child->first_child = 0;
 
                             new_child->flags = 0;
-                            new_child->age = NODE_AGE_CHILD;
                             new_child->move = move_buffer->data[i];
-                            new_child->score = SCORE_UNINITIALIZED;
+                            new_child->score = INT32_MIN;
                             new_child->line_depth = 0;
 
                             if (prev_child) {
@@ -894,7 +843,13 @@ ExpandResult expand_move_tree(JkArena *arena,
                     return result;
                 }
             }
-            node->age = JK_MIN(NODE_AGE_ELDER, node->age + expansion_size);
+            node_age_set(node, JK_MIN(NODE_AGE_ELDER, node_age_get(node) + expansion_size));
+
+            move_counts.a[team] = 0;
+            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
+                move_counts.a[team]++;
+            }
+
             MoveNode **link = &node->first_child;
             while (*link) {
                 MoveNode *child = *link;
@@ -904,7 +859,8 @@ ExpandResult expand_move_tree(JkArena *arena,
                         board_move_perform(board, child->move),
                         depth + 1,
                         expansion_size - 1,
-                        result.errors);
+                        result.errors,
+                        move_counts);
                 result.errors |= child_result.errors;
                 if (JK_FLAG_GET(child_result.flags, EXPAND_FLAG_REMOVE_CHILD)) {
                     *link = child->next_sibling;
@@ -916,9 +872,9 @@ ExpandResult expand_move_tree(JkArena *arena,
     }
 
     node->search_candidate = 0;
-    node->line_depth = UINT32_MAX;
-    if (node->age == NODE_AGE_CHILD) {
-        node->score = board_score(board, depth);
+    node->line_depth = UINT8_MAX;
+    if (node_age_get(node) == NODE_AGE_CHILD) {
+        node->score = board_score(board, depth, move_counts);
         node->line_depth = 0;
     } else {
         int32_t score;
@@ -932,7 +888,8 @@ ExpandResult expand_move_tree(JkArena *arena,
                 }
 
                 if (child->line_depth < 30) {
-                    int32_t search_score = a * child_score + b * child->line_depth;
+                    int32_t search_score =
+                            score_coeff * child_score + depth_coeff * child->line_depth;
                     if (max_search_score < search_score) {
                         max_search_score = search_score;
                         node->search_candidate = child;
@@ -957,8 +914,6 @@ ExpandResult expand_move_tree(JkArena *arena,
     return result;
 }
 
-static uint64_t expand_count = 0;
-
 void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_frequency)
 {
     ai->arena = arena;
@@ -973,13 +928,12 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_f
     ai->time_limit = 5 * time_frequency;
 
     ai->root = jk_arena_push_zero(ai->arena, sizeof(*ai->root));
-    expand_move_tree(ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 4, 0);
+    expand_move_tree(
+            ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 4, 0, (MoveCounts){0});
 
     if (!ai->root->first_child) {
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
     }
-
-    expand_count = 0;
 }
 
 b32 ai_running(Ai *ai)
@@ -990,12 +944,11 @@ b32 ai_running(Ai *ai)
         return 0;
     }
 
-    uint32_t iterations = 4;
+    uint32_t iterations = 8;
     b32 running = ai->time - ai->time_started < ai->time_limit;
     while (iterations-- && running) {
-        expand_count++;
-        ExpandResult result =
-                expand_move_tree(ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 3, 0);
+        ExpandResult result = expand_move_tree(
+                ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 3, 0, (MoveCounts){0});
         if (result.errors) {
             running = 0;
             if (JK_FLAG_GET(result.errors, EXPAND_ERROR_OUT_OF_MEMORY)) {
@@ -1044,7 +997,6 @@ b32 ai_running(Ai *ai)
 
         // clang-format off
         JK_PRINT_FMT(&debug_arena,
-                jkfn("expand_count: "), jkfu(expand_count), jkf_nl,
                 jkfn("elder_count: "), jkfu(stats.elder_count), jkf_nl,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
@@ -1060,10 +1012,10 @@ b32 ai_running(Ai *ai)
                 while (node) {
                     max_score_depth++;
                     board = board_move_perform(board, node->move);
-                    JK_PRINT_FMT(&debug_arena, jkfn("age: "), jkfu(node->age), jkf_nl);
+                    JK_PRINT_FMT(&debug_arena, jkfn("age: "), jkfu(node_age_get(node)), jkf_nl);
                     JK_PRINT_FMT(&debug_arena,
                             jkfn("board_score: "),
-                            jkfi(board_score(board, max_score_depth)),
+                            jkfi(board_score(board, max_score_depth, (MoveCounts){0})),
                             jkf_nl);
                     debug_render(board);
                     team = !team;
@@ -1110,7 +1062,7 @@ b32 ai_running(Ai *ai)
                     board = board_move_perform(board, stats.max_line[i]);
                     JK_PRINT_FMT(&debug_arena,
                             jkfn("score: "),
-                            jkfi(board_score(board, stats.max_depth - 1 - i)),
+                            jkfi(board_score(board, stats.max_depth - 1 - i, (MoveCounts){0})),
                             jkf_nl);
                     debug_render(board);
                 }
@@ -1129,7 +1081,7 @@ b32 ai_running(Ai *ai)
 static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
 {
     MoveNode *root = jk_arena_push_zero(arena, sizeof(*root));
-    expand_move_tree(arena, move_buffer, root, board, 0, 2, 0);
+    expand_move_tree(arena, move_buffer, root, board, 0, 2, 0, (MoveCounts){0});
     b32 in_check = is_in_check(move_buffer, root, board);
     move_buffer->count = 0;
     for (MoveNode *node = root->first_child; node; node = node->next_sibling) {
@@ -1371,13 +1323,13 @@ void update(ChessAssets *assets, Chess *chess)
 
         chess->screen = SCREEN_GAME;
 
-        JK_DEBUG_ASSERT(board_castling_rights_mask_get(WHITE, 0)
+        JK_DEBUG_ASSERT(castling_rights_mask_get(WHITE, 0)
                 == JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS));
-        JK_DEBUG_ASSERT(board_castling_rights_mask_get(WHITE, 1)
+        JK_DEBUG_ASSERT(castling_rights_mask_get(WHITE, 1)
                 == JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS));
-        JK_DEBUG_ASSERT(board_castling_rights_mask_get(BLACK, 0)
+        JK_DEBUG_ASSERT(castling_rights_mask_get(BLACK, 0)
                 == JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS));
-        JK_DEBUG_ASSERT(board_castling_rights_mask_get(BLACK, 1)
+        JK_DEBUG_ASSERT(castling_rights_mask_get(BLACK, 1)
                 == JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS));
     }
 
@@ -1405,8 +1357,7 @@ void update(ChessAssets *assets, Chess *chess)
         if (chess->result == RESULT_NONE) {
             if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
                 if (board_in_bounds(chess->promo_square)) {
-                    int32_t dist_from_promo_square =
-                            absolute_value(mouse_pos.y - chess->promo_square.y);
+                    int32_t dist_from_promo_square = JK_ABS(mouse_pos.y - chess->promo_square.y);
                     if (input_button_pressed(chess, INPUT_CONFIRM)) {
                         if (mouse_pos.x == chess->promo_square.x
                                 && dist_from_promo_square < (int32_t)JK_ARRAY_COUNT(promo_order)) {
@@ -1535,8 +1486,6 @@ static JkColor color_background = {
 
 static JkColor color_light_squares = {.r = 0xd0, .g = 0xdb, .b = 0xe2, .a = 0xff};
 static JkColor color_dark_squares = {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff};
-
-// Blended halfway between the base square colors and #E26D5C
 
 static JkColor color_selection = {.r = 0xe2, .g = 0x6d, .b = 0x5c, .a = 0xff};
 static JkColor color_move_prev = {.r = 0xff, .g = 0x88, .b = 0x11, .a = 0xff};
@@ -1949,8 +1898,7 @@ void render(ChessAssets *assets, Chess *chess)
                 int32_t index = board_index_get_unbounded(board_pos);
                 if (index < 64) {
                     Piece piece = board_piece_get(state.board, board_pos);
-                    int32_t dist_from_promo_square =
-                            absolute_value(board_pos.y - state.promo_square.y);
+                    int32_t dist_from_promo_square = JK_ABS(board_pos.y - state.promo_square.y);
                     JkColor square_color = board_pos.x % 2 == board_pos.y % 2 ? color_dark_squares
                                                                               : color_light_squares;
 
