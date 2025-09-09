@@ -107,12 +107,13 @@ typedef struct MoveNode {
     struct MoveNode *parent;
     struct MoveNode *next_sibling;
     struct MoveNode *first_child;
+    struct MoveNode *search_candidate;
 
     uint16_t flags;
     MovePacked move;
     NodeAge age;
     int32_t score;
-    uint32_t search_score;
+    uint32_t line_depth;
 } MoveNode;
 
 typedef enum BoardFlag {
@@ -237,9 +238,6 @@ typedef struct Ai {
     JkArena *arena;
     JkRandomGeneratorU64 generator;
     MoveNode *root;
-    MoveNode *favorite_child;
-    AiTarget favorite_target;
-    AiTarget other_target;
 
     uint64_t time;
     uint64_t time_frequency;

@@ -63,6 +63,8 @@ static JkBuffer two_sided_forced_mate_fen =
 
 static JkBuffer seven_node_move_tree_fen = JKSI("3q4/8/1b6/6q1/2N5/8/1PP2pp1/1RKBnkr1 w - - 1 1");
 
+static JkBuffer wtf_fen = JKSI("rnbqkbnr/1pppp2p/5Pp1/p7/3P4/2N2N2/PPP2PPP/R1BQKB1R b KQkq - 0 1");
+
 typedef struct PieceCounts {
     int32_t a[PIECE_TYPE_COUNT];
 } PieceCounts;
@@ -728,77 +730,9 @@ static uint32_t saturating_add(uint32_t a, uint32_t b)
     return a + b < a ? UINT32_MAX : a + b;
 }
 
-static uint32_t search_score_get(MoveNode *node, AiTarget target, Team team)
-{
-    uint32_t search_score;
-    if (node->first_child) {
-        if (team == target.assisting_team) {
-            search_score = UINT32_MAX;
-            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                uint32_t child_search_score = child->search_score;
-                if (child_search_score < search_score) {
-                    search_score = child_search_score;
-                }
-            }
-        } else {
-            search_score = 0;
-            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                search_score = saturating_add(search_score, child->search_score);
-            }
-        }
-    } else {
-        search_score = distance_from_target(node->score, target);
-        if (node->age != NODE_AGE_CHILD && search_score) {
-            // If an adult node has no children, then it's the end of the game (checkmate or
-            // stalemate). Therefore, if the score does not already satisfy the target, we assign
-            // maximum search score, because it's impossible for this node to ever satisfy the
-            // target.
-            search_score = UINT32_MAX;
-        }
-    }
-    return search_score;
-}
-
 uint16_t max_line[] = {0x7e7e, 0x4cb1, 0xbfdc, 0xba66, 0xf74c, 0xf752, 0xf7eb};
 
 #define MAX_STAGNATION 9
-
-static void update_search_scores(Ai *ctx, MoveNode *node, AiTarget target, Team team, b32 verify)
-{
-    uint32_t search_score;
-    if (node->first_child) {
-        if (team == target.assisting_team) {
-            search_score = UINT32_MAX;
-            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                update_search_scores(ctx, child, target, !team, verify);
-                uint32_t child_search_score = child->search_score;
-                if (child_search_score < search_score) {
-                    search_score = child_search_score;
-                }
-            }
-        } else {
-            search_score = 0;
-            for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                update_search_scores(ctx, child, target, !team, verify);
-                search_score = saturating_add(search_score, child->search_score);
-            }
-        }
-    } else {
-        search_score = distance_from_target(node->score, target);
-        if (node->age != NODE_AGE_CHILD && search_score) {
-            // If an adult node has no children, then it's the end of the game (checkmate or
-            // stalemate). Therefore, if the score does not already satisfy the target, we assign
-            // maximum search score, because it's impossible for this node to ever satisfy the
-            // target.
-            search_score = UINT32_MAX;
-        }
-    }
-    if (verify) {
-        JK_ASSERT(search_score == node->search_score);
-    } else {
-        node->search_score = search_score;
-    }
-}
 
 typedef struct ScoreIndexPair {
     int32_t index;
@@ -808,40 +742,6 @@ typedef struct ScoreIndexPair {
 static int score_index_pair_compare(void *a, void *b)
 {
     return ((ScoreIndexPair *)a)->score - ((ScoreIndexPair *)b)->score;
-}
-
-static void update_search_scores_root(Ai *ai, b32 verify)
-{
-    Team team = board_current_team_get(ai->response.board);
-
-    MoveNode placeholder = {.score = INT32_MIN};
-    ai->favorite_child = &placeholder;
-    MoveNode *second_favorite = &placeholder;
-    for (MoveNode *node = ai->root->first_child; node; node = node->next_sibling) {
-        if (team_multiplier[team] * second_favorite->score < team_multiplier[team] * node->score) {
-            second_favorite = node;
-            if (team_multiplier[team] * ai->favorite_child->score
-                    < team_multiplier[team] * second_favorite->score) {
-                JK_SWAP(ai->favorite_child, second_favorite, MoveNode *);
-            }
-        }
-    }
-    JK_ASSERT(ai->favorite_child != &placeholder);
-    JK_ASSERT(second_favorite != &placeholder);
-
-    ai->favorite_child = ai->favorite_child;
-    ai->favorite_target.assisting_team = !team;
-    ai->favorite_target.score =
-            second_favorite->score + team_multiplier[ai->favorite_target.assisting_team];
-    ai->other_target.assisting_team = team;
-    ai->other_target.score =
-            ai->favorite_child->score + team_multiplier[ai->other_target.assisting_team];
-
-    for (MoveNode *node = ai->root->first_child; node; node = node->next_sibling) {
-        AiTarget target = node == ai->favorite_child ? ai->favorite_target : ai->other_target;
-        update_search_scores(ai, node, target, !team, verify);
-        JK_ASSERT(node->search_score > 0);
-    }
 }
 
 static void moves_shuffle(JkRandomGeneratorU64 *generator, MoveArray *moves)
@@ -931,47 +831,31 @@ typedef struct ExpandResult {
     uint8_t errors;
 } ExpandResult;
 
+static int32_t a = 1;
+static int32_t b = -150;
+
 // Returns 1 on success. Returns 0 if we ran out of memory.
 ExpandResult expand_move_tree(JkArena *arena,
         MoveArray *move_buffer,
         MoveNode *node,
         Board board,
-        AiTarget target,
         uint16_t depth,
-        uint8_t expansion_size)
+        uint8_t expansion_size,
+        uint8_t errors)
 {
-    ExpandResult result = {0};
+    ExpandResult result = {.errors = errors};
     Team team = board_current_team_get(board);
 
-    if (expansion_size) {
+    if (!result.errors && expansion_size) {
         if (node->age == NODE_AGE_ELDER) {
-            MoveNode *search_candidate = 0;
-            if (team == target.assisting_team) {
-                uint32_t min_search_score = UINT32_MAX;
-                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                    if (child->search_score <= min_search_score) {
-                        min_search_score = child->search_score;
-                        search_candidate = child;
-                    }
-                }
-            } else {
-                uint32_t max_search_score = 0;
-                for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                    if (child->search_score != UINT32_MAX
-                            && max_search_score < child->search_score) {
-                        max_search_score = child->search_score;
-                        search_candidate = child;
-                    }
-                }
-            }
-            if (search_candidate) {
+            if (node->search_candidate) {
                 ExpandResult child_result = expand_move_tree(arena,
                         move_buffer,
-                        search_candidate,
-                        board_move_perform(board, search_candidate->move),
-                        target,
+                        node->search_candidate,
+                        board_move_perform(board, node->search_candidate->move),
                         depth + 1,
-                        expansion_size);
+                        expansion_size,
+                        result.errors);
                 result.errors |= child_result.errors;
             } else {
                 JK_FLAG_SET(result.errors, EXPAND_ERROR_DEAD_END, 1);
@@ -992,7 +876,7 @@ ExpandResult expand_move_tree(JkArena *arena,
                             new_child->age = NODE_AGE_CHILD;
                             new_child->move = move_buffer->data[i];
                             new_child->score = SCORE_UNINITIALIZED;
-                            new_child->search_score = UINT32_MAX;
+                            new_child->line_depth = 0;
 
                             if (prev_child) {
                                 prev_child->next_sibling = new_child;
@@ -1012,15 +896,15 @@ ExpandResult expand_move_tree(JkArena *arena,
             }
             node->age = JK_MIN(NODE_AGE_ELDER, node->age + expansion_size);
             MoveNode **link = &node->first_child;
-            while (*link && !result.errors) {
+            while (*link) {
                 MoveNode *child = *link;
                 ExpandResult child_result = expand_move_tree(arena,
                         move_buffer,
                         child,
                         board_move_perform(board, child->move),
-                        target,
                         depth + 1,
-                        expansion_size - 1);
+                        expansion_size - 1,
+                        result.errors);
                 result.errors |= child_result.errors;
                 if (JK_FLAG_GET(child_result.flags, EXPAND_FLAG_REMOVE_CHILD)) {
                     *link = child->next_sibling;
@@ -1031,16 +915,29 @@ ExpandResult expand_move_tree(JkArena *arena,
         }
     }
 
+    node->search_candidate = 0;
+    node->line_depth = UINT32_MAX;
     if (node->age == NODE_AGE_CHILD) {
         node->score = board_score(board, depth);
+        node->line_depth = 0;
     } else {
         int32_t score;
         if (node->first_child) {
             score = INT32_MIN;
+            int32_t max_search_score = INT32_MIN;
             for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
                 int32_t child_score = team_multiplier[team] * child->score;
                 if (score < child_score) {
                     score = child_score;
+                }
+
+                if (child->line_depth < 30) {
+                    int32_t search_score = a * child_score + b * child->line_depth;
+                    if (max_search_score < search_score) {
+                        max_search_score = search_score;
+                        node->search_candidate = child;
+                        node->line_depth = child->line_depth + 1;
+                    }
                 }
             }
             score *= team_multiplier[team];
@@ -1056,7 +953,6 @@ ExpandResult expand_move_tree(JkArena *arena,
         }
         node->score = score;
     }
-    node->search_score = search_score_get(node, target, team);
 
     return result;
 }
@@ -1077,15 +973,10 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_f
     ai->time_limit = 5 * time_frequency;
 
     ai->root = jk_arena_push_zero(ai->arena, sizeof(*ai->root));
-    expand_move_tree(ai->arena, &ai_move_buffer, ai->root, ai->response.board, (AiTarget){0}, 0, 2);
+    expand_move_tree(ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 4, 0);
 
     if (!ai->root->first_child) {
         JK_ASSERT(0 && "If there are no legal moves, the AI should never have been asked for one");
-    } else if (!ai->root->first_child->next_sibling) {
-        // If there's only one legal move, take it
-        ai->response.move = move_unpack(ai->root->first_child->move);
-    } else {
-        update_search_scores_root(ai, 0);
     }
 
     expand_count = 0;
@@ -1093,38 +984,18 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_f
 
 b32 ai_running(Ai *ai)
 {
-    if (!ai->root->first_child || !ai->root->first_child->next_sibling) {
+    if (!ai->root->first_child->next_sibling) {
+        // If there's only one legal move, take it
+        ai->response.move = move_unpack(ai->root->first_child->move);
         return 0;
     }
 
-    uint32_t iterations = 1;
+    uint32_t iterations = 4;
     b32 running = ai->time - ai->time_started < ai->time_limit;
     while (iterations-- && running) {
-        MoveNode *search_candidate = ai->root->first_child;
-        { // Find the node with the best search score
-            uint32_t min_search_score = UINT32_MAX;
-            for (MoveNode *child = ai->root->first_child; child; child = child->next_sibling) {
-                if (child->search_score < min_search_score) {
-                    min_search_score = child->search_score;
-                    search_candidate = child;
-                }
-            }
-        }
-        JK_ASSERT(search_candidate);
-
         expand_count++;
-        ExpandResult result = expand_move_tree(ai->arena,
-                &ai_move_buffer,
-                search_candidate,
-                board_move_perform(ai->response.board, search_candidate->move),
-                search_candidate == ai->favorite_child ? ai->favorite_target : ai->other_target,
-                1,
-                3);
-        if (JK_FLAG_GET(result.flags, EXPAND_FLAG_SCORE_CHANGED)) {
-            update_search_scores_root(ai, 0);
-        } else {
-            // update_search_scores_root(ai, 1);
-        }
+        ExpandResult result =
+                expand_move_tree(ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 3, 0);
         if (result.errors) {
             running = 0;
             if (JK_FLAG_GET(result.errors, EXPAND_ERROR_OUT_OF_MEMORY)) {
@@ -1150,7 +1021,6 @@ b32 ai_running(Ai *ai)
                 }
             }
         }
-        JK_ASSERT(favorite_child && favorite_child == ai->favorite_child);
         ai->response.move = move_unpack(favorite_child->move);
 
 #if JK_BUILD_MODE != JK_RELEASE
@@ -1186,11 +1056,15 @@ b32 ai_running(Ai *ai)
             {
                 Team team = board_current_team_get(ai->response.board);
                 Board board = ai->response.board;
-                MoveNode *node = ai->favorite_child;
+                MoveNode *node = favorite_child;
                 while (node) {
-                    JK_PRINT_FMT(&debug_arena, jkfn("age: "), jkfu(node->age), jkf_nl);
                     max_score_depth++;
                     board = board_move_perform(board, node->move);
+                    JK_PRINT_FMT(&debug_arena, jkfn("age: "), jkfu(node->age), jkf_nl);
+                    JK_PRINT_FMT(&debug_arena,
+                            jkfn("board_score: "),
+                            jkfi(board_score(board, max_score_depth)),
+                            jkf_nl);
                     debug_render(board);
                     team = !team;
                     int32_t max_score = INT32_MIN;
@@ -1255,7 +1129,7 @@ b32 ai_running(Ai *ai)
 static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
 {
     MoveNode *root = jk_arena_push_zero(arena, sizeof(*root));
-    expand_move_tree(arena, move_buffer, root, board, (AiTarget){0}, 0, 2);
+    expand_move_tree(arena, move_buffer, root, board, 0, 2, 0);
     b32 in_check = is_in_check(move_buffer, root, board);
     move_buffer->count = 0;
     for (MoveNode *node = root->first_child; node; node = node->next_sibling) {
