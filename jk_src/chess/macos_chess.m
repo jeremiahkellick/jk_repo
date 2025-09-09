@@ -1,3 +1,4 @@
+#include "jk_src/jk_lib/jk_lib.h"
 #include <AudioToolbox/AudioToolbox.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -232,9 +233,10 @@ int main(void)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    uint64_t audio_buffer_size = SAMPLES_PER_SECOND * 2 * sizeof(AudioSample);
-    g.main.chess.render_memory.size = 1 * JK_GIGABYTE;
-    g.ai.memory.size = 8 * JK_GIGABYTE;
+    uint64_t audio_buffer_size =
+            jk_round_up_to_power_of_2(SAMPLES_PER_SECOND * 2 * sizeof(AudioSample));
+    g.main.chess.render_memory.size = 2 * JK_MEGABYTE;
+    g.ai.memory.size = 1 * JK_GIGABYTE;
     uint8_t *memory = mmap(NULL,
             audio_buffer_size + DRAW_BUFFER_SIZE + g.main.chess.render_memory.size
                     + g.ai.memory.size,

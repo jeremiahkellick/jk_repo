@@ -15,7 +15,7 @@
 #include <jk_gen/chess/assets.c>
 
 #define WEB_AUDIO_BUFFER_SIZE (sizeof(AudioSample) * SAMPLES_PER_SECOND / 5)
-#define AI_MEMORY_SIZE (64 * JK_MEGABYTE)
+#define AI_MEMORY_SIZE (1 * JK_GIGABYTE)
 
 extern uint8_t __heap_base[];
 
