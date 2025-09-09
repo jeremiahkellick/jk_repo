@@ -429,6 +429,12 @@ static Board board_move_perform(Board board, MovePacked move_packed)
     if (move.piece.type == ROOK && src.y == (team ? 7 : 0) && (src.x == 0 || src.x == 7)) {
         board.flags |= castling_rights_mask_get(team, src.x == 7);
     }
+    if ((dest.x == 0 || dest.x == 7) && (dest.y == 0 || dest.y == 7)) {
+        Piece captured = board_piece_get_index(board, move.dest);
+        if (captured.type == ROOK && dest.y == (captured.team ? 7 : 0)) {
+            board.flags |= castling_rights_mask_get(captured.team, dest.x == 7);
+        }
+    }
     if (move.piece.type == KING) {
         board.flags |= castling_rights_mask_get(team, 0);
         board.flags |= castling_rights_mask_get(team, 1);
