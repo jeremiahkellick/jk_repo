@@ -20,7 +20,7 @@ class ChessAudioWorklet extends AudioWorkletProcessor {
                 const audio_buffer_offset = this.wasm_exports.init_audio();
                 if (audio_buffer_offset) {
                     this.audio_buffer = new Int16Array(
-                            this.wasm_exports.memory.buffer, audio_buffer_offset, 38400);
+                            this.wasm_exports.memory.buffer, audio_buffer_offset, 38400 / 2);
                 } else {
                     console.log('Audio thread failed to initialize wasm module');
                 }
