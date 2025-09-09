@@ -1239,6 +1239,7 @@ void update(ChessAssets *assets, Chess *chess)
 #endif
 
     b32 start_new_game = 0;
+    b32 game_ended = 0;
 
     // Process UI button presses
     switch (chess->screen) {
@@ -1314,6 +1315,8 @@ void update(ChessAssets *assets, Chess *chess)
         chess->promo_square = (JkIntVector2){-1, -1};
         chess->result = 0;
         chess->piece_prev_type = NONE;
+        chess->animation_src = (JkIntVector2){-1, -1};
+        chess->animation_dest = (JkIntVector2){-1, -1};
         chess->os_time_move_prev = 0;
         chess->board = starting_state;
         find_legal_moves(&arena, &chess->moves, chess->board);
@@ -1345,6 +1348,7 @@ void update(ChessAssets *assets, Chess *chess)
                     <= 0) {
         chess->os_time_player[board_current_team_get(chess->board)] = 0;
         chess->result = RESULT_TIME;
+        game_ended = 1;
     }
 
     switch (chess->screen) {
@@ -1422,12 +1426,21 @@ void update(ChessAssets *assets, Chess *chess)
         }
 
         if (move.src < 64) {
+            JkIntVector2 src = board_index_to_vector_2(move.src);
             JkIntVector2 dest = board_index_to_vector_2(move.dest);
             if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
                 chess->promo_square = dest;
             } else { // Make a move
                 chess->os_time_move_prev = chess->os_time_prev;
                 chess->piece_prev_type = board_piece_get_index(chess->board, move.dest).type;
+                chess->animation_src = src;
+                chess->animation_dest = dest;
+                if (move.piece.type == PAWN && src.x != dest.x && chess->piece_prev_type == NONE) {
+                    // Adjust capture animation for en-passant
+                    chess->piece_prev_type = PAWN;
+                    chess->animation_src.y += dest.y - src.y;
+                    chess->animation_dest.y += src.y - dest.y;
+                }
 
                 if (chess->turn_index) {
                     chess->os_time_player[board_current_team_get(chess->board)] -=
@@ -1440,31 +1453,26 @@ void update(ChessAssets *assets, Chess *chess)
 
                 chess->selected_square = (JkIntVector2){-1, -1};
                 chess->promo_square = (JkIntVector2){-1, -1};
-                Team current_team = board_current_team_get(chess->board);
                 b32 in_check = find_legal_moves(&arena, &chess->moves, chess->board);
 
                 if (!chess->moves.count) {
                     chess->result = in_check ? RESULT_CHECKMATE : RESULT_STALEMATE;
                 }
 
-                SoundIndex sound;
                 if (chess->result) {
-                    if (chess->result == RESULT_STALEMATE) {
-                        sound = SOUND_DRAW;
-                    } else if (chess->perspective == current_team) {
-                        sound = SOUND_LOSE;
-                    } else {
-                        sound = SOUND_WIN;
-                    }
-                } else if (in_check) {
-                    sound = SOUND_CHECK;
-                } else if (chess->piece_prev_type) {
-                    sound = SOUND_CAPTURE;
+                    game_ended = 1;
                 } else {
-                    sound = SOUND_MOVE;
+                    SoundIndex sound;
+                    if (in_check) {
+                        sound = SOUND_CHECK;
+                    } else if (chess->piece_prev_type) {
+                        sound = SOUND_CAPTURE;
+                    } else {
+                        sound = SOUND_MOVE;
+                    }
+                    chess->audio_state.sound = sound;
+                    chess->audio_state.started_time = chess->audio_time;
                 }
-                chess->audio_state.sound = sound;
-                chess->audio_state.started_time = chess->audio_time;
             }
         }
     } break;
@@ -1475,6 +1483,19 @@ void update(ChessAssets *assets, Chess *chess)
     case SCREEN_COUNT: {
         jk_print(JKS("Invalid chess->screen value\n"));
     } break;
+    }
+
+    if (game_ended) {
+        SoundIndex sound;
+        if (chess->result == RESULT_STALEMATE) {
+            sound = SOUND_DRAW;
+        } else if (chess->perspective == board_current_team_get(chess->board)) {
+            sound = SOUND_LOSE;
+        } else {
+            sound = SOUND_WIN;
+        }
+        chess->audio_state.sound = sound;
+        chess->audio_state.started_time = chess->audio_time;
     }
 
     // Do some end-of-frame updating of data
@@ -2424,9 +2445,9 @@ void render(ChessAssets *assets, Chess *chess)
 
     if (state.animation_time) {
         JkColor piece_color = color_teams[team];
+        JkIntVector2 src = chess->animation_src;
+        JkIntVector2 dest = chess->animation_dest;
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
-        JkIntVector2 src = board_index_to_vector_2(move_prev.src);
-        JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
         JkVector2 src_pos = board_to_canvas_pos(state.perspective, square_size, src);
         JkVector2 canvas_pos = board_to_canvas_pos(state.perspective, square_size, dest);
         JkVector2 origin_direction = jk_vector_2_normalized(jk_vector_2_sub(src_pos, canvas_pos));

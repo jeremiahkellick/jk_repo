@@ -292,6 +292,8 @@ typedef struct Chess {
     MoveArray moves;
     Result result;
     PieceType piece_prev_type;
+    JkIntVector2 animation_src;
+    JkIntVector2 animation_dest;
     uint64_t os_time_prev;
     uint64_t os_time_move_prev;
     int64_t os_time_player[TEAM_COUNT];
