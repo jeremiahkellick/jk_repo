@@ -1,4 +1,5 @@
 bin/*.pdb
 bin/jk_build*
+bin/macos_env
 build/
 jk_gen/

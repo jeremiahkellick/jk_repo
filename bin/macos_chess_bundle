@@ -1,0 +1,47 @@
+#!/bin/zsh
+
+set -eE
+
+script_path="$( dirname -- $0 )"
+env_file_path="$script_path/macos_env"
+
+if [[ -e "$env_file_path" ]]; then
+    source "$env_file_path"
+    team_id_parens=${developer_id_cert_name#*\(}
+    team_id=${team_id_parens%\)}
+else
+    echo "$env_file_path does not exist"
+    echo "It should be a text file in the following format"
+    echo "apple_id=\"youremail@example.com\""
+    echo "developer_id_cert_name=\"Developer ID Application: Your Name (XXXXXXXXXX)\""
+    echo "notarytool_app_specific_password=\"xxxx-xxxx-xxxx-xxxx\""
+    exit 1
+fi
+
+jk_repo="$script_path/.."
+app="$jk_repo/build/jk_chess.app"
+app_zip="$jk_repo/build/jk_chess_for_notary.zip"
+
+if [[ -d "$app" ]]; then
+    rm -r "$app"
+fi
+mkdir -p "$app"
+mkdir -p "$app/Contents"
+mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/Resources"
+cp "$jk_repo/jk_src/chess/Info.plist" "$app/Contents"
+cp "$jk_repo/build/macos_chess" "$app/Contents/MacOS"
+cp "$jk_repo/jk_assets/chess/icon.icns" "$app/Contents/Resources"
+
+codesign --timestamp --options runtime --sign "$developer_id_cert_name" "$app"
+ditto -ck --keepParent "$app" "$app_zip"
+xcrun notarytool submit "$app_zip" \
+    --apple-id "$apple_id" \
+    --team-id "$team_id" \
+    --password "$notarytool_app_specific_password" \
+    --wait
+xcrun stapler staple "$app"
+spctl -a -v "$app"
+ditto -ck --keepParent "$app" "$jk_repo/build/jk_chess.zip"
+
+echo "done"
