@@ -30,9 +30,6 @@ typedef enum MacosInput {
     MACOS_INPUT_R,
 } MacosInput;
 
-#define BUTTON_FLAG_MOUSE (1 << MACOS_INPUT_MOUSE)
-#define BUTTON_FLAG_R (1 << MACOS_INPUT_R)
-
 typedef struct MainThread {
     b32 running;
     uint64_t buttons_down;
@@ -141,9 +138,9 @@ static void audio_callback(void *context, AudioQueueRef queue, AudioQueueBufferR
     }
 }
 
-static void debug_print(char *string)
+static void print_stdout(JkBuffer string)
 {
-    printf("%s", string);
+    fwrite(string.data, 1, string.size, stdout);
 }
 
 void *ai_thread(void *param)
@@ -161,12 +158,7 @@ void *ai_thread(void *param)
         JkArena arena = jk_arena_fixed_init(&arena_root, g.ai.memory);
 
         Ai ai;
-        ai_init(&arena,
-                &ai,
-                board,
-                jk_platform_os_timer_get(),
-                jk_platform_os_timer_frequency(),
-                debug_print);
+        ai_init(&arena, &ai, board, jk_platform_os_timer_get(), jk_platform_os_timer_frequency());
 
         while (ai_running(&ai)) {
             pthread_mutex_lock(&g.ai_request_lock);
@@ -224,6 +216,7 @@ static char const *const shaders_code =
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property(strong, nonatomic) NSWindow *window;
+@property(strong) id click_monitor;
 @property(nonatomic) CGFloat scale_factor;
 
 - (instancetype)initWithScaleFactor:(CGFloat)scale_factor;
@@ -232,6 +225,8 @@ static char const *const shaders_code =
 int main(void)
 {
     jk_platform_set_working_directory_to_executable_directory();
+
+    print_set(print_stdout);
 
     uint64_t audio_buffer_size =
             jk_round_up_to_power_of_2(SAMPLES_PER_SECOND * 2 * sizeof(AudioSample));
@@ -254,7 +249,6 @@ int main(void)
             memory + audio_buffer_size + DRAW_BUFFER_SIZE + g.main.chess.render_memory.size;
 
     g.main.chess.os_timer_frequency = jk_platform_os_timer_frequency();
-    g.main.chess.debug_print = debug_print;
 
 #if JK_BUILD_MODE == JK_RELEASE
     g.assets = (ChessAssets *)chess_assets_byte_array;
@@ -296,8 +290,6 @@ int main(void)
 
             error = AudioQueueGetProperty(
                     auQueue, kAudioQueueProperty_StreamDescription, &actualFormat, &dataSize);
-
-            printf("%.2f\n", actualFormat.mSampleRate);
         }
 
         // generate buffers holding at most 1 second of data
@@ -380,8 +372,6 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 - (BOOL)acceptsFirstResponder;
 - (void)keyDown:(NSEvent *)anEvent;
 - (void)keyUp:(NSEvent *)anEvent;
-- (void)mouseDown:(NSEvent *)anEvent;
-- (void)mouseUp:(NSEvent *)anEvent;
 @end
 
 @implementation MyNSWindow
@@ -407,7 +397,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         [self close];
     }
     if (keyCode == 15) {
-        g.main.buttons_down |= BUTTON_FLAG_R;
+        JK_FLAG_SET(g.main.buttons_down, MACOS_INPUT_R, 1);
     }
 }
 
@@ -415,18 +405,8 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 {
     unsigned short keyCode = [anEvent keyCode];
     if (keyCode == 15) {
-        g.main.buttons_down &= ~BUTTON_FLAG_R;
+        JK_FLAG_SET(g.main.buttons_down, MACOS_INPUT_R, 0);
     }
-}
-
-- (void)mouseDown:(NSEvent *)anEvent
-{
-    g.main.buttons_down |= BUTTON_FLAG_MOUSE;
-}
-
-- (void)mouseUp:(NSEvent *)anEvent
-{
-    g.main.buttons_down &= ~BUTTON_FLAG_MOUSE;
 }
 @end
 
@@ -453,8 +433,18 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     [self.window setOpaque:YES];
     [self.window setContentView:[[MetalView alloc] initWithFrame:contentSize
                                                     scale_factor:self.scale_factor]];
+    [self.window center];
     [self.window makeMainWindow];
     [self.window makeKeyAndOrderFront:nil];
+
+    // clang-format off
+    self.click_monitor = [NSEvent
+            addLocalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseDown|NSEventMaskLeftMouseUp)
+            handler:^NSEvent *(NSEvent *event) {
+        JK_FLAG_SET(g.main.buttons_down, MACOS_INPUT_MOUSE, event.type == NSEventTypeLeftMouseDown);
+        return event;
+    }];
+    // clang-format on
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)theApplication

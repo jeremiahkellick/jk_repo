@@ -387,16 +387,29 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
     char path[PATH_MAX];
     uint32_t bufsize = PATH_MAX;
     JK_ASSERT(_NSGetExecutablePath(path, &bufsize) == 0);
+
     // Truncate path at last slash
-    for (uint32_t i = bufsize - 1; 0 <= i; i--) {
+    int64_t length = 0;
+    for (int64_t i = 0; i < bufsize; i++) {
+        if (path[i] == '\0') {
+            break;
+        }
+        length++;
+    }
+    for (int64_t i = length - 1; 0 <= i; i--) {
         if (path[i] == '/') {
             path[i] = '\0';
             break;
         }
     }
-#endif
 
-    JK_ASSERT(chdir(path) == 0);
+    if (chdir(path) != 0) {
+        fprintf(stderr, "chdir(\"%s\"): %s\n", path, strerror(errno));
+        JK_ASSERT(0);
+    }
+#else
+    JK_ASSERT(0 && "Not implemented");
+#endif
 }
 
 JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
