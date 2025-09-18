@@ -6,16 +6,22 @@
         <style>
 
 @font-face {
-    font-family: "AmiriQuran";
-    src: url(/jk_assets/chess/AmiriQuran-Regular.ttf) format("truetype");
+    font-family: "Noto Serif";
+    src: url("/jk_assets/website/NotoSerif-Regular.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "Noto Serif";
+    font-style: italic;
+    src: url("/jk_assets/website/NotoSerif-Italic.ttf") format("truetype");
 }
 
 body {
     background: #162027;
     color: #d0dbe2;
-    font-family: "AmiriQuran", sans-serif;
-    font-size: 24px;
-    line-height: 1.6;
+    font-family: "Noto Serif", sans-serif;
+    font-size: 22px;
+    line-height: 1.8;
     margin: 0;
 }
 
@@ -37,12 +43,12 @@ a {
     position: relative;
     text-decoration: underline;
     text-decoration-thickness: 1px;
-    text-underline-offset: 10px;
+    text-underline-offset: 8px;
     z-index: 10;
 }
 
 a:visited {
-    color: #9d6ffb;
+    color: #b693fb;
 }
 
 blockquote {
@@ -58,35 +64,17 @@ blockquote {
     max-width: 750px;
 }
 
-#intro {
-    display: flex;
-    align-items: center;
-    flex-direction: column;
-    justify-content: space-between;
-    margin: -12px 0;
-}
-
-#intro > * {
-    margin: 12px 0;
-}
-
 #profile-picture {
+    display: block;
     border-radius: 100%;
+    margin: auto;
     width: 220px;
 }
 
 @media (min-width: 730px) {
-    #intro {
-        flex-direction: row-reverse;
-        margin: 0 -12px;
-    }
-
-    #intro > * {
-        margin: 0 12px;
-    }
-
     #profile-picture {
-        width: 280px;
+        float: left;
+        margin: 28px 28px 0 0;
     }
 }
 
@@ -102,39 +90,58 @@ blockquote {
     </head>
     <body>
         <div id="content">
-            <div id="intro">
-                <img id="profile-picture" src="/jk_assets/website/profile-picture.jpg" />
-                <div>
-                    <h1>Hi! I'm Jeremiah,</h1>
-                    <p id="tagline">a web developer turned systems programmer.</p>
-                    <p>
-                        Right now, my biggest "claim to fame" is that I landed a full-time software
-                        development job at Google when I was nineteen. Programming interested me
-                        early-on because I loved to make games. Directly after high school, I
-                        attended a coding bootcamp, App Academy. I was lucky enough to land the
-                        Google role afterwards.
-                    </p>
-                </div>
-            </div>
+            <img id="profile-picture" src="/jk_assets/website/profile-picture.jpg" />
+            <h1>Hi! I'm Jeremiah</h1>
+            <p id="tagline">a web developer turned systems programmer.</p>
+            <p>
+                I'm looking for work. If you're in a hurry, see
+                <a href="/TODO/RESUME">my resume.</a> If you'd like a lengthy account of what I'm
+                all about, read on!
+            </p>
+            <p>
+                Currently my biggest "claim to fame" is that I landed a software development job at
+                Google when I was nineteen. Programming interested me early-on because I loved to
+                make games. By the time I graduated high school, I was already a decent programmer.
+                Looking for a faster way to enter the industry, I attended a coding bootcamp, App
+                Academy, instead of going to college. I was lucky enough to get a job at Google
+                afterwards.
+            </p>
             <p>
                 I worked at Google's Pittsburgh office for four years, making UIs for their Cloud
                 Console to accompany several Vertex AI product lauches. I had fun, met some
-                incredible people, and learned about navigating a large team environment. You may
-                have heard about how Google spoils its employees with some wild perks. Most of those
-                rumors are true. But after a while, I felt that staying there much longer would be
-                bad for my long-term development as a programmer.
+                incredible people, and learned about working within and across teams. It was a dream
+                job for me, but after a while I felt like staying there would be bad for my
+                long-term development as a programmer.
             </p>
             <p>
-                I used to take what I thought was the pragmatic approach to software development. I
-                didn't need to know the nitty-gritty details of how my software operated. As long as
-                I knew <em>what</em> a dependency did, I didn't need to know <em>how</em> it did it.
-                I thought the only payoff to learning how to do things from scratch would be
-                satisfying my curiosity. I didn't expect to get better end results that way. After
-                all, why would I expect a less-experienced individual to get better results than a
-                more-experienced group of people?
+                I used to not see much value in low-level programming knowledge beyond satifying
+                one's curiosity. I saw myself as pragmatic: I'll take shortest path to my end goal.
+                I saw myself as humble: the authors of popular libraries and frameworks are probably
+                better programmers than me. If I can produce a higher quality product faster by
+                leveraging code I don't fully understand, it would be foolish not to. I still feel
+                that way, but I've come to realize what an awfully big <em>if</em> that is.
             </p>
             <p>
-                But the projects I worked on at Google had poor compilation speed and poor runtime
+                There are some large factors missing from the above thought process.
+            </p>
+            <ol>
+                <li>
+                    Popularity is a poor heuristic for quality. In order to do better than that
+                    heuristic when evaluating a library yourself, you need at least a rough
+                    understanding of its internals.
+                </li>
+                <li>
+                    Libraries and frameworks are written for a wide range of use cases. Therefore,
+                    they'll never be perfect for your specific case. If you solve the problem
+                    yourself, you can fine-tune the solution to fit your needs.
+                </li>
+                <li>
+                    Because you probably only need a subset of a library's functionality, it might
+                    not be as large an undertaking as you think to do it yourself.
+                </li>
+            </ol>
+            <p>
+                The projects I worked on at Google had poor compilation speed and poor runtime
                 performance. The painfully slow edit-compile-run cycle hurt my productivity and
                 drained much of the joy out of programming. No back-of-the-envelope math can really
                 make sense of the numbers. The performance of our product couldn't be remotely
@@ -144,10 +151,11 @@ blockquote {
             <p>
                 It's just wasted bandwidth and CPU cycles which stem from the common view that
                 performance is something you should only think about after it gets unbearably bad.
-                Always fix-up performance retroactively, never proactively. The quote "premature
-                optimization is the root of all evil" is misused to justify never planning ahead
-                with regard to the performance of one's software, but the expanded Donald Knuth
-                quote tells a different story (emphasis mine).
+                There's this widespread attitude that you should address performance retroactively,
+                never proactively. The quote "premature optimization is the root of all evil" is
+                often misused to justify never planning ahead with regard to the performance of
+                one's software. The expanded Donald Knuth quote tells a different story (emphasis
+                mine).
             </p>
             <blockquote>
                 <p>
@@ -162,20 +170,15 @@ blockquote {
             <p>
                 Small efficiencies! Knuth never meant for the quote to apply to large-scale,
                 difficult-to-reverse decisions like application architecture or the introduction of
-                a huge dependency.
+                a major dependency.
             </p>
             <p>
-                Unforunately, I wasn't in a position to address these issues in the ways that would
-                make a big difference. I worked on a massive project at Google that already had its
-                own way of doing things. Understandably, I couldn't shirk the common patterns.
-            </p>
-            <p>
-                This sprouted my interest in systems programming and working at a smaller company.
-                I'm interested in building close to the ground truth of what's happening on the CPU.
-                I want there to be some resonable relationship between what back-of-the-envelope
-                math says about how fast my code could run and how fast it actually does run. I'm
-                certainly not aiming for optimal in all cases, but I never want to see a 1,000x
-                difference between those numbers.
+                My bad experiences with a bloated codebase sprouted my interest in systems
+                programming and working at a smaller company. I like to have some contact with the
+                ground truth of what's happening on the CPU. I want there to be some resonable
+                relationship between what back-of-the-envelope math says about how fast my code
+                could run and how fast it actually does run. I'm certainly not aiming for optimal in
+                all cases, but I never want to see a 1,000x difference between those numbers.
             </p>
             <p>
                 I'd love to work either at a company that alreadly aligns somewhat with these views
@@ -189,9 +192,10 @@ blockquote {
                 had some studying to do. This educational arc culminated in my most recent portfolio
                 project, a chess application written from scratch in C. It supports three platforms:
                 Windows, macOS, and the web. You can check out the web version here on this page or
-                download native executables on the <a href="/TODO">GitHub Releases</a> page. I'll
-                talk about some technical details and more of the ways I've educated myself below,
-                but first, try it out!
+                download native executables on the
+                <a href="https://github.com/jeremiahkellick/jk_repo/releases">GitHub Releases</a>
+                page. I'll talk about some technical details and more of the ways I've educated
+                myself below, but first, try it out!
             </p>
             <canvas id="chess"></canvas>
             <p>
@@ -201,12 +205,12 @@ blockquote {
             <p>
                 Please note that my attitude towards dependencies for educational projects is
                 different from what it is for real products. I do think the average programmer today
-                is far too cavalier with their dependency usage, but of course it's possible to go
-                too far in the other direction. I made decisions on this chess project that would've
-                been bad choices had I been optimizing for value to a customer. Going into
-                <em>extreme</em> "not invented here" territory is an incredible learning exercise,
-                but it's not always best for customers. For that, I would merely prescribe
-                <em>moderate</em> "not invented here" syndrome.
+                is far too cavalier with their dependency usage, but of course it's possible to
+                overcorrect. I made decisions during this project that would've been bad choices had
+                I been optimizing for customer value. Going into <em>extreme</em> "not invented
+                here" territory is an excellent learning exercise, but not always best for
+                customers. For that, I would merely prescribe <em>moderate</em> "not invented here"
+                syndrome.
             </p>
             <p>
                 With that disclaimer out of the way, let's talk about the chess app's dependencies.
@@ -221,20 +225,22 @@ blockquote {
                 For floating-point rounding and square root I was able to rely on x86 intrinsics
                 when using MSVC and builtins when using Clang or GCC, but replacing sine and
                 arccosine was more interesting. I used Mathematica to compute constants for
-                <a href="/TODO">polynomial approximations of those functions.</a>
+                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_lib/jk_lib.c#L544">
+                polynomial approximations of those functions.</a>
             </p>
             <p>
                 I also wrote a printf replacement. The most interesting part was the
-                <a href="/TODO">function that converts a floating-point number to a string,</a>
-                accurate to about eight decimal places.
+                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_lib/jk_lib.c#L326">
+                function that converts a floating-point number to a string,</a> accurate to about
+                eight decimal places.
             </p>
             <p>
                 What's the deal with stb_truetype? At one point in development I was using scaled
                 bitmaps to render the game, but it was slow and extrememly memory inefficient. I
                 wanted a resolution-independent way to render my chess pieces and text. The
                 stb_truetype library was alluring, but up until that point I had the deep
-                satisfaction of understanding practically everything my program was doing. Being so
-                close to writing a full program that way, I was loath to let this one feature ruin
+                satisfaction of understanding nearly everything my program was doing. Being so
+                close to writing the full program that way, I was loath to let this one feature ruin
                 it.
             </p>
             <p>
@@ -243,19 +249,70 @@ blockquote {
                 code can't be too complicated!
             </p>
             <p>
-                I settled on a compromise: I would attempt to write my own vector graphic rasterizer
-                that uses a simple data format. To get a font, I would use stb_truetype in my build
-                process to extract data from the font file and convert it to my format. I would also
-                parse a subset of the SVG path format to convert my chess pieces.
+                I settled on a compromise: I would try to write a vector graphics rasterizer that
+                uses my own data format. For text, I would use stb_truetype in my build process
+                to extract data from the font file and convert it to my format. For the chess
+                pieces, I would parse a subset of the SVG path format.
             </p>
             <p>
                 It was a success! The chess executable doesn't contain any stb_truetype code. The
-                font and chess pieces are built into the executable in a <a href="/TODO">simple
-                vector format</a> and rendered with the <a href="/TODO">rasterizer I wrote.</a>
-                Still, much credit to Sean Barrett, the author of the stb libraries. His
-                <a href="https://nothings.org/gamedev/rasterize/">writeup on how the stb_truetype
-                anti-aliasing works</a> is the reason I was able to understand the rasterization
-                process well enough to write it myself.
+                font and chess pieces are built into the executable in a
+                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_shapes/jk_shapes.h#L58">
+                simple vector format</a> and rendered with the
+                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_shapes/jk_shapes.c#L514">
+                rasterizer I wrote.</a> Still, much credit to Sean Barrett, the author of the stb
+                libraries. His <a href="https://nothings.org/gamedev/rasterize/">writeup on how the
+                stb_truetype anti-aliasing works</a> is the reason I was able to understand the
+                rasterization process well enough to write it myself.
+            </p>
+            <p>
+                The other most interesting part of the project is the AI. As a challenge to myself,
+                I did not read up on how to write a chess bot. I wanted to see how far I could get
+                "on my own steam." I'm reasonably happy with the result. It's better than I am at
+                chess, though I can still eke out a win against it occasionally.
+            </p>
+            <p>
+                Now that I've made the AI about as good as I can on my own, I'm looking forward to
+                finally reading up on the state-of-the-art techniques and implementing some of those
+                to see if I can write an AI that I will never checkmate.
+            </p>
+            <p>
+                Okay, that covers the chess app, but what else have I been up to in these
+                education-focused years? I read the classic <em>C Programming Language</em> by Brian
+                Kernighan and Dennis Ritchie. I attended Carnegie Mellon as a non-degree student,
+                taking three courses:
+            </p>
+            <ul>
+                <li>18-213 Introduction to Computer Systems</li>
+                <li>15-411 Compiler Design</li>
+                <li>15-410 Operating System Design and Implementation</li>
+            </ul>
+            <p>
+                90%+ of the workload for all of those courses was large programming projects. I
+                can't post the code publicly, but I can share it privately if you'd like to see code
+                from me that interacts more closely with hardware than my chess app does.
+            </p>
+            <p>
+                I took Casey Muratori's Substack course,
+                <a href="https://www.computerenhance.com/p/table-of-contents">Performance-Aware
+                Programming.</a> It's ongoing, but I've watched and
+                <a href="https://github.com/jeremiahkellick/jk_repo/tree/master/jk_src/perfaware">
+                done the homework</a> for all the episodes that have been release at time of writing
+                (2025-09-15).
+            </p>
+            <p>
+                I self-studied math. I read and did odd-numbered exercises in <em>Mathematical
+                Proofs: A Transition to Advanced Mathematics</em> by Gary Chartrand, Albert D.
+                Polimeni, and Ping Zhang. I'm currently working through <em>Linear Algebra Done
+                Right</em> by Sheldon Axler. If it interests you, check out my
+                <a href="/jk_assets/website/jkellick_ladr_exercises.pdf">exercise solutions</a> for
+                the first three chapters.
+            </p>
+            <p>I also put ~400 hours into learning Chinese.</p>
+            <p>
+                Whew, that's enough talking about myself. Thanks for reading! If you're interested
+                in hiring me, or if you'd like to contact me for any other reason, email
+                jeremiah@jeremiahkellick.com.
             </p>
             <script src="/jk_src/chess/chess.js"></script>
         </div>
