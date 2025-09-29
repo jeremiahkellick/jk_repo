@@ -99,13 +99,13 @@ blockquote {
                 Want my full story? Read on.
             </p>
             <p>
-                When I was nineteen, Google hired me to program full-time. I got into programming
-                early because I loved video games and wanted to make them. It so captivated me that
-                by my high-school graduation, I wanted to do it full-time. So instead of college, I
-                took a chance on a faster path. I attended a coding bootcamp called App Academy.
-                They filled gaps in my knowledge and prepared me for technical interviews. Then came
-                months of job searching. I won't forget the tension answering the recruiter's phone
-                call after my Google interviews. To my delight, they made an offer.
+                Google hired me when I was nineteen. I got into programming early because I loved
+                video games and wanted to make them. It so captivated me that by my high-school
+                graduation, I wanted to do it full-time. So instead of college, I took a chance on a
+                faster path. I attended a coding bootcamp called App Academy. They filled gaps in my
+                knowledge and prepared me for technical interviews. Then came months of job
+                searching. I won't forget the tension answering the recruiter's phone call after my
+                Google interviews. To my delight, they made an offer.
             </p>
             <p>
                 For the next four years, I worked at Google Pittsburgh making UIs for Vertex AI
@@ -122,81 +122,89 @@ blockquote {
             <p>
                 One day I saw a talk on YouTube,
                 <a href="https://www.youtube.com/watch?v=De0Am_QcZiQ">"Making Game Programming Less
-                Terrible" by Jonathan Blow.</a> He criticized the "New Document" menu in Photoshop
-                taking one second to load. Was this really noteworthy? You probably encounter things
-                like this on a daily basis. There were many examples in the product I worked on.
+                Terrible"</a> by Jonathan Blow. He criticized Photoshop's "New Document" menu taking
+                one second to load. Was this really noteworthy? I encountered larger delays all the
+                time, many in the product I worked on.
             </p>
             <p>
                 "Imagine if the people who programmed this were trying to make VR games. Like,
-                everybody would be vomiting everywhere all the time." Jon Blow joked. That computer
+                everybody would be vomiting everywhere all the time." Jon Blow joked. His computer
                 could render a pretty 3D environment from two different perspectives in eleven
-                milliseconds. Why then did it take a thousand to display Photoshop's "New Document"
-                menu?
+                milliseconds. Why then did it take a thousand to display that "New Document" menu?
             </p>
             <p>
-                I thought "It's market-driven." Programmer time is expensive, and it probably takes
-                more to achieve high performance. Should the company pay for that? You would refund
-                a VR game that made you vomit. In Photoshop's case, however, few customers will
-                unsubscribe when the "New Document" menu takes a second to load. It feels bad, but
-                it might just be good economics to prioritize other things.
-                <a id="footnote-1-link" href="#footnote-1">[1]</a>
+                I thought "It's market-driven." Programmer time is expensive, and it usually takes
+                more to achieve high performance. Is the extra cost worth it? You would refund a VR
+                game that made you vomit, but few Photoshop subscribers will cancel when the "New
+                Document" menu takes a second. Maybe it's just good economics to prioritize other
+                things. <a id="footnote-1-link" href="#footnote-1">[1]</a>
             </p>
             <p>
-                My opinion changed when Jon compiled his game in less than a second. This was
-                impressive at the time, but to drive the point in further, jump forward to May 2025
-                when his game was 300k lines of code and
-                <a href="https://youtu.be/RIYGaSBKy3w?t=646">compiled in 2.3 seconds.</a>
-                In <a href="https://youtu.be/jamU6SQBtxk?t=5172">an interview</a> Jon said "It's
-                big. So far I think it's a reasonable estimation that if someone wants to 100% the
-                game, if they're an average person, it's probably over 500 hours of play time."
+                My opinion changed when Jon compiled his game in under a second. This was already
+                impressive at the time, but it gets more so if we jump forward to May 2025 when his
+                game was 300k lines of code and <a href="https://youtu.be/RIYGaSBKy3w?t=646">
+                compiled in 2.3 seconds.</a> In <a href="https://youtu.be/jamU6SQBtxk?t=5172">an
+                interview</a> Jon said, "It's big. So far I think it's a reasonable estimation that
+                if the average person wants to 100% the game, it's probably over 500 hours of play
+                time."
             </p>
             <p>
-                That demonstration convinced me software development could be far better than I
-                knew. The market dynamics argument plays out differently when it comes to
-                compilation speed. Try to save your programmers' time using shortcuts that slow down
-                compilation, and it backfires because slow compilation consumes the resource you
-                were supposedly trying to save. So why did it take 30 minutes to start my project's
-                development server? Why did it take 5 minutes to compile the unit tests for a single
-                UI component? Jon's game was staggeringly more complex than that UI component. He
+                The demonstration threw me. I completely reassessed how we did things at Google. The
+                "market-driven" argument doesn't excuse slow compilation. You can't save programmer
+                time with shortcuts that bog down compilation. A slow build consumes the resource
+                you claimed to be saving. So why did it take 30 minutes to start my project's
+                development server? Why did it take 5 minutes to compile unit tests for a single UI
+                component? Jon's game was staggeringly more complex than that UI component. He
                 compiled on a single computer. I used a server farm.
             </p>
             <p>
-                The talk inspired me to learn systems programming so I could write software with
-                better compilation and runtime performance. I read the classic
-                <em>C Programming Language</em> by Brian Kernighan and Dennis Ritchie. I took some
-                courses from Carnegie Mellon as a non-degree student on the side:
+                The talk inspired me to learn systems programming to get control of my software's
+                compilation and runtime performance. I read the classic <em>C Programming
+                Language</em> by Brian Kernighan and Dennis Ritchie. I took some courses from
+                Carnegie Mellon as a non-degree student:
             </p>
             <ul>
                 <li>18-213 Introduction to Computer Systems</li>
                 <li>15-411 Compiler Design</li>
             </ul>
             <p>
-                Compiler Design was difficult to balance with my job. I had no time for friends or
-                family, so after that I left my job at Google to focus full-time on education. I
-                took a third course from Carnegie:
+                Compiler Design was difficult to balance with my job. I had no time for friends and
+                family. After it finished, I left my job at Google to focus full-time on education.
+                I took a third course from Carnegie:
             </p>
             <ul>
                 <li>15-410 Operating System Design and Implementation</li>
             </ul>
             <p>
-                90%+ of the workload for those courses was large programming projects. I can't post
+                Large programming projects were 90%+ of the workload for those courses. I can't post
                 the code publicly, but I can share it privately.
             </p>
             <p>
                 Then I took Casey Muratori's Substack course,
                 <a href="https://www.computerenhance.com/p/table-of-contents">Performance-Aware
-                Programming.</a> It's ongoing, but I've watched and
+                Programming.</a> It's ongoing, but I watched and did
                 <a href="https://github.com/jeremiahkellick/jk_repo/tree/master/jk_src/perfaware">
-                done the homework</a> for all the episodes that have been release at time of writing
-                (2025-09-26).
+                the homework</a> for all episodes released at time of writing (2025-09-28).
+            </p>
+            <p>
+                Casey's an endearing teacher. His passion for the subject bleeds through as he
+                patiently explains things step by step. His knowledge was earned from a career of
+                curiosity and preference for writing things from scratch, rarely depending on
+                someone else's code. He has his students learn in the same way. You don't just learn
+                to read assembly. You write
+                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/perfaware/part1/sim86.c#L945">
+                an 8086 simulator.</a> You don't just learn to use a profiler. You write
+                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_lib/platform/platform.c#L548">
+                your own.</a> It's impossible to do the coursework and not come away with a deep
+                understanding of the subject matter.
             </p>
             <p>
                 Next, I wanted a project to show publicly that demonstrates systems programming
                 knowledge, so I wrote a chess application from scratch in C. It supports three
-                platforms: Windows, macOS, and the web. You can try the web version right here on
-                this page or download native executables on the
-                <a href="https://github.com/jeremiahkellick/jk_repo/releases">GitHub Releases</a>
-                page. I'll discuss the technical details below. But first, try it out!
+                platforms: Windows, macOS, and the web. Try the web version below or download native
+                executables on the <a href="https://github.com/jeremiahkellick/jk_repo/releases">
+                GitHub Releases</a> page. I'll discuss technical details below. But first, try it
+                out!
             </p>
             <canvas id="chess"></canvas>
             <p>
@@ -206,15 +214,15 @@ blockquote {
             <p>
                 At runtime, the Windows and macOS ports depend on only the C standard library and
                 APIs provided by their respective operating systems. The web version doesn't even
-                use the C standard library, so none of the platform-independent code can use it
-                either, which took me down a couple fun rabbit holes.
+                depend on a C standard library implementation, so none of the platform-independent
+                code can use it either. This took me down some fun rabbit holes.
             </p>
             <p>
-                For floating-point rounding and square root I was able to rely on x86 intrinsics
-                when using MSVC and builtins when using Clang or GCC, but replacing sine and
-                arccosine was more interesting. I used Mathematica to compute constants for
-                <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_lib/jk_lib.c#L544">
-                polynomial approximations of those functions.</a>
+                For floating-point rounding and square root, I used x86 intrinsics when compiling
+                with MSVC and builtins when using Clang or GCC. There weren't such intrinsics,
+                however, for sine and arccosine. Instead, I used Mathematica to compute constants
+                for <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_src/jk_lib/jk_lib.c#L544">
+                polynomial approximations.</a>
             </p>
             <p>
                 I also wrote a printf replacement. The most interesting part was the
@@ -232,47 +240,55 @@ blockquote {
                 <a href="https://github.com/jeremiahkellick/jk_repo/blob/v0.1/jk_assets/chess/paths.txt">
                 subset of the SVG path format.</a> For the text, I use stb_truetype to to extract
                 data from a font file and convert it to the format my rasterizer understands, but I
-                just do that in a separate program that runs as a build step. The executable does
-                not contain any stb_truetype code, only my custom rasterizer.
+                do that in a separate program that runs as a build step. The executable does not
+                contain any stb_truetype code.
             </p>
             <p>
                 Still, much credit to Sean Barrett, the author of the stb libraries. His
-                <a href="https://nothings.org/gamedev/rasterize/">writeup on how the stb_truetype
-                anti-aliasing works</a> is the reason I was able to understand the rasterization
-                process well enough to write it myself.
+                <a href="https://nothings.org/gamedev/rasterize/">writeup on the stb_truetype
+                anti-aliasing algorithm</a> taught me enough about vector graphics rasterization to
+                write it myself.
             </p>
             <p>
-                The other most interesting part of the project is the AI. As a challenge to myself,
-                I did not read up on how to write a chess bot. I wanted to see how far I could get
+                The next most interesting part of the project was the AI. As a challenge to myself,
+                I did not read up on how to write a chess bot. I wanted to see how far I would get
                 "on my own steam." I'm reasonably happy with the result. It's better than I am at
                 chess, though I can still eke out a win against it occasionally.
             </p>
             <p>
-                Now that I've made the AI about as good as I can on my own, I'm looking forward to
-                finally reading up on the state-of-the-art techniques and implementing some of those
-                to see if I can write an AI that I will never checkmate.
+                Still, now that I've made the AI about as good as I can on my own, I'm looking
+                forward to reading up on state-of-the-art techniques and implementing some to see if
+                I can't write an AI that I will never checkmate.
             </p>
             <p>
-                During this time I also pursued some education unrelated to programming. I
-                self-studied math. I read and did odd-numbered exercises in <em>Mathematical Proofs:
-                A Transition to Advanced Mathematics</em> by Gary Chartrand, Albert D. Polimeni, and
-                Ping Zhang. I'm currently working through <em>Linear Algebra Done Right</em> by
-                Sheldon Axler. If it interests you, check out my
+                During this time I also learned things unrelated to programming. I self-studied
+                math. I read and did odd-numbered exercises in <em>Mathematical Proofs: A Transition
+                to Advanced Mathematics</em> by Gary Chartrand, Albert D. Polimeni, and Ping Zhang.
+                I'm currently working through <em>Linear Algebra Done Right</em> by Sheldon Axler.
+                If it interests you, check out my
                 <a href="/jk_assets/website/jkellick_ladr_exercises.pdf">exercise solutions</a> for
-                the first three chapters. I also put ~400 hours into learning Chinese.
+                the first three chapters. I also spent ~400 hours learning Chinese.
             </p>
             <p>
-                Whew, that's enough talking about myself. That catches us up to the present (as of
-                2025-09-26). Thanks for reading! If you're interested in hiring me, or if you'd like
-                to contact me for any other reason, email jeremiah@jeremiahkellick.com
+                That catches us up to the present (as of 2025-09-28). This educational deep dive was
+                fun and satisfying. It's neat to look back and see how far I've come. Not long ago I
+                was writing code with only the vaguest of notions of how the computer ran it. I
+                didn't even have a model of how my data was laid out in memory. Now I've written a
+                compiler to turn high level code into assembly, custom memory allocators, and
+                operating system code to manage virtual memory.
+            </p>
+            <p>
+                Whew, that's enough talking about myself. If you read all that, I'm pleasantly
+                surprised. Thanks for your interest! If you'd like to contact me for any reason (but
+                especially if you'd like to hire me), email jeremiah@jeremiahkellick.com
             </p>
             <h2>Footnotes</h2>
             <ol>
                 <li>
                     <a id="footnote-1" href="#footnote-1-link">↑</a>
-                    A <a href="https://youtu.be/x2EOOJg8FkA">case has been made</a> that performance
-                    improvements affect revenue more than you might expect, but this was my thought
-                    at the time.
+                    A <a href="https://www.computerenhance.com/p/performance-excuses-debunked">case
+                    has been made</a> that performance improvements affect revenue more than you
+                    might expect, but this was my thought at the time.
                 </li>
             </ol>
             <script src="/jk_src/chess/chess.js"></script>
