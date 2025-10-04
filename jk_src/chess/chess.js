@@ -134,6 +134,10 @@ async function main() {
         let mouse_y = -1;
         let mouse_down = false;
 
+        let draw_offset_x = 0;
+        let draw_offset_y = 0;
+        let ratio = 1;
+
         let audio_initialized = false;
         let audio_context;
         let worklet;
@@ -157,28 +161,37 @@ async function main() {
 
         const is_touch_device = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
         if (is_touch_device) {
-            function update_mouse_pos(touches) {
+            function update_mouse_pos(event) {
                 mouse_x = 0;
                 mouse_y = 0;
-                for (const touch of touches) {
+                for (const touch of event.touches) {
                     mouse_x += touch.pageX;
                     mouse_y += touch.pageY;
                 }
-                mouse_x /= touches.length;
-                mouse_y /= touches.length;
+                mouse_x /= event.touches.length;
+                mouse_y /= event.touches.length;
+
+                const client_rect = canvas.getBoundingClientRect();
+                mouse_x -= client_rect.left + window.scrollX;
+                mouse_y -= client_rect.top + window.scrollY;
             }
-            canvas.addEventListener('touchmove', event => {
-                update_mouse_pos(event.touches);
-            });
-            window.addEventListener('touchstart', event => {
+            canvas.addEventListener('touchstart', event => {
                 mouse_down = true;
-                update_mouse_pos(event.touches);
+                update_mouse_pos(event);
+                if (wasm_exports.web_is_draggable(
+                        mouse_x * ratio - draw_offset_x,
+                        mouse_y * ratio - draw_offset_y)) {
+                    event.preventDefault();
+                }
+            });
+            window.addEventListener('touchmove', event => {
+                update_mouse_pos(event);
             });
             window.addEventListener('touchend', event => {
                 if (event.touches.length == 0) {
                     mouse_down = false;
                 } else {
-                    update_mouse_pos(event.touches);
+                    update_mouse_pos(event);
                 }
                 if (audio_context) {
                     audio_context.resume();
@@ -192,7 +205,7 @@ async function main() {
                     mouse_y = -1;
                     mouse_down = false;
                 } else {
-                    update_mouse_pos(event.touches);
+                    update_mouse_pos(event);
                 }
             });
         } else {
@@ -267,20 +280,20 @@ async function main() {
 
                         const width = Math.min(gl.canvas.width, square_side_length * 10);
                         const height = Math.min(gl.canvas.height, square_side_length * 10);
-                        let x = 0;
-                        let y = 0;
+                        let draw_offset_x = 0;
+                        let draw_offset_y = 0;
                         if (gl.canvas.width < gl.canvas.height) {
-                            y = Math.floor((gl.canvas.height - height) / 2); 
+                            draw_offset_y = Math.floor((gl.canvas.height - height) / 2); 
                         } else {
-                            x = Math.floor((gl.canvas.width - width) / 2);
+                            draw_offset_x = Math.floor((gl.canvas.width - width) / 2);
                         }
 
-                        const ratio = gl.drawingBufferWidth / gl.canvas.clientWidth;
+                        ratio = gl.drawingBufferWidth / gl.canvas.clientWidth;
 
                         const ai_request_changed = wasm_exports.tick(
                                 square_side_length,
-                                mouse_x * ratio - x,
-                                mouse_y * ratio - y,
+                                mouse_x * ratio - draw_offset_x,
+                                mouse_y * ratio - draw_offset_y,
                                 mouse_down,
                                 now,
                                 audio_context ? audio_context.currentTime * 48000 : 0);
@@ -313,10 +326,10 @@ async function main() {
                         gl.clear(gl.COLOR_BUFFER_BIT);
 
                         const positions = new Float32Array([
-                            x, y,
-                            x, y + height,
-                            x + width, y,
-                            x + width, y + height,
+                            draw_offset_x, draw_offset_y,
+                            draw_offset_x, draw_offset_y + height,
+                            draw_offset_x + width, draw_offset_y,
+                            draw_offset_x + width, draw_offset_y + height,
                         ]);
                         gl.bindBuffer(gl.ARRAY_BUFFER, position_buffer);
                         gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);

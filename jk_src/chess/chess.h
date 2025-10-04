@@ -332,4 +332,7 @@ RenderFunction render;
 typedef void PrintSetFunction(void (*print)(JkBuffer string));
 PrintSetFunction print_set;
 
+typedef b32 IsDraggableFunction(Chess *chess, JkIntVector2 pos);
+IsDraggableFunction is_draggable;
+
 #endif

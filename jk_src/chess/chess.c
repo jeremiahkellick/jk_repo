@@ -2500,3 +2500,20 @@ void print_set(void (*print)(JkBuffer string))
 {
     jk_print = print;
 }
+
+b32 is_draggable(Chess *chess, JkIntVector2 pos)
+{
+    if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
+        uint8_t index = board_index_get_unbounded(screen_to_board_pos(chess, pos));
+        if (index < 64) {
+            for (uint8_t i = 0; i < chess->moves.count; i++) {
+                Move available_move = move_unpack(chess->moves.data[i]);
+                if (available_move.src == index) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    return 0;
+}

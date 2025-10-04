@@ -4,7 +4,7 @@
 
 // #jk_build single_translation_unit
 // #jk_build compiler_arguments -o chess.wasm --target=wasm32 --no-standard-libraries
-// #jk_build linker_arguments -Wl,--no-entry,--allow-undefined,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick
+// #jk_build linker_arguments -Wl,--no-entry,--allow-undefined,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick,--export=web_is_draggable
 
 // clang-format on
 
@@ -202,4 +202,9 @@ b32 ai_tick(double os_time)
 {
     g_ai.time = os_time;
     return ai_running(&g_ai);
+}
+
+b32 web_is_draggable(int32_t x, int32_t y)
+{
+    return is_draggable(&g_chess, (JkIntVector2){x, y});
 }
