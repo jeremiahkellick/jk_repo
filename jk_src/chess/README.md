@@ -30,7 +30,7 @@ For the text, I use stb_truetype to to extract data from a font file and convert
 rasterizer understands, but I do that in a separate program that runs as a build step. The
 executable does not contain any stb_truetype code.
 
-Still, much credit to Sean Barrett, the author of the stb libraries. His
+Still, much credit to Sean Barrett, author of the stb libraries. His
 [writeup on the stb_truetype anti-aliasing algorithm](https://nothings.org/gamedev/rasterize/)
 taught me enough about vector graphics rasterization to write it myself.
 
