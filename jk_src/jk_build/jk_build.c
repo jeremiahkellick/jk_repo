@@ -55,10 +55,8 @@ typedef struct JkBufferArray {
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal)                 \
-    {                                                         \
-        sizeof(string_literal) - 1, (uint8_t *)string_literal \
-    }
+#define JK_STRING_INITIALIZER(string_literal) \
+    {sizeof(string_literal) - 1, (uint8_t *)string_literal}
 
 #define JKSI JK_STRING_INITIALIZER
 
@@ -1251,7 +1249,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     for (uint64_t i = 0; i < nasm_files_array.count; i++) {
         char output_path_buffer[16];
         JkBuffer output_path_relative = {
-            .size = snprintf(output_path_buffer, sizeof(output_path_buffer), "/nasm%llu.o", i),
+            .size = snprintf(
+                    output_path_buffer, sizeof(output_path_buffer), "/nasm%llu.o", (long long)i),
             .data = (uint8_t *)output_path_buffer,
         };
         JkBuffer nasm_output_path = concat_strings(&storage, paths.build, output_path_relative);
@@ -1380,6 +1379,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
+        append(&command, "-D", "_DEFAULT_SOURCE=");
 
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);
@@ -1405,6 +1405,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
+        append(&command, "-D", "_DEFAULT_SOURCE=");
 
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);
@@ -1451,6 +1452,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         if (options.no_profile) {
             append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
         }
+        append(&command, "-D", "_DEFAULT_SOURCE=");
         append(&command, "-D", "_CRT_SECURE_NO_WARNINGS");
 
         append(&command, "-I");
@@ -1570,7 +1572,11 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
     for (uint64_t i = 0; i < nasm_files.count; i++) {
         char file_name[32];
-        snprintf(file_name, 32, "nasm%llu.%s", i, options.compiler == COMPILER_MSVC ? "lib" : "o");
+        snprintf(file_name,
+                32,
+                "nasm%llu.%s",
+                (long long)i,
+                options.compiler == COMPILER_MSVC ? "lib" : "o");
         append(&command, file_name);
     }
 

@@ -407,6 +407,23 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
         fprintf(stderr, "chdir(\"%s\"): %s\n", path, strerror(errno));
         JK_ASSERT(0);
     }
+#elif __linux__
+    char path[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", path, PATH_MAX - 1);
+    JK_ASSERT(len != -1);
+
+    // Truncate path at last slash
+    for (ssize_t i = len - 1; 0 <= i; i--) {
+        if (path[i] == '/') {
+            path[i] = '\0';
+            break;
+        }
+    }
+
+    if (chdir(path) != 0) {
+        fprintf(stderr, "chdir(\"%s\"): %s\n", path, strerror(errno));
+        JK_ASSERT(0);
+    }
 #else
     JK_ASSERT(0 && "Not implemented");
 #endif
