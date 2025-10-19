@@ -227,6 +227,7 @@ int main(void)
     expect_string(JKS("-unprintable"), jk_f64_to_string(&arena, -unprintable_64.f, 8));
     expect_string(JKS("1.3333333"), jk_f64_to_string(&arena, 4.0 / 3.0, 7));
     expect_string(JKS("2.666667"), jk_f64_to_string(&arena, 8.0 / 3.0, 6));
+    expect_string(JKS("60.00"), jk_f64_to_string(&arena, 59.99999, 2));
     expect_string(JKS("123"), jk_f64_to_string(&arena, 123.25, 0));
     expect_string(JKS("124"), jk_f64_to_string(&arena, 123.5, 0));
 

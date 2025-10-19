@@ -351,8 +351,17 @@ JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, uint16_t decim
                 for (uint64_t i = 0; i < 8 - decimal_places; i++) {
                     divisor *= 10;
                 }
+                uint64_t one = 10;
+                for (uint64_t i = 0; i < decimal_places - 1; i++) {
+                    one *= 10;
+                }
 
                 uint64_t rounded_fraction = (decimal_fraction + divisor / 2) / divisor;
+                if (one <= rounded_fraction) {
+                    rounded_fraction -= one;
+                    integer += 1;
+                }
+
                 return JK_FORMAT(arena,
                         jkfs(sign),
                         jkfu(integer),
