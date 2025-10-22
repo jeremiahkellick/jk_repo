@@ -2,6 +2,12 @@
 
 My monorepo for various C projects that may share code
 
+## Highlights
+
+- [Graphical chess app](/jk_src/chess)
+- [JSON parser](/jk_src/jk_lib/json/json.c)
+- [8086 simulator](/jk_src/perfaware/part1/sim86.c)
+
 ## Compilation
 
 This repo uses a lightweight, custom build program called `jk_build`
