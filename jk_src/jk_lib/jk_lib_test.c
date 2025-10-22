@@ -233,6 +233,7 @@ int main(void)
 
     expect_string(JKS("5 + -3 = 2"),
             JK_FORMAT(&arena, jkfu(5), jkfn(" + "), jkfi(-3), jkfn(" = "), jkfi(2)));
+    expect_string(JKS("001"), JK_FORMAT(&arena, jkfuw(1, 3)));
     expect_string(JKS("0x00ff"), JK_FORMAT(&arena, jkfn("0x"), jkfh(0xff, 4)));
     expect_string(
             JKS("Hello, sailor!"), JK_FORMAT(&arena, jkfs(JKS("Hello, ")), jkfs(JKS("sailor!"))));
