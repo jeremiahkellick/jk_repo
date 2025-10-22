@@ -6,9 +6,9 @@
 #define DRAW_BUFFER_SIDE_LENGTH 4096
 #define DRAW_BUFFER_SIZE (sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
 
-#define CLEAR_COLOR_R 0
-#define CLEAR_COLOR_G 0
-#define CLEAR_COLOR_B 0
+#define CLEAR_COLOR_R 0x16
+#define CLEAR_COLOR_G 0x20
+#define CLEAR_COLOR_B 0x27
 
 typedef enum InputId {
     INPUT_CONFIRM,
