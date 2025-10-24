@@ -20,14 +20,21 @@ typedef struct Input {
     JkIntVector2 mouse_pos;
 } Input;
 
+typedef enum Flag {
+    FLAG_INITIALIZED,
+} Flag;
+
 typedef struct State {
     JkColor *draw_buffer;
     JkBuffer memory;
     uint64_t os_timer_frequency;
 
+    uint64_t flags;
     JkIntVector2 dimensions;
     uint64_t os_time;
     Input input;
+
+    JkVector3 points[9 * 9 * 9];
 } State;
 
 typedef void RenderFunction(State *state);

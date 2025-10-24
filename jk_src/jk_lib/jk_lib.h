@@ -351,6 +351,45 @@ JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 
 
 // ---- JkVector2 end ----------------------------------------------------------
 
+// ---- JkVector3 begin -------------------------------------------------------
+
+typedef union JkVector3 {
+    float coords[3];
+    struct {
+        float x;
+        float y;
+        float z;
+    };
+} JkVector3;
+
+JK_PUBLIC b32 jk_vector_3_approx_equal(JkVector3 a, JkVector3 b, float tolerance);
+
+JK_PUBLIC JkVector3 jk_vector_3_add(JkVector3 a, JkVector3 b);
+
+JK_PUBLIC JkVector3 jk_vector_3_sub(JkVector3 a, JkVector3 b);
+
+JK_PUBLIC JkVector3 jk_vector_3_mul(float scalar, JkVector3 vector);
+
+JK_PUBLIC JkVector3 jk_vector_3_ceil(JkVector3 v);
+
+JK_PUBLIC float jk_vector_3_magnitude_sqr(JkVector3 v);
+
+JK_PUBLIC float jk_vector_3_magnitude(JkVector3 v);
+
+JK_PUBLIC JkVector3 jk_vector_3_normalized(JkVector3 v);
+
+JK_PUBLIC float jk_vector_3_dot(JkVector3 u, JkVector3 v);
+
+JK_PUBLIC float jk_vector_3_angle_between(JkVector3 u, JkVector3 v);
+
+JK_PUBLIC JkVector3 jk_vector_3_lerp(JkVector3 a, JkVector3 b, float t);
+
+JK_PUBLIC float jk_vector_3_distance_squared(JkVector3 a, JkVector3 b);
+
+JK_PUBLIC JkVector3 jk_vector_3_round(JkVector3 vector);
+
+// ---- JkVector3 end ----------------------------------------------------------
+
 // ---- Random generator begin -------------------------------------------------
 
 typedef struct JkRandomGeneratorU64 {

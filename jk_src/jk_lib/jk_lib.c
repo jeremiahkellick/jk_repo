@@ -998,6 +998,80 @@ JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 
 
 // ---- JkVector2 end ----------------------------------------------------------
 
+// ---- JkVector3 begin --------------------------------------------------------
+
+JK_PUBLIC b32 jk_vector_3_approx_equal(JkVector3 a, JkVector3 b, float tolerance)
+{
+    return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance)
+            && jk_float32_equal(a.z, b.z, tolerance);
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_add(JkVector3 a, JkVector3 b)
+{
+    return (JkVector3){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z};
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_sub(JkVector3 a, JkVector3 b)
+{
+    return (JkVector3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_mul(float scalar, JkVector3 vector)
+{
+    return (JkVector3){.x = scalar * vector.x, .y = scalar * vector.y, .z = scalar * vector.z};
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_ceil(JkVector3 v)
+{
+    return (JkVector3){jk_ceil_f32(v.x), jk_ceil_f32(v.y), jk_ceil_f32(v.z)};
+}
+
+JK_PUBLIC float jk_vector_3_magnitude_sqr(JkVector3 v)
+{
+    return v.x * v.x + v.y * v.y + v.z * v.z;
+}
+
+JK_PUBLIC float jk_vector_3_magnitude(JkVector3 v)
+{
+    return jk_sqrt_f32(jk_vector_3_magnitude_sqr(v));
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_normalized(JkVector3 v)
+{
+    return jk_vector_3_mul(1.0f / jk_vector_3_magnitude(v), v);
+}
+
+JK_PUBLIC float jk_vector_3_dot(JkVector3 u, JkVector3 v)
+{
+    return u.x * v.x + u.y * v.y + u.z * v.z;
+}
+
+JK_PUBLIC float jk_vector_3_angle_between(JkVector3 u, JkVector3 v)
+{
+    return jk_acos_f32(
+            jk_vector_3_dot(u, v) / (jk_vector_3_magnitude(u) * jk_vector_3_magnitude(v)));
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_lerp(JkVector3 a, JkVector3 b, float t)
+{
+    return jk_vector_3_add(jk_vector_3_mul(1.0f - t, a), jk_vector_3_mul(t, b));
+}
+
+JK_PUBLIC float jk_vector_3_distance_squared(JkVector3 a, JkVector3 b)
+{
+    float dx = b.x - a.x;
+    float dy = b.y - a.y;
+    float dz = b.z - a.z;
+    return dx * dx + dy * dy + dz * dz;
+}
+
+JK_PUBLIC JkVector3 jk_vector_3_round(JkVector3 vector)
+{
+    return (JkVector3){jk_round_f32(vector.x), jk_round_f32(vector.y)};
+}
+
+// ---- JkVector3 end ----------------------------------------------------------
+
 // ---- Random generator begin -------------------------------------------------
 
 // Bob Jenkins's pseudorandom number generator aka JSF64 from
