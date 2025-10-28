@@ -37,7 +37,13 @@ static void draw_rect(State *state, JkIntVector2 pos, JkIntVector2 dimensions, J
     }
 }
 
-float camera_side_length = 640.0f;
+JkVector2 perspective_project(JkVector3 v)
+{
+    return (JkVector2){v.x / (v.z * 0.5f), v.y / (v.z * 0.5f)};
+}
+
+JkVector3 camera_pos = {0.0f, 0.0f, -3.0f};
+int32_t rotation_seconds = 8;
 
 void render(State *state)
 {
@@ -60,11 +66,22 @@ void render(State *state)
 
     float scale = JK_MIN(state->dimensions.x * 0.5f, state->dimensions.y * 0.5f) / 2.0f;
     JkVector2 offset = {state->dimensions.x / 2.0f, state->dimensions.y / 2.0f};
+    int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
+    float angle = 2 * JK_PI
+            * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
     for (int32_t i = 0; i < (int32_t)JK_ARRAY_COUNT(state->points); i++) {
-        JkVector2 pos = jk_vector_2_add(
-                jk_vector_2_mul(scale, (JkVector2){state->points[i].x, state->points[i].z}),
-                offset);
-        draw_pixel(state, jk_vector_2_round(pos), fg);
+        JkVector3 pos = state->points[i];
+        pos = (JkVector3){
+            .x = pos.x * jk_cos_f32(angle) + pos.z * jk_sin_f32(angle),
+            .y = pos.y,
+            .z = -pos.x * jk_sin_f32(angle) + pos.z * jk_cos_f32(angle),
+        };
+        pos = jk_vector_3_sub(pos, camera_pos);
+
+        JkVector2 screen_pos = perspective_project(pos);
+        screen_pos = jk_vector_2_mul(scale, screen_pos);
+        screen_pos = jk_vector_2_add(screen_pos, offset);
+        draw_pixel(state, jk_vector_2_round(screen_pos), fg);
     }
 }

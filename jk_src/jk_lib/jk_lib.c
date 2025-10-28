@@ -1070,6 +1070,11 @@ JK_PUBLIC JkVector3 jk_vector_3_round(JkVector3 vector)
     return (JkVector3){jk_round_f32(vector.x), jk_round_f32(vector.y)};
 }
 
+JK_PUBLIC JkVector2 jk_vector_3_to_2(JkVector3 v)
+{
+    return (JkVector2){v.x, v.y};
+}
+
 // ---- JkVector3 end ----------------------------------------------------------
 
 // ---- Random generator begin -------------------------------------------------

@@ -388,6 +388,8 @@ JK_PUBLIC float jk_vector_3_distance_squared(JkVector3 a, JkVector3 b);
 
 JK_PUBLIC JkVector3 jk_vector_3_round(JkVector3 vector);
 
+JK_PUBLIC JkVector2 jk_vector_3_to_2(JkVector3 v);
+
 // ---- JkVector3 end ----------------------------------------------------------
 
 // ---- Random generator begin -------------------------------------------------
