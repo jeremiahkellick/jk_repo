@@ -8,7 +8,7 @@
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
-static JkColor fg = {.r = 0x49, .g = 0x6b, .b = 0x83};
+static JkColor fg = {.r = 0xff, .g = 0x69, .b = 0xb4};
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B};
 
 static void draw_pixel(State *state, JkIntVector2 pos, JkColor color)
@@ -58,13 +58,13 @@ void render(State *state)
         }
     }
 
-    float scale = camera_side_length / 2.0f;
-    float offset = scale + 100.0f;
+    float scale = JK_MIN(state->dimensions.x * 0.5f, state->dimensions.y * 0.5f) / 2.0f;
+    JkVector2 offset = {state->dimensions.x / 2.0f, state->dimensions.y / 2.0f};
 
     for (int32_t i = 0; i < (int32_t)JK_ARRAY_COUNT(state->points); i++) {
         JkVector2 pos = jk_vector_2_add(
                 jk_vector_2_mul(scale, (JkVector2){state->points[i].x, state->points[i].z}),
-                (JkVector2){offset, offset});
+                offset);
         draw_pixel(state, jk_vector_2_round(pos), fg);
     }
 }
