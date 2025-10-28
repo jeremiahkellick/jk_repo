@@ -4,6 +4,10 @@
 // #jk_build export render
 // #jk_build single_translation_unit
 
+// #jk_build dependencies_begin
+#include <jk_src/jk_lib/jk_lib.h>
+// #jk_build dependencies_end
+
 static JkColor fg = {.r = 0x49, .g = 0x6b, .b = 0x83};
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B};
 
@@ -33,6 +37,8 @@ static void draw_rect(State *state, JkIntVector2 pos, JkIntVector2 dimensions, J
     }
 }
 
+float camera_side_length = 640.0f;
+
 void render(State *state)
 {
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
@@ -52,7 +58,13 @@ void render(State *state)
         }
     }
 
-    draw_pixel(state, (JkIntVector2){10, 10}, (JkColor){.r = 0xff, .g = 0x88, .b = 0x88});
+    float scale = camera_side_length / 2.0f;
+    float offset = scale + 100.0f;
 
-    draw_rect(state, (JkIntVector2){100, 100}, (JkIntVector2){640, 480}, fg);
+    for (int32_t i = 0; i < (int32_t)JK_ARRAY_COUNT(state->points); i++) {
+        JkVector2 pos = jk_vector_2_add(
+                jk_vector_2_mul(scale, (JkVector2){state->points[i].x, state->points[i].z}),
+                (JkVector2){offset, offset});
+        draw_pixel(state, jk_vector_2_round(pos), fg);
+    }
 }
