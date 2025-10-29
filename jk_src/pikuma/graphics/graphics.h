@@ -33,8 +33,6 @@ typedef struct State {
     JkIntVector2 dimensions;
     uint64_t os_time;
     Input input;
-
-    JkVector3 points[9 * 9 * 9];
 } State;
 
 typedef void RenderFunction(State *state);
