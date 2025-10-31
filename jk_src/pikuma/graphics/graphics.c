@@ -253,25 +253,39 @@ void render(State *state)
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
+    JkVector2 screen_verticies[JK_ARRAY_COUNT(verticies)];
+    for (int32_t i = 0; i < (int32_t)JK_ARRAY_COUNT(verticies); i++) {
+        JkVector3 pos = verticies[i];
+        pos = (JkVector3){
+            .x = pos.x * jk_cos_f32(angle) + pos.z * jk_sin_f32(angle),
+            .y = pos.y,
+            .z = -pos.x * jk_sin_f32(angle) + pos.z * jk_cos_f32(angle),
+        };
+        pos = jk_vector_3_sub(pos, camera_pos);
+
+        JkVector2 screen_pos = perspective_project(pos);
+        screen_pos = jk_vector_2_mul(scale, screen_pos);
+        screen_pos = jk_vector_2_add(screen_pos, offset);
+        screen_verticies[i] = screen_pos;
+    }
+
+    uint8_t edge_drawn[JK_ARRAY_COUNT(verticies)][JK_ARRAY_COUNT(verticies)] = {0};
     for (int32_t face_index = 0; face_index < (int32_t)JK_ARRAY_COUNT(faces); face_index++) {
         Face *face = faces + face_index;
-        JkVector2 points[3];
         for (int32_t i = 0; i < 3; i++) {
-            JkVector3 pos = verticies[face->v[i]];
-            pos = (JkVector3){
-                .x = pos.x * jk_cos_f32(angle) + pos.z * jk_sin_f32(angle),
-                .y = pos.y,
-                .z = -pos.x * jk_sin_f32(angle) + pos.z * jk_cos_f32(angle),
-            };
-            pos = jk_vector_3_sub(pos, camera_pos);
-
-            JkVector2 screen_pos = perspective_project(pos);
-            screen_pos = jk_vector_2_mul(scale, screen_pos);
-            screen_pos = jk_vector_2_add(screen_pos, offset);
-            points[i] = screen_pos;
+            int32_t next = (i + 1) % 3;
+            int32_t indexes[2];
+            if (face->v[i] < face->v[next]) {
+                indexes[0] = face->v[i];
+                indexes[1] = face->v[next];
+            } else {
+                indexes[0] = face->v[next];
+                indexes[1] = face->v[i];
+            }
+            if (!edge_drawn[indexes[0]][indexes[1]]) {
+                edge_drawn[indexes[0]][indexes[1]] = 1;
+                draw_line(state, fg, screen_verticies[indexes[0]], screen_verticies[indexes[1]]);
+            }
         }
-        draw_line(state, fg, points[0], points[1]);
-        draw_line(state, fg, points[1], points[2]);
-        draw_line(state, fg, points[2], points[0]);
     }
 }
