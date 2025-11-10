@@ -93,7 +93,7 @@ static double haversine_sum_3(HaversineContext context)
 
         b32 in_asin_standard_range = a <= 0.5;
         double x_squared = in_asin_standard_range ? a : 1.0 - a;
-        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double asin_core_result = jk_asin_core(x_squared);
         double distance =
                 in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
 
@@ -124,7 +124,7 @@ static double haversine_sum_4(HaversineContext context)
 
         b32 in_asin_standard_range = a <= 0.5;
         double x_squared = in_asin_standard_range ? a : 1.0 - a;
-        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double asin_core_result = jk_asin_core(x_squared);
         double distance =
                 in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
 
@@ -155,7 +155,7 @@ static double haversine_sum_5(HaversineContext context)
 
         b32 in_asin_standard_range = a <= 0.5;
         double x_squared = in_asin_standard_range ? a : 1.0 - a;
-        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double asin_core_result = jk_asin_core(x_squared);
         double distance =
                 in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
 
@@ -189,7 +189,7 @@ static double haversine_sum_6(HaversineContext context)
 
         b32 in_asin_standard_range = a <= 0.5;
         double x_squared = in_asin_standard_range ? a : 1.0 - a;
-        double asin_core_result = jk_asin_core(x_squared) * jk_sqrt(x_squared);
+        double asin_core_result = jk_asin_core(x_squared);
         double distance =
                 in_asin_standard_range ? asin_core_result : (JK_PI / 2.0) - asin_core_result;
 

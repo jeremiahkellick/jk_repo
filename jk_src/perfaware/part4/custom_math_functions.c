@@ -57,6 +57,7 @@ JK_PUBLIC double jk_asin_core(double x_squared)
     result = _mm_fmadd_sd(result, x_squared_sd, _mm_set_sd(0x1.3333341adb0b8p-4));
     result = _mm_fmadd_sd(result, x_squared_sd, _mm_set_sd(0x1.5555555487dd3p-3));
     result = _mm_fmadd_sd(result, x_squared_sd, _mm_set_sd(0x1.0000000000079p0));
+    result = _mm_mul_sd(result, _mm_sqrt_sd(_mm_setzero_pd(), x_squared_sd));
     return _mm_cvtsd_f64(result);
 }
 
@@ -67,7 +68,7 @@ JK_PUBLIC double jk_asin(double x)
         x = jk_sqrt(1.0 - x * x);
     }
 
-    double core_result = jk_asin_core(x * x) * x;
+    double core_result = jk_asin_core(x * x);
     return in_standard_range ? core_result : (JK_PI / 2.0) - core_result;
 }
 
