@@ -404,6 +404,8 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk);
 
 // ---- File formats end -------------------------------------------------------
 
+JK_PUBLIC void jk_platform_print_stdout(JkBuffer string);
+
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
 
 JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);

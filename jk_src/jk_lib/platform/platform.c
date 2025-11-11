@@ -1200,6 +1200,11 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
 
 // ---- File formats end -------------------------------------------------------
 
+JK_PUBLIC void jk_platform_print_stdout(JkBuffer string)
+{
+    fwrite(string.data, 1, string.size, stdout);
+}
+
 JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n)
 {
     size_t page_size = jk_platform_page_size();

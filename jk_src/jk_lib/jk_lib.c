@@ -147,6 +147,17 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
     return c;
 }
 
+JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos)
+{
+    JkBuffer result;
+    result.data = buffer.data + *pos;
+    while (*pos < buffer.size && buffer.data[*pos]) {
+        (*pos)++;
+    }
+    result.size = (buffer.data + *pos) - result.data;
+    return result;
+}
+
 JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b)
 {
     for (uint64_t pos = 0; 1; pos++) {

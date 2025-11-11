@@ -57,6 +57,17 @@ JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
 
 JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
+JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos);
+
+#define JK_BUFFER_FIELD_NEXT(buffer, pos, type) \
+    (*(pos) += sizeof(type),                    \
+            (*(pos) < (buffer).size ? (type *)((buffer).data + (*(pos) - sizeof(type))) : 0))
+
+#define JK_BUFFER_FIELD_READ(buffer, pos, type, default)                                 \
+    (*(pos) += sizeof(type),                                                             \
+            (*(pos) < (buffer).size ? *(type *)((buffer).data + (*(pos) - sizeof(type))) \
+                                    : (default)))
+
 JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b);
 
 JK_PUBLIC b32 jk_char_is_whitespace(int c);
@@ -453,6 +464,12 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 #endif
 
 #define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+#define JK_BUFFER_FROM_ARRAY(array)                    \
+    (JkBuffer)                                         \
+    {                                                  \
+        .size = JK_ARRAY_COUNT(array), .data = (array) \
+    }
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
 
