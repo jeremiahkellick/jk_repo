@@ -1,3 +1,4 @@
+#include "jk_src/jk_lib/jk_lib.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -189,6 +190,16 @@ int main(void)
     printf("Character in bounds: %d\n", jk_buffer_character_next(buffer, &pos));
     pos = 9001;
     printf("Character out of bounds: %d\n", jk_buffer_character_next(buffer, &pos));
+
+    uint8_t bit_buffer_data[] = {0xa3, 0xc4, 0x8c, 0x5e};
+    JkBuffer bit_buffer = {.size = sizeof(bit_buffer_data), .data = bit_buffer_data};
+    uint64_t bit_cursor = 0;
+    JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 3) == 0x3);
+    JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 16) == 0x9894);
+    JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 10) == 0x3d1);
+
+    bit_cursor = 1000;
+    JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 32) == 0x0);
 
     JK_ASSERT(jk_string_find(JKS("Hello, world!"), JKS(" wor")) == 6);
     JK_ASSERT(jk_string_find(JKS("Hello, world!"), JKS(" wort")) == -1);

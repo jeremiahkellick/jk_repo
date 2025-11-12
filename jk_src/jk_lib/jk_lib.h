@@ -59,6 +59,8 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
 JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos);
 
+JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, uint64_t *bit_cursor, uint8_t bit_count);
+
 #define JK_BUFFER_FIELD_NEXT(buffer, pos, type) \
     (*(pos) += sizeof(type),                    \
             (*(pos) < (buffer).size ? (type *)((buffer).data + (*(pos) - sizeof(type))) : 0))

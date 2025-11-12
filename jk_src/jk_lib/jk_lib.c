@@ -109,6 +109,26 @@ JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer)
     }
 }
 
+JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, uint64_t *bit_cursor, uint8_t bit_count)
+{
+    JK_DEBUG_ASSERT(bit_count <= 32);
+    uint64_t result = 0;
+
+    uint64_t byte_index = *bit_cursor / 8;
+    uint64_t bit_index = *bit_cursor % 8;
+    *bit_cursor += bit_count;
+
+    for (uint8_t i = 0; i < 8; i++) {
+        result >>= 8;
+        if (byte_index < buffer.size) {
+            result |= (uint64_t)buffer.data[byte_index] << 56;
+        }
+        byte_index++;
+    }
+
+    return (uint32_t)((result >> bit_index) & ((1llu << bit_count) - 1));
+}
+
 static uint64_t jk_strlen(char *string)
 {
     char *pointer = string;
@@ -155,6 +175,7 @@ JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos
         (*pos)++;
     }
     result.size = (buffer.data + *pos) - result.data;
+    (*pos)++;
     return result;
 }
 

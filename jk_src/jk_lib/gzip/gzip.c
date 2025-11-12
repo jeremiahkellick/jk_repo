@@ -42,8 +42,9 @@ JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer)
 {
     JkGzipDecompressResult result = {0};
 
-    uint64_t pos = 0;
-    JkGzipHeader header = JK_BUFFER_FIELD_READ(buffer, &pos, JkGzipHeader, (JkGzipHeader){0});
+    uint64_t byte_cursor = 0;
+    JkGzipHeader header =
+            JK_BUFFER_FIELD_READ(buffer, &byte_cursor, JkGzipHeader, (JkGzipHeader){0});
     JkBuffer extra_data = {0};
     JkGzipTrailer trailer = {0};
 
@@ -52,21 +53,43 @@ JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer)
         jk_print(JKS("jk_gzip_decompress: buffer did not start with the expected magic bytes\n"));
     }
     if (JK_FLAG_GET(header.flags, JK_GZIP_FLAG_EXTRA)) {
-        extra_data.size = JK_BUFFER_FIELD_READ(buffer, &pos, uint16_t, 0);
-        extra_data.data = buffer.data + pos;
-        pos += extra_data.size;
+        extra_data.size = JK_BUFFER_FIELD_READ(buffer, &byte_cursor, uint16_t, 0);
+        extra_data.data = buffer.data + byte_cursor;
+        byte_cursor += extra_data.size;
     }
     if (JK_FLAG_GET(header.flags, JK_GZIP_FLAG_NAME)) {
-        result.name = jk_buffer_null_terminated_next(buffer, &pos);
+        result.name = jk_buffer_null_terminated_next(buffer, &byte_cursor);
     }
     if (JK_FLAG_GET(header.flags, JK_GZIP_FLAG_COMMENT)) {
-        result.comment = jk_buffer_null_terminated_next(buffer, &pos);
+        result.comment = jk_buffer_null_terminated_next(buffer, &byte_cursor);
     }
     if (JK_FLAG_GET(header.flags, JK_GZIP_FLAG_CRC)) {
-        pos += sizeof(uint16_t);
+        byte_cursor += sizeof(uint16_t);
     }
-    if (pos + sizeof(JkGzipTrailer) < buffer.size) {
+    if (byte_cursor + sizeof(JkGzipTrailer) < buffer.size) {
         trailer = *(JkGzipTrailer *)(buffer.data + (buffer.size - sizeof(JkGzipTrailer)));
+    }
+
+    result.contents.data = jk_arena_push(arena, trailer.uncompressed_size);
+
+    uint64_t bit_cursor = byte_cursor * 8;
+    b32 done = 0;
+    while (!done) {
+        uint64_t block_header = jk_buffer_bits_read(buffer, &bit_cursor, 3);
+        uint64_t mode = block_header >> 1;
+        if (block_header & 1) {
+            done = 1;
+        }
+        if (mode == 0) {
+            bit_cursor = (bit_cursor + 7) & ~7; // Round bit cursor to nearest byte
+            uint16_t length = jk_buffer_bits_read(buffer, &bit_cursor, 16);
+            bit_cursor += 16;
+            jk_memcpy(result.contents.data + result.contents.size,
+                    buffer.data + (bit_cursor / 8),
+                    length);
+            result.contents.size += length;
+            bit_cursor += 8 * length;
+        }
     }
 
     return result;
