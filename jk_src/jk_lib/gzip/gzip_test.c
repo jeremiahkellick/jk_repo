@@ -24,7 +24,7 @@ static uint32_t crc32(JkBuffer buffer)
 static JkGzipDecompressResult expected_result = {
     .name = JKSI("test.txt"),
     .comment = {0},
-    .contents = JKSI("Lol, "),
+    .contents = JKSI("There's "),
 };
 
 // clang-format off
@@ -37,7 +37,8 @@ static uint8_t gzip_bytes[] = {
     // ---- DEFLATE compresssed data begin -------------------------------------
 
     // uncompressed block
-    0x01, 0x5, 0x0, 0xfa, 0xff, 0x4c, 0x6f, 0x6c, 0x2c, 0x20,
+    0x01, 0x08, 0x00, 0xf7, 0xff, 0x54, 0x68, 0x65,
+    0x72, 0x65, 0x27, 0x73, 0x20,
 
     // ---- DEFLATE compresssed data end ---------------------------------------
 
