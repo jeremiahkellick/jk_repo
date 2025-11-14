@@ -59,6 +59,8 @@ JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
 
 JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos);
 
+JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, uint64_t bit_cursor, uint8_t bit_count);
+
 JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, uint64_t *bit_cursor, uint8_t bit_count);
 
 #define JK_BUFFER_FIELD_NEXT(buffer, pos, type) \
@@ -512,6 +514,10 @@ JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size);
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
+
+JK_PUBLIC uint8_t jk_bit_reverse_table[256];
+
+JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value);
 
 JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value);
 

@@ -353,6 +353,8 @@ int main(void)
 
     // ---- Quicksort end ------------------------------------------------------
 
+    JK_ASSERT(jk_bit_reverse_u16(0x5bbd) == 0xbdda);
+
     JK_ASSERT(!jk_is_power_of_two(0));
     JK_ASSERT(jk_round_up_to_power_of_2(0) == 0);
     JK_ASSERT(jk_round_down_to_power_of_2(0) == 0);
