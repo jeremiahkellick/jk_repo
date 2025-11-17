@@ -109,6 +109,16 @@ JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer)
     }
 }
 
+JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, uint64_t size)
+{
+    return (JkBuffer){.size = size, .data = jk_arena_push(arena, size)};
+}
+
+JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, uint64_t size)
+{
+    return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
+}
+
 JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, uint64_t bit_cursor, uint8_t bit_count)
 {
     JK_DEBUG_ASSERT(bit_count <= 32);

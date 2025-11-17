@@ -47,6 +47,11 @@ typedef struct JkSpan {
 
 #define JKSI JK_STRING_INITIALIZER
 
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)     \
+    {                                                  \
+        .size = sizeof(byte_array), .data = byte_array \
+    }
+
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
 JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer);
@@ -227,6 +232,10 @@ JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 // we'll just let them hang out down here I guess...
 
 JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer);
+
+JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, uint64_t size);
+
+JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, uint64_t size);
 
 JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
 
