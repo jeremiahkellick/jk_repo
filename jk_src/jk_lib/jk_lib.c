@@ -145,7 +145,7 @@ JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, uint64_t *bit_cursor, ui
     return result;
 }
 
-static uint64_t jk_strlen(char *string)
+JK_PUBLIC uint64_t jk_strlen(char *string)
 {
     char *pointer = string;
     while (*pointer) {

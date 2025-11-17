@@ -237,6 +237,8 @@ JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, uint64_t size);
 
 JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, uint64_t size);
 
+JK_PUBLIC uint64_t jk_strlen(char *string);
+
 JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
 
 JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
