@@ -228,7 +228,10 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompress
         if (mode == 0) { // Uncompressed block
             bit_cursor = (bit_cursor + 7) & ~7; // Round bit cursor to nearest byte
             uint16_t length = jk_buffer_bits_read(data, &bit_cursor, 16);
-            bit_cursor += 16;
+            uint16_t length_check = ~(uint16_t)jk_buffer_bits_read(data, &bit_cursor, 16);
+            if (length != length_check) {
+                jk_print(JKS("DEFLATE uncompressed block length check failed\n"));
+            }
             jk_memcpy(result.data + result.size, data.data + (bit_cursor / 8), length);
             result.size += length;
             bit_cursor += 8 * length;
@@ -337,6 +340,39 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompress
         } else {
             jk_print(JKS("DELFATE data contained an invalid block header\n"));
         }
+    }
+
+    return result;
+}
+
+static uint8_t jk_zlib_magic[] = {0x78, 0x8b, 0x08};
+
+#if _MSC_VER && !__clang__
+#pragma pack(push, 1)
+typedef struct JkZlibHeader {
+#else
+typedef struct __attribute__((packed)) JkZlibHeader {
+#endif
+    uint8_t cmf;
+    uint8_t flg;
+} JkZlibHeader;
+#if _MSC_VER && !__clang__
+#pragma pack(pop)
+#endif
+
+JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, uint64_t uncompressed_size)
+{
+    JkBuffer result = {0};
+
+    uint64_t pos = 0;
+    JkZlibHeader header = JK_BUFFER_FIELD_READ(data, &pos, JkZlibHeader, (JkZlibHeader){0});
+    if (header.cmf == 0x78 && (((header.cmf << 8) | header.flg) % 31) == 0
+            && !(header.flg & 0x20)) {
+        result = jk_inflate(arena,
+                (JkBuffer){.size = data.size - pos, .data = data.data + pos},
+                uncompressed_size);
+    } else {
+        jk_print(JKS("jk_zlib_decompress: Invalid or unsupported format\n"));
     }
 
     return result;
