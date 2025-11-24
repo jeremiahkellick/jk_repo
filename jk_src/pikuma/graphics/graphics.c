@@ -205,38 +205,20 @@ JkVector2 perspective_project(JkVector3 v)
 JkVector3 camera_pos = {0.0f, 0.0f, -4.0f};
 int32_t rotation_seconds = 8;
 
-JkVector3 verticies[] = {
-    {-1, -1, -1},
-    {1, -1, -1},
-    {-1, 1, -1},
-    {1, 1, -1},
-    {-1, -1, 1},
-    {1, -1, 1},
-    {-1, 1, 1},
-    {1, 1, 1},
-};
-
-typedef struct Face {
-    int32_t v[3];
-} Face;
-
-Face faces[] = {
-    {0, 1, 2},
-    {2, 1, 3},
-    {4, 5, 0},
-    {0, 5, 1},
-    {6, 4, 2},
-    {2, 4, 0},
-    {5, 7, 1},
-    {1, 7, 3},
-    {7, 6, 3},
-    {3, 6, 2},
-    {4, 6, 5},
-    {5, 6, 7},
-};
-
-void render(State *state)
+void render(Assets *assets, State *state)
 {
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
+
+    JkVector3Array vertices = {
+        .count = assets->vertices.size / sizeof(*vertices.items),
+        .items = (JkVector3 *)((uint8_t *)assets + assets->vertices.offset),
+    };
+    FaceArray faces = {
+        .count = assets->faces.size / sizeof(*faces.items),
+        .items = (Face *)((uint8_t *)assets + assets->faces.offset),
+    };
+
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
     }
@@ -253,9 +235,9 @@ void render(State *state)
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
-    JkVector2 screen_verticies[JK_ARRAY_COUNT(verticies)];
-    for (int32_t i = 0; i < (int32_t)JK_ARRAY_COUNT(verticies); i++) {
-        JkVector3 pos = verticies[i];
+    JkVector2 *screen_verticies = jk_arena_push(&arena, vertices.count * sizeof(*screen_verticies));
+    for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
+        JkVector3 pos = vertices.items[i];
         pos = (JkVector3){
             .x = pos.x * jk_cos_f32(angle) + pos.z * jk_sin_f32(angle),
             .y = pos.y,
@@ -269,9 +251,9 @@ void render(State *state)
         screen_verticies[i] = screen_pos;
     }
 
-    uint8_t edge_drawn[JK_ARRAY_COUNT(verticies)][JK_ARRAY_COUNT(verticies)] = {0};
-    for (int32_t face_index = 0; face_index < (int32_t)JK_ARRAY_COUNT(faces); face_index++) {
-        Face *face = faces + face_index;
+    uint8_t *edge_drawn = jk_arena_push_zero(&arena, vertices.count * vertices.count);
+    for (int32_t face_index = 0; face_index < (int32_t)faces.count; face_index++) {
+        Face *face = faces.items + face_index;
         for (int32_t i = 0; i < 3; i++) {
             int32_t next = (i + 1) % 3;
             int32_t indexes[2];
@@ -282,8 +264,8 @@ void render(State *state)
                 indexes[0] = face->v[next];
                 indexes[1] = face->v[i];
             }
-            if (!edge_drawn[indexes[0]][indexes[1]]) {
-                edge_drawn[indexes[0]][indexes[1]] = 1;
+            if (!edge_drawn[vertices.count * indexes[0] + indexes[1]]) {
+                edge_drawn[vertices.count * indexes[0] + indexes[1]] = 1;
                 draw_line(state, fg, screen_verticies[indexes[0]], screen_verticies[indexes[1]]);
             }
         }

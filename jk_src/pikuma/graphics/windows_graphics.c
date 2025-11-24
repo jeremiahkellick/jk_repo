@@ -4,6 +4,7 @@
 
 #include "graphics.h"
 
+// #jk_build run jk_src/pikuma/graphics/graphics_assets_pack.c
 // #jk_build build jk_src/pikuma/graphics/graphics.c
 // #jk_build single_translation_unit
 
@@ -16,6 +17,7 @@
 typedef struct Global {
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena;
+    Assets *assets;
     RenderFunction *render;
     JkIntVector2 window_dimensions;
     b32 running;
@@ -189,7 +191,7 @@ DWORD app_thread(LPVOID param)
 
         g.state.os_time = jk_platform_os_timer_get();
 
-        g.render(&g.state);
+        g.render(g.assets, &g.state);
         time++;
 
         uint64_t counter_work = jk_platform_os_timer_get();
@@ -265,6 +267,7 @@ DWORD app_thread(LPVOID param)
 
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
+    jk_platform_set_working_directory_to_executable_directory();
     jk_print = debug_print;
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -274,6 +277,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         jk_print(JKS("Failed to initialize virtual memory arena\n"));
         exit(1);
     }
+
+    g.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
 
     g.state.memory.size = 2 * JK_MEGABYTE;
     uint8_t *memory =

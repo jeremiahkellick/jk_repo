@@ -388,6 +388,11 @@ typedef union JkVector3 {
     };
 } JkVector3;
 
+typedef struct JkVector3Array {
+    uint64_t count;
+    JkVector3 *items;
+} JkVector3Array;
+
 JK_PUBLIC b32 jk_vector_3_approx_equal(JkVector3 a, JkVector3 b, float tolerance);
 
 JK_PUBLIC JkVector3 jk_vector_3_add(JkVector3 a, JkVector3 b);

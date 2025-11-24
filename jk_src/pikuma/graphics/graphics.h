@@ -24,6 +24,20 @@ typedef enum Flag {
     FLAG_INITIALIZED,
 } Flag;
 
+typedef struct Face {
+    int32_t v[3];
+} Face;
+
+typedef struct FaceArray {
+    uint64_t count;
+    Face *items;
+} FaceArray;
+
+typedef struct Assets {
+    JkSpan vertices;
+    JkSpan faces;
+} Assets;
+
 typedef struct State {
     JkColor *draw_buffer;
     JkBuffer memory;
@@ -35,7 +49,7 @@ typedef struct State {
     Input input;
 } State;
 
-typedef void RenderFunction(State *state);
+typedef void RenderFunction(Assets *assets, State *state);
 RenderFunction render;
 
 #endif
