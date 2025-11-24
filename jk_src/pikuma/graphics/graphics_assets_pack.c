@@ -172,10 +172,10 @@ void process_fbx_nodes(Context *c, JkBuffer file, uint64_t pos)
 
 void append_arena_as_span(JkArena *dest, JkArena *src, JkSpan *span)
 {
-    span->size = src->pos;
-    span->offset = dest->pos;
+    span->size = src->pos - src->base;
+    span->offset = dest->pos - dest->base;
     uint8_t *data = jk_arena_push(dest, span->size);
-    jk_memcpy(data, src->root->memory.data, span->size);
+    jk_memcpy(data, src->root->memory.data + src->base, span->size);
 }
 
 int main(int argc, char **argv)
@@ -198,9 +198,6 @@ int main(int argc, char **argv)
     JkArena faces_arena = jk_platform_arena_virtual_init(&faces_arena_root, 1 * JK_GIGABYTE);
     c->faces_arena = &faces_arena;
 
-    JkPlatformArenaVirtualRoot result_arena_root;
-    JkArena result_arena = jk_platform_arena_virtual_init(&result_arena_root, 1 * JK_GIGABYTE);
-
     JkBuffer file = jk_platform_file_read_full(&arena, file_name);
     JkFbxHeader *header = (JkFbxHeader *)file.data;
 
@@ -213,6 +210,7 @@ int main(int argc, char **argv)
 
     process_fbx_nodes(c, file, header->first_node - file.data);
 
+    JkArena result_arena = jk_arena_child_get(c->arena);
     Assets *assets = jk_arena_push(&result_arena, sizeof(*assets));
     append_arena_as_span(&result_arena, c->verts_arena, &assets->vertices);
     append_arena_as_span(&result_arena, c->faces_arena, &assets->faces);
@@ -220,7 +218,10 @@ int main(int argc, char **argv)
     char *binary_file_name = "graphics_assets";
     FILE *binary_file = fopen(binary_file_name, "wb");
     if (binary_file) {
-        fwrite(result_arena.root->memory.data, result_arena.pos, 1, binary_file);
+        fwrite(result_arena.root->memory.data + result_arena.base,
+                result_arena.pos - result_arena.base,
+                1,
+                binary_file);
     } else {
         fprintf(stderr,
                 "%s: Failed to open '%s': %s\n",

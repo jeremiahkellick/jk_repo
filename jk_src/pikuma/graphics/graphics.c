@@ -239,13 +239,14 @@ void render(Assets *assets, State *state)
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
         JkVector3 pos = vertices.items[i];
         pos = (JkVector3){
-            .x = pos.x * jk_cos_f32(angle) + pos.z * jk_sin_f32(angle),
-            .y = pos.y,
-            .z = -pos.x * jk_sin_f32(angle) + pos.z * jk_cos_f32(angle),
+            .x = pos.x,
+            .y = pos.y * jk_cos_f32(angle) - pos.z * jk_sin_f32(angle),
+            .z = pos.y * jk_sin_f32(angle) + pos.z * jk_cos_f32(angle),
         };
         pos = jk_vector_3_sub(pos, camera_pos);
 
         JkVector2 screen_pos = perspective_project(pos);
+        screen_pos.y = -screen_pos.y;
         screen_pos = jk_vector_2_mul(scale, screen_pos);
         screen_pos = jk_vector_2_add(screen_pos, offset);
         screen_verticies[i] = screen_pos;
