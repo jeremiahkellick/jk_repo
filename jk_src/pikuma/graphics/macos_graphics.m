@@ -6,6 +6,7 @@
 #import <MetalKit/MetalKit.h>
 #import <QuartzCore/QuartzCore.h>
 
+// #jk_build run jk_src/pikuma/graphics/graphics_assets_pack.c
 // #jk_build single_translation_unit
 
 // clang-format off
@@ -44,6 +45,7 @@ typedef struct MyRect {
 typedef struct Global {
     b32 running;
     uint32_t buttons_down;
+    Assets *assets;
     State state;
 } Global;
 
@@ -97,8 +99,16 @@ static void print_stdout(JkBuffer string)
 int main(void)
 {
     jk_platform_set_working_directory_to_executable_directory();
-
     jk_print = print_stdout;
+
+    JkPlatformArenaVirtualRoot arena_root;
+    JkArena arena = jk_platform_arena_virtual_init(&arena_root, 8 * JK_GIGABYTE);
+    if (!jk_arena_valid(&arena)) {
+        jk_print(JKS("Failed to initialize virtual memory arena\n"));
+        exit(1);
+    }
+
+    g.assets = (Assets *)jk_platform_file_read_full(&arena, "graphics_assets").data;
 
     g.state.memory.size = 2 * JK_MEGABYTE;
     uint8_t *memory = mmap(NULL,
@@ -325,7 +335,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     g.state.input.flags |= ((g.buttons_down >> MACOS_INPUT_MOUSE) & 1) << INPUT_CONFIRM;
     g.state.input.flags |= ((g.buttons_down >> MACOS_INPUT_R) & 1) << INPUT_RESET;
 
-    render(&g.state);
+    render(g.assets, &g.state);
 
     // Copy bitmap buffer into texture
     [self.texture replaceRegion:MTLRegionMake2D(0, 0, g.state.dimensions.x, g.state.dimensions.y)
