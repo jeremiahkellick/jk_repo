@@ -1094,6 +1094,15 @@ JK_PUBLIC float jk_vector_3_dot(JkVector3 u, JkVector3 v)
     return u.x * v.x + u.y * v.y + u.z * v.z;
 }
 
+JK_PUBLIC JkVector3 jk_vector_3_cross(JkVector3 u, JkVector3 v)
+{
+    return (JkVector3){
+        .x = u.y * v.z - u.z * v.y,
+        .y = u.z * v.x - u.x * v.z,
+        .z = u.x * v.y - u.y * v.x,
+    };
+}
+
 JK_PUBLIC float jk_vector_3_angle_between(JkVector3 u, JkVector3 v)
 {
     return jk_acos_f32(

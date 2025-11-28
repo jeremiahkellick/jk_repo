@@ -197,27 +197,35 @@ static void draw_line(State *state, JkColor color, JkVector2 a, JkVector2 b)
 
 // ---- Xiaolin Wu's line algorithm end ----------------------------------------------
 
-JkVector2 perspective_project(JkVector3 v)
+static JkVector2 project(JkVector3 v, JkVector2 offset, float scale)
 {
-    return (JkVector2){v.x / v.z, v.y / v.z};
+    JkVector2 result = (JkVector2){v.x / v.z, v.y / v.z};
+    result.y = -result.y;
+    result = jk_vector_2_mul(scale, result);
+    result = jk_vector_2_add(result, offset);
+    return result;
 }
 
-JkVector3 camera_pos = {0.0f, 0.0f, -4.0f};
-int32_t rotation_seconds = 8;
+static JkVector3 camera_pos = {0.0f, 0.0f, -4.0f};
+static int32_t rotation_seconds = 8;
+
+/*
+JkVector3 face_normal(Face face)
+{
+    return jk_vector_3_cross(jk_vector_3_sub(v[1], v[0]), jk_vector_3_sub(v[2], v[0]));
+}
+*/
 
 void render(Assets *assets, State *state)
 {
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
 
-    JkVector3Array vertices = {
-        .count = assets->vertices.size / sizeof(*vertices.items),
-        .items = (JkVector3 *)((uint8_t *)assets + assets->vertices.offset),
-    };
-    FaceArray faces = {
-        .count = assets->faces.size / sizeof(*faces.items),
-        .items = (Face *)((uint8_t *)assets + assets->faces.offset),
-    };
+    JkVector3Array vertices;
+    JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
+
+    FaceArray faces;
+    JK_ARRAY_FROM_SPAN(faces, assets, assets->faces);
 
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
@@ -235,39 +243,41 @@ void render(Assets *assets, State *state)
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
-    JkVector2 *screen_verticies = jk_arena_push(&arena, vertices.count * sizeof(*screen_verticies));
+    JkVector3 *screen_vertices = jk_arena_push(&arena, vertices.count * sizeof(*screen_vertices));
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
-        JkVector3 pos = vertices.items[i];
-        pos = (JkVector3){
-            .x = pos.x,
-            .y = pos.y * jk_cos_f32(angle) - pos.z * jk_sin_f32(angle),
-            .z = pos.y * jk_sin_f32(angle) + pos.z * jk_cos_f32(angle),
+        screen_vertices[i] = (JkVector3){
+            .x = vertices.items[i].x,
+            .y = vertices.items[i].y * jk_cos_f32(angle) - vertices.items[i].z * jk_sin_f32(angle),
+            .z = vertices.items[i].y * jk_sin_f32(angle) + vertices.items[i].z * jk_cos_f32(angle),
         };
-        pos = jk_vector_3_sub(pos, camera_pos);
-
-        JkVector2 screen_pos = perspective_project(pos);
-        screen_pos.y = -screen_pos.y;
-        screen_pos = jk_vector_2_mul(scale, screen_pos);
-        screen_pos = jk_vector_2_add(screen_pos, offset);
-        screen_verticies[i] = screen_pos;
+        screen_vertices[i] = jk_vector_3_sub(screen_vertices[i], camera_pos);
     }
 
     uint8_t *edge_drawn = jk_arena_push_zero(&arena, vertices.count * vertices.count);
     for (int32_t face_index = 0; face_index < (int32_t)faces.count; face_index++) {
         Face *face = faces.items + face_index;
-        for (int32_t i = 0; i < 3; i++) {
-            int32_t next = (i + 1) % 3;
-            int32_t indexes[2];
-            if (face->v[i] < face->v[next]) {
-                indexes[0] = face->v[i];
-                indexes[1] = face->v[next];
-            } else {
-                indexes[0] = face->v[next];
-                indexes[1] = face->v[i];
-            }
-            if (!edge_drawn[vertices.count * indexes[0] + indexes[1]]) {
-                edge_drawn[vertices.count * indexes[0] + indexes[1]] = 1;
-                draw_line(state, fg, screen_verticies[indexes[0]], screen_verticies[indexes[1]]);
+
+        JkVector3 normal = jk_vector_3_cross(
+                jk_vector_3_sub(screen_vertices[face->v[1]], screen_vertices[face->v[0]]),
+                jk_vector_3_sub(screen_vertices[face->v[2]], screen_vertices[face->v[0]]));
+        if (jk_vector_3_dot(normal, jk_vector_3_mul(-1, screen_vertices[face->v[0]])) > 0) {
+            for (int32_t i = 0; i < 3; i++) {
+                int32_t next = (i + 1) % 3;
+                int32_t indexes[2];
+                if (face->v[i] < face->v[next]) {
+                    indexes[0] = face->v[i];
+                    indexes[1] = face->v[next];
+                } else {
+                    indexes[0] = face->v[next];
+                    indexes[1] = face->v[i];
+                }
+                if (!edge_drawn[vertices.count * indexes[0] + indexes[1]]) {
+                    edge_drawn[vertices.count * indexes[0] + indexes[1]] = 1;
+                    draw_line(state,
+                            fg,
+                            project(screen_vertices[indexes[0]], offset, scale),
+                            project(screen_vertices[indexes[1]], offset, scale));
+                }
             }
         }
     }

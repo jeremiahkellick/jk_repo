@@ -411,6 +411,8 @@ JK_PUBLIC JkVector3 jk_vector_3_normalized(JkVector3 v);
 
 JK_PUBLIC float jk_vector_3_dot(JkVector3 u, JkVector3 v);
 
+JK_PUBLIC JkVector3 jk_vector_3_cross(JkVector3 u, JkVector3 v);
+
 JK_PUBLIC float jk_vector_3_angle_between(JkVector3 u, JkVector3 v);
 
 JK_PUBLIC JkVector3 jk_vector_3_lerp(JkVector3 a, JkVector3 b, float t);
@@ -490,6 +492,12 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
     {                                                  \
         .size = JK_ARRAY_COUNT(array), .data = (array) \
     }
+
+#define JK_ARRAY_FROM_SPAN(array, base, span)                        \
+    do {                                                             \
+        (array).count = (span).size / sizeof(*(array).items);        \
+        (array).items = (void *)((uint8_t *)(base) + (span).offset); \
+    } while (0)
 
 #define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
 
