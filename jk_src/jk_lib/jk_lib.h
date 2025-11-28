@@ -319,6 +319,11 @@ typedef union JkIntVector2 {
     };
 } JkIntVector2;
 
+typedef struct JkIntRect {
+    JkIntVector2 min;
+    JkIntVector2 max;
+} JkIntRect;
+
 JK_PUBLIC b32 jk_int_vector_2_equal(JkIntVector2 a, JkIntVector2 b);
 
 JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b);
@@ -342,6 +347,11 @@ typedef union JkVector2 {
         float y;
     };
 } JkVector2;
+
+typedef struct JkRect {
+    JkVector2 min;
+    JkVector2 max;
+} JkRect;
 
 JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance);
 
@@ -467,11 +477,6 @@ typedef struct JkColor {
     };
 } JkColor;
 
-typedef struct JkIntRect {
-    JkIntVector2 position;
-    JkIntVector2 dimensions;
-} JkIntRect;
-
 JK_PUBLIC void jk_panic(void);
 
 JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
@@ -536,6 +541,10 @@ JK_PUBLIC void *jk_memset(void *address, uint8_t value, uint64_t size);
 JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
+
+JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions);
+
+JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect);
 
 JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
 

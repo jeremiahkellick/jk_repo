@@ -1776,8 +1776,10 @@ static void draw_radio_buttons(ChessAssets *assets,
             JkVector2 scaled_position = jk_vector_2_add(position,
                     jk_vector_2_mul(0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
 
-            jk_shapes_rect_draw_outline(
-                    renderer, scaled_position, scaled_dimensions, RECT_THICKNESS, color_move_prev);
+            jk_shapes_rect_draw_outline(renderer,
+                    jk_rect(scaled_position, scaled_dimensions),
+                    RECT_THICKNESS,
+                    color_move_prev);
 
             TextLayout text_layout =
                     text_layout_get(assets, text, scale_factor * BUTTON_TEXT_SCALE);
@@ -1790,7 +1792,7 @@ static void draw_radio_buttons(ChessAssets *assets,
             draw_text(renderer, text, cursor, scale_factor * BUTTON_TEXT_SCALE, color_move_prev);
         } else {
             JkColor outline_color;
-            button->rect = jk_shapes_pixel_rect_get(renderer, position, base_dimensions);
+            button->rect = jk_shapes_pixel_rect_get(renderer, jk_rect(position, base_dimensions));
             if (jk_int_rect_point_test(button->rect, chess->input.mouse_pos)) {
                 outline_color = color_light_squares;
             } else {
@@ -2112,7 +2114,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor text_color;
             JkColor outline_color;
             chess->buttons[BUTTON_MENU_OPEN].rect =
-                    jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
+                    jk_shapes_pixel_rect_get(&renderer, jk_rect(top_left, dimensions));
             if (jk_int_rect_point_test(chess->buttons[BUTTON_MENU_OPEN].rect, state.mouse_pos)) {
                 text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
@@ -2211,7 +2213,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor text_color;
             JkColor outline_color;
             chess->buttons[BUTTON_MENU_CLOSE].rect =
-                    jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
+                    jk_shapes_pixel_rect_get(&renderer, jk_rect(top_left, dimensions));
             if (jk_int_rect_point_test(chess->buttons[BUTTON_MENU_CLOSE].rect, state.mouse_pos)) {
                 text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
@@ -2325,7 +2327,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor text_color;
             JkColor outline_color;
             chess->buttons[BUTTON_START_GAME].rect =
-                    jk_shapes_pixel_rect_get(&renderer, top_left, dimensions);
+                    jk_shapes_pixel_rect_get(&renderer, jk_rect(top_left, dimensions));
             if (jk_int_rect_point_test(chess->buttons[BUTTON_START_GAME].rect, state.mouse_pos)) {
                 text_color = (JkColor){255, 255, 255, 255};
                 outline_color = color_light_squares;
@@ -2358,12 +2360,10 @@ void render(ChessAssets *assets, Chess *chess)
     JkIntVector2 mouse_square_pos = jk_int_vector_2_div(state.square_side_length, state.mouse_pos);
     for (pos.y = 0, pos_in_square.y = 0, square_pos.y = 0; pos.y < state.square_side_length * 10;
             pos.y++) {
-        while (ce < draw_commands.count && draw_commands.items[ce].position.y <= pos.y) {
+        while (ce < draw_commands.count && draw_commands.items[ce].rect.min.y <= pos.y) {
             ce++;
         }
-        while (cs < draw_commands.count
-                && !(pos.y < draw_commands.items[cs].position.y
-                                + draw_commands.items[cs].dimensions.y)) {
+        while (cs < draw_commands.count && !(pos.y < draw_commands.items[cs].rect.max.y)) {
             cs++;
         }
 
@@ -2390,14 +2390,14 @@ void render(ChessAssets *assets, Chess *chess)
 
             for (uint64_t i = cs; i < ce; i++) {
                 JkShapesDrawCommand *command = draw_commands.items + i;
-                JkIntVector2 pos_in_rect = jk_int_vector_2_sub(pos, command->position);
-                if (0 <= pos_in_rect.x && pos_in_rect.x < command->dimensions.x
-                        && pos_in_rect.y < command->dimensions.y) {
+                if (command->rect.min.x <= pos.x && pos.x < command->rect.max.x
+                        && pos.y < command->rect.max.y) {
                     uint8_t alpha;
                     if (command->alpha_map) {
+                        JkIntVector2 pos_in_rect = jk_int_vector_2_sub(pos, command->rect.min);
+                        int32_t width = (command->rect.max.x - command->rect.min.x);
                         uint8_t bitmap_alpha =
-                                command->alpha_map[pos_in_rect.y * command->dimensions.x
-                                        + pos_in_rect.x];
+                                command->alpha_map[pos_in_rect.y * width + pos_in_rect.x];
                         alpha = color_multiply(command->color.a, bitmap_alpha);
                     } else {
                         alpha = command->color.a;

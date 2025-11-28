@@ -82,8 +82,7 @@ typedef struct JkShapeArray {
 
 typedef struct JkShapesDrawCommand {
     JkColor color;
-    JkIntVector2 position;
-    JkIntVector2 dimensions;
+    JkIntRect rect;
     uint8_t *alpha_map;
 } JkShapesDrawCommand;
 
@@ -137,8 +136,7 @@ JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
         JkShapeArray shapes,
         JkArena *arena);
 
-JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(
-        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions);
+JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect);
 
 JK_PUBLIC void jk_shapes_pixel_rect_draw(
         JkShapesRenderer *renderer, JkIntRect pixel_rect, JkColor color);
@@ -146,14 +144,10 @@ JK_PUBLIC void jk_shapes_pixel_rect_draw(
 JK_PUBLIC void jk_shapes_pixel_rect_draw_outline(
         JkShapesRenderer *renderer, JkIntRect pixel_rect, float thickness, JkColor color);
 
-JK_PUBLIC JkIntRect jk_shapes_rect_draw(
-        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions, JkColor color);
+JK_PUBLIC JkIntRect jk_shapes_rect_draw(JkShapesRenderer *renderer, JkRect rect, JkColor color);
 
-JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(JkShapesRenderer *renderer,
-        JkVector2 position,
-        JkVector2 dimensions,
-        float thickness,
-        JkColor color);
+JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(
+        JkShapesRenderer *renderer, JkRect rect, float thickness, JkColor color);
 
 JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
         JkShapesRenderer *renderer, uint32_t shape_index, float scale);

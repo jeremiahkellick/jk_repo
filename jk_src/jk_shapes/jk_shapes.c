@@ -413,17 +413,12 @@ static float jk_shapes_segment_x_intersection(JkShapesSegment segment, float x)
     return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
 }
 
-JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(
-        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions)
+JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect)
 {
-    position = jk_vector_2_mul(renderer->pixels_per_unit, position);
-    dimensions = jk_vector_2_mul(renderer->pixels_per_unit, dimensions);
-
-    JkIntRect rect;
-    rect.position = jk_vector_2_round(position);
-    rect.dimensions = jk_int_vector_2_sub(
-            jk_vector_2_round(jk_vector_2_add(position, dimensions)), rect.position);
-    return rect;
+    return (JkIntRect){
+        jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit, rect.min)),
+        jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit, rect.max)),
+    };
 }
 
 JK_PUBLIC void jk_shapes_pixel_rect_draw(
@@ -431,8 +426,7 @@ JK_PUBLIC void jk_shapes_pixel_rect_draw(
 {
     JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, sizeof(*node));
     node->command.color = color;
-    node->command.position = pixel_rect.position;
-    node->command.dimensions = pixel_rect.dimensions;
+    node->command.rect = pixel_rect;
     node->command.alpha_map = 0;
     node->next = renderer->draw_commands_head;
     renderer->draw_commands_head = node;
@@ -442,71 +436,63 @@ JK_PUBLIC void jk_shapes_pixel_rect_draw_outline(
         JkShapesRenderer *renderer, JkIntRect pixel_rect, float thickness, JkColor color)
 {
     int32_t thickness_i = JK_MAX(1, jk_round(renderer->pixels_per_unit * thickness));
-    JkIntVector2 bottom_right = jk_int_vector_2_add(pixel_rect.position, pixel_rect.dimensions);
 
-    {
+    { // Top
         JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, sizeof(*node));
         node->command.color = color;
-        node->command.position = pixel_rect.position;
-        node->command.dimensions.x = bottom_right.x - pixel_rect.position.x;
-        node->command.dimensions.y = thickness_i;
+        node->command.rect = pixel_rect;
+        node->command.rect.max.y = pixel_rect.min.y + thickness_i;
         node->command.alpha_map = 0;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
     }
 
-    {
+    { // Bottom
         JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, sizeof(*node));
         node->command.color = color;
-        node->command.position.x = pixel_rect.position.x;
-        node->command.position.y = bottom_right.y - thickness_i;
-        node->command.dimensions.x = bottom_right.x - pixel_rect.position.x;
-        node->command.dimensions.y = thickness_i;
+        node->command.rect = pixel_rect;
+        node->command.rect.min.y = pixel_rect.max.y - thickness_i;
         node->command.alpha_map = 0;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
     }
 
-    {
+    { // Left
         JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, sizeof(*node));
         node->command.color = color;
-        node->command.position.x = pixel_rect.position.x;
-        node->command.position.y = pixel_rect.position.y + thickness_i;
-        node->command.dimensions.x = thickness_i;
-        node->command.dimensions.y = (bottom_right.y - pixel_rect.position.y) - (2 * thickness_i);
+        node->command.rect.min.x = pixel_rect.min.x;
+        node->command.rect.min.y = pixel_rect.min.y + thickness_i;
+        node->command.rect.max.x = pixel_rect.min.x + thickness_i;
+        node->command.rect.max.y = pixel_rect.max.y - thickness_i;
         node->command.alpha_map = 0;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
     }
 
-    {
+    { // Right
         JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, sizeof(*node));
         node->command.color = color;
-        node->command.position.x = bottom_right.x - thickness_i;
-        node->command.position.y = pixel_rect.position.y + thickness_i;
-        node->command.dimensions.x = thickness_i;
-        node->command.dimensions.y = (bottom_right.y - pixel_rect.position.y) - (2 * thickness_i);
+        node->command.rect.min.x = pixel_rect.max.x - thickness_i;
+        node->command.rect.min.y = pixel_rect.min.y + thickness_i;
+        node->command.rect.max.x = pixel_rect.max.x;
+        node->command.rect.max.y = pixel_rect.max.y - thickness_i;
         node->command.alpha_map = 0;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
     }
 }
 
-JK_PUBLIC JkIntRect jk_shapes_rect_draw(
-        JkShapesRenderer *renderer, JkVector2 position, JkVector2 dimensions, JkColor color)
+JK_PUBLIC JkIntRect jk_shapes_rect_draw(JkShapesRenderer *renderer, JkRect rect, JkColor color)
 {
-    JkIntRect pixel_rect = jk_shapes_pixel_rect_get(renderer, position, dimensions);
+    JkIntRect pixel_rect = jk_shapes_pixel_rect_get(renderer, rect);
     jk_shapes_pixel_rect_draw(renderer, pixel_rect, color);
     return pixel_rect;
 }
 
-JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(JkShapesRenderer *renderer,
-        JkVector2 position,
-        JkVector2 dimensions,
-        float thickness,
-        JkColor color)
+JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(
+        JkShapesRenderer *renderer, JkRect rect, float thickness, JkColor color)
 {
-    JkIntRect pixel_rect = jk_shapes_pixel_rect_get(renderer, position, dimensions);
+    JkIntRect pixel_rect = jk_shapes_pixel_rect_get(renderer, rect);
     jk_shapes_pixel_rect_draw_outline(renderer, pixel_rect, thickness, color);
     return pixel_rect;
 }
@@ -662,11 +648,11 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
 
         JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, sizeof(*node));
-        node->command.position = jk_int_vector_2_add(
+        node->command.rect.min = jk_int_vector_2_add(
                 jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit, position)),
                 bitmap.offset);
         node->command.color = color;
-        node->command.dimensions = bitmap.dimensions;
+        node->command.rect.max = jk_int_vector_2_add(node->command.rect.min, bitmap.dimensions);
         node->command.alpha_map = bitmap.data;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
@@ -679,7 +665,7 @@ static int jk_shapes_draw_command_compare(void *a, void *b)
 {
     JkShapesDrawCommand *x = a;
     JkShapesDrawCommand *y = b;
-    return x->position.y - y->position.y;
+    return x->rect.min.y - y->rect.min.y;
 }
 
 static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands)

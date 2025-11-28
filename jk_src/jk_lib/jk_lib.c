@@ -1250,11 +1250,20 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     return x;
 }
 
+JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions)
+{
+    return (JkRect){position, jk_vector_2_add(position, dimensions)};
+}
+
+JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect)
+{
+    return (JkIntVector2){rect.max.x - rect.min.x, rect.max.y - rect.min.y};
+}
+
 JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point)
 {
-    JkIntVector2 delta = jk_int_vector_2_sub(point, rect.position);
-    return 0 <= delta.x && delta.x < rect.dimensions.x && 0 <= delta.y
-            && delta.y < rect.dimensions.y;
+    return rect.min.x <= point.x && point.x < rect.max.x && rect.min.y <= point.y
+            && point.y < rect.max.y;
 }
 
 // clang-format off

@@ -1,4 +1,3 @@
-#include "jk_src/jk_lib/jk_lib.h"
 #include <AudioToolbox/AudioToolbox.h>
 #include <pthread.h>
 #include <stdio.h>
