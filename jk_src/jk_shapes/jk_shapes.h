@@ -112,24 +112,6 @@ typedef struct JkShapesPointListNode {
     b32 is_cursor_movement;
 } JkShapesPointListNode;
 
-typedef union JkShapesSegment {
-    JkVector2 endpoints[2];
-    struct {
-        JkVector2 p1;
-        JkVector2 p2;
-    };
-} JkShapesSegment;
-
-typedef struct JkShapesEdge {
-    JkShapesSegment segment;
-    float direction;
-} JkShapesEdge;
-
-typedef struct JkShapesEdgeArray {
-    uint64_t count;
-    JkShapesEdge *items;
-} JkShapesEdgeArray;
-
 JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
         float pixels_per_unit,
         void *base_pointer,

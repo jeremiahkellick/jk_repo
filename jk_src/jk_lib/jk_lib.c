@@ -713,6 +713,16 @@ JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size)
     return address;
 }
 
+JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, uint64_t size)
+{
+    return (JkBuffer){.size = size, .data = jk_arena_push(arena, size)};
+}
+
+JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, uint64_t size)
+{
+    return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
+}
+
 JK_PUBLIC void jk_arena_pop(JkArena *arena, uint64_t size)
 {
     JK_DEBUG_ASSERT(size <= arena->pos - arena->base);
@@ -1134,6 +1144,89 @@ JK_PUBLIC JkVector2 jk_vector_3_to_2(JkVector3 v)
 
 // ---- JkVector3 end ----------------------------------------------------------
 
+// ---- Shapes begin -----------------------------------------------------------
+
+JK_PUBLIC float jk_segment_y_intersection(JkSegment segment, float y)
+{
+    float delta_y = segment.p2.y - segment.p1.y;
+    JK_ASSERT(delta_y != 0);
+    return ((segment.p2.x - segment.p1.x) / delta_y) * (y - segment.p1.y) + segment.p1.x;
+}
+
+JK_PUBLIC float jk_segment_x_intersection(JkSegment segment, float x)
+{
+    float delta_x = segment.p2.x - segment.p1.x;
+    JK_ASSERT(delta_x != 0);
+    return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
+}
+
+JK_PUBLIC JkEdge jk_points_to_edge(JkVector2 a, JkVector2 b)
+{
+    JkEdge edge;
+    if (a.y < b.y) {
+        edge.segment.p1 = a;
+        edge.segment.p2 = b;
+        edge.direction = -1.0f;
+    } else {
+        edge.segment.p1 = b;
+        edge.segment.p2 = a;
+        edge.direction = 1.0f;
+    }
+    return edge;
+}
+
+JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions)
+{
+    return (JkRect){position, jk_vector_2_add(position, dimensions)};
+}
+
+JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect)
+{
+    return (JkIntVector2){rect.max.x - rect.min.x, rect.max.y - rect.min.y};
+}
+
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point)
+{
+    return rect.min.x <= point.x && point.x < rect.max.x && rect.min.y <= point.y
+            && point.y < rect.max.y;
+}
+
+JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b)
+{
+    return (JkIntRect){
+        .min.x = JK_MAX(a.min.x, b.min.x),
+        .min.y = JK_MAX(a.min.y, b.min.y),
+        .max.x = JK_MIN(a.max.x, b.max.x),
+        .max.y = JK_MIN(a.max.y, b.max.y),
+    };
+}
+
+JK_PUBLIC JkIntRect jk_triangle2_int_bounding_box(JkTriangle2 t)
+{
+    return (JkIntRect){
+        .min.x = JK_MIN3(t.v[0].x, t.v[1].x, t.v[2].x),
+        .min.y = JK_MIN3(t.v[0].y, t.v[1].y, t.v[2].y),
+        .max.x = jk_ceil_f32(JK_MAX3(t.v[0].x, t.v[1].x, t.v[2].x)),
+        .max.y = jk_ceil_f32(JK_MAX3(t.v[0].y, t.v[1].y, t.v[2].y)),
+    };
+}
+
+JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t)
+{
+    JkEdgeArray result = {.items = jk_arena_pointer_current(arena)};
+    for (int64_t i = 0; i < 3; i++) {
+        int64_t next = (i + 1) % 3;
+        if (t.v[i].y != t.v[next].y) {
+            JkEdge *edge = jk_arena_push(arena, sizeof(*edge));
+            *edge = jk_points_to_edge(t.v[i], t.v[next]);
+        }
+    }
+    result.count = (JkEdge *)jk_arena_pointer_current(arena) - result.items;
+    return result;
+}
+
+// ---- Shapes end -------------------------------------------------------------
+
 // ---- Random generator begin -------------------------------------------------
 
 // Bob Jenkins's pseudorandom number generator aka JSF64 from
@@ -1171,6 +1264,17 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
 }
 
 // ---- Random generator end ---------------------------------------------------
+
+JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha)
+{
+    JkColor result = {0, 0, 0, 255};
+    for (uint8_t i = 0; i < 3; i++) {
+        result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
+                              + background.v[i] * (255 - (int32_t)alpha))
+                / 255;
+    }
+    return result;
+}
 
 JK_NOINLINE JK_PUBLIC void jk_panic(void)
 {
@@ -1248,22 +1352,6 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     x *= 0x735a2d97;
     x ^= x >> 15;
     return x;
-}
-
-JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions)
-{
-    return (JkRect){position, jk_vector_2_add(position, dimensions)};
-}
-
-JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect)
-{
-    return (JkIntVector2){rect.max.x - rect.min.x, rect.max.y - rect.min.y};
-}
-
-JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point)
-{
-    return rect.min.x <= point.x && point.x < rect.max.x && rect.min.y <= point.y
-            && point.y < rect.max.y;
 }
 
 // clang-format off

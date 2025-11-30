@@ -209,12 +209,134 @@ static JkVector2 project(JkVector3 v, JkVector2 offset, float scale)
 static JkVector3 camera_pos = {0.0f, 0.0f, -4.0f};
 static int32_t rotation_seconds = 8;
 
-/*
-JkVector3 face_normal(Face face)
+static void add_cover(float *coverage, JkIntRect bounds, int32_t x, float value)
 {
-    return jk_vector_3_cross(jk_vector_3_sub(v[1], v[0]), jk_vector_3_sub(v[2], v[0]));
+    if (bounds.min.x <= x && x < bounds.max.x) {
+        coverage[x - bounds.min.x] += value;
+    }
 }
-*/
+
+static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
+{
+    if (x < bounds.max.x) {
+        fill[JK_MAX(0, x - bounds.min.x)] += value;
+    }
+}
+
+static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor color)
+{
+    JkArena tmp_arena = jk_arena_child_get(arena);
+
+    JkIntRect screen_rect = {.min = (JkIntVector2){0}, .max = state->dimensions};
+    JkIntRect bounds = jk_int_rect_intersect(screen_rect, jk_triangle2_int_bounding_box(tri));
+    JkIntVector2 dimensions = jk_int_rect_dimensions(bounds);
+
+    JkEdgeArray edges = jk_triangle2_edges_get(&tmp_arena, tri);
+
+    uint64_t coverage_size = sizeof(float) * (dimensions.x + 1);
+    JkBuffer coverage_buf = jk_arena_push_buffer(&tmp_arena, 2 * coverage_size);
+    float *coverage = (float *)coverage_buf.data;
+    float *fill = (float *)(coverage_buf.data + coverage_size);
+    for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
+        jk_buffer_zero(coverage_buf);
+
+        float scan_y_top = (float)y;
+        float scan_y_bottom = scan_y_top + 1.0f;
+        for (uint64_t i = 0; i < edges.count; i++) {
+            float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
+            float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
+            if (y_top < y_bottom) {
+                float height = y_bottom - y_top;
+                float x_top = jk_segment_y_intersection(edges.items[i].segment, y_top);
+                float x_bottom = jk_segment_y_intersection(edges.items[i].segment, y_bottom);
+
+                float y_start;
+                float y_end;
+                float x_start;
+                float x_end;
+                if (x_top < x_bottom) {
+                    y_start = y_top;
+                    y_end = y_bottom;
+                    x_start = x_top;
+                    x_end = x_bottom;
+                } else {
+                    y_start = y_bottom;
+                    y_end = y_top;
+                    x_start = x_bottom;
+                    x_end = x_top;
+                }
+
+                int32_t first_pixel_index = (int32_t)x_start;
+                float first_pixel_right = (float)(first_pixel_index + 1);
+
+                if (first_pixel_index == (int32_t)x_end) {
+                    // Edge only covers one pixel
+
+                    // Compute trapezoid area
+                    float top_width = first_pixel_right - x_top;
+                    float bottom_width = first_pixel_right - x_bottom;
+                    float area = (top_width + bottom_width) / 2.0f * height;
+                    add_cover(coverage, bounds, first_pixel_index, edges.items[i].direction * area);
+
+                    // Fill everything to the right with height
+                    add_fill(
+                            fill, bounds, first_pixel_index + 1, edges.items[i].direction * height);
+                } else {
+                    // Edge covers multiple pixels
+                    float delta_y = (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
+                            / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
+
+                    // Handle first pixel
+                    float first_x_intersection =
+                            jk_segment_x_intersection(edges.items[i].segment, first_pixel_right);
+                    float first_pixel_y_offset = first_x_intersection - y_start;
+                    float first_pixel_area =
+                            (first_pixel_right - x_start) * JK_ABS(first_pixel_y_offset) / 2.0f;
+                    add_cover(coverage,
+                            bounds,
+                            first_pixel_index,
+                            edges.items[i].direction * first_pixel_area);
+
+                    // Handle middle pixels (if there are any)
+                    float y_offset = first_pixel_y_offset;
+                    int32_t pixel_index = first_pixel_index + 1;
+                    for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
+                        add_cover(coverage,
+                                bounds,
+                                pixel_index,
+                                edges.items[i].direction * JK_ABS(y_offset + delta_y / 2.0f));
+                        y_offset += delta_y;
+                    }
+
+                    // Handle last pixel
+                    float last_x_intersection = y_start + y_offset;
+                    float uncovered_triangle = JK_ABS(y_end - last_x_intersection)
+                            * (x_end - (float)pixel_index) / 2.0f;
+                    add_cover(coverage,
+                            bounds,
+                            pixel_index,
+                            edges.items[i].direction * (height - uncovered_triangle));
+
+                    // Fill everything to the right with height
+                    add_fill(fill, bounds, pixel_index + 1, edges.items[i].direction * height);
+                }
+            }
+        }
+
+        // Fill the scanline according to coverage
+        float acc = 0.0f;
+        for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
+            acc += fill[x - bounds.min.x];
+            int32_t value = (int32_t)(JK_ABS((coverage[x - bounds.min.x] + acc) * 255.0f));
+            if (255 < value) {
+                value = 255;
+            }
+            uint64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
+            state->draw_buffer[i] =
+                    jk_color_alpha_blend(color, state->draw_buffer[i], (uint8_t)value);
+        }
+    }
+}
 
 void render(Assets *assets, State *state)
 {
@@ -253,7 +375,6 @@ void render(Assets *assets, State *state)
         screen_vertices[i] = jk_vector_3_sub(screen_vertices[i], camera_pos);
     }
 
-    uint8_t *edge_drawn = jk_arena_push_zero(&arena, vertices.count * vertices.count);
     for (int32_t face_index = 0; face_index < (int32_t)faces.count; face_index++) {
         Face *face = faces.items + face_index;
 
@@ -261,24 +382,11 @@ void render(Assets *assets, State *state)
                 jk_vector_3_sub(screen_vertices[face->v[1]], screen_vertices[face->v[0]]),
                 jk_vector_3_sub(screen_vertices[face->v[2]], screen_vertices[face->v[0]]));
         if (jk_vector_3_dot(normal, jk_vector_3_mul(-1, screen_vertices[face->v[0]])) > 0) {
-            for (int32_t i = 0; i < 3; i++) {
-                int32_t next = (i + 1) % 3;
-                int32_t indexes[2];
-                if (face->v[i] < face->v[next]) {
-                    indexes[0] = face->v[i];
-                    indexes[1] = face->v[next];
-                } else {
-                    indexes[0] = face->v[next];
-                    indexes[1] = face->v[i];
-                }
-                if (!edge_drawn[vertices.count * indexes[0] + indexes[1]]) {
-                    edge_drawn[vertices.count * indexes[0] + indexes[1]] = 1;
-                    draw_line(state,
-                            fg,
-                            project(screen_vertices[indexes[0]], offset, scale),
-                            project(screen_vertices[indexes[1]], offset, scale));
-                }
+            JkTriangle2 tri;
+            for (int64_t i = 0; i < 3; i++) {
+                tri.v[i] = project(screen_vertices[face->v[i]], offset, scale);
             }
+            triangle_fill(&arena, state, tri, fg);
         }
     }
 }

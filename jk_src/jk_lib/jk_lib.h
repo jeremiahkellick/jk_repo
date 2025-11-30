@@ -220,6 +220,16 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size);
 
 JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size);
 
+JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, uint64_t size);
+
+JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, uint64_t size);
+
+#define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                                \
+    do {                                                                             \
+        (array).count = item_count;                                                  \
+        (array).items = jk_arena_push(arena, (item_count) * sizeof(*(array).items)); \
+    } while (0)
+
 JK_PUBLIC void jk_arena_pop(JkArena *arena, uint64_t size);
 
 JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
@@ -319,11 +329,6 @@ typedef union JkIntVector2 {
     };
 } JkIntVector2;
 
-typedef struct JkIntRect {
-    JkIntVector2 min;
-    JkIntVector2 max;
-} JkIntRect;
-
 JK_PUBLIC b32 jk_int_vector_2_equal(JkIntVector2 a, JkIntVector2 b);
 
 JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b);
@@ -347,11 +352,6 @@ typedef union JkVector2 {
         float y;
     };
 } JkVector2;
-
-typedef struct JkRect {
-    JkVector2 min;
-    JkVector2 max;
-} JkRect;
 
 JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance);
 
@@ -435,6 +435,60 @@ JK_PUBLIC JkVector2 jk_vector_3_to_2(JkVector3 v);
 
 // ---- JkVector3 end ----------------------------------------------------------
 
+// ---- Shapes begin -----------------------------------------------------------
+
+typedef union JkSegment {
+    JkVector2 endpoints[2];
+    struct {
+        JkVector2 p1;
+        JkVector2 p2;
+    };
+} JkSegment;
+
+JK_PUBLIC float jk_segment_y_intersection(JkSegment segment, float y);
+
+JK_PUBLIC float jk_segment_x_intersection(JkSegment segment, float x);
+
+typedef struct JkEdge {
+    JkSegment segment;
+    float direction;
+} JkEdge;
+
+typedef struct JkEdgeArray {
+    uint64_t count;
+    JkEdge *items;
+} JkEdgeArray;
+
+JK_PUBLIC JkEdge jk_points_to_edge(JkVector2 a, JkVector2 b);
+
+typedef struct JkRect {
+    JkVector2 min;
+    JkVector2 max;
+} JkRect;
+
+typedef struct JkIntRect {
+    JkIntVector2 min;
+    JkIntVector2 max;
+} JkIntRect;
+
+JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions);
+
+JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect);
+
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
+
+JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b);
+
+typedef struct JkTriangle2 {
+    JkVector2 v[3];
+} JkTriangle2;
+
+JK_PUBLIC JkIntRect jk_triangle2_int_bounding_box(JkTriangle2 t);
+
+JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t);
+
+// ---- Shapes end -------------------------------------------------------------
+
 // ---- Random generator begin -------------------------------------------------
 
 typedef struct JkRandomGeneratorU64 {
@@ -477,6 +531,8 @@ typedef struct JkColor {
     };
 } JkColor;
 
+JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha);
+
 JK_PUBLIC void jk_panic(void);
 
 JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
@@ -508,6 +564,9 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 
 #define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define JK_MAX(a, b) ((a) < (b) ? (b) : (a))
+
+#define JK_MIN3(a, b, c) ((a) < JK_MIN(b, c) ? (a) : JK_MIN(b, c))
+#define JK_MAX3(a, b, c) (JK_MAX(a, b) < (c) ? (c) : JK_MAX(a, b))
 
 #define JK_CLAMP(v, min, max) ((v) < (min) ? (min) : ((max) < (v) ? (max) : (v)))
 
@@ -541,12 +600,6 @@ JK_PUBLIC void *jk_memset(void *address, uint8_t value, uint64_t size);
 JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
-
-JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions);
-
-JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect);
-
-JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
 
 JK_PUBLIC uint8_t jk_bit_reverse_table[256];
 

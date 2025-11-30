@@ -91,21 +91,6 @@ static uint64_t jk_shapes_bitmap_key_get(uint32_t shape_index, float scale)
     return ((uint64_t)shape_index << 32) | *(uint32_t *)&scale;
 }
 
-static JkShapesEdge jk_shapes_points_to_edge(JkVector2 a, JkVector2 b)
-{
-    JkShapesEdge edge;
-    if (a.y < b.y) {
-        edge.segment.p1 = a;
-        edge.segment.p2 = b;
-        edge.direction = -1.0f;
-    } else {
-        edge.segment.p1 = b;
-        edge.segment.p2 = a;
-        edge.direction = 1.0f;
-    }
-    return edge;
-}
-
 static JkVector2 jk_shapes_evaluate_bezier_quadratic(
         float t, JkVector2 p0, JkVector2 p1, JkVector2 p2)
 {
@@ -304,7 +289,7 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point
     }
 }
 
-static JkShapesEdgeArray jk_shapes_edges_get(JkArena *arena,
+static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
         JkShapesPenCommandArray commands,
         JkVector2 offset,
         float scale,
@@ -385,33 +370,19 @@ static JkShapesEdgeArray jk_shapes_edges_get(JkArena *arena,
     }
 
     // The linearization is finished. Create an array of edges from the point list.
-    JkShapesEdgeArray edges = {.items = jk_arena_pointer_current(arena)};
+    JkEdgeArray edges = {.items = jk_arena_pointer_current(arena)};
     for (JkShapesPointListNode *node = start_node; node && node->next; node = node->next) {
         if (!node->next->is_cursor_movement && node->point.y != node->next->point.y) {
-            JkShapesEdge *new_edge = jk_arena_push(arena, sizeof(*new_edge));
-            *new_edge = jk_shapes_points_to_edge(node->point, node->next->point);
+            JkEdge *new_edge = jk_arena_push(arena, sizeof(*new_edge));
+            *new_edge = jk_points_to_edge(node->point, node->next->point);
         }
     }
-    edges.count = (JkShapesEdge *)jk_arena_pointer_current(arena) - edges.items;
+    edges.count = (JkEdge *)jk_arena_pointer_current(arena) - edges.items;
 
     return edges;
 }
 
 // No bounds checking so they return the intersection as if the segment was an infinite line
-
-static float jk_shapes_segment_y_intersection(JkShapesSegment segment, float y)
-{
-    float delta_y = segment.p2.y - segment.p1.y;
-    JK_ASSERT(delta_y != 0);
-    return ((segment.p2.x - segment.p1.x) / delta_y) * (y - segment.p1.y) + segment.p1.x;
-}
-
-static float jk_shapes_segment_x_intersection(JkShapesSegment segment, float x)
-{
-    float delta_x = segment.p2.x - segment.p1.x;
-    JK_ASSERT(delta_x != 0);
-    return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
-}
 
 JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect)
 {
@@ -533,7 +504,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
             JkShapesPenCommandArray commands;
             commands.count = shape.commands.size / sizeof(commands.items[0]);
             commands.items = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
-            JkShapesEdgeArray edges =
+            JkEdgeArray edges =
                     jk_shapes_edges_get(&arena, commands, negative_offset_ceil, pixel_scale, 0.25f);
 
             for (int32_t y = 0; y < bitmap.dimensions.y; y++) {
@@ -546,10 +517,9 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                     float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
                     if (y_top < y_bottom) {
                         float height = y_bottom - y_top;
-                        float x_top =
-                                jk_shapes_segment_y_intersection(edges.items[i].segment, y_top);
+                        float x_top = jk_segment_y_intersection(edges.items[i].segment, y_top);
                         float x_bottom =
-                                jk_shapes_segment_y_intersection(edges.items[i].segment, y_bottom);
+                                jk_segment_y_intersection(edges.items[i].segment, y_bottom);
 
                         float y_start;
                         float y_end;
@@ -588,7 +558,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                                     / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
 
                             // Handle first pixel
-                            float first_x_intersection = jk_shapes_segment_x_intersection(
+                            float first_x_intersection = jk_segment_x_intersection(
                                     edges.items[i].segment, first_pixel_right);
                             float first_pixel_y_offset = first_x_intersection - y_start;
                             float first_pixel_area = (first_pixel_right - x_start)
