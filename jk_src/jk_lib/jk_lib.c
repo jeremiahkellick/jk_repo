@@ -1276,20 +1276,24 @@ JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, u
     return result;
 }
 
-JK_PUBLIC JkColor jk_reverse_painters_mix(JkColor fg, JkColor bg)
+JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg)
 {
     JkColor result;
-    uint8_t bg_a = JK_MIN(bg.a, 255 - fg.a);
-    result.a = fg.a + bg_a;
-    if (result.a) {
+
+    if (fg.a == 0) {
+        result = bg;
+    } else if (fg.a == 255) {
+        result = fg;
+    } else {
+        uint8_t bg_a = JK_MIN(bg.a, 255 - fg.a);
+        result.a = fg.a + bg_a;
         for (uint32_t i = 0; i < 3; i++) {
             result.v[i] =
                     (uint8_t)(((uint32_t)fg.v[i] * fg.a + (uint32_t)bg.v[i] * bg_a) / result.a);
         }
-        return result;
-    } else {
-        return (JkColor){0};
     }
+
+    return result;
 }
 
 JK_NOINLINE JK_PUBLIC void jk_panic(void)

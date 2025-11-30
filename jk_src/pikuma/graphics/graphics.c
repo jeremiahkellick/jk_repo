@@ -336,7 +336,7 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
             pixel_color.a = (uint8_t)alpha;
 
             uint64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
-            state->draw_buffer[i] = jk_reverse_painters_mix(state->draw_buffer[i], pixel_color);
+            state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], pixel_color);
         }
     }
 }
@@ -396,7 +396,7 @@ void render(Assets *assets, State *state)
     for (int32_t y = 0; y < state->dimensions.y; y++) {
         for (int32_t x = 0; x < state->dimensions.x; x++) {
             int32_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
-            state->draw_buffer[i] = jk_reverse_painters_mix(state->draw_buffer[i], bg);
+            state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], bg);
         }
     }
 }

@@ -533,7 +533,7 @@ typedef struct JkColor {
 
 JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha);
 
-JK_PUBLIC JkColor jk_reverse_painters_mix(JkColor fg, JkColor bg);
+JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg);
 
 JK_PUBLIC void jk_panic(void);
 
@@ -548,7 +548,7 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 #define JK_DEBUG_ASSERT(expression) JK_ASSERT(expression)
 #endif
 
-#define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+#define JK_ARRAY_COUNT(array) (int64_t)(sizeof(array) / sizeof((array)[0]))
 
 #define JK_BUFFER_FROM_ARRAY(array)                    \
     (JkBuffer)                                         \
