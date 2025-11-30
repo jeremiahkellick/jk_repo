@@ -327,13 +327,16 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
         float acc = 0.0f;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
             acc += fill[x - bounds.min.x];
-            int32_t value = (int32_t)(JK_ABS((coverage[x - bounds.min.x] + acc) * 255.0f));
-            if (255 < value) {
-                value = 255;
+
+            int32_t alpha = (int32_t)(JK_ABS((coverage[x - bounds.min.x] + acc) * 255.0f));
+            if (255 < alpha) {
+                alpha = 255;
             }
+            JkColor pixel_color = color;
+            pixel_color.a = (uint8_t)alpha;
+
             uint64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
-            state->draw_buffer[i] =
-                    jk_color_alpha_blend(color, state->draw_buffer[i], (uint8_t)value);
+            state->draw_buffer[i] = jk_reverse_painters_mix(state->draw_buffer[i], pixel_color);
         }
     }
 }
@@ -355,9 +358,9 @@ void render(Assets *assets, State *state)
 
     // Clear buffer
     for (int32_t y = 0; y < state->dimensions.y; y++) {
-        for (int32_t x = 0; x < state->dimensions.x; x++) {
-            state->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = bg;
-        }
+        jk_memset(state->draw_buffer + (y * DRAW_BUFFER_SIDE_LENGTH),
+                0,
+                sizeof(JkColor) * state->dimensions.x);
     }
 
     float scale = JK_MIN(state->dimensions.x * 1.5f, state->dimensions.y * 1.5f) / 2.0f;
@@ -387,6 +390,13 @@ void render(Assets *assets, State *state)
                 tri.v[i] = project(screen_vertices[face->v[i]], offset, scale);
             }
             triangle_fill(&arena, state, tri, fg);
+        }
+    }
+
+    for (int32_t y = 0; y < state->dimensions.y; y++) {
+        for (int32_t x = 0; x < state->dimensions.x; x++) {
+            int32_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
+            state->draw_buffer[i] = jk_reverse_painters_mix(state->draw_buffer[i], bg);
         }
     }
 }

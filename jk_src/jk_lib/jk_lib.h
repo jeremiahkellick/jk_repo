@@ -533,6 +533,8 @@ typedef struct JkColor {
 
 JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha);
 
+JK_PUBLIC JkColor jk_reverse_painters_mix(JkColor fg, JkColor bg);
+
 JK_PUBLIC void jk_panic(void);
 
 JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
