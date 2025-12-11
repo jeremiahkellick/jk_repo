@@ -1,4 +1,3 @@
-#include "jk_src/jk_lib/jk_lib.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -141,6 +140,7 @@ FloatUnion some_nan_32 = {.bits = 0x7fE9605C};
 
 int main(void)
 {
+    jk_print = jk_platform_print_stdout;
     jk_platform_console_utf8_enable();
 
     // ---- Arena begin --------------------------------------------------------

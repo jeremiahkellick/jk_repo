@@ -61,7 +61,11 @@ JK_PUBLIC float jk_sqrt_f32(float value)
 
 JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value)
 {
-    return __builtin_clzl(value);
+    if (value == 0) {
+        return 64;
+    } else {
+        return __builtin_clzll(value);
+    }
 }
 
 JK_PUBLIC float jk_round_f32(float value)
