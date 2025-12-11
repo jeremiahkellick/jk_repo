@@ -272,7 +272,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    g.arena = jk_platform_arena_virtual_init(&g.arena_root, 5llu * 1024 * 1024 * 1024);
+    g.arena = jk_platform_arena_virtual_init(&g.arena_root, 5ll * 1024 * 1024 * 1024);
     if (!jk_arena_valid(&g.arena)) {
         jk_print(JKS("Failed to initialize virtual memory arena\n"));
         exit(1);

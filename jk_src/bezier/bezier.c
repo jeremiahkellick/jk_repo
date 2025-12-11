@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-// #jk_build compiler_arguments /LD
-// #jk_build linker_arguments /OUT:bezier.dll /EXPORT:bezier_render
+// #jk_build library
+// #jk_build export bezier_render
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin

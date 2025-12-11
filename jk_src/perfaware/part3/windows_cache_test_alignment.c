@@ -50,7 +50,7 @@ int main(int argc, char **argv)
                 } else {
                     printf("\n%.2f GiB", (double)sizes[i] / (1024 * 1024.0 * 1024.0));
                 }
-                printf(", offset %llu\n", (long long)offsets[j]);
+                printf(", offset %lld\n", (long long)offsets[j]);
 
                 int64_t inner_loop_iterations = sizes[i] / 256;
                 int64_t outer_loop_iterations = BUFFER_SIZE / sizes[i];

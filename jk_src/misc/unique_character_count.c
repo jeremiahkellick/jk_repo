@@ -75,7 +75,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    printf("%llu\n", (unsigned long long)count);
+    printf("%lld\n", (long long)count);
 
     return 0;
 }

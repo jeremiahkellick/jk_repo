@@ -27,7 +27,7 @@ typedef enum Flag {
 
 #define JK_OOB (-1)
 
-#define GIGABYTE (1llu << 30)
+#define GIGABYTE (1ll << 30)
 
 #define JK_ARRAY_COUNT(array) (JK_SIZEOF(array) / JK_SIZEOF((array)[0]))
 
@@ -1266,7 +1266,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         char output_path_buffer[16];
         JkBuffer output_path_relative = {
             .size = snprintf(
-                    output_path_buffer, JK_SIZEOF(output_path_buffer), "/nasm%llu.o", (long long)i),
+                    output_path_buffer, JK_SIZEOF(output_path_buffer), "/nasm%lld.o", (long long)i),
             .data = (uint8_t *)output_path_buffer,
         };
         JkBuffer nasm_output_path = concat_strings(&storage, paths.build, output_path_relative);
@@ -1278,11 +1278,11 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&nasm_command, "-o");
         string_array_builder_push(&nasm_command, nasm_output_path);
 
-        if (options.compiler == COMPILER_MSVC) {
-            append(&nasm_command, "-f", "win64");
-        } else {
-            append(&nasm_command, "-f", "elf64");
-        }
+#ifdef _WIN32
+        append(&nasm_command, "-f", "win64");
+#else
+        append(&nasm_command, "-f", "elf64");
+#endif
 
         string_array_builder_push(&nasm_command, nasm_files_array.items[i]);
 
@@ -1441,7 +1441,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 "-Wno-missing-field-initializers",
                 "-Wno-unused-command-line-argument",
                 "-Wno-unused-parameter");
-#ifdef __x86_64__
+#if defined(__x86_64__) || defined(_M_X64)
         append(&command, "-mfma");
 #endif
         append(&command, "-g");
@@ -1587,10 +1587,10 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     string_array_builder_concat(&command, &linker_arguments);
 
     for (int64_t i = 0; i < nasm_files.count; i++) {
-        char file_name[32];
+        char *file_name = jk_arena_push(&storage, 32);
         snprintf(file_name,
                 32,
-                "nasm%llu.%s",
+                "nasm%lld.%s",
                 (long long)i,
                 options.compiler == COMPILER_MSVC ? "lib" : "o");
         append(&command, file_name);

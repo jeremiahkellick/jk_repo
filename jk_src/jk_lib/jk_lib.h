@@ -506,9 +506,9 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g);
 
 // ---- Random generator end ---------------------------------------------------
 
-#define JK_KILOBYTE (1llu << 10)
-#define JK_MEGABYTE (1llu << 20)
-#define JK_GIGABYTE (1llu << 30)
+#define JK_KILOBYTE (1ll << 10)
+#define JK_MEGABYTE (1ll << 20)
+#define JK_GIGABYTE (1ll << 30)
 
 typedef struct JkFloatArray {
     int64_t count;

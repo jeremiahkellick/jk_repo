@@ -112,14 +112,14 @@ int main(int argc, char **argv)
         }
 
         int64_t fault_count = count_after - count_before;
-        printf("%d,\t%d,\t%llu,\t%lld,\t%llu,\t%llu,\t%llu,\n",
+        printf("%d,\t%lld,\t%lld,\t%lld,\t%llu,\t%llu,\t%llu,\n",
                 page_count,
-                touch_page_count,
+                (long long)touch_page_count,
                 (long long)fault_count,
                 (long long)(fault_count - touch_page_count),
-                (long long)paging_counts.v[TABLE],
-                (long long)paging_counts.v[DIRECTORY],
-                (long long)paging_counts.v[DIRECTORY_POINTER]);
+                (unsigned long long)paging_counts.v[TABLE],
+                (unsigned long long)paging_counts.v[DIRECTORY],
+                (unsigned long long)paging_counts.v[DIRECTORY_POINTER]);
 
         jk_platform_memory_free(buffer.data, buffer.size);
     }

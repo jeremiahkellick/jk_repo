@@ -31,7 +31,7 @@ extern float _mm_cvtss_f32(__m128 _A);
 extern __m128 _mm_round_ss(__m128, __m128, int);
 #endif
 
-JK_PUBLIC int64_t jk_count_leading_zeros(int64_t value)
+JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
 {
     return __lzcnt64(value);
 }

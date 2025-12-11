@@ -91,9 +91,9 @@ int main(int argc, char **argv)
 
         if (individual_error_count || sum_error_count) {
             fprintf(stderr,
-                    "WARNING: %llu haversines mismatched, %llu sums mismatched\n",
-                    (unsigned long long)individual_error_count,
-                    (unsigned long long)sum_error_count);
+                    "WARNING: %lld haversines mismatched, %lld sums mismatched\n",
+                    (long long)individual_error_count,
+                    (long long)sum_error_count);
         }
     }
 

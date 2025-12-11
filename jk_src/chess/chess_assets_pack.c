@@ -359,8 +359,8 @@ int main(int argc, char **argv)
     }
 
     fprintf(assets_file,
-            "JK_PUBLIC char chess_assets_byte_array[%llu] = {\n",
-            (long long unsigned)storage.pos);
+            "JK_PUBLIC char chess_assets_byte_array[%lld] = {\n",
+            (long long)storage.pos);
     int64_t byte_index = 0;
     while (byte_index < storage.pos) {
         fprintf(assets_file, "   ");

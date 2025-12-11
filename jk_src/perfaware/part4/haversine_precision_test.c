@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     b32 sum_mismatched = !approximately_equal(sum, context.sum_answer);
 
     if (error_count) {
-        fprintf(stderr, "WARNING: %llu haversines mismatched\n", (unsigned long long)error_count);
+        fprintf(stderr, "WARNING: %lld haversines mismatched\n", (long long)error_count);
     }
     if (sum_mismatched) {
         fprintf(stderr, "WARNING: haversine sum mismatched\n");

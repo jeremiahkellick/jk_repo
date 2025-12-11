@@ -15,7 +15,7 @@ typedef struct Node {
     int64_t padding[7];
 } Node;
 
-#define NODE_COUNT ((1024llu * 1024 * 1024) / JK_SIZEOF(Node))
+#define NODE_COUNT ((1024ll * 1024 * 1024) / JK_SIZEOF(Node))
 
 void process_nodes_control(int64_t rep_count, Node *node);
 void process_nodes_prefetch(int64_t rep_count, Node *node);
@@ -81,7 +81,7 @@ int main(int argc, char **argv)
                 rep_count = 64 * (rep_count_index - 14);
             }
 
-            printf("\nRep count: %llu, Function: %s\n", (long long)rep_count, function->name);
+            printf("\nRep count: %lld, Function: %s\n", (long long)rep_count, function->name);
 
             jk_platform_repetition_test_run_wave(test, NODE_COUNT * JK_SIZEOF(Node), frequency, 10);
             while (jk_platform_repetition_test_running(test)) {
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
             rep_count = 64 * (rep_count_index - 14);
         }
 
-        printf("%llu", (long long)rep_count);
+        printf("%lld", (long long)rep_count);
         for (int64_t function_index = 0; function_index < JK_ARRAY_COUNT(functions);
                 function_index++) {
             printf(",%.3f",

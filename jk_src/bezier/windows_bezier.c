@@ -1,4 +1,4 @@
-// #jk_build linker_arguments User32.lib Gdi32.lib Winmm.lib
+// #jk_build link User32 Gdi32 Winmm
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -81,7 +81,7 @@ typedef struct Rect {
     };
 } Rect;
 
-static Rect draw_rect_get()
+static Rect draw_rect_get(void)
 {
     Rect result = {0};
 
@@ -334,7 +334,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     global_bezier.debug_print = debug_print;
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 5llu * 1024 * 1024 * 1024);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 5ll * 1024 * 1024 * 1024);
 
     global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
 

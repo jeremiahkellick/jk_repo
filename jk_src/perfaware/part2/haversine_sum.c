@@ -99,7 +99,7 @@ int main(int argc, char **argv)
     sum = (2.0 * EARTH_RADIUS * sum) / context.pair_count;
     JK_PLATFORM_PROFILE_ZONE_END(sum);
 
-    printf("Pair count: %llu\n", context.pair_count);
+    printf("Pair count: %lld\n", (long long)context.pair_count);
     printf("Haversine sum: %.16f\n", sum);
 
     if (context.answers) {

@@ -951,7 +951,7 @@ b32 ai_running(Ai *ai)
     }
 
     int32_t iterations = 8;
-    b32 running = ai->time - ai->time_started < ai->time_limit;
+    b32 running = (int64_t)(ai->time - ai->time_started) < ai->time_limit;
     while (iterations-- && running) {
         ExpandResult result = expand_move_tree(
                 ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 3, 0, (MoveCounts){0});

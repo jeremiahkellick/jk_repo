@@ -35,8 +35,8 @@ int main(int argc, char **argv)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    int64_t input_size = 16llu * 1024;
-    int64_t output_size = 1024llu * 1024 * 1024;
+    int64_t input_size = 16ll * 1024;
+    int64_t output_size = 1024ll * 1024 * 1024;
     int64_t outer_loop_iterations = input_size / 0x80;
     int64_t inner_loop_iterations = output_size / input_size;
 

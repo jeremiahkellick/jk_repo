@@ -368,7 +368,7 @@ JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
 {
     mach_timebase_info_data_t timebase_info;
     JK_ASSERT(mach_timebase_info(&timebase_info) == KERN_SUCCESS);
-    return (1000000000llu * timebase_info.denom) / timebase_info.numer;
+    return (1000000000ll * timebase_info.denom) / timebase_info.numer;
 }
 
 #endif
@@ -379,12 +379,12 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000llu + (uint64_t)ts.tv_nsec;
+    return (uint64_t)ts.tv_sec * 1000000000ll + (uint64_t)ts.tv_nsec;
 }
 
 JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
 {
-    return 1000000000llu;
+    return 1000000000ll;
 }
 
 #endif
@@ -662,7 +662,7 @@ static void jk_platform_profile_frame_print(void (*print)(void *data, char *form
             print(data, "\t");
         }
         print(data,
-                "\t%s[%llu]: %llu (%.2f%%",
+                "\t%s[%lld]: %lld (%.2f%%",
                 zone->name,
                 (long long)(frame->hit_count / frame_count),
                 (long long)(frame->elapsed_exclusive / frame_count),
@@ -692,7 +692,7 @@ JK_PUBLIC void jk_platform_profile_print_custom(
         void (*print)(void *data, char *format, ...), void *data)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
-    print(data, "CPU frequency: %llu\n", frequency);
+    print(data, "CPU frequency: %lld\n", (long long)frequency);
 
     if (jk_platform_profile.frame_count == 0) {
         print(data, "\nNo profile data was captured.\n");
@@ -863,7 +863,7 @@ static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *t
 
     int64_t cpu_time = sample->cpu_time / count;
     double seconds = cpu_time / (double)frequency;
-    printf("%s: %llu (%.2f ms", name, (long long)cpu_time, seconds * 1000.0);
+    printf("%s: %lld (%.2f ms", name, (long long)cpu_time, seconds * 1000.0);
     if (baseline) {
         if (test == baseline) {
             printf(", baseline");

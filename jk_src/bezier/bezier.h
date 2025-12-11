@@ -19,7 +19,7 @@ typedef struct Bezier {
     int64_t cpu_timer_frequency;
     uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
-    uint8_t memory[512llu * 1024 * 1024];
+    uint8_t memory[512ll * 1024 * 1024];
 } Bezier;
 
 typedef void BezierRenderFunction(ChessAssets *assets, Bezier *bezier);

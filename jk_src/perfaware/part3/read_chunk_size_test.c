@@ -248,7 +248,7 @@ int main(int argc, char **argv)
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 64llu * 1024 * 1024 * 1024);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 64ll * 1024 * 1024 * 1024);
     JkBuffer full_file_buffer = jk_platform_file_read_full(&storage, argv[1]);
     int64_t reference_sum = sum(full_file_buffer);
     jk_platform_arena_virtual_release(&arena_root);
