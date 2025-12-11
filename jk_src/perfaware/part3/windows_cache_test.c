@@ -10,7 +10,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-void read_asm(size_t byte_count, size_t size, void *data);
+void read_asm(int64_t byte_count, int64_t size, void *data);
 
 static JkPlatformRepetitionTest tests[17];
 
@@ -19,13 +19,13 @@ static JkPlatformRepetitionTest tests[17];
 
 int main(int argc, char **argv)
 {
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     void *data = jk_platform_memory_alloc(MAX_SIZE);
 
     for (;;) {
-        size_t size = STARTING_SIZE;
-        for (size_t i = 0; i < JK_ARRAY_COUNT(tests); i++, size *= 2) {
+        int64_t size = STARTING_SIZE;
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++, size *= 2) {
             JkPlatformRepetitionTest *test = &tests[i];
 
             if (size < 1024 * 1024) {

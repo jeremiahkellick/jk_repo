@@ -18,10 +18,11 @@ static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
 {
     // Hash and mask off bits to get a result in the range 0..capacity-1. Assumes capacity is a
     // power if 2.
-    size_t slot_i = jk_hash_uint32((uint32_t)key) & (t->capacity - 1);
+    int64_t slot_i =
+            jk_hash_uint32((uint32_t)((key >> 32) ^ (key & 0xffffffff))) & (t->capacity - 1);
 
 #if JK_BUILD_MODE != JK_RELEASE
-    size_t iterations = 0;
+    int64_t iterations = 0;
 #endif
 
     while ((t->buf[slot_i].flags & JK_HASH_TABLE_FLAG_FILLED) && t->buf[slot_i].key != key) {
@@ -46,14 +47,14 @@ static bool jk_hash_table_is_present(JkHashTableSlot *slot)
             && !(slot->flags & JK_HASH_TABLE_FLAG_TOMBSTONE);
 }
 
-static bool jk_is_load_factor_exceeded(size_t count, size_t capacity)
+static bool jk_is_load_factor_exceeded(int64_t count, int64_t capacity)
 {
     return count > (capacity * JK_HASH_TABLE_LOAD_FACTOR / 10);
 }
 
 static bool jk_hash_table_resize(JkHashTable *t)
 {
-    size_t prev_capacity = t->capacity;
+    int64_t prev_capacity = t->capacity;
     JkHashTableSlot *prev_buf = t->buf;
 
     // If the count without tombstones doesn't even exceed the load factor of the previous size,
@@ -62,7 +63,7 @@ static bool jk_hash_table_resize(JkHashTable *t)
         t->capacity *= 2;
     }
 
-    t->buf = calloc(t->capacity, sizeof(JkHashTableSlot));
+    t->buf = calloc(t->capacity, JK_SIZEOF(JkHashTableSlot));
     if (t->buf == NULL) {
         t->capacity = prev_capacity;
         return false;
@@ -70,7 +71,7 @@ static bool jk_hash_table_resize(JkHashTable *t)
 
     t->tombstone_count = 0;
 
-    for (size_t i = 0; i < prev_capacity; i++) {
+    for (int64_t i = 0; i < prev_capacity; i++) {
         if (jk_hash_table_is_present(&prev_buf[i])) {
             JkHashTableSlot *slot = jk_hash_table_probe(t, prev_buf[i].key);
             slot->key = prev_buf[i].key;
@@ -88,7 +89,7 @@ JK_PUBLIC JkHashTable *jk_hash_table_create(void)
     return jk_hash_table_create_capacity(JK_HASH_TABLE_DEFAULT_CAPACITY);
 }
 
-JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity)
+JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(int64_t starting_capacity)
 {
     if (!jk_is_power_of_two(starting_capacity)) {
         fprintf(stderr,
@@ -96,12 +97,12 @@ JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity)
         exit(1);
     }
 
-    JkHashTable *t = malloc(sizeof(JkHashTable));
+    JkHashTable *t = malloc(JK_SIZEOF(JkHashTable));
     if (!t) {
         return NULL;
     }
 
-    t->buf = calloc(starting_capacity, sizeof(JkHashTableSlot));
+    t->buf = calloc(starting_capacity, JK_SIZEOF(JkHashTableSlot));
     if (!t->buf) {
         return NULL;
     }
@@ -127,7 +128,7 @@ JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTable
         }
     } else {
         // Resize if necessary
-        size_t new_count = t->count + 1;
+        int64_t new_count = t->count + 1;
         if (jk_is_load_factor_exceeded(new_count + t->tombstone_count, t->capacity)) {
             if (!jk_hash_table_resize(t)) {
                 return false;
@@ -174,7 +175,7 @@ JK_PUBLIC JkHashTableValue *jk_hash_table_get_with_default(
             t->count++;
         }
     } else {
-        size_t new_count = t->count + 1;
+        int64_t new_count = t->count + 1;
         if (jk_is_load_factor_exceeded(new_count + t->tombstone_count, t->capacity)) {
             if (!jk_hash_table_resize(t)) {
                 return NULL;

@@ -256,7 +256,7 @@ static Board parse_fen(JkBuffer fen)
                 | JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS)
                 | JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS)
                 | JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS)};
-    uint64_t i = 0;
+    int64_t i = 0;
     JkIntVector2 pos = {0, 7};
 
     while (jk_char_is_whitespace(fen.data[i])) {
@@ -523,7 +523,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
                 } break;
 
                 case KING: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                    for (int64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
                         if (square_available(board, dest)) {
                             TRY(append_move(moves, src, dest, piece, invalidate_mask));
@@ -560,28 +560,28 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
                 } break;
 
                 case QUEEN: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
+                    for (int64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
                         TRY(append_moves_in_direction_until_stopped(
                                 moves, board, src, all_directions[i], piece, invalidate_mask));
                     }
                 } break;
 
                 case ROOK: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
+                    for (int64_t i = 0; i < JK_ARRAY_COUNT(straights); i++) {
                         TRY(append_moves_in_direction_until_stopped(
                                 moves, board, src, straights[i], piece, invalidate_mask));
                     }
                 } break;
 
                 case BISHOP: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
+                    for (int64_t i = 0; i < JK_ARRAY_COUNT(diagonals); i++) {
                         TRY(append_moves_in_direction_until_stopped(
                                 moves, board, src, diagonals[i], piece, invalidate_mask));
                     }
                 } break;
 
                 case KNIGHT: {
-                    for (uint64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
+                    for (int64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
                         JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
                         if (square_available(board, dest)) {
                             TRY(append_move(moves, src, dest, piece, invalidate_mask));
@@ -703,18 +703,18 @@ static void node_age_set(MoveNode *node, uint8_t age)
 #if JK_BUILD_MODE != JK_RELEASE
 
 typedef struct MoveTreeStats {
-    uint64_t elder_count;
-    uint64_t node_count;
-    uint64_t leaf_count;
-    uint64_t depth_sum;
-    uint64_t min_depth;
-    uint64_t max_depth;
+    int64_t elder_count;
+    int64_t node_count;
+    int64_t leaf_count;
+    int64_t depth_sum;
+    int64_t min_depth;
+    int64_t max_depth;
     MoveArray min_line;
     MoveNode *deepest_leaf;
     MovePacked *max_line;
 } MoveTreeStats;
 
-static void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, uint64_t depth)
+static void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, int64_t depth)
 {
     stats->node_count++;
     if (node_age_get(node) == NODE_AGE_ELDER) {
@@ -820,7 +820,7 @@ ExpandResult expand_move_tree(JkArena *arena,
                     MoveNode *prev_child = 0;
                     MoveNode *first_child = 0;
                     for (uint8_t i = 0; i < move_buffer->count && !result.errors; i++) {
-                        MoveNode *new_child = jk_arena_push(arena, sizeof(*new_child));
+                        MoveNode *new_child = jk_arena_push(arena, JK_SIZEOF(*new_child));
                         if (new_child) {
 #if JK_BUILD_MODE != JK_RELEASE
                             new_child->parent = node;
@@ -920,7 +920,7 @@ ExpandResult expand_move_tree(JkArena *arena,
     return result;
 }
 
-void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_frequency)
+void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_frequency)
 {
     ai->arena = arena;
     ai->response.board = (Board){0};
@@ -933,7 +933,7 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_f
     ai->time_started = time;
     ai->time_limit = 5 * time_frequency;
 
-    ai->root = jk_arena_push_zero(ai->arena, sizeof(*ai->root));
+    ai->root = jk_arena_push_zero(ai->arena, JK_SIZEOF(*ai->root));
     expand_move_tree(
             ai->arena, &ai_move_buffer, ai->root, ai->response.board, 0, 4, 0, (MoveCounts){0});
 
@@ -950,7 +950,7 @@ b32 ai_running(Ai *ai)
         return 0;
     }
 
-    uint32_t iterations = 8;
+    int32_t iterations = 8;
     b32 running = ai->time - ai->time_started < ai->time_limit;
     while (iterations-- && running) {
         ExpandResult result = expand_move_tree(
@@ -985,17 +985,17 @@ b32 ai_running(Ai *ai)
 #if JK_BUILD_MODE != JK_RELEASE
         JkArenaRoot debug_arena_root;
         JkArena debug_arena = jk_arena_fixed_init(&debug_arena_root,
-                (JkBuffer){.size = sizeof(debug_misc_memory), .data = debug_misc_memory});
+                (JkBuffer){.size = JK_SIZEOF(debug_misc_memory), .data = debug_misc_memory});
 
         uint64_t time_elapsed = ai->time - ai->time_started;
         double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
         // Print min and max depth
-        MoveTreeStats stats = {.min_depth = UINT64_MAX};
+        MoveTreeStats stats = {.min_depth = INT64_MAX};
         move_tree_stats_calculate(&stats, ai->root, 0);
         stats.max_line = jk_arena_pointer_current(&debug_arena);
         for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
-            MovePacked *line_move = jk_arena_push(&debug_arena, sizeof(*line_move));
+            MovePacked *line_move = jk_arena_push(&debug_arena, JK_SIZEOF(*line_move));
             *line_move = ancestor->move;
         }
 
@@ -1010,7 +1010,7 @@ b32 ai_running(Ai *ai)
         // clang-format on
 
         if (stats.max_depth < 300) {
-            uint64_t max_score_depth = 0;
+            int64_t max_score_depth = INT64_MIN;
             {
                 Team team = board_current_team_get(ai->response.board);
                 Board board = ai->response.board;
@@ -1049,7 +1049,7 @@ b32 ai_running(Ai *ai)
             // clang-format on
 
             jk_print(JKS("max_line:\n"));
-            for (uint64_t i = 0; i < stats.max_depth; i++) {
+            for (int64_t i = 0; i < stats.max_depth; i++) {
                 uint16_t move_bits = stats.max_line[i].bits;
                 JK_PRINT_FMT(&debug_arena, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
             }
@@ -1086,7 +1086,7 @@ b32 ai_running(Ai *ai)
 // Returns 1 if the current player's king is in check. Returns 0 otherwise.
 static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
 {
-    MoveNode *root = jk_arena_push_zero(arena, sizeof(*root));
+    MoveNode *root = jk_arena_push_zero(arena, JK_SIZEOF(*root));
     expand_move_tree(arena, move_buffer, root, board, 0, 2, 0, (MoveCounts){0});
     b32 in_check = is_in_check(move_buffer, root, board);
     move_buffer->count = 0;
@@ -1098,7 +1098,7 @@ static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
 
 b32 board_equal(Board *a, Board *b)
 {
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(a->bytes) / 8; i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(a->bytes) / 8; i++) {
         uint64_t a_bytes = *(uint64_t *)(a->bytes + (i * 8));
         uint64_t b_bytes = *(uint64_t *)(b->bytes + (i * 8));
         if (a_bytes != b_bytes) {
@@ -1111,17 +1111,16 @@ b32 board_equal(Board *a, Board *b)
 void audio(ChessAssets *assets,
         AudioState state,
         uint64_t time,
-        uint64_t sample_count,
+        int64_t sample_count,
         AudioSample *sample_buffer)
 {
-    uint64_t sound_sample_count = assets->sounds[state.sound].size / sizeof(uint16_t);
+    int64_t sound_sample_count = assets->sounds[state.sound].size / JK_SIZEOF(uint16_t);
     uint16_t *sound_samples = (uint16_t *)((uint8_t *)assets + assets->sounds[state.sound].offset);
 
-    uint64_t samples_since_sound_started = time - state.started_time;
-    int64_t sound_samples_remaining =
-            (int64_t)sound_sample_count - (int64_t)samples_since_sound_started;
+    int64_t samples_since_sound_started = time - state.started_time;
+    int64_t sound_samples_remaining = sound_sample_count - samples_since_sound_started;
 
-    for (int64_t sample_index = 0; sample_index < (int64_t)sample_count; sample_index++) {
+    for (int64_t sample_index = 0; sample_index < sample_count; sample_index++) {
         for (int64_t channel_index = 0; channel_index < AUDIO_CHANNEL_COUNT; channel_index++) {
             if (sample_index < sound_samples_remaining) {
                 sample_buffer[sample_index].channels[channel_index] =
@@ -1228,7 +1227,7 @@ void update(ChessAssets *assets, Chess *chess)
         debug_chess.selected_square = (JkIntVector2){-1, -1};
         debug_chess.promo_square = (JkIntVector2){-1, -1};
         debug_chess.draw_buffer = debug_draw_buffer;
-        debug_chess.render_memory.size = sizeof(debug_render_memory);
+        debug_chess.render_memory.size = JK_SIZEOF(debug_render_memory);
         debug_chess.render_memory.data = debug_render_memory;
         debug_chess.os_timer_frequency = 1;
     }
@@ -1561,7 +1560,7 @@ static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scal
 {
     TextLayout result = {0};
     result.dimensions.x = 0.0f;
-    for (uint64_t i = 0; i < text.size; i++) {
+    for (int64_t i = 0; i < text.size; i++) {
         JkShape *shape = assets->shapes + text.data[i] + CHARACTER_SHAPE_OFFSET;
         if (i == 0) {
             result.offset.x = -shape->offset.x;
@@ -1590,7 +1589,7 @@ static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scal
 static void draw_text(
         JkShapesRenderer *renderer, JkBuffer text, JkVector2 cursor, float scale, JkColor color)
 {
-    for (uint64_t i = 0; i < text.size; i++) {
+    for (int64_t i = 0; i < text.size; i++) {
         cursor.x += jk_shapes_draw(
                 renderer, text.data[i] + CHARACTER_SHAPE_OFFSET, cursor, scale, color);
     }
@@ -1745,11 +1744,15 @@ static void draw_radio_buttons(ChessAssets *assets,
         Chess *chess,
         JkShapesRenderer *renderer,
         JkVector2 *top_left,
-        uint64_t choice_count,
-        uint64_t choice_selected,
+        int64_t choice_count,
+        int64_t choice_selected,
         JkBuffer *choice_strings,
-        uint64_t first_button_id)
+        int64_t first_button_id)
 {
+	JK_DEBUG_ASSERT(0 <= first_button_id && first_button_id < BUTTON_COUNT);
+	JK_DEBUG_ASSERT(0 <= choice_count);
+	JK_DEBUG_ASSERT(first_button_id + choice_count <= BUTTON_COUNT);
+
     top_left->y += 12;
 
     float spacing = 22;
@@ -1765,7 +1768,7 @@ static void draw_radio_buttons(ChessAssets *assets,
     position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
     float text_y_offset = BUTTON_PADDING + RECT_THICKNESS + base_layout.offset.y;
     float text_y = position.y + text_y_offset;
-    for (uint64_t choice_id = 0; choice_id < choice_count;
+    for (int64_t choice_id = 0; choice_id < choice_count;
             choice_id++, position.x += base_dimensions.x + spacing) {
         JkBuffer text = choice_strings[choice_id];
         Button *button = chess->buttons + (first_button_id + choice_id);
@@ -1860,8 +1863,8 @@ void render(ChessAssets *assets, Chess *chess)
     }
 
     // If the render state is the same as last frame, skip rendering
-    if (jk_buffer_compare((JkBuffer){.size = sizeof(state), .data = (uint8_t *)&state},
-                (JkBuffer){.size = sizeof(chess->render_state_prev),
+    if (jk_buffer_compare((JkBuffer){.size = JK_SIZEOF(state), .data = (uint8_t *)&state},
+                (JkBuffer){.size = JK_SIZEOF(chess->render_state_prev),
                     .data = (uint8_t *)&chess->render_state_prev})
             == 0) {
         return;
@@ -1873,8 +1876,8 @@ void render(ChessAssets *assets, Chess *chess)
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
 
-    // static uint64_t render_count;
-    // JK_PRINT_FMT(&arena, jkfn("render_count "), jkfu(++render_count), jkf_nl);
+    // static int64_t render_count;
+    // JK_PRINT_FMT(&arena, jkfn("render_count "), jkfi(++render_count), jkf_nl);
 
     // Figure out which squares should be highlighted
     uint64_t destinations = destinations_get_by_src(chess, state.selected_index);
@@ -1973,7 +1976,7 @@ void render(ChessAssets *assets, Chess *chess)
         // Draw horizontal square coordinates
         float coords_scale = 0.0192f;
         for (int32_t x = 0; x < 8; x++) {
-            uint32_t shape_id = 'a' + apply_perspective(state.perspective, (JkIntVector2){x, 0}).x
+            int64_t shape_id = 'a' + apply_perspective(state.perspective, (JkIntVector2){x, 0}).x
                     + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             float width = coords_scale * shape->dimensions.x;
@@ -1985,7 +1988,7 @@ void render(ChessAssets *assets, Chess *chess)
                 square_size - padding_top,
                 (square_size * 9.0f) + padding_bottom,
             };
-            for (uint64_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
+            for (int64_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
                 jk_shapes_draw(&renderer,
                         shape_id,
                         (JkVector2){cursor_x, cursor_ys[i]},
@@ -1996,7 +1999,7 @@ void render(ChessAssets *assets, Chess *chess)
 
         // Draw vertical square coordinates
         for (int32_t y = 0; y < 8; y++) {
-            uint32_t shape_id = '1' + apply_perspective(state.perspective, (JkIntVector2){0, y}).y
+            int64_t shape_id = '1' + apply_perspective(state.perspective, (JkIntVector2){0, y}).y
                     + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             JkVector2 dimensions = jk_vector_2_mul(coords_scale, shape->dimensions);
@@ -2009,7 +2012,7 @@ void render(ChessAssets *assets, Chess *chess)
             float cursor_y = square_size * (y + 1) + (square_size - dimensions.y) * 0.5f - offset.y;
             JkColor color = color_light_squares;
             color.a = 200;
-            for (uint64_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
+            for (int64_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
                 jk_shapes_draw(&renderer,
                         shape_id,
                         (JkVector2){cursor_xs[i], cursor_y},
@@ -2034,7 +2037,7 @@ void render(ChessAssets *assets, Chess *chess)
         {
             for (Team team_index = 0; team_index < TEAM_COUNT; team_index++) {
                 // Draw timer
-                uint64_t remaining = state.time_player_seconds[team_index];
+                int64_t remaining = state.time_player_seconds[team_index];
                 uint8_t digits[5];
                 digits[4] = remaining % 10; // seconds
                 remaining /= 10;
@@ -2046,7 +2049,7 @@ void render(ChessAssets *assets, Chess *chess)
                 JkVector2 digit_pos = {.y = bar_text_y[team_index]};
                 float raw_x = 64.0f;
                 float width = 13.2f;
-                for (uint64_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
+                for (int64_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
                     int32_t shape_index;
                     if (i == 2) { // Draw colon separator
                         shape_index = ':' + CHARACTER_SHAPE_OFFSET;
@@ -2353,8 +2356,8 @@ void render(ChessAssets *assets, Chess *chess)
 
     JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
 
-    uint64_t cs = 0;
-    uint64_t ce = 0;
+    int64_t cs = 0;
+    int64_t ce = 0;
     JkIntVector2 pos_in_square;
     JkIntVector2 square_pos;
     JkIntVector2 mouse_square_pos = jk_int_vector_2_div(state.square_side_length, state.mouse_pos);
@@ -2388,7 +2391,7 @@ void render(ChessAssets *assets, Chess *chess)
                 }
             }
 
-            for (uint64_t i = cs; i < ce; i++) {
+            for (int64_t i = cs; i < ce; i++) {
                 JkShapesDrawCommand *command = draw_commands.items + i;
                 if (command->rect.min.x <= pos.x && pos.x < command->rect.max.x
                         && pos.y < command->rect.max.y) {

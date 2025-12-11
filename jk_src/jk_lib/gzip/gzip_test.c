@@ -12,7 +12,7 @@
 static uint32_t crc32(JkBuffer buffer)
 {
     uint32_t result = 0xffffffff;
-    for (uint64_t byte_index = 0; byte_index < buffer.size; byte_index++) {
+    for (int64_t byte_index = 0; byte_index < buffer.size; byte_index++) {
         result ^= buffer.data[byte_index];
         for (uint8_t bit_index = 0; bit_index < 8; bit_index++) {
             result = (result >> 1) ^ ((result & 1) * 0xedb88320);
@@ -55,7 +55,7 @@ static uint8_t gzip_bytes[] = {
 };
 // clang-format on
 
-static JkBuffer gzip_buffer = {.size = sizeof(gzip_bytes), .data = gzip_bytes};
+static JkBuffer gzip_buffer = {.size = JK_SIZEOF(gzip_bytes), .data = gzip_bytes};
 
 int main(int argc, char **argv)
 {
@@ -65,7 +65,7 @@ int main(int argc, char **argv)
 
     uint32_t crc = crc32(expected_result.contents);
     JkGzipTrailer *trailer =
-            (JkGzipTrailer *)(gzip_bytes + (sizeof(gzip_bytes) - sizeof(JkGzipTrailer)));
+            (JkGzipTrailer *)(gzip_bytes + (JK_SIZEOF(gzip_bytes) - JK_SIZEOF(JkGzipTrailer)));
     trailer->crc32 = crc;
     trailer->uncompressed_size = expected_result.contents.size;
 
@@ -84,7 +84,7 @@ int main(int argc, char **argv)
 
     JkGzipDecompressResult result = jk_gzip_decompress(&arena, gzip_buffer);
 
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(result.buffers); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(result.buffers); i++) {
         if (jk_buffer_compare(expected_result.buffers[i], result.buffers[i]) != 0) {
             pass = 0;
             JK_PRINT_FMT(&arena,

@@ -8,8 +8,8 @@
 // Hash table load factor expressed in tenths (e.g. 7 is 7/10 or 70%)
 #define JK_HASH_TABLE_LOAD_FACTOR 7
 
-typedef uint32_t JkHashTableKey;
-typedef uint32_t JkHashTableValue;
+typedef int64_t JkHashTableKey;
+typedef int64_t JkHashTableValue;
 
 typedef struct JkHashTableSlot {
     uint8_t flags;
@@ -19,14 +19,14 @@ typedef struct JkHashTableSlot {
 
 typedef struct JkHashTable {
     JkHashTableSlot *buf;
-    size_t capacity;
-    size_t count;
-    size_t tombstone_count;
+    int64_t capacity;
+    int64_t count;
+    int64_t tombstone_count;
 } JkHashTable;
 
 JK_PUBLIC JkHashTable *jk_hash_table_create(void);
 
-JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(size_t starting_capacity);
+JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(int64_t starting_capacity);
 
 JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value);
 

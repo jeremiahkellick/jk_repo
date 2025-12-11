@@ -39,7 +39,7 @@ static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params
         handle_allocation(&params);
 
         jk_platform_repetition_test_time_begin(test);
-        for (size_t i = 0; i < params.dest.size; i++) {
+        for ( i = 0; i < params.dest.size; i++) {
             params.dest.data[i] = (uint8_t)i;
         }
         jk_platform_repetition_test_time_end(test);
@@ -56,7 +56,7 @@ static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadPar
         handle_allocation(&params);
 
         jk_platform_repetition_test_time_begin(test);
-        for (size_t i = 0; i < params.dest.size; i++) {
+        for ( i = 0; i < params.dest.size; i++) {
             params.dest.data[params.dest.size - 1 - i] = (uint8_t)i;
         }
         jk_platform_repetition_test_time_end(test);
@@ -79,7 +79,7 @@ static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params)
         }
 
         jk_platform_repetition_test_time_begin(test);
-        size_t result = fread(params.dest.data, params.dest.size, 1, file);
+        int64_t result = (int64_t)fread(params.dest.data, params.dest.size, 1, file);
         jk_platform_repetition_test_time_end(test);
 
         if (result == 1) {
@@ -148,10 +148,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (;;) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
             for (int alloc = 0; alloc < 2; alloc++) {
                 params.alloc = alloc;
                 JkPlatformRepetitionTest *test = &tests[params.alloc][i];

@@ -18,7 +18,7 @@ typedef enum JkJsonType {
 typedef struct JkJson {
     JkJsonType type;
     JkBuffer name;
-    uint64_t child_count;
+    int64_t child_count;
     struct JkJson *first_child;
     struct JkJson *sibling;
     JkBuffer value;
@@ -50,7 +50,7 @@ JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *stor
 
 JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage);
 
-JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage);
+JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage);
 
 JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage);
 

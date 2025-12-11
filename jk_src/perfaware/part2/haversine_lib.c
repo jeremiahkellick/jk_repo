@@ -51,7 +51,7 @@ JK_PUBLIC double haversine_reference_sum(HaversineContext context)
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         sum += sum_coefficient
                 * haversine_reference(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS);
@@ -60,11 +60,11 @@ JK_PUBLIC double haversine_reference_sum(HaversineContext context)
     return sum;
 }
 
-JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context)
+JK_PUBLIC int64_t haversine_reference_verify(HaversineContext context)
 {
-    uint64_t error_count = 0;
+    int64_t error_count = 0;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         if (!approximately_equal(context.answers[i],
                     haversine_reference(
@@ -101,7 +101,7 @@ JK_PUBLIC double haversine_sum(HaversineContext context)
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         sum += sum_coefficient
                 * haversine(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS);
@@ -110,11 +110,11 @@ JK_PUBLIC double haversine_sum(HaversineContext context)
     return sum;
 }
 
-JK_PUBLIC uint64_t haversine_verify(HaversineContext context)
+JK_PUBLIC int64_t haversine_verify(HaversineContext context)
 {
-    uint64_t error_count = 0;
+    int64_t error_count = 0;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         if (!approximately_equal(context.answers[i],
                     haversine(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS))) {
@@ -161,17 +161,17 @@ JK_PUBLIC HaversineContext haversine_setup(
     }
 
     context.pair_count = pairs_json->child_count;
-    context.pairs = jk_arena_push(storage, context.pair_count * sizeof(context.pairs[0]));
+    context.pairs = jk_arena_push(storage, context.pair_count * JK_SIZEOF(context.pairs[0]));
 
     if (answers_buffer.size) {
-        JK_ASSERT(answers_buffer.size == (context.pair_count + 1) * sizeof(double));
+        JK_ASSERT(answers_buffer.size == (context.pair_count + 1) * JK_SIZEOF(double));
         context.answers = (double *)answers_buffer.data;
         context.sum_answer = context.answers[context.pair_count];
     }
 
     JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
     {
-        size_t i = 0;
+        int64_t i = 0;
         for (JkJson *pair_json = pairs_json->first_child; pair_json;
                 pair_json = pair_json->sibling, i++) {
             for (JkJson *coord_json = pair_json->first_child; coord_json;

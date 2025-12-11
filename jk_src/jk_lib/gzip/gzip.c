@@ -126,7 +126,7 @@ static uint16_t jk_deflate_unpad(uint16_t padded_code, uint8_t code_length)
 }
 
 typedef struct JkDeflateU16Array {
-    uint64_t count;
+    int64_t count;
     uint16_t *items;
 } JkDeflateU16Array;
 
@@ -144,12 +144,12 @@ typedef struct JkDeflateHuffmanDecoder {
 static void jk_deflate_huffman_decoder_init(
         JkArena *arena, JkDeflateHuffmanDecoder *decoder, JkBuffer code_lengths)
 {
-    jk_memset(decoder, 0, sizeof(*decoder));
+    jk_memset(decoder, 0, JK_SIZEOF(*decoder));
     decoder->initialized = 1;
 
     // Find the number of values for each code length and find the max code length
     decoder->max_code_length = 0;
-    for (uint64_t value = 0; value < code_lengths.size; value++) {
+    for (int64_t value = 0; value < code_lengths.size; value++) {
         uint8_t code_length = code_lengths.data[value];
         JK_DEBUG_ASSERT(code_length < JK_ARRAY_COUNT(decoder->buckets));
         if (code_length) {
@@ -163,12 +163,12 @@ static void jk_deflate_huffman_decoder_init(
     // Allocate buckets
     for (uint8_t code_length = 1; code_length <= decoder->max_code_length; code_length++) {
         JkDeflateU16Array *values = &decoder->buckets[code_length].values;
-        values->items = jk_arena_push(arena, values->count * sizeof(*values->items));
+        values->items = jk_arena_push(arena, values->count * JK_SIZEOF(*values->items));
     }
 
     // Fill buckets with values
-    uint64_t cursors[JK_ARRAY_COUNT(decoder->buckets)] = {0};
-    for (uint64_t value = 0; value < code_lengths.size; value++) {
+    int64_t cursors[JK_ARRAY_COUNT(decoder->buckets)] = {0};
+    for (int64_t value = 0; value < code_lengths.size; value++) {
         uint8_t code_length = code_lengths.data[value];
         if (code_length) {
             decoder->buckets[code_length].values.items[cursors[code_length]++] = value;
@@ -184,7 +184,7 @@ static void jk_deflate_huffman_decoder_init(
 }
 
 static uint16_t jk_deflate_huffman_decode(
-        JkDeflateHuffmanDecoder *decoder, JkBuffer buffer, uint64_t *bit_cursor)
+        JkDeflateHuffmanDecoder *decoder, JkBuffer buffer, int64_t *bit_cursor)
 {
     uint16_t next_16_bits = jk_buffer_bits_peek(buffer, *bit_cursor, 16);
     uint16_t padded_code = jk_bit_reverse_u16(next_16_bits);
@@ -211,11 +211,11 @@ static uint16_t jk_deflate_huffman_decode(
 }
 
 // Decompresses data in the DEFLATE format
-JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompressed_size)
+JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompressed_size)
 {
     JkBuffer result = {.data = jk_arena_push(arena, uncompressed_size)};
 
-    uint64_t bit_cursor = 0;
+    int64_t bit_cursor = 0;
     b32 done = 0;
     while (!done) {
         JkArena block_arena = jk_arena_child_get(arena);
@@ -244,11 +244,11 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompress
                 code_length_buffers[dist] = jk_deflate_dist_fixed_code_lengths;
             } else { // Use dynamic Huffman codes
                 // Find code length buffer sizes
-                uint32_t code_length_count[JK_ARRAY_COUNT(code_length_buffers)] = {
+                int64_t code_length_count[JK_ARRAY_COUNT(code_length_buffers)] = {
                     jk_buffer_bits_read(data, &bit_cursor, 5) + 257,
                     jk_buffer_bits_read(data, &bit_cursor, 5) + 1,
                 };
-                uint32_t code_length_code_length_count =
+                int64_t code_length_code_length_count =
                         jk_buffer_bits_read(data, &bit_cursor, 4) + 4;
 
                 // Allocate the code length buffers
@@ -257,7 +257,7 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompress
                 JkBuffer code_length_code_lengths = jk_buffer_alloc_zero(&block_arena, 19);
 
                 // Read in the code length alphabet code lengths
-                for (uint32_t i = 0; i < code_length_code_length_count; i++) {
+                for (int64_t i = 0; i < code_length_code_length_count; i++) {
                     code_length_code_lengths.data[jk_deflate_code_length_order[i]] =
                             jk_buffer_bits_read(data, &bit_cursor, 3);
                 }
@@ -268,8 +268,8 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompress
                 // Decode code lengths for literal/length and distance alphabets
                 for (uint8_t buf_i = 0; buf_i < JK_ARRAY_COUNT(code_length_buffers); buf_i++) {
                     JkBuffer *code_lengths = code_length_buffers + buf_i;
-                    uint32_t count = code_length_count[buf_i];
-                    uint64_t i = 0;
+                    int64_t count = code_length_count[buf_i];
+                    int64_t i = 0;
                     while (i < count) {
                         uint16_t code =
                                 jk_deflate_huffman_decode(&code_length_decoder, data, &bit_cursor);
@@ -278,7 +278,7 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompress
                         } else {
                             if (code == 16) {
                                 if (0 < i) {
-                                    uint32_t rep_count =
+                                    int64_t rep_count =
                                             3 + jk_buffer_bits_read(data, &bit_cursor, 2);
                                     while (rep_count--) {
                                         code_lengths->data[i] = code_lengths->data[i - 1];
@@ -360,11 +360,11 @@ typedef struct __attribute__((packed)) JkZlibHeader {
 #pragma pack(pop)
 #endif
 
-JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, uint64_t uncompressed_size)
+JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, int64_t uncompressed_size)
 {
     JkBuffer result = {0};
 
-    uint64_t pos = 0;
+    int64_t pos = 0;
     JkZlibHeader header = JK_BUFFER_FIELD_READ(data, &pos, JkZlibHeader, (JkZlibHeader){0});
     if (header.cmf == 0x78 && (((header.cmf << 8) | header.flg) % 31) == 0
             && !(header.flg & 0x20)) {
@@ -414,7 +414,7 @@ JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer)
 {
     JkGzipDecompressResult result = {0};
 
-    uint64_t byte_cursor = 0;
+    int64_t byte_cursor = 0;
     JkGzipHeader header =
             JK_BUFFER_FIELD_READ(buffer, &byte_cursor, JkGzipHeader, (JkGzipHeader){0});
     JkBuffer extra_data = {0};
@@ -436,10 +436,10 @@ JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer)
         result.comment = jk_buffer_null_terminated_next(buffer, &byte_cursor);
     }
     if (JK_FLAG_GET(header.flags, JK_GZIP_FLAG_CRC)) {
-        byte_cursor += sizeof(uint16_t);
+        byte_cursor += JK_SIZEOF(uint16_t);
     }
-    if (byte_cursor + sizeof(JkGzipTrailer) < buffer.size) {
-        trailer = *(JkGzipTrailer *)(buffer.data + (buffer.size - sizeof(JkGzipTrailer)));
+    if (byte_cursor + JK_SIZEOF(JkGzipTrailer) < buffer.size) {
+        trailer = *(JkGzipTrailer *)(buffer.data + (buffer.size - JK_SIZEOF(JkGzipTrailer)));
     }
 
     result.contents = jk_inflate(arena,

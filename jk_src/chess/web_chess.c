@@ -14,7 +14,7 @@
 
 #include <jk_gen/chess/assets.c>
 
-#define WEB_AUDIO_BUFFER_SIZE (sizeof(AudioSample) * SAMPLES_PER_SECOND / 5)
+#define WEB_AUDIO_BUFFER_SIZE (JK_SIZEOF(AudioSample) * SAMPLES_PER_SECOND / 5)
 #define AI_MEMORY_SIZE (1 * JK_GIGABYTE)
 
 extern uint8_t __heap_base[];
@@ -22,7 +22,7 @@ extern uint8_t __heap_base[];
 __attribute__((no_builtin("memset"))) void *memset(void *address, int value, size_t size)
 {
     uint8_t *bytes = address;
-    for (uint64_t i = 0; i < size; i++) {
+    for (int64_t i = 0; i < (int64_t)size; i++) {
         bytes[i] = value;
     }
     return address;
@@ -32,7 +32,7 @@ __attribute__((no_builtin("memcpy"))) void *memcpy(void *dest, void const *src, 
 {
     uint8_t *dest_bytes = dest;
     uint8_t const *src_bytes = src;
-    for (uint64_t i = 0; i < size; i++) {
+    for (int64_t i = 0; i < (int64_t)size; i++) {
         dest_bytes[i] = src_bytes[i];
     }
     return dest;
@@ -56,7 +56,7 @@ typedef union FloatConvert {
 
 static FloatConvert g_started_time;
 
-void console_log(uint32_t size, uint8_t *data);
+void console_log(int32_t size, uint8_t *data);
 
 static void debug_print(JkBuffer string)
 {

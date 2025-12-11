@@ -1,4 +1,3 @@
-#include <math.h>
 #include <stdlib.h>
 
 // #jk_build single_translation_unit
@@ -67,24 +66,24 @@ int main(int argc, char **argv)
     }
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
 
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
     JkPlatformRepetitionTest tester = {0};
 
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {
         printf("\n%s\n", tests[i].name);
         jk_platform_repetition_test_run_wave(
-                &tester, context.pair_count * sizeof(context.pairs[0]), frequency, 10);
+                &tester, context.pair_count * JK_SIZEOF(context.pairs[0]), frequency, 10);
 
-        uint64_t individual_error_count = tests[i].verify(context);
-        uint64_t sum_error_count = 0;
+        int64_t individual_error_count = tests[i].verify(context);
+        int64_t sum_error_count = 0;
         while (jk_platform_repetition_test_running(&tester)) {
             jk_platform_repetition_test_time_begin(&tester);
             double sum = tests[i].compute(context);
             jk_platform_repetition_test_count_bytes(
-                    &tester, context.pair_count * sizeof(context.pairs[0]));
+                    &tester, context.pair_count * JK_SIZEOF(context.pairs[0]));
             jk_platform_repetition_test_time_end(&tester);
 
             sum_error_count += !approximately_equal(sum, context.sum_answer);

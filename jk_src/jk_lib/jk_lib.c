@@ -31,7 +31,7 @@ extern float _mm_cvtss_f32(__m128 _A);
 extern __m128 _mm_round_ss(__m128, __m128, int);
 #endif
 
-JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value)
+JK_PUBLIC int64_t jk_count_leading_zeros(int64_t value)
 {
     return __lzcnt64(value);
 }
@@ -59,7 +59,7 @@ JK_PUBLIC float jk_sqrt_f32(float value)
 
 #elif defined(__GNUC__) || defined(__clang__)
 
-JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value)
+JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
 {
     if (value == 0) {
         return 64;
@@ -108,32 +108,32 @@ JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer)
 
 JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer)
 {
-    for (uint64_t i = 0; i < buffer.size / 2; i++) {
+    for (int64_t i = 0; i < buffer.size / 2; i++) {
         JK_SWAP(buffer.data[i], buffer.data[buffer.size - 1 - i], uint8_t);
     }
 }
 
-JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, uint64_t size)
+JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, int64_t size)
 {
     return (JkBuffer){.size = size, .data = jk_arena_push(arena, size)};
 }
 
-JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, uint64_t size)
+JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size)
 {
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
 }
 
-JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, uint64_t bit_cursor, uint8_t bit_count)
+JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count)
 {
-    JK_DEBUG_ASSERT(bit_count <= 32);
+    JK_DEBUG_ASSERT(0 <= bit_count && bit_count <= 32);
     uint64_t result = 0;
 
-    uint64_t byte_index = bit_cursor / 8;
-    uint64_t bit_index = bit_cursor % 8;
+    int64_t byte_index = JK_FLOOR_DIV(bit_cursor, 8);
+    int64_t bit_index = JK_MOD(bit_cursor, 8);
 
-    for (uint8_t i = 0; i < 8; i++) {
+    for (int64_t i = 0; i < 8; i++) {
         result >>= 8;
-        if (byte_index < buffer.size) {
+        if (0 <= byte_index && byte_index < buffer.size) {
             result |= (uint64_t)buffer.data[byte_index] << 56;
         }
         byte_index++;
@@ -142,14 +142,14 @@ JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, uint64_t bit_cursor, uin
     return (uint32_t)((result >> bit_index) & ((1llu << bit_count) - 1));
 }
 
-JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, uint64_t *bit_cursor, uint8_t bit_count)
+JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count)
 {
     uint32_t result = jk_buffer_bits_peek(buffer, *bit_cursor, bit_count);
     *bit_cursor += bit_count;
     return result;
 }
 
-JK_PUBLIC uint64_t jk_strlen(char *string)
+JK_PUBLIC int64_t jk_strlen(char *string)
 {
     char *pointer = string;
     while (*pointer) {
@@ -175,40 +175,42 @@ JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
     return result;
 }
 
-JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
+JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos)
 {
-    return pos < buffer.size ? buffer.data[pos] : JK_EOF;
+    return (0 <= pos && pos < buffer.size) ? buffer.data[pos] : JK_OOB;
 }
 
-JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
+JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos)
 {
-    int c = jk_buffer_character_get(buffer, *pos);
+    int32_t c = jk_buffer_character_get(buffer, *pos);
     (*pos)++;
     return c;
 }
 
-JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos)
+JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)
 {
-    JkBuffer result;
-    result.data = buffer.data + *pos;
-    while (*pos < buffer.size && buffer.data[*pos]) {
-        (*pos)++;
+    JkBuffer result = {0};
+    if (0 <= *pos && *pos < buffer.size) {
+		result.data = buffer.data + *pos;
+		while (*pos < buffer.size && buffer.data[*pos]) {
+			(*pos)++;
+		}
+		result.size = (buffer.data + *pos) - result.data;
+		(*pos)++;
     }
-    result.size = (buffer.data + *pos) - result.data;
-    (*pos)++;
     return result;
 }
 
 JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b)
 {
-    for (uint64_t pos = 0; 1; pos++) {
+    for (int64_t pos = 0; 1; pos++) {
         int a_char = jk_buffer_character_get(a, pos);
         int b_char = jk_buffer_character_get(b, pos);
         if (a_char < b_char) {
             return -1;
         } else if (a_char > b_char) {
             return 1;
-        } else if (a_char == JK_EOF && b_char == JK_EOF) {
+        } else if (a_char == JK_OOB && b_char == JK_OOB) {
             return 0;
         }
     }
@@ -235,7 +237,7 @@ JK_PUBLIC int jk_char_to_lower(int c)
 
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
 {
-    for (uint64_t i = 0; i < string.size; i++) {
+    for (int64_t i = 0; i < string.size; i++) {
         if (jk_char_is_whitespace(string.data[i])) {
             return 1;
         }
@@ -375,7 +377,7 @@ JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, 
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, uint16_t decimal_places)
+JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, int64_t decimal_places)
 {
     JK_DEBUG_ASSERT(0 <= decimal_places && decimal_places <= 8);
     JkFloatUnpacked unpacked = jk_unpack_f64(value);
@@ -400,11 +402,11 @@ JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, uint16_t decim
 
             if (decimal_places) {
                 uint64_t divisor = 10;
-                for (uint64_t i = 0; i < 8 - decimal_places; i++) {
+                for (int64_t i = 0; i < 8 - decimal_places; i++) {
                     divisor *= 10;
                 }
                 uint64_t one = 10;
-                for (uint64_t i = 0; i < decimal_places - 1; i++) {
+                for (int64_t i = 0; i < decimal_places - 1; i++) {
                     one *= 10;
                 }
 
@@ -492,7 +494,7 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
-    for (uint64_t i = 0; i < items.count; i++) {
+    for (int64_t i = 0; i < items.count; i++) {
         JkFormatItem *item = items.items + i;
         switch (item->type) {
         case JK_FORMAT_ITEM_NULL_TERMINATED: {
@@ -681,7 +683,7 @@ JK_PUBLIC float jk_acos_f32(float x)
 
 // ---- Arena begin ------------------------------------------------------------
 
-static b32 jk_arena_fixed_grow(JkArena *arena, uint64_t new_size)
+static b32 jk_arena_fixed_grow(JkArena *arena, int64_t new_size)
 {
     return 0; // Fixed arenas don't grow, duh
 }
@@ -697,9 +699,10 @@ JK_PUBLIC b32 jk_arena_valid(JkArena *arena)
     return !!arena->root;
 }
 
-JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size)
+JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
 {
-    uint64_t new_pos = arena->pos + size;
+	JK_DEBUG_ASSERT(0 <= size);
+    int64_t new_pos = arena->pos + size;
     if (arena->root->memory.size < new_pos) {
         if (!arena->grow(arena, new_pos)) {
             return 0;
@@ -710,26 +713,26 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size)
     return address;
 }
 
-JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size)
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, int64_t size)
 {
     void *address = jk_arena_push(arena, size);
     jk_memset(address, 0, size);
     return address;
 }
 
-JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, uint64_t size)
+JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size)
 {
     return (JkBuffer){.size = size, .data = jk_arena_push(arena, size)};
 }
 
-JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, uint64_t size)
+JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size)
 {
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
 }
 
-JK_PUBLIC void jk_arena_pop(JkArena *arena, uint64_t size)
+JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size)
 {
-    JK_DEBUG_ASSERT(size <= arena->pos - arena->base);
+    JK_DEBUG_ASSERT(0 <= size && size <= arena->pos - arena->base);
     arena->pos -= size;
 }
 
@@ -794,10 +797,10 @@ JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte)
 }
 
 JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
-        JkBuffer buffer, uint64_t *pos, JkUtf8Codepoint *codepoint)
+        JkBuffer buffer, int64_t *pos, JkUtf8Codepoint *codepoint)
 {
     *codepoint = (JkUtf8Codepoint){0};
-    if (*pos >= buffer.size) {
+    if (!(0 <= *pos && *pos < buffer.size)) {
         return JK_UTF8_CODEPOINT_GET_EOF;
     }
     if (jk_utf8_byte_is_continuation(buffer.data[*pos])) {
@@ -815,7 +818,7 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
 
 // ---- Quicksort begin --------------------------------------------------------
 
-static void jk_bytes_swap(void *a, void *b, uint64_t element_size, void *tmp)
+static void jk_bytes_swap(void *a, void *b, int64_t element_size, void *tmp)
 {
     jk_memcpy(tmp, a, element_size);
     jk_memcpy(a, b, element_size);
@@ -824,11 +827,13 @@ static void jk_bytes_swap(void *a, void *b, uint64_t element_size, void *tmp)
 
 static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
         void *array_void,
-        uint64_t element_count,
-        uint64_t element_size,
+        int64_t element_count,
+        int64_t element_size,
         void *tmp,
         int (*compare)(void *a, void *b))
 {
+	JK_DEBUG_ASSERT(0 <= element_size);
+
     if (element_count < 2) {
         return;
     }
@@ -858,8 +863,8 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
         }
     }
 
-    uint64_t left_count = (uint64_t)(low - array) / element_size;
-    uint64_t right_count = element_count - (uint64_t)(mid - array) / element_size;
+    int64_t left_count = (int64_t)(low - array) / element_size;
+    int64_t right_count = element_count - (int64_t)(mid - array) / element_size;
     jk_quicksort_internal(generator, array, left_count, element_size, tmp, compare);
     jk_quicksort_internal(generator, mid, right_count, element_size, tmp, compare);
 }
@@ -878,8 +883,8 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
  *     should come after b, and zero if they are equal.
  */
 JK_PUBLIC void jk_quicksort(void *array_void,
-        uint64_t element_count,
-        uint64_t element_size,
+        int64_t element_count,
+        int64_t element_size,
         void *tmp,
         int (*compare)(void *a, void *b))
 {
@@ -895,7 +900,7 @@ static int jk_int_compare(void *a, void *b)
 JK_PUBLIC void jk_quicksort_ints(int *array, int length)
 {
     int tmp;
-    jk_quicksort(array, length, sizeof(int), &tmp, jk_int_compare);
+    jk_quicksort(array, length, JK_SIZEOF(int), &tmp, jk_int_compare);
 }
 
 static int jk_float_compare(void *a, void *b)
@@ -907,7 +912,7 @@ static int jk_float_compare(void *a, void *b)
 JK_PUBLIC void jk_quicksort_floats(float *array, int length)
 {
     float tmp;
-    jk_quicksort(array, length, sizeof(float), &tmp, jk_float_compare);
+    jk_quicksort(array, length, JK_SIZEOF(float), &tmp, jk_float_compare);
 }
 
 static int jk_string_compare(void *a, void *b)
@@ -928,7 +933,7 @@ static int jk_string_compare(void *a, void *b)
 JK_PUBLIC void jk_quicksort_strings(char **array, int length)
 {
     char *tmp;
-    jk_quicksort(array, length, sizeof(char *), &tmp, jk_string_compare);
+    jk_quicksort(array, length, JK_SIZEOF(char *), &tmp, jk_string_compare);
 }
 
 // ---- Quicksort end ----------------------------------------------------------
@@ -1221,7 +1226,7 @@ JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t)
     for (int64_t i = 0; i < 3; i++) {
         int64_t next = (i + 1) % 3;
         if (t.v[i].y != t.v[next].y) {
-            JkEdge *edge = jk_arena_push(arena, sizeof(*edge));
+            JkEdge *edge = jk_arena_push(arena, JK_SIZEOF(*edge));
             *edge = jk_points_to_edge(t.v[i], t.v[next]);
         }
     }
@@ -1236,8 +1241,9 @@ JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t)
 // Bob Jenkins's pseudorandom number generator aka JSF64 from
 // https://burtleburtle.net/bob/rand/talksmall.html
 
-static uint64_t jk_rotate_left(uint64_t value, uint64_t shift)
+static uint64_t jk_rotate_left(uint64_t value, int64_t shift)
 {
+	JK_DEBUG_ASSERT(0 <= shift && shift < 64);
     return (value << shift) | (value >> (64 - shift));
 }
 
@@ -1250,7 +1256,7 @@ JK_PUBLIC JkRandomGeneratorU64 jk_random_generator_new_u64(uint64_t seed)
         g.d = seed,
     };
 
-    for (uint64_t i = 0; i < 20; i++) {
+    for (int64_t i = 0; i < 20; i++) {
         jk_random_u64(&g);
     }
 
@@ -1310,8 +1316,8 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
 {
     static uint8_t jk_assert_msg_buf[4096];
     JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(
-            &arena_root, (JkBuffer){.size = sizeof(jk_assert_msg_buf), .data = jk_assert_msg_buf});
+    JkArena arena = jk_arena_fixed_init(&arena_root,
+            (JkBuffer){.size = JK_SIZEOF(jk_assert_msg_buf), .data = jk_assert_msg_buf});
     jk_print(JK_FORMAT(&arena,
             jkfn("Assertion failed: "),
             jkfn(message),
@@ -1332,7 +1338,7 @@ JK_PUBLIC int jk_parse_positive_integer(char *string)
 {
     int multiplier = 1;
     int result = 0;
-    for (uint64_t i = jk_strlen(string) - 1; i >= 0; i--) {
+    for (int64_t i = jk_strlen(string) - 1; i >= 0; i--) {
         if (jk_char_is_digit(string[i])) {
             result += (string[i] - '0') * multiplier;
             multiplier *= 10;
@@ -1344,20 +1350,22 @@ JK_PUBLIC int jk_parse_positive_integer(char *string)
     return result;
 }
 
-JK_PUBLIC void *jk_memset(void *address, uint8_t value, uint64_t size)
+JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
 {
+	JK_DEBUG_ASSERT(0 <= size);
     uint8_t *bytes = address;
-    for (uint64_t i = 0; i < size; i++) {
+    for (int64_t i = 0; i < size; i++) {
         bytes[i] = value;
     }
     return address;
 }
 
-JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size)
+JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size)
 {
+	JK_DEBUG_ASSERT(0 <= size);
     uint8_t *dest_bytes = dest;
     uint8_t *src_bytes = src;
-    for (uint64_t i = 0; i < size; i++) {
+    for (int64_t i = 0; i < size; i++) {
         dest_bytes[i] = src_bytes[i];
     }
     return dest;
@@ -1420,7 +1428,7 @@ JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value)
     return ((uint16_t)jk_bit_reverse_table[value & 0xff] << 8) | jk_bit_reverse_table[value >> 8];
 }
 
-JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int8_t amount)
+JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount)
 {
     if (amount < 0) {
         return amount <= -64 ? 0 : value >> -amount;
@@ -1429,15 +1437,17 @@ JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int8_t amount)
     }
 }
 
-JK_PUBLIC b32 jk_is_power_of_two(uint64_t x)
+JK_PUBLIC b32 jk_is_power_of_two(int64_t x)
 {
     return x && (x & (x - 1)) == 0;
 }
 
 // Rounds up to nearest power of 2. Leaves 0 as 0.
-JK_PUBLIC uint64_t jk_round_up_to_power_of_2(uint64_t x)
+JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x)
 {
-    if (x) {
+	if (x <= 0) {
+		return 0;
+	} else {
         x--;
         x |= x >> 1;
         x |= x >> 2;
@@ -1446,14 +1456,16 @@ JK_PUBLIC uint64_t jk_round_up_to_power_of_2(uint64_t x)
         x |= x >> 16;
         x |= x >> 32;
         x++;
-    }
-    return x;
+    	return x;
+	}
 }
 
 // Rounds down to nearest power of 2. Leaves 0 as 0.
-JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x)
+JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x)
 {
-    if (x) {
+	if (x <= 0) {
+		return 0;
+	} else {
         x |= x >> 1;
         x |= x >> 2;
         x |= x >> 4;
@@ -1461,8 +1473,8 @@ JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x)
         x |= x >> 16;
         x |= x >> 32;
         x -= x >> 1;
+    	return x;
     }
-    return x;
 }
 
 JK_PUBLIC int32_t jk_round(float value)

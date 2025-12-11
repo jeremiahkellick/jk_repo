@@ -10,6 +10,8 @@ typedef uint32_t b32;
 #define JK_DEBUG_FAST 1
 #define JK_RELEASE 2
 
+#define JK_SIZEOF(type) ((int64_t)sizeof(type))
+
 #if defined(_WIN32)
 #define JK_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -21,35 +23,35 @@ typedef uint32_t b32;
 // ---- Buffer begin -----------------------------------------------------------
 
 typedef struct JkBuffer {
-    uint64_t size;
+    int64_t size;
     uint8_t *data;
 } JkBuffer;
 
 typedef struct JkBufferArray {
-    uint64_t count;
+    int64_t count;
     JkBuffer *items;
 } JkBufferArray;
 
 typedef struct JkSpan {
-    uint64_t size;
-    uint64_t offset;
+    int64_t size;
+    int64_t offset;
 } JkSpan;
 
 #define JK_STRING(string_literal) \
-    ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
+    ((JkBuffer){JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal})
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal)                 \
-    {                                                         \
-        sizeof(string_literal) - 1, (uint8_t *)string_literal \
+#define JK_STRING_INITIALIZER(string_literal)                    \
+    {                                                            \
+        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
     }
 
 #define JKSI JK_STRING_INITIALIZER
 
-#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)     \
-    {                                                  \
-        .size = sizeof(byte_array), .data = byte_array \
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)        \
+    {                                                     \
+        .size = JK_SIZEOF(byte_array), .data = byte_array \
     }
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
@@ -58,32 +60,32 @@ JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer);
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
-JK_PUBLIC int jk_buffer_character_get(JkBuffer buffer, uint64_t pos);
+JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos);
 
-JK_PUBLIC int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos);
+JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos);
 
-JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, uint64_t *pos);
+JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos);
 
-JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, uint64_t bit_cursor, uint8_t bit_count);
+JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count);
 
-JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, uint64_t *bit_cursor, uint8_t bit_count);
+JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count);
 
 #define JK_BUFFER_FIELD_NEXT(buffer, pos, type) \
-    (*(pos) += sizeof(type),                    \
-            (*(pos) < (buffer).size ? (type *)((buffer).data + (*(pos) - sizeof(type))) : 0))
+    (*(pos) += JK_SIZEOF(type),                 \
+            (*(pos) < (buffer).size ? (type *)((buffer).data + (*(pos) - JK_SIZEOF(type))) : 0))
 
-#define JK_BUFFER_FIELD_READ(buffer, pos, type, default)                                 \
-    (*(pos) += sizeof(type),                                                             \
-            (*(pos) < (buffer).size ? *(type *)((buffer).data + (*(pos) - sizeof(type))) \
+#define JK_BUFFER_FIELD_READ(buffer, pos, type, default)                                    \
+    (*(pos) += JK_SIZEOF(type),                                                             \
+            (*(pos) < (buffer).size ? *(type *)((buffer).data + (*(pos) - JK_SIZEOF(type))) \
                                     : (default)))
 
-JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b);
+JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b);
 
-JK_PUBLIC b32 jk_char_is_whitespace(int c);
+JK_PUBLIC b32 jk_char_is_whitespace(int32_t c);
 
-JK_PUBLIC b32 jk_char_is_digit(int c);
+JK_PUBLIC b32 jk_char_is_digit(int32_t c);
 
-JK_PUBLIC int jk_char_to_lower(int c);
+JK_PUBLIC int32_t jk_char_to_lower(int32_t c);
 
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string);
 
@@ -114,7 +116,7 @@ typedef struct JkFormatItem {
 } JkFormatItem;
 
 typedef struct JkFormatItemArray {
-    uint64_t count;
+    int64_t count;
     JkFormatItem *items;
 } JkFormatItemArray;
 
@@ -206,31 +208,31 @@ typedef struct JkArenaRoot {
 } JkArenaRoot;
 
 typedef struct JkArena {
-    uint64_t base;
-    uint64_t pos;
+    int64_t base;
+    int64_t pos;
     JkArenaRoot *root;
-    b32 (*grow)(struct JkArena *arena, uint64_t new_size);
+    b32 (*grow)(struct JkArena *arena, int64_t new_size);
 } JkArena;
 
 JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory);
 
 JK_PUBLIC b32 jk_arena_valid(JkArena *arena);
 
-JK_PUBLIC void *jk_arena_push(JkArena *arena, uint64_t size);
+JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size);
 
-JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, uint64_t size);
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, int64_t size);
 
-JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, uint64_t size);
+JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size);
 
-JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, uint64_t size);
+JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size);
 
-#define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                                \
-    do {                                                                             \
-        (array).count = item_count;                                                  \
-        (array).items = jk_arena_push(arena, (item_count) * sizeof(*(array).items)); \
+#define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                                   \
+    do {                                                                                \
+        (array).count = item_count;                                                     \
+        (array).items = jk_arena_push(arena, (item_count) * JK_SIZEOF(*(array).items)); \
     } while (0)
 
-JK_PUBLIC void jk_arena_pop(JkArena *arena, uint64_t size);
+JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size);
 
 JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
 
@@ -243,11 +245,11 @@ JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
 JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer);
 
-JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, uint64_t size);
+JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, int64_t size);
 
-JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, uint64_t size);
+JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size);
 
-JK_PUBLIC uint64_t jk_strlen(char *string);
+JK_PUBLIC int64_t jk_strlen(char *string);
 
 JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
 
@@ -260,24 +262,24 @@ JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
 
 JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width);
 
-JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, uint16_t decimal_places);
+JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, int64_t decimal_places);
 
 JK_PUBLIC JkFormatItem jkf_nl;
 
 JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
 
-#define JK_FORMAT(arena, ...)                                                          \
-    jk_format(arena,                                                                   \
-            (JkFormatItemArray){                                                       \
-                .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
+#define JK_FORMAT(arena, ...)                                                                  \
+    jk_format(arena,                                                                           \
+            (JkFormatItemArray){                                                               \
+                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
                 .items = (JkFormatItem[]){__VA_ARGS__}})
 
 JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
 
-#define JK_PRINT_FMT(arena, ...)                                                       \
-    jk_print_fmt(arena,                                                                \
-            (JkFormatItemArray){                                                       \
-                .count = sizeof((JkFormatItem[]){__VA_ARGS__}) / sizeof(JkFormatItem), \
+#define JK_PRINT_FMT(arena, ...)                                                               \
+    jk_print_fmt(arena,                                                                        \
+            (JkFormatItemArray){                                                               \
+                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
                 .items = (JkFormatItem[]){__VA_ARGS__}})
 
 // ---- UTF-8 begin ------------------------------------------------------------
@@ -299,23 +301,23 @@ typedef enum JkUtf8CodepointGetResult {
 } JkUtf8CodepointGetResult;
 
 JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
-        JkBuffer buffer, uint64_t *pos, JkUtf8Codepoint *codepoint);
+        JkBuffer buffer, int64_t *pos, JkUtf8Codepoint *codepoint);
 
 // ---- UTF-8 end --------------------------------------------------------------
 
 // ---- Quicksort begin --------------------------------------------------------
 
 JK_PUBLIC void jk_quicksort(void *array,
-        uint64_t element_count,
-        uint64_t element_size,
+        int64_t element_count,
+        int64_t element_size,
         void *tmp,
-        int (*compare)(void *a, void *b));
+        int32_t (*compare)(void *a, void *b));
 
-JK_PUBLIC void jk_quicksort_ints(int *array, int length);
+JK_PUBLIC void jk_quicksort_ints(int32_t *array, int32_t length);
 
-JK_PUBLIC void jk_quicksort_floats(float *array, int length);
+JK_PUBLIC void jk_quicksort_floats(float *array, int32_t length);
 
-JK_PUBLIC void jk_quicksort_strings(char **array, int length);
+JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length);
 
 // ---- Quicksort end ----------------------------------------------------------
 
@@ -399,7 +401,7 @@ typedef union JkVector3 {
 } JkVector3;
 
 typedef struct JkVector3Array {
-    uint64_t count;
+    int64_t count;
     JkVector3 *items;
 } JkVector3Array;
 
@@ -455,7 +457,7 @@ typedef struct JkEdge {
 } JkEdge;
 
 typedef struct JkEdgeArray {
-    uint64_t count;
+    int64_t count;
     JkEdge *items;
 } JkEdgeArray;
 
@@ -509,7 +511,7 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g);
 #define JK_GIGABYTE (1llu << 30)
 
 typedef struct JkFloatArray {
-    uint64_t count;
+    int64_t count;
     float *items;
 } JkFloatArray;
 
@@ -548,7 +550,7 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 #define JK_DEBUG_ASSERT(expression) JK_ASSERT(expression)
 #endif
 
-#define JK_ARRAY_COUNT(array) (int64_t)(sizeof(array) / sizeof((array)[0]))
+#define JK_ARRAY_COUNT(array) (JK_SIZEOF(array) / JK_SIZEOF((array)[0]))
 
 #define JK_BUFFER_FROM_ARRAY(array)                    \
     (JkBuffer)                                         \
@@ -558,11 +560,16 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 
 #define JK_ARRAY_FROM_SPAN(array, base, span)                        \
     do {                                                             \
-        (array).count = (span).size / sizeof(*(array).items);        \
+        (array).count = (span).size / JK_SIZEOF(*(array).items);     \
         (array).items = (void *)((uint8_t *)(base) + (span).offset); \
     } while (0)
 
-#define JK_DATA_GET(pointer, index, type) (*(type *)((uint8_t *)(pointer) + (index) * sizeof(type)))
+#define JK_DATA_GET(pointer, index, type) \
+    (*(type *)((uint8_t *)(pointer) + (index) * JK_SIZEOF(type)))
+
+#define JK_FLOOR_DIV(dividend, divisor) \
+    (0 <= (dividend) ? (dividend) / (divisor) : ((dividend) - (divisor) + 1) / (divisor))
+#define JK_MOD(dividend, divisor) ((((dividend) % (divisor)) + (divisor)) % (divisor))
 
 #define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define JK_MAX(a, b) ((a) < (b) ? (b) : (a))
@@ -593,13 +600,13 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 #define JK_PI 3.14159265358979323846264338327950288419716939937510582097494459230781640628
 #define JK_INV_SQRT_2 0.70710678118654752440084
 
-#define JK_EOF (-1)
+#define JK_OOB (-1)
 
-JK_PUBLIC int jk_parse_positive_integer(char *string);
+JK_PUBLIC int32_t jk_parse_positive_integer(char *string);
 
-JK_PUBLIC void *jk_memset(void *address, uint8_t value, uint64_t size);
+JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size);
 
-JK_PUBLIC void *jk_memcpy(void *dest, void *src, uint64_t size);
+JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
@@ -607,15 +614,15 @@ JK_PUBLIC uint8_t jk_bit_reverse_table[256];
 
 JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value);
 
-JK_PUBLIC uint64_t jk_count_leading_zeros(uint64_t value);
+JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value);
 
-JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int8_t amount);
+JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount);
 
-JK_PUBLIC b32 jk_is_power_of_two(uint64_t x);
+JK_PUBLIC b32 jk_is_power_of_two(int64_t x);
 
-JK_PUBLIC uint64_t jk_round_up_to_power_of_2(uint64_t x);
+JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x);
 
-JK_PUBLIC uint64_t jk_round_down_to_power_of_2(uint64_t x);
+JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x);
 
 JK_PUBLIC int32_t jk_round(float value);
 

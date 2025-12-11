@@ -53,17 +53,17 @@ int main(int argc, char **argv)
     }
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
 
     JkBuffer file = jk_platform_file_read_full(&storage, opts_parse.operands[0]);
     JkHashTable *seen = jk_hash_table_create();
-    uint64_t count = 0;
-    uint64_t pos = 0;
+    int64_t count = 0;
+    int64_t pos = 0;
     JkUtf8Codepoint codepoint;
     JkUtf8CodepointGetResult result;
     while ((result = jk_utf8_codepoint_get(file, &pos, &codepoint))
             == JK_UTF8_CODEPOINT_GET_SUCCESS) {
-        uint32_t decoded = (uint32_t)jk_utf8_codepoint_decode(codepoint);
+        int64_t decoded = jk_utf8_codepoint_decode(codepoint);
         if (!jk_hash_table_get(seen, decoded)) {
             jk_hash_table_put(seen, decoded, 1);
             count++;

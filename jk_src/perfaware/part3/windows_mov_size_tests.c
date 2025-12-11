@@ -10,17 +10,17 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-void read_4x2(size_t size, void *data);
-void read_8x2(size_t size, void *data);
-void read_16x2(size_t size, void *data);
-void read_32x1(size_t size, void *data);
-void read_32x2(size_t size, void *data);
-void read_32x3(size_t size, void *data);
-void read_32x4(size_t size, void *data);
+void read_4x2(int64_t size, void *data);
+void read_8x2(int64_t size, void *data);
+void read_16x2(int64_t size, void *data);
+void read_32x1(int64_t size, void *data);
+void read_32x2(int64_t size, void *data);
+void read_32x3(int64_t size, void *data);
+void read_32x4(int64_t size, void *data);
 
 typedef struct TestCandidate {
     char *name;
-    void (*function)(size_t, void *);
+    void (*function)(int64_t, void *);
 } TestCandidate;
 
 static TestCandidate candidates[] = {
@@ -39,13 +39,13 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
 
 int main(int argc, char **argv)
 {
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     void *data = jk_platform_memory_alloc(jk_platform_page_size());
-    size_t mov_count = 1024 * 1024 * 1024;
+    int64_t mov_count = 1024 * 1024 * 1024;
 
     for (;;) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
             JkPlatformRepetitionTest *test = &tests[i];
 
             printf("\n%s\n", candidates[i].name);

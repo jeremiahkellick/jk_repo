@@ -65,11 +65,11 @@ typedef struct Context {
     JkArena *faces_arena;
 } Context;
 
-void process_fbx_nodes(Context *c, JkBuffer file, uint64_t pos)
+void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos)
 {
     while (0 < pos && pos < file.size) {
         JkFbxNode *node = (JkFbxNode *)(file.data + pos);
-        uint64_t pos_children =
+        int64_t pos_children =
                 (node->name - file.data) + node->name_length + node->property_list_size;
         JkBuffer name = {.size = node->name_length, .data = node->name};
 
@@ -78,7 +78,7 @@ void process_fbx_nodes(Context *c, JkBuffer file, uint64_t pos)
             if (type == 'd') {
                 JkFbxArray *array = (JkFbxArray *)(node->name + node->name_length + 1);
                 double *coords = 0;
-                uint64_t byte_count = array->length * sizeof(*coords);
+                int64_t byte_count = array->length * JK_SIZEOF(*coords);
                 if (array->encoding == 0) {
                     coords = (double *)array->contents;
                 } else if (array->encoding == 1) {
@@ -95,11 +95,11 @@ void process_fbx_nodes(Context *c, JkBuffer file, uint64_t pos)
                     fprintf(stderr, "process_fbx_nodes: Unrecognized array encoding\n");
                 }
                 if (coords) {
-                    uint32_t vertex_count = array->length / 3;
+                    int64_t vertex_count = array->length / 3;
                     JkVector3 *vertices =
-                            jk_arena_push(c->verts_arena, vertex_count * sizeof(*vertices));
-                    for (uint32_t vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
-                        for (uint32_t coord_index = 0; coord_index < 3; coord_index++) {
+                            jk_arena_push(c->verts_arena, vertex_count * JK_SIZEOF(*vertices));
+                    for (int64_t vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
+                        for (int64_t coord_index = 0; coord_index < 3; coord_index++) {
                             vertices[vertex_index].coords[coord_index] =
                                     coords[vertex_index * 3 + coord_index];
                         }
@@ -113,7 +113,7 @@ void process_fbx_nodes(Context *c, JkBuffer file, uint64_t pos)
             if (type == 'i') {
                 JkFbxArray *array = (JkFbxArray *)(node->name + node->name_length + 1);
                 int32_t *indexes = 0;
-                uint64_t byte_count = array->length * sizeof(*indexes);
+                int64_t byte_count = array->length * JK_SIZEOF(*indexes);
                 if (array->encoding == 0) {
                     indexes = (int32_t *)array->contents;
                 } else if (array->encoding == 1) {
@@ -132,8 +132,8 @@ void process_fbx_nodes(Context *c, JkBuffer file, uint64_t pos)
                 if (indexes) {
                     int32_t *index_ptr = indexes;
                     while (index_ptr - indexes < array->length) {
-                        Face *face = jk_arena_push_zero(c->faces_arena, sizeof(*face));
-                        uint32_t i = 0;
+                        Face *face = jk_arena_push_zero(c->faces_arena, JK_SIZEOF(*face));
+                        int64_t i = 0;
                         b32 end_of_polygon = 0;
                         while (index_ptr - indexes < array->length && !end_of_polygon) {
                             int32_t index = *index_ptr++;
@@ -201,7 +201,7 @@ int main(int argc, char **argv)
     JkBuffer file = jk_platform_file_read_full(&arena, file_name);
     JkFbxHeader *header = (JkFbxHeader *)file.data;
 
-    if (jk_buffer_compare((JkBuffer){.size = sizeof(header->magic), .data = header->magic},
+    if (jk_buffer_compare((JkBuffer){.size = JK_SIZEOF(header->magic), .data = header->magic},
                 JKS("Kaydara FBX Binary  "))
             != 0) {
         fprintf(stderr, "'%s': unrecognized file format\n", file_name);
@@ -211,7 +211,7 @@ int main(int argc, char **argv)
     process_fbx_nodes(c, file, header->first_node - file.data);
 
     JkArena result_arena = jk_arena_child_get(c->arena);
-    Assets *assets = jk_arena_push(&result_arena, sizeof(*assets));
+    Assets *assets = jk_arena_push(&result_arena, JK_SIZEOF(*assets));
     append_arena_as_span(&result_arena, c->verts_arena, &assets->vertices);
     append_arena_as_span(&result_arena, c->faces_arena, &assets->faces);
 

@@ -5,31 +5,31 @@
 // #jk_build dependencies_end
 
 typedef struct Element {
-    uint64_t score;
-    uint64_t heap_index;
+    int64_t score;
+    int64_t heap_index;
 } Element;
 
 typedef struct Heap {
-    uint64_t capacity;
-    uint64_t count;
+    int64_t capacity;
+    int64_t count;
     Element **elements;
 } Heap;
 
-// Buffer should have at least sizeof(Element) * capcapity bytes
+// Buffer should have at least JK_SIZEOF(Element) * capcapity bytes
 static Heap heap_create(JkBuffer memory)
 {
     return (Heap){
-        .capacity = memory.size / sizeof(Element),
+        .capacity = memory.size / JK_SIZEOF(Element),
         .elements = (Element **)memory.data,
     };
 }
 
-static uint64_t heap_parent_get(uint64_t i)
+static int64_t heap_parent_get(int64_t i)
 {
     return (i - 1) / 2;
 }
 
-static void heap_swap(Heap *heap, uint64_t a, uint64_t b)
+static void heap_swap(Heap *heap, int64_t a, int64_t b)
 {
     Element *tmp = heap->elements[a];
     heap->elements[a] = heap->elements[b];
@@ -38,10 +38,10 @@ static void heap_swap(Heap *heap, uint64_t a, uint64_t b)
     heap->elements[b]->heap_index = b;
 }
 
-static void heapify_up(Heap *heap, uint64_t i)
+static void heapify_up(Heap *heap, int64_t i)
 {
     if (i) {
-        uint64_t parent = heap_parent_get(i);
+        int64_t parent = heap_parent_get(i);
         if (heap->elements[i]->score < heap->elements[parent]->score) {
             heap_swap(heap, i, parent);
             heapify_up(heap, parent);
@@ -49,23 +49,23 @@ static void heapify_up(Heap *heap, uint64_t i)
     }
 }
 
-static void heapify_down(Heap *heap, uint64_t i)
+static void heapify_down(Heap *heap, int64_t i)
 {
-    uint64_t min_child_score = UINT64_MAX;
-    uint64_t min_child = UINT64_MAX;
-    for (uint64_t child = 2 * i + 1; child <= 2 * i + 2 && child < heap->count; child++) {
+    int64_t min_child_score = INT64_MAX;
+    int64_t min_child = INT64_MAX;
+    for (int64_t child = 2 * i + 1; child <= 2 * i + 2 && child < heap->count; child++) {
         if (heap->elements[child]->score < min_child_score) {
             min_child_score = heap->elements[child]->score;
             min_child = child;
         }
     }
-    if (min_child != UINT64_MAX && heap->elements[min_child]->score < heap->elements[i]->score) {
+    if (min_child != INT64_MAX && heap->elements[min_child]->score < heap->elements[i]->score) {
         heap_swap(heap, i, min_child);
         heapify_down(heap, min_child);
     }
 }
 
-static void reheapify(Heap *heap, uint64_t i)
+static void reheapify(Heap *heap, int64_t i)
 {
     heapify_up(heap, i);
     heapify_down(heap, i);
@@ -108,8 +108,8 @@ static Element *heap_peek_min(Heap *heap)
 static void heap_verify(Heap *heap)
 {
     if (heap->count) {
-        for (uint64_t i = heap->count - 1; i > 0; i--) {
-            uint64_t parent = heap_parent_get(i);
+        for (int64_t i = heap->count - 1; i > 0; i--) {
+            int64_t parent = heap_parent_get(i);
             JK_ASSERT(heap->elements[parent]->score <= heap->elements[i]->score);
             JK_ASSERT(heap->elements[i]->heap_index == i);
         }
@@ -133,7 +133,7 @@ int main(void)
     };
 
     Element *buffer[1024];
-    Heap heap = heap_create((JkBuffer){.size = sizeof(buffer), .data = (uint8_t *)buffer});
+    Heap heap = heap_create((JkBuffer){.size = JK_SIZEOF(buffer), .data = (uint8_t *)buffer});
 
     // Insert first 6 test elements
     for (int i = 0; i < 6; i++) {

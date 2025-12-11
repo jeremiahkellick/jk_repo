@@ -93,7 +93,7 @@ typedef struct MyRect {
 static int32_t square_side_length_get(IntArray4 dimensions)
 {
     int32_t min_dimension = INT32_MAX;
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
         if (dimensions.a[i] < min_dimension) {
             min_dimension = dimensions.a[i];
         }
@@ -122,7 +122,7 @@ static MyRect draw_rect_get(JkIntVector2 window_dimensions)
 static void audio_callback(void *context, AudioQueueRef queue, AudioQueueBufferRef buffer)
 {
     buffer->mAudioDataByteSize = buffer->mAudioDataBytesCapacity;
-    uint32_t sample_count = buffer->mAudioDataByteSize / sizeof(AudioSample);
+    int64_t sample_count = buffer->mAudioDataByteSize / JK_SIZEOF(AudioSample);
 
     pthread_mutex_lock(&g.audio_state_lock);
     AudioState state = g.main.audio_state;
@@ -147,7 +147,7 @@ void *ai_thread(void *param)
     while (g.main.running) {
         pthread_mutex_lock(&g.ai_request_lock);
         while (!(g.main.ai_request.wants_ai_move
-                && memcmp(&g.main.ai_request.board, &g.ai.response.board, sizeof(Board)) != 0)) {
+                && memcmp(&g.main.ai_request.board, &g.ai.response.board, JK_SIZEOF(Board)) != 0)) {
             pthread_cond_wait(&g.wants_ai_move, &g.ai_request_lock);
         }
         Board board = g.main.ai_request.board;
@@ -162,7 +162,7 @@ void *ai_thread(void *param)
         while (ai_running(&ai)) {
             pthread_mutex_lock(&g.ai_request_lock);
             b32 cancel = !g.main.ai_request.wants_ai_move
-                    || memcmp(&g.main.ai_request.board, &ai.response.board, sizeof(Board)) != 0;
+                    || memcmp(&g.main.ai_request.board, &ai.response.board, JK_SIZEOF(Board)) != 0;
             pthread_mutex_unlock(&g.ai_request_lock);
             if (cancel) {
                 break;
@@ -227,8 +227,8 @@ int main(void)
 
     print_set(print_stdout);
 
-    uint64_t audio_buffer_size =
-            jk_round_up_to_power_of_2(SAMPLES_PER_SECOND * 2 * sizeof(AudioSample));
+    int64_t audio_buffer_size =
+            jk_round_up_to_power_of_2(SAMPLES_PER_SECOND * 2 * JK_SIZEOF(AudioSample));
     g.main.chess.render_memory.size = 2 * JK_MEGABYTE;
     g.ai.memory.size = 1 * JK_GIGABYTE;
     uint8_t *memory = mmap(NULL,
@@ -268,7 +268,7 @@ int main(void)
         format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
         format.mBitsPerChannel = 16;
         format.mChannelsPerFrame = AUDIO_CHANNEL_COUNT;
-        format.mBytesPerFrame = sizeof(AudioSample);
+        format.mBytesPerFrame = JK_SIZEOF(AudioSample);
         format.mFramesPerPacket = 1;
         format.mBytesPerPacket = format.mFramesPerPacket * format.mBytesPerFrame;
 
@@ -285,14 +285,14 @@ int main(void)
 
         if (!error) {
             AudioStreamBasicDescription actualFormat;
-            UInt32 dataSize = sizeof(actualFormat);
+            UInt32 dataSize = JK_SIZEOF(actualFormat);
 
             error = AudioQueueGetProperty(
                     auQueue, kAudioQueueProperty_StreamDescription, &actualFormat, &dataSize);
         }
 
         // generate buffers holding at most 1 second of data
-        uint32_t bufferSize = format.mBytesPerFrame * format.mSampleRate / 16;
+        int64_t bufferSize = format.mBytesPerFrame * format.mSampleRate / 16;
 
         if (!error) {
             error = AudioQueueAllocateBuffer(auQueue, bufferSize, auBuffers + 0);
@@ -548,7 +548,8 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
     update(g.assets, &g.main.chess);
 
-    if (memcmp(&g.main.chess.audio_state, &g.main.audio_state, sizeof(g.main.audio_state)) != 0) {
+    if (memcmp(&g.main.chess.audio_state, &g.main.audio_state, JK_SIZEOF(g.main.audio_state))
+            != 0) {
         pthread_mutex_lock(&g.audio_state_lock);
         g.main.audio_state = g.main.chess.audio_state;
         pthread_mutex_unlock(&g.audio_state_lock);
@@ -556,7 +557,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
     if (!g.main.ai_request.wants_ai_move
                     != !JK_FLAG_GET(g.main.chess.flags, CHESS_FLAG_WANTS_AI_MOVE)
-            || memcmp(&g.main.ai_request.board, &g.main.chess.board, sizeof(Board)) != 0) {
+            || memcmp(&g.main.ai_request.board, &g.main.chess.board, JK_SIZEOF(Board)) != 0) {
         pthread_mutex_lock(&g.ai_request_lock);
         g.main.ai_request.wants_ai_move = JK_FLAG_GET(g.main.chess.flags, CHESS_FLAG_WANTS_AI_MOVE);
         g.main.ai_request.board = g.main.chess.board;
@@ -572,7 +573,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     [self.texture replaceRegion:MTLRegionMake2D(0, 0, window_dimensions.x, window_dimensions.y)
                     mipmapLevel:0
                       withBytes:g.main.chess.draw_buffer
-                    bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * sizeof(JkColor)];
+                    bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * JK_SIZEOF(JkColor)];
 
     JkVector2 pos;
     pos.x = (draw_rect.pos.x * 2.0f / window_dimensions.x) - 1.0f;
@@ -597,7 +598,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     verticies[3].position = simd_make_float4(pos.x + dimensions.x, pos.y, 0.0f, 1.0f);
     verticies[3].texture_coordinate = simd_make_float2(g.main.chess.square_side_length * 10, 0.0f);
 
-    memcpy([self.vertex_buffer contents], verticies, sizeof(verticies));
+    memcpy([self.vertex_buffer contents], verticies, JK_SIZEOF(verticies));
 
     id<CAMetalDrawable> drawable = self.currentDrawable;
     id<MTLTexture> texture = drawable.texture;

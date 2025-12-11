@@ -124,7 +124,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect dra
     BITMAPINFO bitmap_info = {
         .bmiHeader =
                 {
-                    .biSize = sizeof(BITMAPINFOHEADER),
+                    .biSize = JK_SIZEOF(BITMAPINFOHEADER),
                     .biWidth = DRAW_BUFFER_SIDE_LENGTH,
                     .biHeight = -DRAW_BUFFER_SIDE_LENGTH,
                     .biPlanes = 1,
@@ -201,8 +201,8 @@ DWORD game_thread(LPVOID param)
 {
     HWND window = (HWND)param;
 
-    uint64_t frequency = jk_platform_os_timer_frequency();
-    uint64_t ticks_per_frame = frequency / FRAME_RATE;
+    int64_t frequency = jk_platform_os_timer_frequency();
+    int64_t ticks_per_frame = frequency / FRAME_RATE;
 
     // Set the Windows scheduler granularity to 1ms
     b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
@@ -214,12 +214,12 @@ DWORD game_thread(LPVOID param)
     FILETIME bezier_dll_last_modified_time = {0};
 
     global_bezier.time = 0;
-    uint64_t work_time_total = 0;
-    uint64_t work_time_min = ULLONG_MAX;
-    uint64_t work_time_max = 0;
-    uint64_t frame_time_total = 0;
-    uint64_t frame_time_min = ULLONG_MAX;
-    uint64_t frame_time_max = 0;
+    int64_t work_time_total = 0;
+    int64_t work_time_min = LLONG_MAX;
+    int64_t work_time_max = LLONG_MIN;
+    int64_t frame_time_total = 0;
+    int64_t frame_time_min = LLONG_MAX;
+    int64_t frame_time_max = LLONG_MIN;
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     while (global_running) {
@@ -260,7 +260,7 @@ DWORD game_thread(LPVOID param)
 
         uint64_t counter_work = jk_platform_os_timer_get();
         uint64_t counter_current = counter_work;
-        int64_t ticks_remaining = (uint64_t)target_flip_time - (uint64_t)counter_current;
+        int64_t ticks_remaining = target_flip_time - counter_current;
         if (ticks_remaining > 0) {
             do {
                 if (can_sleep) {
@@ -276,14 +276,14 @@ DWORD game_thread(LPVOID param)
             // OutputDebugStringA("Missed a frame\n");
 
             // If we're off by more than half a frame, give up on catching up
-            if (ticks_remaining < -((int64_t)ticks_per_frame / 2)) {
+            if (ticks_remaining < -(ticks_per_frame / 2)) {
                 target_flip_time = counter_current + ticks_per_frame;
             }
         }
 
         copy_draw_buffer_to_window(window, device_context, draw_rect);
 
-        uint64_t work_time = counter_work - counter_previous;
+        int64_t work_time = counter_work - counter_previous;
         work_time_total += work_time;
         if (work_time < work_time_min) {
             work_time_min = work_time;
@@ -292,7 +292,7 @@ DWORD game_thread(LPVOID param)
             work_time_max = work_time;
         }
 
-        uint64_t frame_time = counter_current - counter_previous;
+        int64_t frame_time = counter_current - counter_previous;
         frame_time_total += frame_time;
         if (frame_time < frame_time_min) {
             frame_time_min = frame_time;
@@ -326,7 +326,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     jk_platform_set_working_directory_to_executable_directory();
 
     global_bezier.draw_buffer = VirtualAlloc(0,
-            sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
+            JK_SIZEOF(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
             PAGE_READWRITE);
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);

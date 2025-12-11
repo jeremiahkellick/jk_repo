@@ -90,22 +90,22 @@ typedef struct JkJsonExactMatch {
 static JkJsonExactMatch jk_json_exact_matches[] = {
     {
         .string = "true",
-        .length = sizeof("true") - 1,
+        .length = JK_SIZEOF("true") - 1,
         .type = JK_JSON_TRUE,
     },
     {
         .string = "false",
-        .length = sizeof("false") - 1,
+        .length = JK_SIZEOF("false") - 1,
         .type = JK_JSON_FALSE,
     },
     {
         .string = "null",
-        .length = sizeof("null") - 1,
+        .length = JK_SIZEOF("null") - 1,
         .type = JK_JSON_NULL,
     },
 };
 
-JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage)
+JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage)
 {
     int c;
     JkJsonToken token = {0};
@@ -117,17 +117,17 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage
     switch (c) {
     case '"': {
         (*pos)++;
-        size_t start = *pos;
+        int64_t start = *pos;
 
         while ((c = jk_buffer_character_get(text, *pos)) != '"') {
             (*pos)++;
         }
 
-        size_t end = *pos;
+        int64_t end = *pos;
         (*pos)++;
 
         token.type = JK_JSON_TOKEN_VALUE;
-        token.value = jk_arena_push_zero(storage, sizeof(*token.value));
+        token.value = jk_arena_push_zero(storage, JK_SIZEOF(*token.value));
         token.value->type = JK_JSON_STRING;
         token.value->value = (JkBuffer){.size = end - start, .data = text.data + start};
     } break;
@@ -142,7 +142,7 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage
     case '7':
     case '8':
     case '9': {
-        size_t start = *pos;
+        int64_t start = *pos;
         (*pos)++;
 
         // Advance past integer
@@ -171,22 +171,22 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage
             }
         }
 
-        size_t end = *pos;
+        int64_t end = *pos;
 
         token.type = JK_JSON_TOKEN_VALUE;
-        token.value = jk_arena_push_zero(storage, sizeof(*token.value));
+        token.value = jk_arena_push_zero(storage, JK_SIZEOF(*token.value));
         token.value->type = JK_JSON_NUMBER;
         token.value->value = (JkBuffer){.size = end - start, .data = text.data + start};
     } break;
     case 't':
     case 'f':
     case 'n': {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(jk_json_exact_matches); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(jk_json_exact_matches); i++) {
             JkJsonExactMatch *match = &jk_json_exact_matches[i];
             if (strncmp((char const *)text.data + *pos, match->string, match->length) == 0) {
                 *pos += match->length;
                 token.type = JK_JSON_TOKEN_VALUE;
-                token.value = jk_arena_push_zero(storage, sizeof(*token.value));
+                token.value = jk_arena_push_zero(storage, JK_SIZEOF(*token.value));
                 token.value->type = match->type;
             }
         }
@@ -235,13 +235,13 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, uint64_t *pos, JkArena *storage
     } while (0)
 
 static JkJson *jk_json_parse_with_token(
-        JkBuffer text, uint64_t *pos, JkJsonToken token, JkArena *storage)
+        JkBuffer text, int64_t *pos, JkJsonToken token, JkArena *storage)
 {
     if (token.type == JK_JSON_TOKEN_VALUE) {
         return token.value;
     } else if (token.type == JK_JSON_TOKEN_OPEN_BRACE || token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
         b32 is_object = token.type == JK_JSON_TOKEN_OPEN_BRACE;
-        JkJson *json = jk_arena_push_zero(storage, sizeof(*json));
+        JkJson *json = jk_arena_push_zero(storage, JK_SIZEOF(*json));
         json->type = is_object ? JK_JSON_OBJECT : JK_JSON_ARRAY;
 
         JK_JSON_LEX_NEXT_TOKEN;
@@ -309,8 +309,8 @@ static JkJson *jk_json_parse_with_token(
 JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
 {
     JkJsonToken token;
-    uint64_t pos_alloc = 0;
-    uint64_t *pos = &pos_alloc;
+    int64_t pos_alloc = 0;
+    int64_t *pos = &pos_alloc;
     JK_JSON_LEX_NEXT_TOKEN;
     return jk_json_parse_with_token(text, pos, token, storage);
 }
@@ -320,7 +320,7 @@ JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
 JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage)
 {
     int c;
-    uint64_t pos = 0;
+    int64_t pos = 0;
     JkBuffer string = {0};
     char *storage_pointer = jk_arena_push(storage, 1);
     char *start = storage_pointer;

@@ -85,38 +85,38 @@ int main(int argc, char **argv)
         exit(opts_parse.usage_error);
     }
 
-    uint64_t page_size = jk_platform_page_size();
-    JkBuffer buffer = {.size = (uint64_t)page_count * page_size};
-    for (int touch_page_count = 0; touch_page_count < page_count; touch_page_count++) {
+    int64_t page_size = jk_platform_page_size();
+    JkBuffer buffer = {.size = page_count * page_size};
+    for (int64_t touch_page_count = 0; touch_page_count < page_count; touch_page_count++) {
         buffer.data = jk_platform_memory_alloc(buffer.size);
         if (!buffer.data) {
             continue;
         }
 
-        uint64_t touch_size = touch_page_count * page_size;
+        int64_t touch_size = touch_page_count * page_size;
         uint64_t count_before = jk_platform_page_fault_count_get();
-        for (size_t i = 0; i < touch_size; i++) {
-            size_t index = opt_results[OPT_REVERSE].present ? touch_size - 1 - i : i;
+        for (int64_t i = 0; i < touch_size; i++) {
+            int64_t index = opt_results[OPT_REVERSE].present ? touch_size - 1 - i : i;
             buffer.data[index] = (uint8_t)index;
         }
         uint64_t count_after = jk_platform_page_fault_count_get();
 
         PagingIndicies paging_counts = {0};
-        for (int i = 0; i < touch_page_count; i++) {
-            PagingIndicies indicies = paging_indicies_get(&buffer.data[(size_t)i * page_size]);
-            for (int j = 0; j < PAGING_INDEX_TYPE_COUNT; j++) {
+        for (int64_t i = 0; i < touch_page_count; i++) {
+            PagingIndicies indicies = paging_indicies_get(&buffer.data[i * page_size]);
+            for (int64_t j = 0; j < PAGING_INDEX_TYPE_COUNT; j++) {
                 if (indicies.v[j] == 0) {
                     paging_counts.v[j]++;
                 }
             }
         }
 
-        uint64_t fault_count = count_after - count_before;
+        int64_t fault_count = count_after - count_before;
         printf("%d,\t%d,\t%llu,\t%lld,\t%llu,\t%llu,\t%llu,\n",
                 page_count,
                 touch_page_count,
                 (long long)fault_count,
-                (long long)(fault_count - (uint64_t)touch_page_count),
+                (long long)(fault_count - touch_page_count),
                 (long long)paging_counts.v[TABLE],
                 (long long)paging_counts.v[DIRECTORY],
                 (long long)paging_counts.v[DIRECTORY_POINTER]);

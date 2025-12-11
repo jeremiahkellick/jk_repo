@@ -27,21 +27,19 @@ typedef struct _GUID {
 
 // ---- Copy-paste from windows headers to avoid importing windows.h end -------
 
-typedef uint32_t b32;
-
 // ---- OS functions begin -----------------------------------------------------
 
-JK_PUBLIC size_t jk_platform_file_size(char *file_name);
+JK_PUBLIC int64_t jk_platform_file_size(char *file_name);
 
-JK_PUBLIC size_t jk_platform_page_size(void);
+JK_PUBLIC int64_t jk_platform_page_size(void);
 
-JK_PUBLIC void *jk_platform_memory_reserve(size_t size);
+JK_PUBLIC void *jk_platform_memory_reserve(int64_t size);
 
-JK_PUBLIC b32 jk_platform_memory_commit(void *address, size_t size);
+JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size);
 
-JK_PUBLIC void *jk_platform_memory_alloc(size_t size);
+JK_PUBLIC void *jk_platform_memory_alloc(int64_t size);
 
-JK_PUBLIC void jk_platform_memory_free(void *address, size_t size);
+JK_PUBLIC void jk_platform_memory_free(void *address, int64_t size);
 
 JK_PUBLIC void jk_platform_console_utf8_enable(void);
 
@@ -49,13 +47,13 @@ JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void);
 
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void);
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void);
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void);
 
 JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void);
 
 JK_PUBLIC int jk_platform_exec(JkBufferArray command);
 
-JK_PUBLIC void jk_platform_sleep(uint64_t milliseconds);
+JK_PUBLIC void jk_platform_sleep(int64_t milliseconds);
 
 JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path);
 
@@ -73,11 +71,11 @@ JK_PUBLIC double jk_platform_fma_64(double a, double b, double c);
 
 typedef struct JkPlatformArenaVirtualRoot {
     JkArenaRoot generic;
-    uint64_t virtual_size;
+    int64_t virtual_size;
 } JkPlatformArenaVirtualRoot;
 
 JK_PUBLIC JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size);
+        JkPlatformArenaVirtualRoot *root, int64_t virtual_size);
 
 JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root);
 
@@ -115,13 +113,13 @@ typedef enum JkPlatformProfileMetric {
 } JkPlatformProfileMetric;
 
 typedef union JkPlatformProfileZoneFrame {
-    uint64_t a[JK_PLATFORM_PROFILE_METRIC_COUNT];
+    int64_t a[JK_PLATFORM_PROFILE_METRIC_COUNT];
     struct {
-        uint64_t elapsed_exclusive;
-        uint64_t elapsed_inclusive;
-        uint64_t hit_count;
-        uint64_t byte_count;
-        uint64_t depth;
+        int64_t elapsed_exclusive;
+        int64_t elapsed_inclusive;
+        int64_t hit_count;
+        int64_t byte_count;
+        int64_t depth;
     };
 } JkPlatformProfileZoneFrame;
 
@@ -137,7 +135,7 @@ typedef struct JkPlatformProfileZone {
 } JkPlatformProfileZone;
 
 typedef struct JkPlatformProfileTiming {
-    uint64_t saved_elapsed_inclusive;
+    int64_t saved_elapsed_inclusive;
     JkPlatformProfileZone *parent;
     uint64_t start;
 
@@ -150,7 +148,7 @@ typedef struct JkPlatformProfileTiming {
 JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
         JkPlatformProfileZone *zone,
         char *name,
-        uint64_t byte_count);
+        int64_t byte_count);
 
 JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing);
 
@@ -207,11 +205,11 @@ typedef enum JkPlatformRepetitionTestValueType {
 } JkPlatformRepetitionTestValueType;
 
 typedef union JkPlatformRepetitionTestSample {
-    uint64_t v[JK_PLATFORM_REPETITION_TEST_VALUE_TYPE_COUNT];
+    int64_t v[JK_PLATFORM_REPETITION_TEST_VALUE_TYPE_COUNT];
     struct {
-        uint64_t count;
+        int64_t count;
         uint64_t cpu_time;
-        uint64_t byte_count;
+        int64_t byte_count;
         uint64_t page_fault_count;
     };
 } JkPlatformRepetitionTestSample;
@@ -226,11 +224,11 @@ typedef enum JkPlatformRepetitionTestSampleType {
 
 typedef struct JkPlatformRepetitionTest {
     JkPlatformRepetitionTestState state;
-    uint64_t target_byte_count;
-    uint64_t frequency;
-    uint64_t try_for_clocks;
-    uint64_t block_open_count;
-    uint64_t block_close_count;
+    int64_t target_byte_count;
+    int64_t frequency;
+    int64_t try_for_clocks;
+    int64_t block_open_count;
+    int64_t block_close_count;
     uint64_t last_found_min_time;
     union {
         JkPlatformRepetitionTestSample samples[JK_PLATFORM_REPETITION_TEST_SAMPLE_TYPE_COUNT];
@@ -244,16 +242,16 @@ typedef struct JkPlatformRepetitionTest {
 } JkPlatformRepetitionTest;
 
 JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *test,
-        uint64_t target_byte_count,
-        uint64_t frequency,
-        uint64_t seconds_to_try);
+        int64_t target_byte_count,
+        int64_t frequency,
+        int64_t seconds_to_try);
 
 JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *test);
 
 JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test);
 
 JK_PUBLIC double jk_platform_repetition_test_bandwidth(
-        JkPlatformRepetitionTestSample values, uint64_t frequency);
+        JkPlatformRepetitionTestSample values, int64_t frequency);
 
 JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
         JkPlatformRepetitionTest *test, JkPlatformRepetitionTest *baseline);
@@ -261,7 +259,7 @@ JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
 JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test);
 
 JK_PUBLIC void jk_platform_repetition_test_count_bytes(
-        JkPlatformRepetitionTest *test, uint64_t bytes);
+        JkPlatformRepetitionTest *test, int64_t bytes);
 
 JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test, char *message);
 
@@ -298,7 +296,7 @@ typedef struct JkOptionResult {
 typedef struct JkOptionsParseResult {
     /** Pointer to the first operand (first non-option argument) */
     char **operands;
-    size_t operand_count;
+    int64_t operand_count;
     b32 usage_error;
 } JkOptionsParseResult;
 
@@ -306,7 +304,7 @@ JK_PUBLIC void jk_options_parse(int argc,
         char **argv,
         JkOption *options_in,
         JkOptionResult *options_out,
-        size_t option_count,
+        int64_t option_count,
         JkOptionsParseResult *result);
 
 JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count);
@@ -406,17 +404,17 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk);
 
 JK_PUBLIC void jk_platform_print_stdout(JkBuffer string);
 
-JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n);
+JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n);
 
-JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n);
+JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n);
 
 JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name);
 
 JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name);
 
-JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait);
+JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait);
 
-JK_PUBLIC void jk_platform_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count);
+JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count);
 
 JK_PUBLIC void jk_platform_print_bytes_double(FILE *file, char *format, double byte_count);
 

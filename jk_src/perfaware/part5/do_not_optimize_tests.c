@@ -32,9 +32,9 @@ JK_PUBLIC double arbitrary_work(double x_squared)
     return _mm_cvtsd_f64(result);
 }
 
-static void recommended_way(uint32_t rep_count)
+static void recommended_way(int64_t rep_count)
 {
-    for (uint32_t i = 0; i < rep_count; i++) {
+    for (int64_t i = 0; i < rep_count; i++) {
         double value = 0.5;
 
 #if __clang__
@@ -49,9 +49,9 @@ static void recommended_way(uint32_t rep_count)
     }
 }
 
-static void our_way(uint32_t rep_count)
+static void our_way(int64_t rep_count)
 {
-    for (uint32_t i = 0; i < rep_count; i++) {
+    for (int64_t i = 0; i < rep_count; i++) {
         double value = 0.5;
 
 #if __clang__
@@ -66,9 +66,9 @@ static void our_way(uint32_t rep_count)
     }
 }
 
-static void fix_attempt_1(uint32_t rep_count)
+static void fix_attempt_1(int64_t rep_count)
 {
-    for (uint32_t i = 0; i < rep_count; i++) {
+    for (int64_t i = 0; i < rep_count; i++) {
         double value;
 
 #if __clang__
@@ -83,9 +83,9 @@ static void fix_attempt_1(uint32_t rep_count)
     }
 }
 
-static void fix_attempt_2(uint32_t rep_count)
+static void fix_attempt_2(int64_t rep_count)
 {
-    for (uint32_t i = 0; i < rep_count; i++) {
+    for (int64_t i = 0; i < rep_count; i++) {
         double value;
 
 #if __clang__
@@ -100,7 +100,7 @@ static void fix_attempt_2(uint32_t rep_count)
     }
 }
 
-typedef void LoopFunction(uint32_t rep_count);
+typedef void LoopFunction(int64_t rep_count);
 
 typedef struct TestFunction {
     char *name;
@@ -118,9 +118,9 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
 int main(void)
 {
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    for (uint32_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
         TestFunction *function = functions + i;
         JkPlatformRepetitionTest *test = tests + i;
 

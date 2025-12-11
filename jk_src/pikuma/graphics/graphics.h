@@ -4,7 +4,7 @@
 #include <jk_src/jk_lib/jk_lib.h>
 
 #define DRAW_BUFFER_SIDE_LENGTH 4096
-#define DRAW_BUFFER_SIZE (sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
+#define DRAW_BUFFER_SIZE (JK_SIZEOF(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
 
 #define CLEAR_COLOR_R 0x16
 #define CLEAR_COLOR_G 0x20
@@ -29,7 +29,7 @@ typedef struct Face {
 } Face;
 
 typedef struct FaceArray {
-    uint64_t count;
+    int64_t count;
     Face *items;
 } FaceArray;
 
@@ -41,7 +41,7 @@ typedef struct Assets {
 typedef struct State {
     JkColor *draw_buffer;
     JkBuffer memory;
-    uint64_t os_timer_frequency;
+    int64_t os_timer_frequency;
 
     uint64_t flags;
     JkIntVector2 dimensions;

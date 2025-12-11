@@ -18,7 +18,7 @@ static float coeffs[][10] = {
 };
 // clang-format on
 
-static float compute_polynomial(float x, uint64_t coefficient_count, float *coefficients)
+static float compute_polynomial(float x, int64_t coefficient_count, float *coefficients)
 {
     float result = coefficients[--coefficient_count];
     while (coefficient_count) {
@@ -72,7 +72,7 @@ int main(void)
     while (jk_precision_test(&test, 0, JK_PI / 2, 100000000)) {
         float reference = sinf(test.input);
         jk_precision_test_result(&test, reference, sin_unrolled(test.input), "sin_unrolled");
-        for (uint64_t i = 0; i < JK_ARRAY_COUNT(coeffs); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(coeffs); i++) {
             jk_precision_test_result(&test,
                     reference,
                     compute_polynomial(test.input, i + 5, coeffs[i]),

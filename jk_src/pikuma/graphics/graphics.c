@@ -21,11 +21,11 @@ static void draw_pixel(State *state, JkIntVector2 pos, JkColor color)
 static void draw_rect(State *state, JkIntVector2 pos, JkIntVector2 dimensions, JkColor color)
 {
     JkIntVector2 top_left;
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(top_left.coords); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(top_left.coords); i++) {
         top_left.coords[i] = JK_MAX(pos.coords[i], 0);
     }
     JkIntVector2 bottom_right;
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(bottom_right.coords); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(bottom_right.coords); i++) {
         bottom_right.coords[i] =
                 JK_MIN(top_left.coords[i] + dimensions.coords[i], state->dimensions.coords[i]);
     }
@@ -233,7 +233,7 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
 
     JkEdgeArray edges = jk_triangle2_edges_get(&tmp_arena, tri);
 
-    uint64_t coverage_size = sizeof(float) * (dimensions.x + 1);
+    int64_t coverage_size = JK_SIZEOF(float) * (dimensions.x + 1);
     JkBuffer coverage_buf = jk_arena_push_buffer(&tmp_arena, 2 * coverage_size);
     float *coverage = (float *)coverage_buf.data;
     float *fill = (float *)(coverage_buf.data + coverage_size);
@@ -242,7 +242,7 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
 
         float scan_y_top = (float)y;
         float scan_y_bottom = scan_y_top + 1.0f;
-        for (uint64_t i = 0; i < edges.count; i++) {
+        for (int64_t i = 0; i < edges.count; i++) {
             float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
             float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
             if (y_top < y_bottom) {
@@ -335,7 +335,7 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
             JkColor pixel_color = color;
             pixel_color.a = (uint8_t)alpha;
 
-            uint64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
+            int64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
             state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], pixel_color);
         }
     }
@@ -368,7 +368,8 @@ void render(Assets *assets, State *state)
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
-    JkVector3 *screen_vertices = jk_arena_push(&arena, vertices.count * sizeof(*screen_vertices));
+    JkVector3 *screen_vertices =
+            jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
         screen_vertices[i] = (JkVector3){
             .x = vertices.items[i].x,

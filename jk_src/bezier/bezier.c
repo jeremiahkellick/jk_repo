@@ -1,6 +1,5 @@
 #include "bezier.h"
 
-#include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -79,7 +78,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
 
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(
-            &arena_root, (JkBuffer){.size = sizeof(bezier->memory), .data = bezier->memory});
+            &arena_root, (JkBuffer){.size = JK_SIZEOF(bezier->memory), .data = bezier->memory});
 
     JkShapesRenderer renderer;
     jk_shapes_renderer_init(&renderer,
@@ -109,12 +108,10 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
         int32_t cs = 0;
         int32_t ce = 0;
         for (pos.y = 0; pos.y < bezier->draw_square_side_length; pos.y++) {
-            while (ce < draw_commands.count && draw_commands.items[ce].position.y <= pos.y) {
+            while (ce < draw_commands.count && draw_commands.items[ce].rect.min.y <= pos.y) {
                 ce++;
             }
-            while (cs < draw_commands.count
-                    && !(pos.y < draw_commands.items[cs].position.y
-                                    + draw_commands.items[cs].dimensions.y)) {
+            while (cs < draw_commands.count && !(pos.y < draw_commands.items[cs].rect.max.y)) {
                 cs++;
             }
 
@@ -122,13 +119,14 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
                 JkColor color = color_dark_squares;
                 for (int32_t i = cs; i < ce; i++) {
                     JkShapesDrawCommand *command = draw_commands.items + i;
-                    JkIntVector2 bitmap_pos =
-                            jk_int_vector_2_sub(pos, draw_commands.items[i].position);
-                    if (0 <= bitmap_pos.x && bitmap_pos.x < command->dimensions.x
-                            && bitmap_pos.y < command->dimensions.y) {
+                    if (command->rect.min.x <= pos.x && pos.x < command->rect.max.x
+                            && pos.y < command->rect.max.y) {
                         uint8_t alpha;
                         if (command->alpha_map) {
-                            int32_t index = bitmap_pos.y * command->dimensions.x + bitmap_pos.x;
+                            JkIntVector2 bitmap_pos =
+                                    jk_int_vector_2_sub(pos, draw_commands.items[i].rect.min);
+                            int32_t width = command->rect.max.x - command->rect.min.x;
+                            int32_t index = bitmap_pos.y * width + bitmap_pos.x;
                             alpha = command->alpha_map[index];
                         } else {
                             alpha = command->color.a;

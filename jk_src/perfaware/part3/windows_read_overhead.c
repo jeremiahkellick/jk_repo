@@ -28,7 +28,7 @@ typedef struct ReadParams {
 
 typedef void ReadFunction(JkPlatformRepetitionTest *test, ReadParams params);
 
-static uint64_t large_page_size;
+static int64_t large_page_size;
 
 static void *global_buffer;
 
@@ -50,7 +50,7 @@ static b32 handle_allocation(JkPlatformRepetitionTest *test, ReadParams *params)
 
     case VIRTUAL_ALLOC:
     case VIRTUAL_ALLOC_LARGE_PAGES: {
-        size_t size = params->dest.size;
+        int64_t size = params->dest.size;
         DWORD flAllocationType = MEM_COMMIT | MEM_RESERVE;
 
         if (params->alloc == VIRTUAL_ALLOC_LARGE_PAGES) {
@@ -100,7 +100,7 @@ static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params
         }
 
         jk_platform_repetition_test_time_begin(test);
-        for (size_t i = 0; i < params.dest.size; i++) {
+        for (int64_t i = 0; i < params.dest.size; i++) {
             params.dest.data[i] = (uint8_t)i;
         }
         jk_platform_repetition_test_time_end(test);
@@ -119,7 +119,7 @@ static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadPar
         }
 
         jk_platform_repetition_test_time_begin(test);
-        for (size_t i = 0; i < params.dest.size; i++) {
+        for (int64_t i = 0; i < params.dest.size; i++) {
             params.dest.data[params.dest.size - 1 - i] = (uint8_t)i;
         }
         jk_platform_repetition_test_time_end(test);
@@ -171,10 +171,10 @@ static void read_via_read(JkPlatformRepetitionTest *test, ReadParams params)
         }
 
         uint8_t *dest = params.dest.data;
-        uint64_t size_remaining = params.dest.size;
+        int64_t size_remaining = params.dest.size;
         while (size_remaining) {
             int read_size = INT_MAX;
-            if ((uint64_t)read_size > size_remaining) {
+            if (read_size > size_remaining) {
                 read_size = (int)size_remaining;
             }
 
@@ -217,10 +217,10 @@ static void read_via_read_file(JkPlatformRepetitionTest *test, ReadParams params
         }
 
         uint8_t *dest = params.dest.data;
-        uint64_t size_remaining = params.dest.size;
+        int64_t size_remaining = params.dest.size;
         while (size_remaining) {
             DWORD read_size = UINT_MAX;
-            if ((uint64_t)read_size > size_remaining) {
+            if ((int64_t)read_size > size_remaining) {
                 read_size = (DWORD)size_remaining;
             }
 
@@ -288,10 +288,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (;;) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
             for (params.alloc = 0; params.alloc < ALLOC_COUNT; params.alloc++) {
                 JkPlatformRepetitionTest *test = &tests[params.alloc][i];
 

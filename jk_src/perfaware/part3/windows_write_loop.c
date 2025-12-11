@@ -10,18 +10,18 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-void buffer_loop_mov(size_t size, void *data);
-void buffer_loop_cmp(size_t size, void *data);
-void buffer_loop_dec(size_t size, void *data);
-void buffer_loop_nop(size_t size, void *data);
-void buffer_loop_nop_3(size_t size, void *data);
-void buffer_loop_nop_9(size_t size, void *data);
-void loop_predictable(size_t size, void *data);
-void loop_unpredictable(size_t size, void *data);
+void buffer_loop_mov(int64_t size, void *data);
+void buffer_loop_cmp(int64_t size, void *data);
+void buffer_loop_dec(int64_t size, void *data);
+void buffer_loop_nop(int64_t size, void *data);
+void buffer_loop_nop_3(int64_t size, void *data);
+void buffer_loop_nop_9(int64_t size, void *data);
+void loop_predictable(int64_t size, void *data);
+void loop_unpredictable(int64_t size, void *data);
 
 typedef struct TestCandidate {
     char *name;
-    void (*function)(size_t, void *);
+    void (*function)(int64_t, void *);
 } TestCandidate;
 
 static TestCandidate candidates[] = {
@@ -34,17 +34,17 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
 
 int main(int argc, char **argv)
 {
-    size_t size = 1024 * 1024 * 1024;
+    int64_t size = 1024 * 1024 * 1024;
     void *data = malloc(size);
     if (!data) {
         fprintf(stderr, "%s: Failed to allocate memory\n", argv[0]);
         exit(1);
     }
 
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (;;) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(candidates); i++) {
             JkPlatformRepetitionTest *test = &tests[i];
 
             printf("\n%s\n", candidates[i].name);

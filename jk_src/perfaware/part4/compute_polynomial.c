@@ -8,7 +8,7 @@
 
 #include "compute_polynomial.h"
 
-double compute_polynomial(double x, double *coefficients, uint64_t coefficient_count)
+double compute_polynomial(double x, double *coefficients, int64_t coefficient_count)
 {
     __m128d x_squared = _mm_set_sd(x * x);
     __m128d result = _mm_set_sd(coefficients[--coefficient_count]);

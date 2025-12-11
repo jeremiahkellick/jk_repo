@@ -23,7 +23,7 @@ static int32_t unicode_codepoints[] = {
 
 static void print_buffer(JkBuffer buffer)
 {
-    for (uint64_t i = 0; i < buffer.size; i++) {
+    for (int64_t i = 0; i < buffer.size; i++) {
         putc(buffer.data[i], stdout);
     }
 }
@@ -146,7 +146,7 @@ int main(void)
     // ---- Arena begin --------------------------------------------------------
     printf("Arena\n");
 
-    uint64_t page_size = jk_platform_page_size();
+    int64_t page_size = jk_platform_page_size();
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, page_size * 3);
     JK_ASSERT(jk_arena_valid(&arena));
@@ -154,22 +154,22 @@ int main(void)
     {
         JkArena child = jk_arena_child_get(&arena);
 
-        uint8_t *push1 = jk_arena_push(&child, sizeof(string1));
+        uint8_t *push1 = jk_arena_push(&child, JK_SIZEOF(string1));
         JK_ASSERT(push1);
-        memcpy(push1, string1, sizeof(string1));
+        memcpy(push1, string1, JK_SIZEOF(string1));
         printf("%s", push1);
 
         uint8_t *push2 = jk_arena_push(&child, page_size * 2);
         JK_ASSERT(push2);
-        uint8_t *print = &push2[page_size * 2 - sizeof(string2)];
-        memcpy(print, string2, sizeof(string2));
+        uint8_t *print = &push2[page_size * 2 - JK_SIZEOF(string2)];
+        memcpy(print, string2, JK_SIZEOF(string2));
         printf("%s", print);
 
-        uint64_t size_before = child.root->memory.size;
-        uint64_t pos_before = child.pos;
+        int64_t size_before = child.root->memory.size;
+        int64_t pos_before = child.pos;
         uint8_t *push3 = jk_arena_push(&child, page_size * 2);
-        uint64_t size_after = child.root->memory.size;
-        uint64_t pos_after = child.pos;
+        int64_t size_after = child.root->memory.size;
+        int64_t pos_after = child.pos;
         JK_ASSERT(push3 == NULL);
         JK_ASSERT(size_before == size_after);
         JK_ASSERT(pos_before == pos_after);
@@ -186,14 +186,14 @@ int main(void)
     print_buffer(JKS("Hello, world!\n"));
     print_buffer(buffer);
 
-    uint64_t pos = 5;
+    int64_t pos = 5;
     printf("Character in bounds: %d\n", jk_buffer_character_next(buffer, &pos));
     pos = 9001;
     printf("Character out of bounds: %d\n", jk_buffer_character_next(buffer, &pos));
 
     uint8_t bit_buffer_data[] = {0xa3, 0xc4, 0x8c, 0x5e};
-    JkBuffer bit_buffer = {.size = sizeof(bit_buffer_data), .data = bit_buffer_data};
-    uint64_t bit_cursor = 0;
+    JkBuffer bit_buffer = {.size = JK_SIZEOF(bit_buffer_data), .data = bit_buffer_data};
+    int64_t bit_cursor = 0;
     JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 3) == 0x3);
     JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 16) == 0x9894);
     JK_ASSERT(jk_buffer_bits_read(bit_buffer, &bit_cursor, 10) == 0x3d1);
@@ -275,7 +275,7 @@ int main(void)
     DoubleUnion round_trip_nan_negative = {.f = jk_pack_f64(jk_unpack_f64(nan_negative.f))};
     JK_ASSERT(nan_negative.bits == round_trip_nan_negative.bits);
 
-    for (uint64_t i = 0; i < 10000; i++) {
+    for (int64_t i = 0; i < 10000; i++) {
         DoubleUnion value = {.bits = jk_random_u64(&generator)};
         if (isnan(value.f)) {
             DoubleUnion round_trip = {.f = jk_pack_f64(jk_unpack_f64(value.f))};
@@ -302,7 +302,7 @@ int main(void)
     FloatUnion reference_nan_ceil_negative = {.f = ceilf(-some_nan_32.f)};
     JK_ASSERT(my_nan_ceil_negative.bits == reference_nan_ceil_negative.bits);
 
-    for (uint64_t i = 0; i < 10000; i++) {
+    for (int64_t i = 0; i < 10000; i++) {
         FloatUnion value = {.bits = jk_random_u64(&generator)};
         double reference = ceilf(value.f);
         if (isnan(reference)) {

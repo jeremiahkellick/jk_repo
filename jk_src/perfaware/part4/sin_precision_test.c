@@ -9,7 +9,7 @@
 
 #include "listing_0184_sine_coefficients.c"
 
-static double compute_sin_from_table(double x, double *coefficients, uint64_t coefficient_count)
+static double compute_sin_from_table(double x, double *coefficients, int64_t coefficient_count)
 {
     double sign = x < 0.0 ? -1.0 : 1.0;
     x = fabs(x);

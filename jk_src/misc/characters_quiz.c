@@ -44,9 +44,9 @@ static void print_character(FILE *file, Character *character)
             character->v[TRANSLATION].data);
 }
 
-static void swap(size_t *a, size_t *b)
+static void swap(int64_t *a, int64_t *b)
 {
-    size_t tmp = *a;
+    int64_t tmp = *a;
     *a = *b;
     *b = tmp;
 }
@@ -61,9 +61,9 @@ int main(int argc, char **argv)
     jk_platform_console_utf8_enable();
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
     JkBuffer file = jk_platform_file_read_full(&storage, argv[1]);
-    size_t file_ptr = 0;
+    int64_t file_ptr = 0;
 
     FILE *incorrect = fopen("incorrect.txt", "wb");
     if (incorrect == NULL) {
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
     }
 
     Character *characters = jk_arena_pointer_current(&storage);
-    size_t character_count = 0;
+    int64_t character_count = 0;
     while (file_ptr < file.size) {
         // Read character
         while (is_ignored(file.data[file_ptr])) {
@@ -82,8 +82,8 @@ int main(int argc, char **argv)
             break;
         }
         character_count++;
-        Character *data = jk_arena_push_zero(&storage, sizeof(*data));
-        size_t start = file_ptr;
+        Character *data = jk_arena_push_zero(&storage, JK_SIZEOF(*data));
+        int64_t start = file_ptr;
         data->v[CHARACTER].data = file.data + file_ptr;
         do {
             file_ptr++;
@@ -136,8 +136,8 @@ int main(int argc, char **argv)
         }
     } while (prompt == -1);
 
-    size_t *indicies = jk_arena_push(&storage, sizeof(*indicies) * character_count);
-    for (size_t i = 0; i < character_count; i++) {
+    int64_t *indicies = jk_arena_push(&storage, JK_SIZEOF(*indicies) * character_count);
+    for (int64_t i = 0; i < character_count; i++) {
         indicies[i] = i;
     }
     srand((unsigned)time(NULL));
@@ -145,11 +145,11 @@ int main(int argc, char **argv)
     while (!all_correct) {
         all_correct = true;
         // Shuffle questions
-        for (size_t i = character_count - 1; i > 0; i--) {
+        for (int64_t i = character_count - 1; i > 0; i--) {
             swap(&indicies[i], &indicies[rand() % (i + 1)]);
         }
-        for (size_t index = 0; index < character_count; index++) {
-            size_t i = indicies[index];
+        for (int64_t index = 0; index < character_count; index++) {
+            int64_t i = indicies[index];
             if (characters[i].correct) {
                 continue;
             }

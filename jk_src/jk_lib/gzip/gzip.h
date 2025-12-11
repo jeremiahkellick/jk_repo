@@ -16,9 +16,9 @@ typedef struct __attribute__((packed)) JkGzipTrailer {
 #pragma pack(pop)
 #endif
 
-JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, uint64_t uncompressed_size);
+JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompressed_size);
 
-JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, uint64_t uncompressed_size);
+JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, int64_t uncompressed_size);
 
 typedef union JkGzipDecompressResult {
     JkBuffer buffers[3];

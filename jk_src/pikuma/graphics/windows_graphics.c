@@ -67,7 +67,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
     BITMAPINFO bitmap_info = {
         .bmiHeader =
                 {
-                    .biSize = sizeof(BITMAPINFOHEADER),
+                    .biSize = JK_SIZEOF(BITMAPINFOHEADER),
                     .biWidth = DRAW_BUFFER_SIDE_LENGTH,
                     .biHeight = -DRAW_BUFFER_SIDE_LENGTH,
                     .biPlanes = 1,
@@ -139,8 +139,8 @@ DWORD app_thread(LPVOID param)
 {
     HWND window = (HWND)param;
 
-    uint64_t frequency = g.state.os_timer_frequency;
-    uint64_t ticks_per_frame = frequency / FRAME_RATE;
+    int64_t frequency = g.state.os_timer_frequency;
+    int64_t ticks_per_frame = frequency / FRAME_RATE;
 
     // Set the Windows scheduler granularity to 1ms
     b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
@@ -152,12 +152,12 @@ DWORD app_thread(LPVOID param)
     FILETIME graphics_dll_last_modified_time = {0};
 
     uint64_t time = 0;
-    uint64_t work_time_total = 0;
-    uint64_t work_time_min = ULLONG_MAX;
-    uint64_t work_time_max = 0;
-    uint64_t frame_time_total = 0;
-    uint64_t frame_time_min = ULLONG_MAX;
-    uint64_t frame_time_max = 0;
+    int64_t work_time_total = 0;
+    int64_t work_time_min = ULLONG_MAX;
+    int64_t work_time_max = 0;
+    int64_t frame_time_total = 0;
+    int64_t frame_time_min = ULLONG_MAX;
+    int64_t frame_time_max = 0;
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     while (g.running) {
@@ -196,7 +196,7 @@ DWORD app_thread(LPVOID param)
 
         uint64_t counter_work = jk_platform_os_timer_get();
         uint64_t counter_current = counter_work;
-        int64_t ticks_remaining = (uint64_t)target_flip_time - (uint64_t)counter_current;
+        int64_t ticks_remaining = target_flip_time - counter_current;
         if (ticks_remaining > 0) {
             do {
                 if (can_sleep) {
@@ -219,7 +219,7 @@ DWORD app_thread(LPVOID param)
 
         copy_draw_buffer_to_window(window, device_context);
 
-        uint64_t work_time = counter_work - counter_previous;
+        int64_t work_time = counter_work - counter_previous;
         work_time_total += work_time;
         if (work_time < work_time_min) {
             work_time_min = work_time;
@@ -228,7 +228,7 @@ DWORD app_thread(LPVOID param)
             work_time_max = work_time;
         }
 
-        uint64_t frame_time = counter_current - counter_previous;
+        int64_t frame_time = counter_current - counter_previous;
         frame_time_total += frame_time;
         if (frame_time < frame_time_min) {
             frame_time_min = frame_time;

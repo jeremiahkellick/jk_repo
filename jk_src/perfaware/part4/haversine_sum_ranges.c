@@ -106,7 +106,7 @@ static double haversine_track_intervals_sum(HaversineContext context)
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         sum += sum_coefficient
                 * haversine_track_intervals(
@@ -116,11 +116,11 @@ static double haversine_track_intervals_sum(HaversineContext context)
     return sum;
 }
 
-static uint64_t haversine_track_intervals_verify(HaversineContext context)
+static int64_t haversine_track_intervals_verify(HaversineContext context)
 {
-    uint64_t error_count = 0;
+    int64_t error_count = 0;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         if (!approximately_equal(context.answers[i],
                     haversine_track_intervals(
@@ -181,11 +181,11 @@ int main(int argc, char **argv)
     }
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    uint64_t error_count = haversine_track_intervals_verify(context);
+    int64_t error_count = haversine_track_intervals_verify(context);
     double sum = haversine_track_intervals_sum(context);
     b32 sum_mismatched = !approximately_equal(sum, context.sum_answer);
 

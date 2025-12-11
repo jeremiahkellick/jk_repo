@@ -29,7 +29,7 @@
 char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 typedef union Bits32 {
-    unsigned u;
+    uint32_t u;
     char c[4];
 } Bits32;
 
@@ -43,12 +43,12 @@ static Cluster default_cluster = {
     .y_min = -90.0,
 };
 
-static unsigned hash_string(char *string)
+static uint32_t hash_string(char *string)
 {
-    unsigned hash = 0;
+    uint32_t hash = 0;
     while (*string != '\0') {
         Bits32 bits = {0};
-        for (size_t i = 0; i < sizeof(bits.c) && *string != '\0'; i++, string++) {
+        for (int64_t i = 0; i < JK_SIZEOF(bits.c) && *string != '\0'; i++, string++) {
             bits.c[i] = *string;
         }
         hash = jk_hash_uint32(hash ^ bits.u);
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
     // Parse arguments
     int cluster_count = -1;
     int pair_count = DEFAULT_PAIR_COUNT;
-    unsigned seed = jk_hash_uint32((uint32_t)time(NULL));
+    uint32_t seed = jk_hash_uint32((uint32_t)time(NULL));
     char *json_file_path = DEFAULT_JSON_FILE_PATH;
     char *answer_file_path = DEFAULT_ANSWER_FILE_PATH;
     {
@@ -277,7 +277,7 @@ int main(int argc, char **argv)
 
         double distance = haversine_reference(x0, y0, x1, y1, EARTH_RADIUS);
         sum += distance * sum_coefficient;
-        fwrite(&distance, sizeof(double), 1, answers_file);
+        fwrite(&distance, JK_SIZEOF(double), 1, answers_file);
 
         remaining_in_cluster -= 2;
         if (remaining_in_cluster <= 0) {
@@ -286,7 +286,7 @@ int main(int argc, char **argv)
             cluster1 = random_cluster();
         }
     }
-    fwrite(&sum, sizeof(double), 1, answers_file);
+    fwrite(&sum, JK_SIZEOF(double), 1, answers_file);
 
     fprintf(json_file, "\n]}\n");
 

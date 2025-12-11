@@ -23,9 +23,13 @@ typedef enum Flag {
     FLAG_LIBRARY,
 } Flag;
 
+#define JK_SIZEOF(type) ((int64_t)sizeof(type))
+
+#define JK_OOB (-1)
+
 #define GIGABYTE (1llu << 30)
 
-#define JK_ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+#define JK_ARRAY_COUNT(array) (JK_SIZEOF(array) / JK_SIZEOF((array)[0]))
 
 #define JK_MIN(a, b) ((a) < (b) ? (a) : (b))
 
@@ -41,22 +45,24 @@ typedef enum Flag {
 // ---- Buffer begin -----------------------------------------------------------
 
 typedef struct JkBuffer {
-    uint64_t size;
+    int64_t size;
     uint8_t *data;
 } JkBuffer;
 
 typedef struct JkBufferArray {
-    uint64_t count;
+    int64_t count;
     JkBuffer *items;
 } JkBufferArray;
 
 #define JK_STRING(string_literal) \
-    ((JkBuffer){sizeof(string_literal) - 1, (uint8_t *)string_literal})
+    ((JkBuffer){JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal})
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal) \
-    {sizeof(string_literal) - 1, (uint8_t *)string_literal}
+#define JK_STRING_INITIALIZER(string_literal)                    \
+    {                                                            \
+        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
+    }
 
 #define JKSI JK_STRING_INITIALIZER
 
@@ -69,28 +75,28 @@ static JkBuffer jk_buffer_from_null_terminated(char *string)
     }
 }
 
-static int jk_buffer_character_get(JkBuffer buffer, uint64_t pos)
+static int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos)
 {
-    return pos < buffer.size ? buffer.data[pos] : EOF;
+    return (0 <= pos && pos < buffer.size) ? buffer.data[pos] : JK_OOB;
 }
 
-static int jk_buffer_character_next(JkBuffer buffer, uint64_t *pos)
+static int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos)
 {
-    int c = jk_buffer_character_get(buffer, *pos);
+    int32_t c = jk_buffer_character_get(buffer, *pos);
     (*pos)++;
     return c;
 }
 
-static int jk_buffer_compare(JkBuffer a, JkBuffer b)
+static int32_t jk_buffer_compare(JkBuffer a, JkBuffer b)
 {
-    for (uint64_t pos = 0; 1; pos++) {
-        int a_char = jk_buffer_character_get(a, pos);
-        int b_char = jk_buffer_character_get(b, pos);
+    for (int64_t pos = 0; 1; pos++) {
+        int32_t a_char = jk_buffer_character_get(a, pos);
+        int32_t b_char = jk_buffer_character_get(b, pos);
         if (a_char < b_char) {
             return -1;
         } else if (a_char > b_char) {
             return 1;
-        } else if (a_char == EOF && b_char == EOF) {
+        } else if (a_char == JK_OOB && b_char == JK_OOB) {
             return 0;
         }
     }
@@ -103,7 +109,7 @@ static b32 jk_char_is_whitespace(uint8_t c)
 
 static b32 jk_string_contains_whitespace(JkBuffer string)
 {
-    for (uint64_t i = 0; i < string.size; i++) {
+    for (int64_t i = 0; i < string.size; i++) {
         if (jk_char_is_whitespace(string.data[i])) {
             return 1;
         }
@@ -114,9 +120,9 @@ static b32 jk_string_contains_whitespace(JkBuffer string)
 // Returns the index where the search_string appears in the text if found, or -1 if not found
 static int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
 {
-    for (int64_t i = 0; i <= (int64_t)text.size - (int64_t)search_string.size; i++) {
+    for (int64_t i = 0; i <= text.size - search_string.size; i++) {
         b32 match = 1;
-        for (int64_t j = 0; j < (int64_t)search_string.size; j++) {
+        for (int64_t j = 0; j < search_string.size; j++) {
             if (text.data[i + j] != search_string.data[j]) {
                 match = 0;
                 break;
@@ -139,13 +145,13 @@ typedef struct JkArenaRoot {
 } JkArenaRoot;
 
 typedef struct JkArena {
-    uint64_t base;
-    uint64_t pos;
+    int64_t base;
+    int64_t pos;
     JkArenaRoot *root;
-    b32 (*grow)(struct JkArena *arena, uint64_t new_size);
+    b32 (*grow)(struct JkArena *arena, int64_t new_size);
 } JkArena;
 
-static b32 jk_arena_fixed_grow(JkArena *arena, uint64_t new_size)
+static b32 jk_arena_fixed_grow(JkArena *arena, int64_t new_size)
 {
     return 0; // Fixed arenas don't grow, duh
 }
@@ -161,9 +167,9 @@ static b32 jk_arena_valid(JkArena *arena)
     return !!arena->root;
 }
 
-static void *jk_arena_push(JkArena *arena, uint64_t size)
+static void *jk_arena_push(JkArena *arena, int64_t size)
 {
-    uint64_t new_pos = arena->pos + size;
+    int64_t new_pos = arena->pos + size;
     if (arena->root->memory.size < new_pos) {
         if (!arena->grow(arena, new_pos)) {
             return NULL;
@@ -174,14 +180,14 @@ static void *jk_arena_push(JkArena *arena, uint64_t size)
     return address;
 }
 
-static void *jk_arena_push_zero(JkArena *arena, uint64_t size)
+static void *jk_arena_push_zero(JkArena *arena, int64_t size)
 {
     void *address = jk_arena_push(arena, size);
     memset(address, 0, size);
     return address;
 }
 
-static void jk_arena_pop(JkArena *arena, uint64_t size)
+static void jk_arena_pop(JkArena *arena, int64_t size)
 {
     arena->pos -= size;
 }
@@ -231,32 +237,32 @@ static char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
 #define mkdir(path, mode) _mkdir(path)
 #define realpath(N, R) _fullpath(R, N, PATH_MAX)
 
-static size_t jk_platform_file_size(char *file_name)
+static int64_t jk_platform_file_size(char *file_name)
 {
     struct __stat64 info = {0};
     if (_stat64(file_name, &info)) {
         fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
         return 0;
     }
-    return (size_t)info.st_size;
+    return (int64_t)info.st_size;
 }
 
-static size_t jk_platform_page_size(void)
+static int64_t jk_platform_page_size(void)
 {
     return 4096;
 }
 
-static void *jk_platform_memory_reserve(size_t size)
+static void *jk_platform_memory_reserve(int64_t size)
 {
     return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
 }
 
-static b32 jk_platform_memory_commit(void *address, size_t size)
+static b32 jk_platform_memory_commit(void *address, int64_t size)
 {
     return VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
 }
 
-static void jk_platform_memory_free(void *address, size_t size)
+static void jk_platform_memory_free(void *address, int64_t size)
 {
     // TODO: Consider how to deal with different freeing behavior between Windows and Unix
     VirtualFree(address, 0, MEM_RELEASE);
@@ -289,7 +295,7 @@ static int jk_platform_exec(JkBufferArray command)
         return 1;
     }
 
-    STARTUPINFO si = {.cb = sizeof(si)};
+    STARTUPINFO si = {.cb = JK_SIZEOF(si)};
     PROCESS_INFORMATION pi = {0};
     int string_i = 0;
     for (int args_i = 0; args_i < command.count; args_i++) {
@@ -366,38 +372,48 @@ static JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
 #include <sys/wait.h>
 #include <unistd.h>
 
-static size_t jk_platform_file_size(char *file_name)
+static int64_t jk_platform_file_size(char *file_name)
 {
     struct stat stat_struct = {0};
     if (stat(file_name, &stat_struct)) {
         fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
         return 0;
     }
-    return (size_t)stat_struct.st_size;
+    return (int64_t)stat_struct.st_size;
 }
 
-static size_t jk_platform_page_size(void)
+static int64_t jk_platform_page_size(void)
 {
-    static size_t page_size = 0;
+    static int64_t page_size = 0;
     if (page_size == 0) {
         page_size = getpagesize();
     }
     return page_size;
 }
 
-static void *jk_platform_memory_reserve(size_t size)
+static void *jk_platform_memory_reserve(int64_t size)
 {
-    return mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (0 <= size) {
+        return mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    } else {
+        return 0;
+    }
 }
 
-static b32 jk_platform_memory_commit(void *address, size_t size)
+static b32 jk_platform_memory_commit(void *address, int64_t size)
 {
-    return !mprotect(address, size, PROT_READ | PROT_WRITE);
+    if (0 <= size) {
+        return !mprotect(address, size, PROT_READ | PROT_WRITE);
+    } else {
+        return 0;
+    }
 }
 
-static void jk_platform_memory_free(void *address, size_t size)
+static void jk_platform_memory_free(void *address, int64_t size)
 {
-    munmap(address, size);
+    if (0 < size) {
+        munmap(address, size);
+    }
 }
 
 static int jk_platform_exec(JkBufferArray command)
@@ -405,7 +421,7 @@ static int jk_platform_exec(JkBufferArray command)
     char buffer[4096];
 
     // Print command
-    for (uint64_t i = 0; i < command.count; i++) {
+    for (int64_t i = 0; i < command.count; i++) {
         if (i != 0) {
             printf(" ");
         }
@@ -420,10 +436,10 @@ static int jk_platform_exec(JkBufferArray command)
     // Convert string array to null terminated strings
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(
-            &arena_root, (JkBuffer){.size = sizeof(buffer), .data = (uint8_t *)buffer});
+            &arena_root, (JkBuffer){.size = JK_SIZEOF(buffer), .data = (uint8_t *)buffer});
 
-    char **argv = jk_arena_push(&arena, (command.count + 1) * sizeof(char *));
-    for (uint64_t i = 0; i < command.count; i++) {
+    char **argv = jk_arena_push(&arena, (command.count + 1) * JK_SIZEOF(char *));
+    for (int64_t i = 0; i < command.count; i++) {
         argv[i] = jk_arena_push(&arena, command.items[i].size + 1);
         if (!argv[i]) {
             fprintf(stderr, "jk_platform_exec: Command too large for buffer\n");
@@ -487,9 +503,9 @@ static JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
 
 #endif
 
-static size_t jk_platform_page_size_round_up(size_t n)
+static int64_t jk_platform_page_size_round_up(int64_t n)
 {
-    size_t page_size = jk_platform_page_size();
+    int64_t page_size = jk_platform_page_size();
     return (n + page_size - 1) & ~(page_size - 1);
 }
 
@@ -497,20 +513,20 @@ static size_t jk_platform_page_size_round_up(size_t n)
 
 typedef struct JkPlatformArenaVirtualRoot {
     JkArenaRoot generic;
-    uint64_t virtual_size;
+    int64_t virtual_size;
 } JkPlatformArenaVirtualRoot;
 
 static JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size);
+        JkPlatformArenaVirtualRoot *root, int64_t virtual_size);
 
-static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
+static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
 {
     JkPlatformArenaVirtualRoot *root = (JkPlatformArenaVirtualRoot *)arena->root;
     new_size = jk_platform_page_size_round_up(new_size);
-    if (root->virtual_size < new_size) {
+    if (!(root->generic.memory.size <= new_size && new_size <= root->virtual_size)) {
         return 0;
     } else {
-        uint64_t expansion_size = new_size - root->generic.memory.size;
+        int64_t expansion_size = new_size - root->generic.memory.size;
         if (jk_platform_memory_commit(
                     root->generic.memory.data + root->generic.memory.size, expansion_size)) {
             root->generic.memory.size = new_size;
@@ -522,9 +538,9 @@ static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
 }
 
 static JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size)
+        JkPlatformArenaVirtualRoot *root, int64_t virtual_size)
 {
-    uint64_t page_size = jk_platform_page_size();
+    int64_t page_size = jk_platform_page_size();
 
     root->virtual_size = virtual_size;
     root->generic.memory.size = page_size;
@@ -557,7 +573,7 @@ typedef struct StringNode {
 typedef struct StringArrayBuilder {
     JkArena *arena;
     StringNode tail;
-    uint64_t count;
+    int64_t count;
 } StringArrayBuilder;
 
 static void string_array_builder_init(StringArrayBuilder *b, JkArena *arena)
@@ -569,7 +585,7 @@ static void string_array_builder_init(StringArrayBuilder *b, JkArena *arena)
 
 static void string_array_builder_push(StringArrayBuilder *b, JkBuffer string)
 {
-    StringNode *node = jk_arena_push(b->arena, sizeof(*node));
+    StringNode *node = jk_arena_push(b->arena, JK_SIZEOF(*node));
     node->string = string;
     node->previous = b->tail.previous;
     b->tail.previous = node;
@@ -578,7 +594,7 @@ static void string_array_builder_push(StringArrayBuilder *b, JkBuffer string)
 
 static void string_array_builder_push_multiple(StringArrayBuilder *b, JkBufferArray strings)
 {
-    for (uint64_t i = 0; i < strings.count; i++) {
+    for (int64_t i = 0; i < strings.count; i++) {
         string_array_builder_push(b, strings.items[i]);
     }
 }
@@ -589,9 +605,9 @@ static void string_array_builder_push_null_terminated(StringArrayBuilder *b, cha
 }
 
 static void string_array_builder_push_null_terminated_multiple(
-        StringArrayBuilder *b, uint64_t count, char **strings)
+        StringArrayBuilder *b, int64_t count, char **strings)
 {
-    for (uint64_t i = 0; i < count; i++) {
+    for (int64_t i = 0; i < count; i++) {
         string_array_builder_push_null_terminated(b, strings[i]);
     }
 }
@@ -611,7 +627,7 @@ static JkBufferArray string_array_builder_build(StringArrayBuilder *b)
 {
     JkBufferArray result = {
         .count = b->count,
-        .items = jk_arena_push(b->arena, b->count * sizeof(result.items[0])),
+        .items = jk_arena_push(b->arena, b->count * JK_SIZEOF(result.items[0])),
     };
     int64_t i = result.count;
     for (StringNode *node = b->tail.previous; node; node = node->previous) {
@@ -630,23 +646,23 @@ static b32 string_array_builder_contains(StringArrayBuilder *b, JkBuffer search_
     return 0;
 }
 
-static JkBuffer string_array_builder_at_index(StringArrayBuilder *b, uint64_t index)
+static JkBuffer string_array_builder_at_index(StringArrayBuilder *b, int64_t index)
 {
-    if (b->count <= index) {
+    if (0 <= index && index < b->count) {
+        int64_t step_count = b->count - index;
+        StringNode *node = b->tail.previous;
+        while (--step_count) {
+            node = node->previous;
+        }
+        return node->string;
+    } else {
         return (JkBuffer){0};
     }
-
-    uint64_t step_count = b->count - index;
-    StringNode *node = b->tail.previous;
-    while (--step_count) {
-        node = node->previous;
-    }
-    return node->string;
 }
 
 #define append(string_array_builder, ...)                                    \
     string_array_builder_push_null_terminated_multiple(string_array_builder, \
-            sizeof((char *[]){__VA_ARGS__}) / sizeof(char *),                \
+            JK_SIZEOF(((char *[]){__VA_ARGS__})) / JK_SIZEOF(char *),        \
             (char *[]){__VA_ARGS__})
 
 static JkBuffer concat_strings(JkArena *arena, JkBuffer a, JkBuffer b)
@@ -661,7 +677,7 @@ static JkBuffer concat_strings(JkArena *arena, JkBuffer a, JkBuffer b)
 
 static void back_slashes_to_forward_slashes(JkBuffer string)
 {
-    for (uint64_t i = 0; i < string.size; i++) {
+    for (int64_t i = 0; i < string.size; i++) {
         if (string.data[i] == '\\') {
             string.data[i] = '/';
         }
@@ -696,9 +712,9 @@ static JkBuffer basename(JkBuffer path)
 {
     JkBuffer result;
 
-    uint64_t last_component = 0;
-    uint64_t last_dot = 0;
-    for (uint64_t i = 0; i < path.size; i++) {
+    int64_t last_component = 0;
+    int64_t last_dot = 0;
+    for (int64_t i = 0; i < path.size; i++) {
         switch (path.data[i]) {
         case '/':
             last_component = i + 1;
@@ -760,7 +776,7 @@ static Paths paths_get(JkArena *arena, JkArena *scratch_arena, JkBuffer source_f
                 source_file_relative_path.data);
         exit(1);
     }
-    paths.repo_root.size = (uint64_t)jk_src_offset;
+    paths.repo_root.size = jk_src_offset;
     paths.repo_root.data = paths.source_file.data;
 
     paths.build = concat_strings(arena, paths.repo_root, JKS("build"));
@@ -783,7 +799,7 @@ static b32 is_space_exclude_newlines(int c)
     }
 }
 
-static int next_nonspace(JkBuffer file, uint64_t *cursor)
+static int next_nonspace(JkBuffer file, int64_t *cursor)
 {
     int c;
     do {
@@ -820,7 +836,7 @@ static void ensure_directory_exists(JkBuffer directory_path)
         exit(1);
     }
 
-    uint64_t i = 0;
+    int64_t i = 0;
     if (directory_path.data[i] == '/') {
         i++; // Skip leading slash which indicates an absolute path
     }
@@ -859,7 +875,7 @@ typedef struct Options {
 
 static int jk_build(Options options, JkBuffer source_file_relative_path);
 
-static uint64_t parse_files(JkArena *storage,
+static int64_t parse_files(JkArena *storage,
         JkArena *scratch_arena,
         Options options,
         Paths paths,
@@ -870,19 +886,19 @@ static uint64_t parse_files(JkArena *storage,
 {
     uint64_t flags = 0;
 
-    uint64_t path_index = 0;
+    int64_t path_index = 0;
     JkBuffer path = paths.source_file;
     do {
         JkArena file_arena = jk_arena_child_get(scratch_arena);
         JkBuffer file = jk_platform_file_read_full(
                 &file_arena, jk_buffer_to_null_terminated(&file_arena, path));
 
-        uint64_t pos = 0;
+        int64_t pos = 0;
         b32 dependencies_open = 0;
 
-        int char1;
-        while ((char1 = jk_buffer_character_next(file, &pos)) != EOF) {
-            int pound;
+        int32_t char1;
+        while ((char1 = jk_buffer_character_next(file, &pos)) != JK_OOB) {
+            int32_t pound;
             if (char1 == '/') { // Parse control comment
                 if (jk_buffer_character_next(file, &pos) != '/') {
                     goto reset_parse;
@@ -899,10 +915,10 @@ static uint64_t parse_files(JkArena *storage,
             // Read control string
             JkBuffer control;
             {
-                uint64_t start = pos;
+                int64_t start = pos;
                 int c;
                 while (!isspace(c = jk_buffer_character_get(file, pos))) {
-                    if (c == EOF) {
+                    if (c == JK_OOB) {
                         goto end_of_file;
                     }
                     pos++;
@@ -917,7 +933,7 @@ static uint64_t parse_files(JkArena *storage,
             }
 
             if (char1 == '/' && jk_buffer_compare(control, jk_build_string) == 0) {
-                if (c0 == EOF || c0 == '\r' || c0 == '\n') {
+                if (c0 == JK_OOB || c0 == '\r' || c0 == '\n') {
                     fprintf(stderr,
                             "%s: Found #jk_build control comment with no command\n",
                             program_name);
@@ -928,9 +944,9 @@ static uint64_t parse_files(JkArena *storage,
                 // Read command
                 JkBuffer command;
                 {
-                    uint64_t start = pos;
+                    int64_t start = pos;
                     int c;
-                    while (!isspace(c = jk_buffer_character_get(file, pos)) && c != EOF) {
+                    while (!isspace(c = jk_buffer_character_get(file, pos)) && c != JK_OOB) {
                         pos++;
                     }
                     command.size = pos - start;
@@ -953,7 +969,7 @@ static uint64_t parse_files(JkArena *storage,
                                     a0 = jk_buffer_character_get(file, pos))) {
                                 pos++;
                             }
-                            if (a0 == EOF) {
+                            if (a0 == JK_OOB) {
                                 goto end_of_file;
                             }
                             if (a0 == '\r' || a0 == '\n') {
@@ -963,10 +979,10 @@ static uint64_t parse_files(JkArena *storage,
                             // Read argument
                             JkBuffer argument;
                             {
-                                uint64_t start = pos;
+                                int64_t start = pos;
                                 int c;
                                 while (!isspace(c = jk_buffer_character_get(file, pos))
-                                        && c != EOF) {
+                                        && c != JK_OOB) {
                                     pos++;
                                 }
                                 argument.size = pos - start;
@@ -1002,7 +1018,7 @@ static uint64_t parse_files(JkArena *storage,
                         while (is_space_exclude_newlines(c = jk_buffer_character_get(file, pos))) {
                             pos++;
                         }
-                        if (c == '\r' || c == '\n' || c == EOF) {
+                        if (c == '\r' || c == '\n' || c == JK_OOB) {
                             fprintf(stderr,
                                     "%s: '#jk_build build' expects a file path\n",
                                     program_name);
@@ -1013,10 +1029,10 @@ static uint64_t parse_files(JkArena *storage,
                     // Read file path
                     JkBuffer file_path_relative;
                     {
-                        uint64_t start = pos;
+                        int64_t start = pos;
                         int c;
                         while ((c = jk_buffer_character_get(file, pos)) != '\n' && c != '\r'
-                                && c != EOF) {
+                                && c != JK_OOB) {
                             pos++;
                         }
                         file_path_relative.size = pos - start;
@@ -1070,7 +1086,7 @@ static uint64_t parse_files(JkArena *storage,
                         while (is_space_exclude_newlines(c = jk_buffer_character_get(file, pos))) {
                             pos++;
                         }
-                        if (c == '\r' || c == '\n' || c == EOF) {
+                        if (c == '\r' || c == '\n' || c == JK_OOB) {
                             fprintf(stderr,
                                     "%s: '#jk_build nasm' expects a file path\n",
                                     program_name);
@@ -1081,10 +1097,10 @@ static uint64_t parse_files(JkArena *storage,
                     // Read nasm file path
                     JkBuffer nasm_file_path;
                     {
-                        uint64_t start = pos;
+                        int64_t start = pos;
                         int c;
                         while ((c = jk_buffer_character_get(file, pos)) != '\n' && c != '\r'
-                                && c != EOF) {
+                                && c != JK_OOB) {
                             pos++;
                         }
                         nasm_file_path.size = pos - start;
@@ -1103,7 +1119,7 @@ static uint64_t parse_files(JkArena *storage,
                     exit(1);
                 }
             } else if (char1 != '/' && jk_buffer_compare(control, JKS("include")) == 0) {
-                if (c0 == EOF) {
+                if (c0 == JK_OOB) {
                     goto end_of_file;
                 } else if (c0 != '<') {
                     goto reset_parse;
@@ -1113,10 +1129,10 @@ static uint64_t parse_files(JkArena *storage,
                 // Read path
                 JkBuffer include_path;
                 {
-                    uint64_t start = pos;
+                    int64_t start = pos;
                     int c;
                     while ((c = jk_buffer_character_get(file, pos)) != '>') {
-                        if (c == EOF) {
+                        if (c == JK_OOB) {
                             goto end_of_file;
                         }
                         if (c == '\r' || c == '\n') {
@@ -1246,11 +1262,11 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     }
 
     JkBufferArray nasm_files_array = string_array_builder_build(&nasm_files);
-    for (uint64_t i = 0; i < nasm_files_array.count; i++) {
+    for (int64_t i = 0; i < nasm_files_array.count; i++) {
         char output_path_buffer[16];
         JkBuffer output_path_relative = {
             .size = snprintf(
-                    output_path_buffer, sizeof(output_path_buffer), "/nasm%llu.o", (long long)i),
+                    output_path_buffer, JK_SIZEOF(output_path_buffer), "/nasm%llu.o", (long long)i),
             .data = (uint8_t *)output_path_buffer,
         };
         JkBuffer nasm_output_path = concat_strings(&storage, paths.build, output_path_relative);
@@ -1286,7 +1302,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     string_array_builder_init(&command, &storage);
 
     char mode_define[16];
-    snprintf(mode_define, sizeof(mode_define), "JK_BUILD_MODE=%d", options.mode);
+    snprintf(mode_define, JK_SIZEOF(mode_define), "JK_BUILD_MODE=%d", options.mode);
 
     switch (options.compiler) { // Compiler options
     case COMPILER_MSVC: {
@@ -1472,12 +1488,12 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         JkBuffer stu_file_path;
         {
             stu_file_path = jk_buffer_copy(&storage, paths.source_file);
-            _Static_assert(sizeof(JK_GEN_STRING_LITERAL) == sizeof(JK_SRC_STRING_LITERAL),
+            _Static_assert(JK_SIZEOF(JK_GEN_STRING_LITERAL) == JK_SIZEOF(JK_SRC_STRING_LITERAL),
                     "required for this simple find and replace to work");
-            uint64_t jk_src_index = jk_string_find(stu_file_path, jk_src_string);
+            int64_t jk_src_index = jk_string_find(stu_file_path, jk_src_string);
             memcpy(stu_file_path.data + jk_src_index,
                     JK_GEN_STRING_LITERAL,
-                    sizeof(JK_GEN_STRING_LITERAL) - 1);
+                    JK_SIZEOF(JK_GEN_STRING_LITERAL) - 1);
 
             stu_file_path.size--;
 
@@ -1519,7 +1535,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 (int)source_file_path_relative.size,
                 source_file_path_relative.data);
         JkBufferArray dependencies_array = string_array_builder_build(&dependencies);
-        for (uint64_t i = 0; i < dependencies_array.count; i++) {
+        for (int64_t i = 0; i < dependencies_array.count; i++) {
             fprintf(stu_file,
                     "#include <%.*s>\n",
                     (int)dependencies_array.items[i].size,
@@ -1570,7 +1586,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
     string_array_builder_concat(&command, &linker_arguments);
 
-    for (uint64_t i = 0; i < nasm_files.count; i++) {
+    for (int64_t i = 0; i < nasm_files.count; i++) {
         char file_name[32];
         snprintf(file_name,
                 32,

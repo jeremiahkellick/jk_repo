@@ -87,7 +87,7 @@ static uint8_t prev_register_file[REGISTER_FILE_BYTE_COUNT] = {0};
 static uint8_t memory[MEMORY_BYTE_COUNT];
 
 // Number of bytes read from the binary file
-static size_t code_byte_count;
+static int64_t code_byte_count;
 
 typedef enum Flag {
     FLAG_CARRY,
@@ -403,7 +403,7 @@ static bool next_byte(uint8_t *dest)
  * an error informing the user that their file ended in the middle of an instruction and exit the
  * program with code 1.
  */
-static void read_instruction_bytes(size_t n, uint8_t *dest)
+static void read_instruction_bytes(int64_t n, uint8_t *dest)
 {
     for (; n > 0; n--) {
         if (!next_byte(dest++)) {
@@ -520,7 +520,7 @@ static uint8_t decode_immediate_rm(uint8_t byte, bool sign_extend, Binop *binop)
 
 static bool decode_instruction(Instruction *inst)
 {
-    memset(inst, 0, sizeof(*inst));
+    memset(inst, 0, JK_SIZEOF(*inst));
 
     uint8_t byte;
     if (!next_byte(&byte)) {
@@ -677,7 +677,7 @@ static void print_flags(uint8_t flags_value)
 
 static void save_state(void)
 {
-    memcpy(prev_register_file, register_file, sizeof(register_file));
+    memcpy(prev_register_file, register_file, JK_SIZEOF(register_file));
     prev_flags = flags;
 }
 

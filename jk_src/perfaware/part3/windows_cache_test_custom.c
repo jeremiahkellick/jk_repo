@@ -10,9 +10,9 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-void read_asm_custom(uint64_t outer_loop_iterations, uint64_t inner_loop_iterations, void *data);
+void read_asm_custom(int64_t outer_loop_iterations, int64_t inner_loop_iterations, void *data);
 
-static uint64_t sizes[] = {
+static int64_t sizes[] = {
     // L1 boundary
     24 * 1024,
     28 * 1024,
@@ -61,12 +61,12 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(sizes)];
 
 int main(int argc, char **argv)
 {
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     void *data = jk_platform_memory_alloc(BUFFER_SIZE);
 
     for (;;) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {
             JkPlatformRepetitionTest *test = &tests[i];
 
             if (sizes[i] < 1024 * 1024) {
@@ -77,9 +77,9 @@ int main(int argc, char **argv)
                 printf("\n%.2f GiB\n", (double)sizes[i] / (1024 * 1024.0 * 1024.0));
             }
 
-            uint64_t inner_loop_iterations = sizes[i] / 256;
-            uint64_t outer_loop_iterations = BUFFER_SIZE / sizes[i];
-            uint64_t byte_count = outer_loop_iterations * sizes[i];
+            int64_t inner_loop_iterations = sizes[i] / 256;
+            int64_t outer_loop_iterations = BUFFER_SIZE / sizes[i];
+            int64_t byte_count = outer_loop_iterations * sizes[i];
             jk_platform_repetition_test_run_wave(test, byte_count, frequency, 10);
             while (jk_platform_repetition_test_running(test)) {
                 jk_platform_repetition_test_time_begin(test);

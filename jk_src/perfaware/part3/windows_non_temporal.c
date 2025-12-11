@@ -10,17 +10,17 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-void test_control(uint64_t outer_loop_iterations,
-        uint64_t inner_loop_iterations,
+void test_control(int64_t outer_loop_iterations,
+        int64_t inner_loop_iterations,
         void *input_data,
         void *output_data);
-void test_non_temporal(uint64_t outer_loop_iterations,
-        uint64_t inner_loop_iterations,
+void test_non_temporal(int64_t outer_loop_iterations,
+        int64_t inner_loop_iterations,
         void *input_data,
         void *output_data);
 
 typedef struct Function {
-    void (*ptr)(uint64_t, uint64_t, void *, void *);
+    void (*ptr)(int64_t, int64_t, void *, void *);
     char *name;
 } Function;
 
@@ -33,22 +33,22 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
 int main(int argc, char **argv)
 {
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    uint64_t input_size = 16llu * 1024;
-    uint64_t output_size = 1024llu * 1024 * 1024;
-    uint64_t outer_loop_iterations = input_size / 0x80;
-    uint64_t inner_loop_iterations = output_size / input_size;
+    int64_t input_size = 16llu * 1024;
+    int64_t output_size = 1024llu * 1024 * 1024;
+    int64_t outer_loop_iterations = input_size / 0x80;
+    int64_t inner_loop_iterations = output_size / input_size;
 
     void *input_data = jk_platform_memory_alloc(input_size + output_size);
     void *output_data = (char *)input_data + input_size;
 
-    for (uint32_t i = 0; i < input_size / sizeof(uint32_t); i++) {
-        ((uint32_t *)input_data)[i] = i;
+    for (int64_t i = 0; i < input_size / JK_SIZEOF(int64_t); i++) {
+        ((int64_t *)input_data)[i] = i;
     }
 
     for (;;) {
-        for (size_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
             Function *function = &functions[i];
             JkPlatformRepetitionTest *test = &tests[i];
 

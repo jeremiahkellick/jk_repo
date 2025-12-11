@@ -56,20 +56,20 @@ int main(int argc, char **argv)
     }
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    uint64_t error_count = haversine_verify(context);
+    int64_t error_count = haversine_verify(context);
 
     double sum_reference = 0.0;
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
-    uint64_t diff_count = 0;
+    int64_t diff_count = 0;
     double diff_total = 0.0;
     double diff_max = 0.0;
 
-    for (uint64_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         HaversinePair pair = context.pairs[i];
         double value_reference =
                 haversine_reference(pair.v[X0], pair.v[Y0], pair.v[X1], pair.v[Y1], EARTH_RADIUS);

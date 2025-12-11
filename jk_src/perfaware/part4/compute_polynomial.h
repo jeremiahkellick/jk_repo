@@ -3,6 +3,6 @@
 
 #include <stdint.h>
 
-double compute_polynomial(double x, double *coefficients, uint64_t coefficient_count);
+double compute_polynomial(double x, double *coefficients, int64_t coefficient_count);
 
 #endif

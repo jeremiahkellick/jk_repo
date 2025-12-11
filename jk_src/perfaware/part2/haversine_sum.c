@@ -69,13 +69,13 @@ int main(int argc, char **argv)
     }
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * sizeof(context.pairs[0]));
+    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * JK_SIZEOF(context.pairs[0]));
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
         double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];

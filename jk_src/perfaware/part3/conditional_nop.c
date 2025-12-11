@@ -11,7 +11,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-void conditional_nop(size_t size, void *data);
+void conditional_nop(uint64_t size, void *data);
 
 typedef enum Pattern {
     PATTERN_NONE,
@@ -35,7 +35,7 @@ char *pattern_names[PATTERN_COUNT] = {
 
 static void fill_with_pattern(JkBuffer buffer, Pattern pattern)
 {
-    for (size_t i = 0; i < buffer.size; i++) {
+    for (int64_t i = 0; i < buffer.size; i++) {
         uint8_t value = 0;
 
         switch (pattern) {
@@ -83,7 +83,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (;;) {
         for (Pattern pattern = 0; pattern < PATTERN_COUNT; pattern++) {

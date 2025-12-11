@@ -33,7 +33,7 @@ static char *program_name = "<program_name global should be overwritten with arg
 static double haversine_sum_1(HaversineContext context)
 {
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
         double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];
@@ -54,7 +54,7 @@ static double haversine_sum_1(HaversineContext context)
 static double haversine_sum_2(HaversineContext context)
 {
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
         double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];
@@ -77,7 +77,7 @@ static double haversine_sum_2(HaversineContext context)
 static double haversine_sum_3(HaversineContext context)
 {
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
         double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];
@@ -105,7 +105,7 @@ static double haversine_sum_3(HaversineContext context)
 static double haversine_sum_4(HaversineContext context)
 {
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
         double lat2 = RADIANS_PER_DEGREE * context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];
@@ -136,7 +136,7 @@ static double haversine_sum_4(HaversineContext context)
 static double haversine_sum_5(HaversineContext context)
 {
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1_deg = context.pairs[i].v[Y0];
         double lat2_deg = context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];
@@ -167,7 +167,7 @@ static double haversine_sum_5(HaversineContext context)
 static double haversine_sum_6(HaversineContext context)
 {
     double sum = 0.0;
-    for (size_t i = 0; i < context.pair_count; i++) {
+    for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1_deg = context.pairs[i].v[Y0];
         double lat2_deg = context.pairs[i].v[Y1];
         double lon1_deg = context.pairs[i].v[X0];
@@ -253,25 +253,25 @@ int main(int argc, char **argv)
     }
 
     JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
+    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
         JkPlatformRepetitionTest *test = &tests[i];
 
         printf("\n%s\n", functions[i].name);
 
         jk_platform_repetition_test_run_wave(
-                test, context.pair_count * sizeof(context.pairs[0]), frequency, 10);
+                test, context.pair_count * JK_SIZEOF(context.pairs[0]), frequency, 10);
         b32 passed = 1;
         while (jk_platform_repetition_test_running_baseline(test, tests + 0)) {
             jk_platform_repetition_test_time_begin(test);
             double sum = functions[i].call(context);
             jk_platform_repetition_test_count_bytes(
-                    test, context.pair_count * sizeof(context.pairs[0]));
+                    test, context.pair_count * JK_SIZEOF(context.pairs[0]));
             jk_platform_repetition_test_time_end(test);
             if (context.answers && !jk_float64_equal(sum, context.sum_answer, 0.00000001f)) {
                 passed = 0;

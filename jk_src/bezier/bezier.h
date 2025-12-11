@@ -16,7 +16,7 @@ typedef struct Bezier {
     uint64_t time;
     int32_t draw_square_side_length;
     JkColor *draw_buffer;
-    uint64_t cpu_timer_frequency;
+    int64_t cpu_timer_frequency;
     uint64_t (*cpu_timer_get)(void);
     void (*debug_print)(char *);
     uint8_t memory[512llu * 1024 * 1024];

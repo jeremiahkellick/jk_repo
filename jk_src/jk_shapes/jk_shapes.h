@@ -16,22 +16,22 @@ typedef struct JkShapesBitmap {
 
 typedef struct JkShapesHashTableSlot {
     b32 filled;
-    uint64_t key;
+    int64_t key;
     JkShapesBitmap value;
 } JkShapesHashTableSlot;
 
 typedef struct JkShapesHashTable {
     JkShapesHashTableSlot *slots;
-    uint64_t capacity;
-    uint64_t count;
+    int64_t capacity;
+    int64_t count;
 } JkShapesHashTable;
 
 JK_PUBLIC JkShapesHashTable *jk_shapes_hash_table_init(JkShapesHashTable *t, JkBuffer memory);
 
-JK_PUBLIC JkShapesHashTableSlot *jk_shapes_hash_table_probe(JkShapesHashTable *t, uint64_t key);
+JK_PUBLIC JkShapesHashTableSlot *jk_shapes_hash_table_probe(JkShapesHashTable *t, int64_t key);
 
 JK_PUBLIC void jk_shapes_hash_table_set(
-        JkShapesHashTable *t, JkShapesHashTableSlot *slot, uint64_t key, JkShapesBitmap value);
+        JkShapesHashTable *t, JkShapesHashTableSlot *slot, int64_t key, JkShapesBitmap value);
 
 // ---- Hash table end ---------------------------------------------------------
 
@@ -64,7 +64,7 @@ typedef struct JkShapesPenCommand {
 } JkShapesPenCommand;
 
 typedef struct JkShapesPenCommandArray {
-    uint64_t count;
+    int64_t count;
     JkShapesPenCommand *items;
 } JkShapesPenCommandArray;
 
@@ -76,7 +76,7 @@ typedef struct JkShape {
 } JkShape;
 
 typedef struct JkShapeArray {
-    uint64_t count;
+    int64_t count;
     JkShape *items;
 } JkShapeArray;
 
@@ -92,7 +92,7 @@ typedef struct JkShapesDrawCommandListNode {
 } JkShapesDrawCommandListNode;
 
 typedef struct JkShapesDrawCommandArray {
-    uint64_t count;
+    int64_t count;
     JkShapesDrawCommand *items;
 } JkShapesDrawCommandArray;
 
@@ -132,10 +132,10 @@ JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(
         JkShapesRenderer *renderer, JkRect rect, float thickness, JkColor color);
 
 JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
-        JkShapesRenderer *renderer, uint32_t shape_index, float scale);
+        JkShapesRenderer *renderer, int64_t shape_index, float scale);
 
 JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
-        uint32_t shape_index,
+        int64_t shape_index,
         JkVector2 position,
         float scale,
         JkColor color);

@@ -25,6 +25,6 @@ int main(void)
 
     int tmp;
     jk_platform_profile_frame_begin();
-    jk_quicksort(array, ARRAY_LENGTH, sizeof(int), &tmp, int_compare);
+    jk_quicksort(array, ARRAY_LENGTH, JK_SIZEOF(int), &tmp, int_compare);
     jk_platform_profile_frame_end_and_print();
 }

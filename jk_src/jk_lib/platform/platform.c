@@ -42,43 +42,48 @@ static void jk_platform_globals_init(void)
         }                                       \
     } while (0)
 
-JK_PUBLIC size_t jk_platform_file_size(char *file_name)
+JK_PUBLIC int64_t jk_platform_file_size(char *file_name)
 {
     struct __stat64 info = {0};
     if (_stat64(file_name, &info)) {
         fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
         return 0;
     }
-    return (size_t)info.st_size;
+    return (int64_t)info.st_size;
 }
 
-JK_PUBLIC size_t jk_platform_page_size(void)
+JK_PUBLIC int64_t jk_platform_page_size(void)
 {
     return 4096;
 }
 
-JK_PUBLIC void *jk_platform_memory_reserve(size_t size)
+JK_PUBLIC void *jk_platform_memory_reserve(int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
 }
 
-JK_PUBLIC b32 jk_platform_memory_commit(void *address, size_t size)
+JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
 }
 
-JK_PUBLIC void *jk_platform_memory_alloc(size_t size)
+JK_PUBLIC void *jk_platform_memory_alloc(int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 }
 
-JK_PUBLIC void *jk_platform_memory_alloc_large(size_t size)
+JK_PUBLIC void *jk_platform_memory_alloc_large(int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES, PAGE_READWRITE);
 }
 
-JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
+JK_PUBLIC void jk_platform_memory_free(void *address, int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     // TODO: Consider how to deal with different freeing behavior between Windows and Unix
     VirtualFree(address, 0, MEM_RELEASE);
 }
@@ -121,10 +126,10 @@ static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
         }
     }
 
-    PROCESS_MEMORY_COUNTERS memory_counters = {.cb = sizeof(memory_counters)};
+    PROCESS_MEMORY_COUNTERS memory_counters = {.cb = JK_SIZEOF(memory_counters)};
     if (GetProcessMemoryInfo) {
         if (!GetProcessMemoryInfo(
-                    jk_platform_globals.process, &memory_counters, sizeof(memory_counters))) {
+                    jk_platform_globals.process, &memory_counters, JK_SIZEOF(memory_counters))) {
             // TODO: log error
         }
     } else {
@@ -136,7 +141,7 @@ static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
 JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
 {
     PROCESS_MEMORY_COUNTERS memory_counters = jk_process_memory_info_get();
-    return (uint64_t)memory_counters.PageFaultCount;
+    return memory_counters.PageFaultCount;
 }
 
 JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
@@ -146,7 +151,7 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
     return value.QuadPart;
 }
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
 {
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
@@ -163,8 +168,8 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
     }
 
     // Truncate file name at last component to convert it the containing directory name
-    uint64_t last_slash = 0;
-    for (uint64_t i = 0; buffer[i]; i++) {
+    int64_t last_slash = 0;
+    for (int64_t i = 0; buffer[i]; i++) {
         if (buffer[i] == '/' || buffer[i] == '\\') {
             last_slash = i;
         }
@@ -203,10 +208,10 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
         return 1;
     }
 
-    STARTUPINFO si = {.cb = sizeof(si)};
+    STARTUPINFO si = {.cb = JK_SIZEOF(si)};
     PROCESS_INFORMATION pi = {0};
-    uint64_t string_i = 0;
-    for (uint64_t args_i = 0; args_i < command.count; args_i++) {
+    int64_t string_i = 0;
+    for (int64_t args_i = 0; args_i < command.count; args_i++) {
         string_i += snprintf(&command_buffer[string_i],
                 JK_ARRAY_COUNT(command_buffer) - string_i,
                 jk_string_contains_whitespace(command.items[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
@@ -244,7 +249,7 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
     return (int)exit_status;
 }
 
-JK_PUBLIC void jk_platform_sleep(uint64_t milliseconds)
+JK_PUBLIC void jk_platform_sleep(int64_t milliseconds)
 {
     Sleep(milliseconds);
 }
@@ -253,8 +258,8 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
 {
     char buffer[MAX_PATH];
 
-    size_t length = strlen(directory_path);
-    size_t i = 0;
+    int64_t length = strlen(directory_path);
+    int64_t i = 0;
     if (directory_path[i] == '/') {
         i++; // Skip leading slash which indicates an absolute path
     }
@@ -294,41 +299,44 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
 #include <time.h>
 #endif
 
-JK_PUBLIC size_t jk_platform_file_size(char *file_name)
+JK_PUBLIC int64_t jk_platform_file_size(char *file_name)
 {
     struct stat stat_struct = {0};
     if (stat(file_name, &stat_struct)) {
         fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
         return 0;
     }
-    return (size_t)stat_struct.st_size;
+    return (int64_t)stat_struct.st_size;
 }
 
-JK_PUBLIC size_t jk_platform_page_size(void)
+JK_PUBLIC int64_t jk_platform_page_size(void)
 {
-    static size_t page_size = 0;
+    static int64_t page_size = 0;
     if (page_size == 0) {
         page_size = getpagesize();
     }
     return page_size;
 }
 
-JK_PUBLIC void *jk_platform_memory_reserve(size_t size)
+JK_PUBLIC void *jk_platform_memory_reserve(int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
 }
 
-JK_PUBLIC b32 jk_platform_memory_commit(void *address, size_t size)
+JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return !mprotect(address, size, PROT_READ | PROT_WRITE);
 }
 
-JK_PUBLIC void *jk_platform_memory_alloc(size_t size)
+JK_PUBLIC void *jk_platform_memory_alloc(int64_t size)
 {
+    JK_DEBUG_ASSERT(0 <= size);
     return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 }
 
-JK_PUBLIC void jk_platform_memory_free(void *address, size_t size)
+JK_PUBLIC void jk_platform_memory_free(void *address, int64_t size)
 {
     munmap(address, size);
 }
@@ -356,7 +364,7 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
     return mach_absolute_time();
 }
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
 {
     mach_timebase_info_data_t timebase_info;
     JK_ASSERT(mach_timebase_info(&timebase_info) == KERN_SUCCESS);
@@ -374,7 +382,7 @@ JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
     return (uint64_t)ts.tv_sec * 1000000000llu + (uint64_t)ts.tv_nsec;
 }
 
-JK_PUBLIC uint64_t jk_platform_os_timer_frequency(void)
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
 {
     return 1000000000llu;
 }
@@ -409,11 +417,11 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
     }
 #elif __linux__
     char path[PATH_MAX];
-    ssize_t len = readlink("/proc/self/exe", path, PATH_MAX - 1);
+    int64_t len = readlink("/proc/self/exe", path, PATH_MAX - 1);
     JK_ASSERT(len != -1);
 
     // Truncate path at last slash
-    for (ssize_t i = len - 1; 0 <= i; i--) {
+    for (int64_t i = len - 1; 0 <= i; i--) {
         if (path[i] == '/') {
             path[i] = '\0';
             break;
@@ -433,8 +441,8 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
 {
     char buffer[PATH_MAX];
 
-    uint64_t length = strlen(directory_path);
-    uint64_t i = 0;
+    int64_t length = jk_strlen(directory_path);
+    int64_t i = 0;
     if (directory_path[i] == '/') {
         i++; // Skip leading slash which indicates an absolute path
     }
@@ -516,14 +524,14 @@ _STATIC_ASSERT(0 && "Unknown ISA");
 
 // ---- Virtual arena begin ------------------------------------------------------------
 
-static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
+static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
 {
     JkPlatformArenaVirtualRoot *root = (JkPlatformArenaVirtualRoot *)arena->root;
     new_size = jk_platform_page_size_round_up(new_size);
-    if (root->virtual_size < new_size) {
+    if (!(root->generic.memory.size <= new_size && new_size <= root->virtual_size)) {
         return 0;
     } else {
-        uint64_t expansion_size = new_size - root->generic.memory.size;
+        int64_t expansion_size = new_size - root->generic.memory.size;
         if (jk_platform_memory_commit(
                     root->generic.memory.data + root->generic.memory.size, expansion_size)) {
             root->generic.memory.size = new_size;
@@ -535,9 +543,11 @@ static b32 jk_platform_arena_virtual_grow(JkArena *arena, uint64_t new_size)
 }
 
 JK_PUBLIC JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, uint64_t virtual_size)
+        JkPlatformArenaVirtualRoot *root, int64_t virtual_size)
 {
-    uint64_t page_size = jk_platform_page_size();
+    JK_DEBUG_ASSERT(0 <= virtual_size);
+
+    int64_t page_size = jk_platform_page_size();
 
     root->virtual_size = virtual_size;
     root->generic.memory.size = page_size;
@@ -564,17 +574,19 @@ JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *roo
 
 // ---- Profile begin ----------------------------------------------------------
 
+#define JK_PLATFORM_PROFILE_MAX_ZONES 1024
+
 typedef struct JkPlatformProfile {
     uint64_t start;
 
-    uint64_t frame_count;
-    uint64_t frame_elapsed[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT];
+    int64_t frame_count;
+    int64_t frame_elapsed[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT];
 
 #if !JK_PLATFORM_PROFILE_DISABLE
-    size_t zone_count;
-    JkPlatformProfileZone *zones[1024];
+    int64_t zone_count;
+    JkPlatformProfileZone *zones[JK_PLATFORM_PROFILE_MAX_ZONES];
     JkPlatformProfileZone *zone_current;
-    uint64_t zone_depth;
+    int64_t zone_depth;
 #endif
 } JkPlatformProfile;
 
@@ -583,7 +595,8 @@ static JkPlatformProfile jk_platform_profile;
 JK_PUBLIC void jk_platform_profile_frame_begin(void)
 {
     if (!jk_platform_profile.frame_count) {
-        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN] = UINT64_MAX;
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MIN] = INT64_MAX;
+        jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_MAX] = INT64_MIN;
     }
     jk_platform_profile.frame_count++;
     jk_platform_profile.start = jk_platform_cpu_timer_get();
@@ -591,7 +604,7 @@ JK_PUBLIC void jk_platform_profile_frame_begin(void)
 
 JK_PUBLIC void jk_platform_profile_frame_end(void)
 {
-    uint64_t elapsed = jk_platform_cpu_timer_get() - jk_platform_profile.start;
+    int64_t elapsed = jk_platform_cpu_timer_get() - jk_platform_profile.start;
 
     jk_platform_profile.frame_elapsed[JK_PLATFORM_PROFILE_FRAME_TOTAL] += elapsed;
 
@@ -606,7 +619,7 @@ JK_PUBLIC void jk_platform_profile_frame_end(void)
     }
 
 #if !JK_PLATFORM_PROFILE_DISABLE
-    for (uint64_t i = 0; i < jk_platform_profile.zone_count; i++) {
+    for (int64_t i = 0; i < jk_platform_profile.zone_count; i++) {
         JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
 
         JkPlatformProfileZoneFrame current = zone->frames[JK_PLATFORM_PROFILE_FRAME_CURRENT];
@@ -631,13 +644,13 @@ static void jk_platform_profile_frame_print(void (*print)(void *data, char *form
         char *name,
         JkPlatformProfileFrameType frame_index,
         double frequency,
-        uint64_t frame_count)
+        int64_t frame_count)
 {
-    uint64_t total = jk_platform_profile.frame_elapsed[frame_index];
+    int64_t total = jk_platform_profile.frame_elapsed[frame_index];
     print(data, "\n%s: %.4fms\n", name, 1000.0 * (double)total / (frequency * (double)frame_count));
 
 #if !JK_PLATFORM_PROFILE_DISABLE
-    for (size_t i = 0; i < jk_platform_profile.zone_count; i++) {
+    for (int64_t i = 0; i < jk_platform_profile.zone_count; i++) {
         JkPlatformProfileZone *zone = jk_platform_profile.zones[i];
         JkPlatformProfileZoneFrame *frame = zone->frames + frame_index;
 
@@ -645,7 +658,7 @@ static void jk_platform_profile_frame_print(void (*print)(void *data, char *form
                 && "jk_platform_profile_zone_begin was called without a matching "
                    "jk_platform_profile_zone_end");
 
-        for (uint64_t j = 0; j < frame->depth; j++) {
+        for (int64_t j = 0; j < frame->depth; j++) {
             print(data, "\t");
         }
         print(data,
@@ -664,7 +677,7 @@ static void jk_platform_profile_frame_print(void (*print)(void *data, char *form
         if (frame->byte_count) {
             double seconds = (double)frame->elapsed_inclusive / frequency;
             print(data, " ");
-            jk_platform_print_bytes_uint64(stdout, "%.3f", frame->byte_count / frame_count);
+            jk_platform_print_bytes_int64(stdout, "%.3f", frame->byte_count / frame_count);
             print(data, " at ");
             jk_platform_print_bytes_double(stdout, "%.3f", (double)frame->byte_count / seconds);
             print(data, "/s");
@@ -678,7 +691,7 @@ static void jk_platform_profile_frame_print(void (*print)(void *data, char *form
 JK_PUBLIC void jk_platform_profile_print_custom(
         void (*print)(void *data, char *format, ...), void *data)
 {
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
     print(data, "CPU frequency: %llu\n", frequency);
 
     if (jk_platform_profile.frame_count == 0) {
@@ -730,7 +743,7 @@ JK_PUBLIC void jk_platform_profile_frame_end_and_print(void)
 JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
         JkPlatformProfileZone *zone,
         char *name,
-        uint64_t byte_count)
+        int64_t byte_count)
 {
     JkPlatformProfileZoneFrame *frame = zone->frames + JK_PLATFORM_PROFILE_FRAME_CURRENT;
 
@@ -740,8 +753,7 @@ JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
         frame->byte_count += byte_count;
         frame->depth = jk_platform_profile.zone_depth;
         jk_platform_profile.zones[jk_platform_profile.zone_count++] = zone;
-        JK_DEBUG_ASSERT(
-                jk_platform_profile.zone_count <= JK_ARRAY_COUNT(jk_platform_profile.zones));
+        JK_DEBUG_ASSERT(jk_platform_profile.zone_count <= JK_PLATFORM_PROFILE_MAX_ZONES);
     }
 
     timing->parent = jk_platform_profile.zone_current;
@@ -762,7 +774,7 @@ JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
 
 JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing)
 {
-    uint64_t elapsed = jk_platform_cpu_timer_get() - timing->start;
+    int64_t elapsed = jk_platform_cpu_timer_get() - timing->start;
     JkPlatformProfileZoneFrame *parent_frame =
             timing->parent->frames + JK_PLATFORM_PROFILE_FRAME_CURRENT;
     JkPlatformProfileZoneFrame *current_frame =
@@ -799,15 +811,16 @@ JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing)
 // ---- Repetition test begin --------------------------------------------------
 
 JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *test,
-        uint64_t target_byte_count,
-        uint64_t frequency,
-        uint64_t try_for_seconds)
+        int64_t target_byte_count,
+        int64_t frequency,
+        int64_t try_for_seconds)
 {
     if (test->state == JK_REPETITION_TEST_ERROR) {
         return;
     }
     if (test->state == JK_REPETITION_TEST_UNINITIALIZED) {
-        test->min.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] = UINT64_MAX;
+        test->min.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] = INT64_MAX;
+        test->max.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] = INT64_MIN;
     }
     test->state = JK_REPETITION_TEST_RUNNING;
     test->target_byte_count = target_byte_count;
@@ -819,21 +832,19 @@ JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *te
 JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *test)
 {
     test->block_open_count++;
-    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_PAGE_FAULT_COUNT] -=
-            jk_platform_page_fault_count_get();
-    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] -= jk_platform_cpu_timer_get();
+    test->current.page_fault_count -= jk_platform_page_fault_count_get();
+    test->current.cpu_time -= jk_platform_cpu_timer_get();
 }
 
 JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test)
 {
-    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] += jk_platform_cpu_timer_get();
-    test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_PAGE_FAULT_COUNT] +=
-            jk_platform_page_fault_count_get();
+    test->current.cpu_time += jk_platform_cpu_timer_get();
+    test->current.page_fault_count += jk_platform_page_fault_count_get();
     test->block_close_count++;
 }
 
 JK_PUBLIC double jk_platform_repetition_test_bandwidth(
-        JkPlatformRepetitionTestSample sample, uint64_t frequency)
+        JkPlatformRepetitionTestSample sample, int64_t frequency)
 {
     double seconds =
             (double)sample.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] / (double)frequency;
@@ -843,14 +854,14 @@ JK_PUBLIC double jk_platform_repetition_test_bandwidth(
 static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *test,
         char *name,
         JkPlatformRepetitionTestSampleType type,
-        uint64_t frequency,
+        int64_t frequency,
         JkPlatformRepetitionTest *baseline)
 {
     JkPlatformRepetitionTestSample *sample = test->samples + type;
 
-    uint64_t count = sample->count ? sample->count : 1;
+    int64_t count = sample->count ? sample->count : 1;
 
-    uint64_t cpu_time = sample->cpu_time / count;
+    int64_t cpu_time = sample->cpu_time / count;
     double seconds = cpu_time / (double)frequency;
     printf("%s: %llu (%.2f ms", name, (long long)cpu_time, seconds * 1000.0);
     if (baseline) {
@@ -858,8 +869,8 @@ static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *t
             printf(", baseline");
         } else {
             JkPlatformRepetitionTestSample *baseline_sample = baseline->samples + type;
-            uint64_t baseline_count = baseline_sample->count ? baseline_sample->count : 1;
-            uint64_t baseline_cpu_time = baseline_sample->cpu_time / baseline_count;
+            int64_t baseline_count = baseline_sample->count ? baseline_sample->count : 1;
+            int64_t baseline_cpu_time = baseline_sample->cpu_time / baseline_count;
             if (cpu_time <= baseline_cpu_time) {
                 printf(", %.2fx faster", (double)baseline_cpu_time / (double)cpu_time);
             } else {
@@ -930,7 +941,7 @@ JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
     test->block_open_count = 0;
     test->block_close_count = 0;
 
-    if (current_time - test->last_found_min_time > test->try_for_clocks) {
+    if ((int64_t)(current_time - test->last_found_min_time) > test->try_for_clocks) {
         test->state = JK_REPETITION_TEST_COMPLETE;
 
         // Print results
@@ -961,7 +972,7 @@ JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test
 }
 
 JK_PUBLIC void jk_platform_repetition_test_count_bytes(
-        JkPlatformRepetitionTest *test, uint64_t bytes)
+        JkPlatformRepetitionTest *test, int64_t bytes)
 {
     test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT] += bytes;
 }
@@ -989,7 +1000,7 @@ JK_PUBLIC void jk_options_parse(int argc,
         char **argv,
         JkOption *options_in,
         JkOptionResult *options_out,
-        size_t option_count,
+        int64_t option_count,
         JkOptionsParseResult *result)
 {
     b32 options_ended = 0;
@@ -1008,7 +1019,7 @@ JK_PUBLIC void jk_options_parse(int argc,
                         end++;
                     }
                     b32 matched = 0;
-                    for (size_t j = 0; !matched && j < option_count; j++) {
+                    for (int64_t j = 0; !matched && j < option_count; j++) {
                         if (options_in[j].long_name
                                 && strncmp(name, options_in[j].long_name, end) == 0) {
                             matched = 1;
@@ -1044,7 +1055,7 @@ JK_PUBLIC void jk_options_parse(int argc,
                 b32 has_argument = 0;
                 for (char *c = &argv[i][1]; *c != '\0' && !has_argument; c++) {
                     b32 matched = 0;
-                    for (size_t j = 0; !matched && j < option_count; j++) {
+                    for (int64_t j = 0; !matched && j < option_count; j++) {
                         if (*c == options_in[j].flag) {
                             matched = 1;
                             options_out[j].present = 1;
@@ -1128,7 +1139,7 @@ JK_PUBLIC double jk_parse_double(JkBuffer number_string)
     double exponent_sign = 1.0;
     double exponent = 0.0;
 
-    uint64_t pos = 0;
+    int64_t pos = 0;
     int c = jk_buffer_character_next(number_string, &pos);
 
     if (c == '-') {
@@ -1205,15 +1216,15 @@ JK_PUBLIC void jk_platform_print_stdout(JkBuffer string)
     fwrite(string.data, 1, string.size, stdout);
 }
 
-JK_PUBLIC size_t jk_platform_page_size_round_up(size_t n)
+JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n)
 {
-    size_t page_size = jk_platform_page_size();
+    int64_t page_size = jk_platform_page_size();
     return (n + page_size - 1) & ~(page_size - 1);
 }
 
-JK_PUBLIC size_t jk_platform_page_size_round_down(size_t n)
+JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n)
 {
-    size_t page_size = jk_platform_page_size();
+    int64_t page_size = jk_platform_page_size();
     return n & ~(page_size - 1);
 }
 
@@ -1260,11 +1271,11 @@ JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_n
     JkBuffer file = jk_platform_file_read_full(arena, file_name);
     JkBufferArray lines = {.items = jk_arena_pointer_current(arena)};
 
-    uint64_t start = 0;
-    uint64_t i = 0;
+    int64_t start = 0;
+    int64_t i = 0;
     for (; i < file.size; i++) {
         if (file.data[i] == '\n') {
-            JkBuffer *line = jk_arena_push(arena, sizeof(*line));
+            JkBuffer *line = jk_arena_push(arena, JK_SIZEOF(*line));
             if (!line) {
                 goto end;
             }
@@ -1274,7 +1285,7 @@ JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_n
         }
     }
     if (start < i) {
-        JkBuffer *line = jk_arena_push(arena, sizeof(*line));
+        JkBuffer *line = jk_arena_push(arena, JK_SIZEOF(*line));
         if (!line) {
             goto end;
         }
@@ -1287,13 +1298,13 @@ end:
     return lines;
 }
 
-JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t milliseconds_to_wait)
+JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait)
 {
-    uint64_t os_freq = jk_platform_os_timer_frequency();
-    uint64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
+    int64_t os_freq = jk_platform_os_timer_frequency();
+    int64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
 
     uint64_t os_end = 0;
-    uint64_t os_elapsed = 0;
+    int64_t os_elapsed = 0;
     uint64_t cpu_start = jk_platform_cpu_timer_get();
     uint64_t os_start = jk_platform_os_timer_get();
     while (os_elapsed < os_wait_time) {
@@ -1302,19 +1313,20 @@ JK_PUBLIC uint64_t jk_platform_cpu_timer_frequency_estimate(uint64_t millisecond
     }
 
     uint64_t cpu_end = jk_platform_cpu_timer_get();
-    uint64_t cpu_elapsed = cpu_end - cpu_start;
+    int64_t cpu_elapsed = cpu_end - cpu_start;
 
     return os_freq * cpu_elapsed / os_elapsed;
 }
 
-JK_PUBLIC void jk_platform_print_bytes_uint64(FILE *file, char *format, uint64_t byte_count)
+JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count)
 {
-    if (byte_count < 1024) {
-        fprintf(file, "%llu bytes", (long long)byte_count);
-    } else if (byte_count < 1024 * 1024) {
+    int64_t abs = JK_ABS(byte_count);
+    if (abs < 1024) {
+        fprintf(file, "%lld bytes", (long long)byte_count);
+    } else if (abs < 1024 * 1024) {
         fprintf(file, format, (double)byte_count / 1024.0);
         fprintf(file, " KiB");
-    } else if (byte_count < 1024 * 1024 * 1024) {
+    } else if (abs < 1024 * 1024 * 1024) {
         fprintf(file, format, (double)byte_count / (1024.0 * 1024.0));
         fprintf(file, " MiB");
     } else {

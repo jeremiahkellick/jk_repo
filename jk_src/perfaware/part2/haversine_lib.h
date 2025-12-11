@@ -25,7 +25,7 @@ typedef struct HaversinePair {
 } HaversinePair;
 
 typedef struct HaversineContext {
-    uint64_t pair_count;
+    int64_t pair_count;
     HaversinePair *pairs;
     double *answers;
     double sum_answer;
@@ -33,17 +33,17 @@ typedef struct HaversineContext {
 
 typedef double (*HaversineSumFunction)(HaversineContext context);
 
-typedef uint64_t (*HaversineSumVerifyFunction)(HaversineContext context);
+typedef int64_t (*HaversineSumVerifyFunction)(HaversineContext context);
 
 JK_PUBLIC double haversine_reference_sum(HaversineContext context);
 
-JK_PUBLIC uint64_t haversine_reference_verify(HaversineContext context);
+JK_PUBLIC int64_t haversine_reference_verify(HaversineContext context);
 
 JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double EarthRadius);
 
 JK_PUBLIC double haversine_sum(HaversineContext context);
 
-JK_PUBLIC uint64_t haversine_verify(HaversineContext context);
+JK_PUBLIC int64_t haversine_verify(HaversineContext context);
 
 JK_PUBLIC HaversineContext haversine_setup(
         char *json_file_name, char *answers_file_name, JkArena *storage);

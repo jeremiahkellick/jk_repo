@@ -10,11 +10,11 @@
 
 JK_PUBLIC void jk_precision_test_check_reference(char *label,
         double (*function)(double),
-        uint32_t reference_count,
+        int64_t reference_count,
         JkPrecisionTestReference *references)
 {
     printf("%s:\n", label);
-    for (uint32_t i = 0; i < reference_count; i++) {
+    for (int64_t i = 0; i < reference_count; i++) {
         printf("f(%+.24f) = %+.24f [reference]\n", references[i].input, references[i].output);
         double output = function(references[i].input);
         printf("                               = %+.24f (%+.24f) [%s]\n",
@@ -30,7 +30,7 @@ static double jk_precision_test_result_diff_avg(JkPrecisionTestResult result)
     return result.diff_total / (double)result.diff_count;
 }
 
-JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, uint64_t step_count)
+JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, int64_t step_count)
 {
     t->input = min + (max - min) * (double)t->step_index / (double)(step_count - 1);
     t->result_index = t->result_count;
@@ -93,18 +93,18 @@ static int jk_precision_test_result_compare(void *a, void *b)
     return a_diff_max < b_diff_max ? -1 : b_diff_max < a_diff_max ? 1 : 0;
 }
 
-static void jk_precision_test_result_quicksort(uint64_t count, JkPrecisionTestResult *data)
+static void jk_precision_test_result_quicksort(int64_t count, JkPrecisionTestResult *data)
 {
     JkPrecisionTestResult tmp;
     jk_quicksort(
-            data, count, sizeof(JkPrecisionTestResult), &tmp, jk_precision_test_result_compare);
+            data, count, JK_SIZEOF(JkPrecisionTestResult), &tmp, jk_precision_test_result_compare);
 }
 
 JK_PUBLIC void jk_precision_test_print(JkPrecisionTest *t)
 {
     jk_precision_test_result_quicksort(t->result_count, t->results);
 
-    for (uint64_t i = 0; i < t->result_count; i++) {
+    for (int64_t i = 0; i < t->result_count; i++) {
         JkPrecisionTestResult result = t->results[i];
         printf("%+.24f (%+.24f) [%s]\n",
                 result.diff_max,

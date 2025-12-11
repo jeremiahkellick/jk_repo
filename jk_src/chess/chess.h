@@ -142,7 +142,7 @@ typedef enum ChessFlag {
 } ChessFlag;
 
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
-#define DRAW_BUFFER_SIZE (sizeof(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
+#define DRAW_BUFFER_SIZE (JK_SIZEOF(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
 
 #define CLEAR_COLOR_B 0x27
 #define CLEAR_COLOR_G 0x20
@@ -243,9 +243,9 @@ typedef struct Ai {
     MoveNode *root;
 
     uint64_t time;
-    uint64_t time_frequency;
+    int64_t time_frequency;
     uint64_t time_started;
-    uint64_t time_limit;
+    int64_t time_limit;
 } Ai;
 
 typedef struct AudioState {
@@ -265,7 +265,7 @@ typedef struct RenderState {
     int64_t time_player_seconds[2];
     Screen screen;
     Settings settings;
-    uint64_t animation_time;
+    int64_t animation_time;
 } RenderState;
 
 typedef struct Chess {
@@ -275,14 +275,14 @@ typedef struct Chess {
     JkColor *draw_buffer;
     JkBuffer render_memory;
     AiResponse ai_response;
-    uint64_t time;
+    int64_t time;
     uint64_t audio_time;
     uint64_t os_time;
-    uint64_t os_timer_frequency;
+    int64_t os_timer_frequency;
 
     // Game read-write, platform read-only
     uint64_t flags;
-    uint64_t turn_index;
+    int64_t turn_index;
     Board board;
     PlayerType player_types[2];
     Team perspective;
@@ -307,7 +307,7 @@ typedef struct Chess {
 } Chess;
 
 typedef void AiInitFunction(
-        JkArena *arena, Ai *ai, Board board, uint64_t time, uint64_t time_frequency);
+        JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_frequency);
 AiInitFunction ai_init;
 
 typedef b32 AiRunningFunction(Ai *ai);
@@ -316,7 +316,7 @@ AiRunningFunction ai_running;
 typedef void AudioFunction(ChessAssets *assets,
         AudioState state,
         uint64_t time,
-        uint64_t sample_count,
+        int64_t sample_count,
         AudioSample *sample_buffer);
 AudioFunction audio;
 

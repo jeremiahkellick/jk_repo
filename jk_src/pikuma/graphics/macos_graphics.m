@@ -341,7 +341,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     [self.texture replaceRegion:MTLRegionMake2D(0, 0, g.state.dimensions.x, g.state.dimensions.y)
                     mipmapLevel:0
                       withBytes:g.state.draw_buffer
-                    bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * sizeof(JkColor)];
+                    bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * JK_SIZEOF(JkColor)];
 
     JkVector2 pos = {-1.0f, 1.0f};
 
@@ -363,7 +363,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     verticies[3].position = simd_make_float4(pos.x + dimensions.x, pos.y, 0.0f, 1.0f);
     verticies[3].texture_coordinate = simd_make_float2(g.state.dimensions.x, 0.0f);
 
-    memcpy([self.vertex_buffer contents], verticies, sizeof(verticies));
+    memcpy([self.vertex_buffer contents], verticies, JK_SIZEOF(verticies));
 
     id<CAMetalDrawable> drawable = self.currentDrawable;
     id<MTLTexture> texture = drawable.texture;

@@ -75,13 +75,13 @@ static void resize(void)
 
     assert(t);
 
-    for (int i = 0; i < 1000; i++) {
+    for (int64_t i = 0; i < 1000; i++) {
         jk_hash_table_put(t, i, i);
     }
 
-    for (int i = 0; i < 1000; i++) {
+    for (int64_t i = 0; i < 1000; i++) {
         assert((value = jk_hash_table_get(t, i)) != NULL);
-        assert(*value == (uint32_t)i);
+        assert(*value == i);
     }
 
     jk_hash_table_destroy(t);

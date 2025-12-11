@@ -70,7 +70,7 @@ static JkArena g_storage;
 
 static b32 g_running;
 static int64_t g_keys_down;
-static uint64_t g_audio_buffer_size;
+static int64_t g_audio_buffer_size;
 static AudioSample *g_audio_buffer;
 static char g_string_buffer[1024];
 
@@ -94,7 +94,7 @@ typedef struct IntArray4 {
 static int32_t square_side_length_get(IntArray4 dimensions)
 {
     int32_t min_dimension = INT32_MAX;
-    for (uint64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
         if (dimensions.a[i] < min_dimension) {
             min_dimension = dimensions.a[i];
         }
@@ -175,7 +175,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect dra
     BITMAPINFO bitmap_info = {
         .bmiHeader =
                 {
-                    .biSize = sizeof(BITMAPINFOHEADER),
+                    .biSize = JK_SIZEOF(BITMAPINFOHEADER),
                     .biWidth = DRAW_BUFFER_SIDE_LENGTH,
                     .biHeight = -DRAW_BUFFER_SIDE_LENGTH,
                     .biPlanes = 1,
@@ -289,7 +289,7 @@ typedef enum RecordState {
 } RecordState;
 
 static RecordState g_record_state;
-static uint64_t g_recorded_inputs_count;
+static int64_t g_recorded_inputs_count;
 static Input g_recorded_inputs[1024];
 static Chess g_recorded_game_state;
 
@@ -297,13 +297,13 @@ DWORD game_thread(LPVOID param)
 {
     HWND window = (HWND)param;
 
-    uint64_t frequency = jk_platform_os_timer_frequency();
-    uint64_t ticks_per_frame = frequency / FRAME_RATE;
+    int64_t frequency = jk_platform_os_timer_frequency();
+    int64_t ticks_per_frame = frequency / FRAME_RATE;
 
     // Set the Windows scheduler granularity to 1ms
     b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
 
-    uint32_t audio_position = 0;
+    int64_t audio_position = 0;
 
     LPDIRECTSOUNDBUFFER win_audio_buffer = 0;
 
@@ -328,7 +328,7 @@ DWORD game_thread(LPVOID param)
             if (direct_sound->lpVtbl->SetCooperativeLevel(direct_sound, window, DSSCL_PRIORITY)
                     == DS_OK) {
                 DSBUFFERDESC buffer_desciption = {
-                    .dwSize = sizeof(buffer_desciption),
+                    .dwSize = JK_SIZEOF(buffer_desciption),
                     .dwFlags = DSBCAPS_PRIMARYBUFFER,
                 };
                 LPDIRECTSOUNDBUFFER primary_buffer;
@@ -347,7 +347,7 @@ DWORD game_thread(LPVOID param)
 
             {
                 DSBUFFERDESC buffer_description = {
-                    .dwSize = sizeof(buffer_description),
+                    .dwSize = JK_SIZEOF(buffer_description),
                     .dwBufferBytes = g_audio_buffer_size,
                     .lpwfxFormat = &wave_format,
                 };
@@ -378,12 +378,12 @@ DWORD game_thread(LPVOID param)
 #endif
 
     g_chess.time = 0;
-    uint64_t work_time_total = 0;
-    uint64_t work_time_min = ULLONG_MAX;
-    uint64_t work_time_max = 0;
-    uint64_t frame_time_total = 0;
-    uint64_t frame_time_min = ULLONG_MAX;
-    uint64_t frame_time_max = 0;
+    int64_t work_time_total = 0;
+    int64_t work_time_min = INT64_MAX;
+    int64_t work_time_max = INT64_MIN;
+    int64_t frame_time_total = 0;
+    int64_t frame_time_min = INT64_MAX;
+    int64_t frame_time_max = INT64_MIN;
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     b32 reset_audio_position = TRUE;
@@ -461,33 +461,33 @@ DWORD game_thread(LPVOID param)
         }
 
         // Find necessary audio sample count
-        uint64_t sample_count;
+        int64_t sample_count;
         {
             DWORD play_cursor;
             DWORD write_cursor;
             if (win_audio_buffer->lpVtbl->GetCurrentPosition(
                         win_audio_buffer, &play_cursor, &write_cursor)
                     == DS_OK) {
-                uint32_t safe_start_point = (write_cursor
+                int64_t safe_start_point = (write_cursor
                                                     + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
-                                                            * sizeof(AudioSample))
+                                                            * JK_SIZEOF(AudioSample))
                         % g_audio_buffer_size;
                 if (reset_audio_position) {
                     reset_audio_position = FALSE;
                     audio_position = safe_start_point;
                 }
-                uint32_t end_point = (safe_start_point + SAMPLES_PER_FRAME * sizeof(AudioSample))
+                int64_t end_point = (safe_start_point + SAMPLES_PER_FRAME * JK_SIZEOF(AudioSample))
                         % g_audio_buffer_size;
-                uint32_t size;
+                int64_t size;
                 if (end_point < audio_position) {
                     size = g_audio_buffer_size - audio_position + end_point;
                 } else {
                     size = end_point - audio_position;
                 }
-                sample_count = size / sizeof(AudioSample);
+                sample_count = size / JK_SIZEOF(AudioSample);
             } else {
                 OutputDebugStringA("Failed to get DirectSound current position\n");
-                sample_count = SAMPLES_PER_FRAME * sizeof(AudioSample);
+                sample_count = SAMPLES_PER_FRAME * JK_SIZEOF(AudioSample);
             }
         }
 
@@ -519,7 +519,7 @@ DWORD game_thread(LPVOID param)
         } break;
 
         case RECORD_STATE_RECORDING: {
-            uint64_t i =
+            int64_t i =
                     (g_chess.time - g_recorded_game_state.time) % JK_ARRAY_COUNT(g_recorded_inputs);
             g_recorded_inputs[i] = g_chess.input;
         } break;
@@ -529,7 +529,7 @@ DWORD game_thread(LPVOID param)
                 g_chess = g_recorded_game_state;
             }
 
-            uint64_t i =
+            int64_t i =
                     (g_chess.time - g_recorded_game_state.time) % JK_ARRAY_COUNT(g_recorded_inputs);
             g_chess.input = g_recorded_inputs[i];
         } break;
@@ -551,7 +551,7 @@ DWORD game_thread(LPVOID param)
 
         if (!g_shared.ai_request.wants_ai_move
                         != !JK_FLAG_GET(g_chess.flags, CHESS_FLAG_WANTS_AI_MOVE)
-                || memcmp(&g_shared.ai_request.board, &g_chess.board, sizeof(Board)) != 0) {
+                || memcmp(&g_shared.ai_request.board, &g_chess.board, JK_SIZEOF(Board)) != 0) {
             AcquireSRWLockExclusive(&g_shared.ai_request_lock);
             g_shared.ai_request.wants_ai_move =
                     JK_FLAG_GET(g_chess.flags, CHESS_FLAG_WANTS_AI_MOVE);
@@ -569,28 +569,28 @@ DWORD game_thread(LPVOID param)
             AudioBufferRegion regions[2] = {0};
             if (win_audio_buffer->lpVtbl->Lock(win_audio_buffer,
                         audio_position,
-                        sample_count * sizeof(AudioSample),
+                        sample_count * JK_SIZEOF(AudioSample),
                         &regions[0].data,
                         &regions[0].size,
                         &regions[1].data,
                         &regions[1].size,
                         0)
                     == DS_OK) {
-                uint64_t buffer_index = 0;
+                int64_t buffer_index = 0;
                 for (int region_index = 0; region_index < 2; region_index++) {
                     AudioBufferRegion *region = &regions[region_index];
 
                     AudioSample *region_samples = region->data;
-                    JK_ASSERT(region->size % sizeof(region_samples[0]) == 0);
+                    JK_ASSERT(region->size % JK_SIZEOF(region_samples[0]) == 0);
                     for (DWORD region_offset_index = 0;
-                            region_offset_index < region->size / sizeof(region_samples[0]);
+                            region_offset_index < region->size / JK_SIZEOF(region_samples[0]);
                             region_offset_index++) {
                         region_samples[region_offset_index] = g_audio_buffer[buffer_index++];
                     }
                 }
 
-                audio_position =
-                        (audio_position + sample_count * sizeof(AudioSample)) % g_audio_buffer_size;
+                audio_position = (audio_position + sample_count * JK_SIZEOF(AudioSample))
+                        % g_audio_buffer_size;
 
                 win_audio_buffer->lpVtbl->Unlock(win_audio_buffer,
                         regions[0].data,
@@ -604,7 +604,7 @@ DWORD game_thread(LPVOID param)
 
         uint64_t counter_work = jk_platform_os_timer_get();
         uint64_t counter_current = counter_work;
-        int64_t ticks_remaining = (uint64_t)target_flip_time - (uint64_t)counter_current;
+        int64_t ticks_remaining = target_flip_time - counter_current;
         if (ticks_remaining > 0) {
             do {
                 if (can_sleep) {
@@ -628,7 +628,7 @@ DWORD game_thread(LPVOID param)
 
         copy_draw_buffer_to_window(window, device_context, draw_rect);
 
-        uint64_t work_time = counter_work - counter_previous;
+        int64_t work_time = counter_work - counter_previous;
         work_time_total += work_time;
         if (work_time < work_time_min) {
             work_time_min = work_time;
@@ -637,7 +637,7 @@ DWORD game_thread(LPVOID param)
             work_time_max = work_time;
         }
 
-        uint64_t frame_time = counter_current - counter_previous;
+        int64_t frame_time = counter_current - counter_previous;
         frame_time_total += frame_time;
         if (frame_time < frame_time_min) {
             frame_time_min = frame_time;
@@ -684,7 +684,7 @@ DWORD ai_thread(LPVOID param)
     while (g_running) {
         AcquireSRWLockShared(&g_shared.ai_request_lock);
         while (!(g_shared.ai_request.wants_ai_move
-                && memcmp(&g_shared.ai_request.board, &g_shared.ai_response.board, sizeof(Board))
+                && memcmp(&g_shared.ai_request.board, &g_shared.ai_response.board, JK_SIZEOF(Board))
                         != 0)) {
             SleepConditionVariableSRW(&g_shared.wants_ai_move,
                     &g_shared.ai_request_lock,
@@ -705,7 +705,8 @@ DWORD ai_thread(LPVOID param)
         while (g_ai_running(&ai)) {
             AcquireSRWLockShared(&g_shared.ai_request_lock);
             b32 cancel = !g_shared.ai_request.wants_ai_move
-                    || memcmp(&g_shared.ai_request.board, &ai.response.board, sizeof(Board)) != 0;
+                    || memcmp(&g_shared.ai_request.board, &ai.response.board, JK_SIZEOF(Board))
+                            != 0;
             ReleaseSRWLockShared(&g_shared.ai_request_lock);
             if (cancel) {
                 break;
@@ -736,7 +737,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 
     g_cursor = LoadCursorA(0, IDC_ARROW);
 
-    g_audio_buffer_size = jk_round_up_to_power_of_2(2 * SAMPLES_PER_SECOND * sizeof(AudioSample));
+    g_audio_buffer_size =
+            jk_round_up_to_power_of_2(2 * SAMPLES_PER_SECOND * JK_SIZEOF(AudioSample));
     g_chess.render_memory.size = 2 * JK_MEGABYTE;
     g_ai_memory.size = 1 * JK_GIGABYTE;
     uint8_t *memory = VirtualAlloc(0,

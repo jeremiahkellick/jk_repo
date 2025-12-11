@@ -7,20 +7,20 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-#define STARTING_SIZE (8llu * 1024)
+#define STARTING_SIZE (8ll * 1024)
 
 static char *program_name = "!! program_name not yet overwritten with argv[0] !!";
 
-static uint64_t just_read(
-        JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
+static int64_t just_read(
+        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size)
 {
     FILE *file = fopen(file_name, "rb");
     if (file) {
         uint8_t *buffer = jk_platform_memory_alloc(buffer_size);
         if (buffer) {
-            size_t remaining_size = file_size;
+            int64_t remaining_size = file_size;
             while (remaining_size) {
-                size_t read_size = buffer_size;
+                int64_t read_size = buffer_size;
                 if (read_size > remaining_size) {
                     read_size = remaining_size;
                 }
@@ -45,14 +45,14 @@ static uint64_t just_read(
     return 0;
 }
 
-static uint64_t sum(JkBuffer buffer)
+static int64_t sum(JkBuffer buffer)
 {
-    uint64_t *source = (uint64_t *)buffer.data;
-    uint64_t sum0 = 0;
-    uint64_t sum1 = 0;
-    uint64_t sum2 = 0;
-    uint64_t sum3 = 0;
-    size_t count = buffer.size / (4 * sizeof(uint64_t));
+    int64_t *source = (int64_t *)buffer.data;
+    int64_t sum0 = 0;
+    int64_t sum1 = 0;
+    int64_t sum2 = 0;
+    int64_t sum3 = 0;
+    int64_t count = buffer.size / (4 * JK_SIZEOF(int64_t));
     while (count--) {
         sum0 += source[0];
         sum0 += source[1];
@@ -63,18 +63,18 @@ static uint64_t sum(JkBuffer buffer)
     return sum0 + sum1 + sum2 + sum3;
 }
 
-static uint64_t read_and_sum(
-        JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
+static int64_t read_and_sum(
+        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size)
 {
-    uint64_t result = 0;
+    int64_t result = 0;
 
     FILE *file = fopen(file_name, "rb");
     if (file) {
         uint8_t *buffer = jk_platform_memory_alloc(buffer_size);
         if (buffer) {
-            size_t remaining_size = file_size;
+            int64_t remaining_size = file_size;
             while (remaining_size) {
-                size_t read_size = buffer_size;
+                int64_t read_size = buffer_size;
                 if (read_size > remaining_size) {
                     read_size = remaining_size;
                 }
@@ -109,8 +109,8 @@ typedef struct LockedBuffer {
 
 typedef struct SumThreadData {
     LockedBuffer locks[2];
-    uint64_t iterations;
-    uint64_t result;
+    int64_t iterations;
+    int64_t result;
 } SumThreadData;
 
 static DWORD sum_thread(LPVOID ptr)
@@ -123,12 +123,12 @@ static DWORD sum_thread(LPVOID ptr)
 
         WaitForSingleObject(lock->sem_read, ULONG_MAX);
 
-        uint64_t *source = (uint64_t *)lock->buffer.data;
-        uint64_t sum0 = 0;
-        uint64_t sum1 = 0;
-        uint64_t sum2 = 0;
-        uint64_t sum3 = 0;
-        size_t count = lock->buffer.size / (4 * sizeof(uint64_t));
+        int64_t *source = (int64_t *)lock->buffer.data;
+        int64_t sum0 = 0;
+        int64_t sum1 = 0;
+        int64_t sum2 = 0;
+        int64_t sum3 = 0;
+        int64_t count = lock->buffer.size / (4 * JK_SIZEOF(int64_t));
         while (count--) {
             sum0 += source[0];
             sum0 += source[1];
@@ -146,10 +146,10 @@ static DWORD sum_thread(LPVOID ptr)
     return 0;
 }
 
-static uint64_t read_and_sum_threads(
-        JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size)
+static int64_t read_and_sum_threads(
+        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size)
 {
-    size_t half_size = buffer_size / 2;
+    int64_t half_size = buffer_size / 2;
     SumThreadData thread_data = {.iterations = (file_size + half_size - 1) / half_size};
 
     FILE *file = fopen(file_name, "rb");
@@ -168,7 +168,7 @@ static uint64_t read_and_sum_threads(
             DWORD threadId;
             HANDLE thread = CreateThread(NULL, 0, sum_thread, &thread_data, 0, &threadId);
             if (thread) {
-                size_t remaining_size = file_size;
+                int64_t remaining_size = file_size;
                 int i = 0;
                 while (remaining_size) {
                     LockedBuffer *lock = &thread_data.locks[i];
@@ -223,8 +223,8 @@ static uint64_t read_and_sum_threads(
 
 typedef struct Function {
     char *name;
-    uint64_t (*ptr)(
-            JkPlatformRepetitionTest *test, char *file_name, size_t file_size, size_t buffer_size);
+    int64_t (*ptr)(
+            JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size);
 } Function;
 
 static Function functions[] = {
@@ -244,29 +244,29 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    size_t file_size = jk_platform_file_size(argv[1]);
-    uint64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
+    int64_t file_size = jk_platform_file_size(argv[1]);
+    int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, 64llu * 1024 * 1024 * 1024);
     JkBuffer full_file_buffer = jk_platform_file_read_full(&storage, argv[1]);
-    uint64_t reference_sum = sum(full_file_buffer);
+    int64_t reference_sum = sum(full_file_buffer);
     jk_platform_arena_virtual_release(&arena_root);
 
-    size_t buffer_size = STARTING_SIZE;
-    for (size_t i = 0; i < JK_ARRAY_COUNT(tests); i++, buffer_size *= 2) {
-        for (size_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
+    int64_t buffer_size = STARTING_SIZE;
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++, buffer_size *= 2) {
+        for (int64_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
             JkPlatformRepetitionTest *test = &tests[i][j];
 
             printf("\nFunction: %s, buffer size: ", functions[j].name);
-            jk_platform_print_bytes_uint64(stdout, "%.0f", buffer_size);
+            jk_platform_print_bytes_int64(stdout, "%.0f", buffer_size);
             printf("\n");
 
             jk_platform_repetition_test_run_wave(test, file_size, frequency, 10);
             uint8_t passed = 1;
             while (jk_platform_repetition_test_running(test)) {
                 jk_platform_repetition_test_time_begin(test);
-                uint64_t sum = functions[j].ptr(test, argv[1], file_size, buffer_size);
+                int64_t sum = functions[j].ptr(test, argv[1], file_size, buffer_size);
                 if (sum != reference_sum) {
                     passed = 0;
                 }
@@ -279,13 +279,13 @@ int main(int argc, char **argv)
     }
 
     printf("\nSize");
-    for (size_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
         printf(",%s", functions[i].name);
     }
     printf("\n");
-    for (size_t i = 0, size = STARTING_SIZE; i < JK_ARRAY_COUNT(tests); i++, size *= 2) {
-        jk_platform_print_bytes_uint64(stdout, "%.0f", size);
-        for (size_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
+    for (int64_t i = 0, size = STARTING_SIZE; i < JK_ARRAY_COUNT(tests); i++, size *= 2) {
+        jk_platform_print_bytes_int64(stdout, "%.0f", size);
+        for (int64_t j = 0; j < JK_ARRAY_COUNT(functions); j++) {
             printf(",%.3f",
                     jk_platform_repetition_test_bandwidth(tests[i][j].min, frequency)
                             / (1024.0 * 1024.0 * 1024.0));
