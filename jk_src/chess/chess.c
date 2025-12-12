@@ -88,18 +88,18 @@ static Team board_current_team_get(Board board)
     return (board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1;
 }
 
-static b32 board_in_bounds(JkIntVector2 pos)
+static b32 board_in_bounds(JkIntVec2 pos)
 {
     return pos.x >= 0 && pos.x < 8 && pos.y >= 0 && pos.y < 8;
 }
 
-static uint8_t board_index_get(JkIntVector2 pos)
+static uint8_t board_index_get(JkIntVec2 pos)
 {
     JK_DEBUG_ASSERT(board_in_bounds(pos));
     return (uint8_t)(8 * pos.y + pos.x);
 }
 
-static uint8_t board_index_get_unbounded(JkIntVector2 pos)
+static uint8_t board_index_get_unbounded(JkIntVec2 pos)
 {
     if (board_in_bounds(pos)) {
         return board_index_get(pos);
@@ -108,9 +108,9 @@ static uint8_t board_index_get_unbounded(JkIntVector2 pos)
     }
 }
 
-static JkIntVector2 board_index_to_vector_2(uint8_t index)
+static JkIntVec2 board_index_to_vector_2(uint8_t index)
 {
-    return (JkIntVector2){.x = index % 8, .y = index / 8};
+    return (JkIntVec2){.x = index % 8, .y = index / 8};
 }
 
 static Piece board_piece_get_index(Board board, uint8_t index)
@@ -124,12 +124,12 @@ static Piece board_piece_get_index(Board board, uint8_t index)
     return (Piece){.type = byte & 0x7, .team = (byte >> 3) & 1};
 }
 
-static Piece board_piece_get(Board board, JkIntVector2 pos)
+static Piece board_piece_get(Board board, JkIntVec2 pos)
 {
     return board_piece_get_index(board, board_index_get(pos));
 }
 
-static void board_piece_set(Board *board, JkIntVector2 pos, Piece piece)
+static void board_piece_set(Board *board, JkIntVec2 pos, Piece piece)
 {
     uint8_t bits = (uint8_t)((piece.team << 3) | piece.type);
     uint8_t piece_index = board_index_get(pos);
@@ -142,7 +142,7 @@ static void board_piece_set(Board *board, JkIntVector2 pos, Piece piece)
     }
 }
 
-static JkIntVector2 all_directions[8] = {
+static JkIntVec2 all_directions[8] = {
     {0, 1},
     {0, -1},
     {1, 0},
@@ -153,21 +153,21 @@ static JkIntVector2 all_directions[8] = {
     {-1, -1},
 };
 
-static JkIntVector2 diagonals[4] = {
+static JkIntVec2 diagonals[4] = {
     {1, 1},
     {1, -1},
     {-1, 1},
     {-1, -1},
 };
 
-static JkIntVector2 straights[4] = {
+static JkIntVec2 straights[4] = {
     {0, 1},
     {0, -1},
     {1, 0},
     {-1, 0},
 };
 
-static JkIntVector2 knight_moves[8] = {
+static JkIntVec2 knight_moves[8] = {
     {2, 1},
     {2, -1},
     {-2, 1},
@@ -179,19 +179,19 @@ static JkIntVector2 knight_moves[8] = {
 };
 
 // Usage: pawn_moves[team]
-static JkIntVector2 pawn_moves[2] = {
+static JkIntVec2 pawn_moves[2] = {
     {0, 1},
     {0, -1},
 };
 
 // Usage: pawn_extended_moves[team]
-static JkIntVector2 pawn_extended_moves[2] = {
+static JkIntVec2 pawn_extended_moves[2] = {
     {0, 2},
     {0, -2},
 };
 
 // Usage: pawn_attacks[team][i]
-static JkIntVector2 pawn_attacks[2][2] = {
+static JkIntVec2 pawn_attacks[2][2] = {
     {
         {1, 1},
         {-1, 1},
@@ -219,7 +219,7 @@ static JkBuffer timer_strings[TIMER_COUNT] = {
 
 static int64_t timer_minutes[TIMER_COUNT] = {1, 3, 10, 30};
 
-static b32 square_available(Board board, JkIntVector2 square)
+static b32 square_available(Board board, JkIntVec2 square)
 {
     if (board_in_bounds(square)) {
         Piece piece = board_piece_get(board, square);
@@ -257,7 +257,7 @@ static Board parse_fen(JkBuffer fen)
                 | JK_MASK(BOARD_FLAG_BLACK_QUEEN_SIDE_CASTLING_RIGHTS)
                 | JK_MASK(BOARD_FLAG_BLACK_KING_SIDE_CASTLING_RIGHTS)};
     int64_t i = 0;
-    JkIntVector2 pos = {0, 7};
+    JkIntVec2 pos = {0, 7};
 
     while (jk_char_is_whitespace(fen.data[i])) {
         i++;
@@ -333,7 +333,7 @@ static Board parse_fen(JkBuffer fen)
 
     uint8_t column_char = fen.data[i++];
     uint8_t row_char = fen.data[i++];
-    JkIntVector2 en_passant_pos = {-1, -1};
+    JkIntVec2 en_passant_pos = {-1, -1};
     if (column_char >= 'a' && column_char <= 'h') {
         en_passant_pos.x = column_char - 'a';
     }
@@ -342,9 +342,9 @@ static Board parse_fen(JkBuffer fen)
     }
     if (board_in_bounds(en_passant_pos)) {
         Move move_prev = {.piece = {.type = PAWN, .team = !board_current_team_get(board)}};
-        JkIntVector2 forward = {0, move_prev.piece.team == WHITE ? 1 : -1};
-        move_prev.src = board_index_get(jk_int_vector_2_sub(en_passant_pos, forward));
-        move_prev.dest = board_index_get(jk_int_vector_2_add(en_passant_pos, forward));
+        JkIntVec2 forward = {0, move_prev.piece.team == WHITE ? 1 : -1};
+        move_prev.src = board_index_get(jk_int_vec2_sub(en_passant_pos, forward));
+        move_prev.dest = board_index_get(jk_int_vec2_add(en_passant_pos, forward));
         board.move_prev = move_pack(move_prev);
     }
 
@@ -352,11 +352,8 @@ static Board parse_fen(JkBuffer fen)
 }
 
 // Returns 1 on success. Returns 0 if the destination invalidates the parent move.
-static b32 append_move(MoveArray *moves,
-        JkIntVector2 src,
-        JkIntVector2 dest,
-        Piece piece,
-        uint64_t invalidate_mask)
+static b32 append_move(
+        MoveArray *moves, JkIntVec2 src, JkIntVec2 dest, Piece piece, uint64_t invalidate_mask)
 {
     uint8_t dest_index = board_index_get(dest);
     if ((invalidate_mask >> dest_index) & 1) {
@@ -376,14 +373,14 @@ static b32 append_move(MoveArray *moves,
 // Returns 1 on success. Returns 0 if the destination invalidates the parent move.
 static b32 append_moves_in_direction_until_stopped(MoveArray *moves,
         Board board,
-        JkIntVector2 src,
-        JkIntVector2 direction,
+        JkIntVec2 src,
+        JkIntVec2 direction,
         Piece piece,
         uint64_t invalidate_mask)
 {
-    JkIntVector2 dest = src;
+    JkIntVec2 dest = src;
     for (;;) {
-        dest = jk_int_vector_2_add(dest, direction);
+        dest = jk_int_vec2_add(dest, direction);
         if (board_in_bounds(dest)) {
             Piece dest_piece = board_piece_get(board, dest);
             if (dest_piece.type == NONE) {
@@ -413,15 +410,15 @@ static uint64_t castling_rights_mask_get(Team team, b32 king_side)
 static Board board_move_perform(Board board, MovePacked move_packed)
 {
     Move move = move_unpack(move_packed);
-    JkIntVector2 src = board_index_to_vector_2(move.src);
-    JkIntVector2 dest = board_index_to_vector_2(move.dest);
+    JkIntVec2 src = board_index_to_vector_2(move.src);
+    JkIntVec2 dest = board_index_to_vector_2(move.dest);
     Team team = (board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1;
 
     // En-passant handling
     if (move.piece.type == PAWN && src.x != dest.x
             && board_piece_get_index(board, move.dest).type == NONE) {
         int32_t y_delta = JK_FLAG_GET(board.flags, BOARD_FLAG_CURRENT_PLAYER) ? 1 : -1;
-        board_piece_set(&board, jk_int_vector_2_add(dest, (JkIntVector2){0, y_delta}), (Piece){0});
+        board_piece_set(&board, jk_int_vec2_add(dest, (JkIntVec2){0, y_delta}), (Piece){0});
     }
 
     // Castling handling
@@ -448,9 +445,9 @@ static Board board_move_perform(Board board, MovePacked move_packed)
                 rook_from_x = 0;
                 rook_to_x = 3;
             }
-            board_piece_set(&board, (JkIntVector2){rook_from_x, src.y}, (Piece){0});
+            board_piece_set(&board, (JkIntVec2){rook_from_x, src.y}, (Piece){0});
             board_piece_set(&board,
-                    (JkIntVector2){rook_to_x, src.y},
+                    (JkIntVec2){rook_to_x, src.y},
                     (Piece){.type = ROOK, .team = move.piece.team});
         }
     }
@@ -465,11 +462,8 @@ static Board board_move_perform(Board board, MovePacked move_packed)
 }
 
 // Returns 1 on success. Returns 0 if the destination invalidates the parent move.
-static b32 append_moves_with_promo_potential(MoveArray *moves,
-        JkIntVector2 src,
-        JkIntVector2 dest,
-        Piece piece,
-        uint64_t invalidate_mask)
+static b32 append_moves_with_promo_potential(
+        MoveArray *moves, JkIntVec2 src, JkIntVec2 dest, Piece piece, uint64_t invalidate_mask)
 {
     if (dest.y == 0 || dest.y == 7) { // Promotion
         Piece promo_piece = {.type = QUEEN, .team = piece.team};
@@ -503,16 +497,16 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
         }
     }
     if (move_prev.piece.type == KING) {
-        JkIntVector2 src = board_index_to_vector_2(move_prev.src);
-        JkIntVector2 dest = board_index_to_vector_2(move_prev.dest);
+        JkIntVec2 src = board_index_to_vector_2(move_prev.src);
+        JkIntVec2 dest = board_index_to_vector_2(move_prev.dest);
         if (JK_ABS(src.x - dest.x) == 2) { // The previous move was castling
             invalidate_mask |= (1llu << move_prev.src)
-                    | (1llu << board_index_get(jk_int_vector_2_add(
-                               src, (JkIntVector2){dest.x < src.x ? -1 : 1, 0})));
+                    | (1llu << board_index_get(
+                               jk_int_vec2_add(src, (JkIntVec2){dest.x < src.x ? -1 : 1, 0})));
         }
     }
 
-    JkIntVector2 src;
+    JkIntVec2 src;
     for (src.y = 0; src.y < 8; src.y++) {
         for (src.x = 0; src.x < 8; src.x++) {
             Piece piece = board_piece_get(board, src);
@@ -524,7 +518,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
 
                 case KING: {
                     for (int64_t i = 0; i < JK_ARRAY_COUNT(all_directions); i++) {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, all_directions[i]);
+                        JkIntVec2 dest = jk_int_vec2_add(src, all_directions[i]);
                         if (square_available(board, dest)) {
                             TRY(append_move(moves, src, dest, piece, invalidate_mask));
                         }
@@ -538,7 +532,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
                                 b32 blocked = 0;
                                 int32_t x_step = king_side ? 1 : -1;
                                 uint8_t empty_space_count = king_side ? 2 : 3;
-                                JkIntVector2 pos = src;
+                                JkIntVec2 pos = src;
                                 for (uint8_t i = 0; i < empty_space_count; i++) {
                                     pos.x += x_step;
                                     if (board_piece_get(board, pos).type != NONE) {
@@ -550,7 +544,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
                                 if (!blocked) {
                                     TRY(append_move(moves,
                                             src,
-                                            jk_int_vector_2_add(src, (JkIntVector2){2 * x_step, 0}),
+                                            jk_int_vec2_add(src, (JkIntVec2){2 * x_step, 0}),
                                             piece,
                                             invalidate_mask));
                                 }
@@ -582,7 +576,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
 
                 case KNIGHT: {
                     for (int64_t i = 0; i < JK_ARRAY_COUNT(knight_moves); i++) {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, knight_moves[i]);
+                        JkIntVec2 dest = jk_int_vec2_add(src, knight_moves[i]);
                         if (square_available(board, dest)) {
                             TRY(append_move(moves, src, dest, piece, invalidate_mask));
                         }
@@ -592,7 +586,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
                 case PAWN: {
                     // Move
                     {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, pawn_moves[current_team]);
+                        JkIntVec2 dest = jk_int_vec2_add(src, pawn_moves[current_team]);
                         if (board_in_bounds(dest) && board_piece_get(board, dest).type == NONE) {
                             TRY(append_moves_with_promo_potential(
                                     moves, src, dest, piece, invalidate_mask));
@@ -600,8 +594,8 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
                             // Extended move
                             if ((current_team == WHITE && src.y == 1)
                                     || (current_team == BLACK && src.y == 6)) {
-                                JkIntVector2 extended_move =
-                                        jk_int_vector_2_add(src, pawn_extended_moves[current_team]);
+                                JkIntVec2 extended_move =
+                                        jk_int_vec2_add(src, pawn_extended_moves[current_team]);
                                 if (board_in_bounds(extended_move)
                                         && board_piece_get(board, extended_move).type == NONE) {
                                     TRY(append_move(
@@ -613,7 +607,7 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
 
                     // Attacks
                     for (uint8_t i = 0; i < 2; i++) {
-                        JkIntVector2 dest = jk_int_vector_2_add(src, pawn_attacks[current_team][i]);
+                        JkIntVec2 dest = jk_int_vec2_add(src, pawn_attacks[current_team][i]);
                         if (board_in_bounds(dest)) {
                             Piece piece_at_dest = board_piece_get(board, dest);
                             if (piece_at_dest.type != NONE && piece_at_dest.team != current_team) {
@@ -640,16 +634,15 @@ static b32 move_candidates_get(MoveArray *moves, Board board)
     if (JK_ABS((int32_t)move_prev.src - (int32_t)move_prev.dest) == 16) {
         Piece move_prev_piece = board_piece_get_index(board, move_prev.dest);
         if (move_prev_piece.type == PAWN) {
-            JkIntVector2 pos = board_index_to_vector_2(move_prev.dest);
-            JkIntVector2 directions[] = {{-1, 0}, {1, 0}};
+            JkIntVec2 pos = board_index_to_vector_2(move_prev.dest);
+            JkIntVec2 directions[] = {{-1, 0}, {1, 0}};
             for (uint8_t i = 0; i < JK_ARRAY_COUNT(directions); i++) {
-                JkIntVector2 en_passant_src = jk_int_vector_2_add(pos, directions[i]);
+                JkIntVec2 en_passant_src = jk_int_vec2_add(pos, directions[i]);
                 if (board_in_bounds(en_passant_src)) {
                     Piece piece = board_piece_get(board, en_passant_src);
                     if (piece.type == PAWN && piece.team == current_team) {
                         int32_t y_delta = move_prev.src < move_prev.dest ? -1 : 1;
-                        JkIntVector2 en_passant_dest =
-                                jk_int_vector_2_add(pos, (JkIntVector2){0, y_delta});
+                        JkIntVec2 en_passant_dest = jk_int_vec2_add(pos, (JkIntVec2){0, y_delta});
                         TRY(append_move(
                                 moves, en_passant_src, en_passant_dest, piece, invalidate_mask));
                     }
@@ -678,7 +671,7 @@ static int32_t board_score(Board board, uint16_t depth, MoveCounts move_counts)
         score += team_multiplier[piece.team] * piece_value[piece.type] * 100;
 
         if (piece.type == PAWN) { // Add points based on how far pawn is from promotion
-            JkIntVector2 pos = board_index_to_vector_2(i);
+            JkIntVec2 pos = board_index_to_vector_2(i);
             if (piece.team == WHITE) {
                 score += pos.y - 1;
             } else {
@@ -1132,30 +1125,30 @@ void audio(ChessAssets *assets,
     }
 }
 
-static JkIntVector2 screen_board_origin_get(int32_t square_side_length)
+static JkIntVec2 screen_board_origin_get(int32_t square_side_length)
 {
-    return (JkIntVector2){square_side_length, square_side_length};
+    return (JkIntVec2){square_side_length, square_side_length};
 }
 
-static JkIntVector2 screen_to_board_pos_pixels(int32_t square_side_length, JkIntVector2 screen_pos)
+static JkIntVec2 screen_to_board_pos_pixels(int32_t square_side_length, JkIntVec2 screen_pos)
 {
-    return jk_int_vector_2_sub(screen_pos, screen_board_origin_get(square_side_length));
+    return jk_int_vec2_sub(screen_pos, screen_board_origin_get(square_side_length));
 }
 
-static b32 screen_in_bounds(int32_t square_side_length, JkIntVector2 screen_pos)
+static b32 screen_in_bounds(int32_t square_side_length, JkIntVec2 screen_pos)
 {
     return screen_pos.x >= 0 && screen_pos.x < square_side_length * 10 && screen_pos.y >= 0
             && screen_pos.y < square_side_length * 10;
 }
 
-static b32 board_pos_pixels_in_bounds(int32_t square_side_length, JkIntVector2 board_pos_pixels)
+static b32 board_pos_pixels_in_bounds(int32_t square_side_length, JkIntVec2 board_pos_pixels)
 {
     int32_t board_side_length = square_side_length * 8;
     return board_pos_pixels.x >= 0 && board_pos_pixels.x < board_side_length
             && board_pos_pixels.y >= 0 && board_pos_pixels.y < board_side_length;
 }
 
-static JkIntVector2 apply_perspective(Team perspective, JkIntVector2 board_position)
+static JkIntVec2 apply_perspective(Team perspective, JkIntVec2 board_position)
 {
     if (perspective) {
         board_position.x = 7 - board_position.x;
@@ -1165,36 +1158,35 @@ static JkIntVector2 apply_perspective(Team perspective, JkIntVector2 board_posit
     return board_position;
 }
 
-static JkIntVector2 board_pos_pixels_to_squares_raw(Chess *chess, JkIntVector2 board_pos_pixels)
+static JkIntVec2 board_pos_pixels_to_squares_raw(Chess *chess, JkIntVec2 board_pos_pixels)
 {
     return apply_perspective(chess->perspective,
-            (JkIntVector2){
+            (JkIntVec2){
                 .x = board_pos_pixels.x / chess->square_side_length,
                 .y = board_pos_pixels.y / chess->square_side_length,
             });
 }
 
-static JkIntVector2 board_pos_pixels_to_squares(Chess *chess, JkIntVector2 board_pos_pixels)
+static JkIntVec2 board_pos_pixels_to_squares(Chess *chess, JkIntVec2 board_pos_pixels)
 {
     if (board_pos_pixels_in_bounds(chess->square_side_length, board_pos_pixels)) {
         return board_pos_pixels_to_squares_raw(chess, board_pos_pixels);
     } else {
-        return (JkIntVector2){-1, -1};
+        return (JkIntVec2){-1, -1};
     }
 }
 
-static JkIntVector2 screen_to_board_pos(Chess *chess, JkIntVector2 screen_pos)
+static JkIntVec2 screen_to_board_pos(Chess *chess, JkIntVec2 screen_pos)
 {
     return board_pos_pixels_to_squares(
             chess, screen_to_board_pos_pixels(chess->square_side_length, screen_pos));
 }
 
-static JkVector2 board_to_canvas_pos(Team perspective, float square_size, JkIntVector2 board_pos)
+static JkVec2 board_to_canvas_pos(Team perspective, float square_size, JkIntVec2 board_pos)
 {
     board_pos = apply_perspective(perspective, board_pos);
-    JkVector2 board_pos_f = {(float)board_pos.x, (float)board_pos.y};
-    return jk_vector_2_add(
-            (JkVector2){square_size, square_size}, jk_vector_2_mul(square_size, board_pos_f));
+    JkVec2 board_pos_f = {(float)board_pos.x, (float)board_pos.y};
+    return jk_vec2_add((JkVec2){square_size, square_size}, jk_vec2_mul(square_size, board_pos_f));
 }
 
 static b32 input_button_pressed(Chess *chess, InputId id)
@@ -1224,8 +1216,8 @@ void update(ChessAssets *assets, Chess *chess)
         debug_assets = assets;
         debug_chess = (Chess){0};
         debug_chess.square_side_length = 64;
-        debug_chess.selected_square = (JkIntVector2){-1, -1};
-        debug_chess.promo_square = (JkIntVector2){-1, -1};
+        debug_chess.selected_square = (JkIntVec2){-1, -1};
+        debug_chess.promo_square = (JkIntVec2){-1, -1};
         debug_chess.draw_buffer = debug_draw_buffer;
         debug_chess.render_memory.size = JK_SIZEOF(debug_render_memory);
         debug_chess.render_memory.data = debug_render_memory;
@@ -1310,12 +1302,12 @@ void update(ChessAssets *assets, Chess *chess)
         chess->player_types[chess->perspective] = PLAYER_HUMAN;
         chess->player_types[!chess->perspective] = chess->settings.opponent_type;
 
-        chess->selected_square = (JkIntVector2){-1, -1};
-        chess->promo_square = (JkIntVector2){-1, -1};
+        chess->selected_square = (JkIntVec2){-1, -1};
+        chess->promo_square = (JkIntVec2){-1, -1};
         chess->result = 0;
         chess->piece_prev_type = NONE;
-        chess->animation_src = (JkIntVector2){-1, -1};
-        chess->animation_dest = (JkIntVector2){-1, -1};
+        chess->animation_src = (JkIntVec2){-1, -1};
+        chess->animation_dest = (JkIntVec2){-1, -1};
         chess->os_time_move_prev = 0;
         chess->board = starting_state;
         find_legal_moves(&arena, &chess->moves, chess->board);
@@ -1353,15 +1345,15 @@ void update(ChessAssets *assets, Chess *chess)
     switch (chess->screen) {
     case SCREEN_GAME: {
         if (input_button_pressed(chess, INPUT_CANCEL)) {
-            chess->selected_square = (JkIntVector2){-1, -1};
-            chess->promo_square = (JkIntVector2){-1, -1};
+            chess->selected_square = (JkIntVec2){-1, -1};
+            chess->promo_square = (JkIntVec2){-1, -1};
         }
 
         // Start at an invalid value. If move.src remains at an invalid value, we should ignore it.
         // If move.src becomes valid, we should perform the move.
         Move move = {.src = UINT8_MAX};
 
-        JkIntVector2 mouse_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
+        JkIntVec2 mouse_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
 
         if (chess->result == RESULT_NONE) {
             if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
@@ -1375,8 +1367,8 @@ void update(ChessAssets *assets, Chess *chess)
                             move.piece.team = board_current_team_get(chess->board);
                             move.piece.type = promo_order[dist_from_promo_square];
                         } else {
-                            chess->selected_square = (JkIntVector2){-1, -1};
-                            chess->promo_square = (JkIntVector2){-1, -1};
+                            chess->selected_square = (JkIntVec2){-1, -1};
+                            chess->promo_square = (JkIntVec2){-1, -1};
                         }
                     }
                 } else {
@@ -1391,7 +1383,7 @@ void update(ChessAssets *assets, Chess *chess)
                         if (mouse_on_destination) {
                             piece_drop_index = mouse_index;
                         } else {
-                            chess->selected_square = (JkIntVector2){-1, -1};
+                            chess->selected_square = (JkIntVec2){-1, -1};
                             for (uint8_t i = 0; i < chess->moves.count; i++) {
                                 Move available_move = move_unpack(chess->moves.data[i]);
                                 if (available_move.src == mouse_index) {
@@ -1425,8 +1417,8 @@ void update(ChessAssets *assets, Chess *chess)
         }
 
         if (move.src < 64) {
-            JkIntVector2 src = board_index_to_vector_2(move.src);
-            JkIntVector2 dest = board_index_to_vector_2(move.dest);
+            JkIntVec2 src = board_index_to_vector_2(move.src);
+            JkIntVec2 dest = board_index_to_vector_2(move.dest);
             if (move.piece.type == PAWN && (dest.y == 0 || dest.y == 7)) { // Enter pawn promotion
                 chess->promo_square = dest;
             } else { // Make a move
@@ -1450,8 +1442,8 @@ void update(ChessAssets *assets, Chess *chess)
 
                 chess->board = board_move_perform(chess->board, move_pack(move));
 
-                chess->selected_square = (JkIntVector2){-1, -1};
-                chess->promo_square = (JkIntVector2){-1, -1};
+                chess->selected_square = (JkIntVec2){-1, -1};
+                chess->promo_square = (JkIntVec2){-1, -1};
                 b32 in_check = find_legal_moves(&arena, &chess->moves, chess->board);
 
                 if (!chess->moves.count) {
@@ -1552,8 +1544,8 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
 }
 
 typedef struct TextLayout {
-    JkVector2 offset;
-    JkVector2 dimensions;
+    JkVec2 offset;
+    JkVec2 dimensions;
 } TextLayout;
 
 static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scale)
@@ -1580,14 +1572,14 @@ static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scal
     result.offset.y = -assets->font_ascent;
     result.dimensions.y = descent - assets->font_ascent;
 
-    result.offset = jk_vector_2_mul(scale, result.offset);
-    result.dimensions = jk_vector_2_mul(scale, result.dimensions);
+    result.offset = jk_vec2_mul(scale, result.offset);
+    result.dimensions = jk_vec2_mul(scale, result.dimensions);
 
     return result;
 }
 
 static void draw_text(
-        JkShapesRenderer *renderer, JkBuffer text, JkVector2 cursor, float scale, JkColor color)
+        JkShapesRenderer *renderer, JkBuffer text, JkVec2 cursor, float scale, JkColor color)
 {
     for (int64_t i = 0; i < text.size; i++) {
         cursor.x += jk_shapes_draw(
@@ -1595,7 +1587,7 @@ static void draw_text(
     }
 }
 
-static uint8_t region_code(float side_length, JkVector2 v)
+static uint8_t region_code(float side_length, JkVec2 v)
 {
     return ((v.x < 0.0f) << 0) | ((side_length - 1.0f < v.x) << 1) | ((v.y < 0.0f) << 2)
             | ((side_length - 1.0f < v.y) << 3);
@@ -1603,10 +1595,10 @@ static uint8_t region_code(float side_length, JkVector2 v)
 
 typedef struct Endpoint {
     uint8_t code;
-    JkVector2 *point;
+    JkVec2 *point;
 } Endpoint;
 
-static b32 clip_to_draw_region(float side_length, JkVector2 *a, JkVector2 *b)
+static b32 clip_to_draw_region(float side_length, JkVec2 *a, JkVec2 *b)
 {
     Endpoint endpoint_a = {.code = region_code(side_length, *a), .point = a};
     Endpoint endpoint_b = {.code = region_code(side_length, *b), .point = b};
@@ -1617,8 +1609,8 @@ static b32 clip_to_draw_region(float side_length, JkVector2 *a, JkVector2 *b)
         } else if (endpoint_a.code & endpoint_b.code) {
             return 0;
         } else {
-            JkVector2 u = *a;
-            JkVector2 v = *b;
+            JkVec2 u = *a;
+            JkVec2 v = *b;
             Endpoint *endpoint = endpoint_a.code < endpoint_b.code ? &endpoint_b : &endpoint_a;
             if ((endpoint->code >> 0) & 1) {
                 endpoint->point->x = 0.0f;
@@ -1659,7 +1651,7 @@ static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, floa
             color_multiply(color.a, (uint8_t)brightness_i));
 }
 
-static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
+static void draw_line(Chess *chess, JkColor color, JkVec2 a, JkVec2 b)
 {
     if (!clip_to_draw_region((float)(chess->square_side_length * 10), &a, &b)) {
         return;
@@ -1674,10 +1666,10 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
         JK_SWAP(b.x, b.y, float);
     }
     if (a.x > b.x) {
-        JK_SWAP(a, b, JkVector2);
+        JK_SWAP(a, b, JkVec2);
     }
 
-    JkVector2 delta = jk_vector_2_sub(b, a);
+    JkVec2 delta = jk_vec2_sub(b, a);
 
     float gradient;
     if (delta.x) {
@@ -1743,28 +1735,28 @@ static void draw_line(Chess *chess, JkColor color, JkVector2 a, JkVector2 b)
 static void draw_radio_buttons(ChessAssets *assets,
         Chess *chess,
         JkShapesRenderer *renderer,
-        JkVector2 *top_left,
+        JkVec2 *top_left,
         int64_t choice_count,
         int64_t choice_selected,
         JkBuffer *choice_strings,
         int64_t first_button_id)
 {
-	JK_DEBUG_ASSERT(0 <= first_button_id && first_button_id < BUTTON_COUNT);
-	JK_DEBUG_ASSERT(0 <= choice_count);
-	JK_DEBUG_ASSERT(first_button_id + choice_count <= BUTTON_COUNT);
+    JK_DEBUG_ASSERT(0 <= first_button_id && first_button_id < BUTTON_COUNT);
+    JK_DEBUG_ASSERT(0 <= choice_count);
+    JK_DEBUG_ASSERT(first_button_id + choice_count <= BUTTON_COUNT);
 
     top_left->y += 12;
 
     float spacing = 22;
 
     TextLayout base_layout = text_layout_get(assets, choice_strings[0], BUTTON_TEXT_SCALE);
-    JkVector2 base_dimensions = {(MENU_WIDTH - (choice_count - 1) * spacing) / choice_count,
+    JkVec2 base_dimensions = {(MENU_WIDTH - (choice_count - 1) * spacing) / choice_count,
         base_layout.dimensions.y + 2 * (BUTTON_PADDING + RECT_THICKNESS)};
 
     float scale_factor = (base_dimensions.x + spacing) / base_dimensions.x;
-    JkVector2 scaled_dimensions = jk_vector_2_mul(scale_factor, base_dimensions);
+    JkVec2 scaled_dimensions = jk_vec2_mul(scale_factor, base_dimensions);
 
-    JkVector2 position = *top_left;
+    JkVec2 position = *top_left;
     position.y += (scaled_dimensions.y - base_dimensions.y) / 2;
     float text_y_offset = BUTTON_PADDING + RECT_THICKNESS + base_layout.offset.y;
     float text_y = position.y + text_y_offset;
@@ -1776,8 +1768,8 @@ static void draw_radio_buttons(ChessAssets *assets,
         if (choice_id == choice_selected) {
             button->rect = (JkIntRect){0};
 
-            JkVector2 scaled_position = jk_vector_2_add(position,
-                    jk_vector_2_mul(0.5f, jk_vector_2_sub(base_dimensions, scaled_dimensions)));
+            JkVec2 scaled_position = jk_vec2_add(
+                    position, jk_vec2_mul(0.5f, jk_vec2_sub(base_dimensions, scaled_dimensions)));
 
             jk_shapes_rect_draw_outline(renderer,
                     jk_rect(scaled_position, scaled_dimensions),
@@ -1786,7 +1778,7 @@ static void draw_radio_buttons(ChessAssets *assets,
 
             TextLayout text_layout =
                     text_layout_get(assets, text, scale_factor * BUTTON_TEXT_SCALE);
-            JkVector2 cursor = {
+            JkVec2 cursor = {
                 scaled_position.x + scale_factor * (BUTTON_PADDING + RECT_THICKNESS)
                         + text_layout.offset.x,
                 scaled_position.y
@@ -1808,7 +1800,7 @@ static void draw_radio_buttons(ChessAssets *assets,
 
             TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
-            JkVector2 cursor = {
+            JkVec2 cursor = {
                 position.x + BUTTON_PADDING + RECT_THICKNESS + text_layout.offset.x, text_y};
             draw_text(renderer, text, cursor, BUTTON_TEXT_SCALE, outline_color);
         }
@@ -1871,7 +1863,7 @@ void render(ChessAssets *assets, Chess *chess)
     }
     chess->render_state_prev = state;
 
-    JkIntVector2 pos;
+    JkIntVec2 pos;
 
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
@@ -1881,7 +1873,7 @@ void render(ChessAssets *assets, Chess *chess)
 
     // Figure out which squares should be highlighted
     uint64_t destinations = destinations_get_by_src(chess, state.selected_index);
-    JkIntVector2 mouse_board_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
+    JkIntVec2 mouse_board_pos = screen_to_board_pos(chess, chess->input.mouse_pos);
     uint8_t mouse_index = board_index_get_unbounded(mouse_board_pos);
     JkColor drop_indicator_color = mouse_board_pos.x % 2 == mouse_board_pos.y % 2
             ? color_light_squares
@@ -1893,9 +1885,9 @@ void render(ChessAssets *assets, Chess *chess)
 
     Move move_prev = move_unpack(state.board.move_prev);
 
-    JkIntVector2 result_origin = {2, 3};
-    JkIntVector2 result_dimensions = {4, 2};
-    JkIntVector2 result_extent = jk_int_vector_2_add(result_origin, result_dimensions);
+    JkIntVec2 result_origin = {2, 3};
+    JkIntVec2 result_dimensions = {4, 2};
+    JkIntVec2 result_extent = jk_int_vec2_add(result_origin, result_dimensions);
 
     PieceCounts captured_pieces[TEAM_COUNT];
     captured_pieces[0] = piece_counts;
@@ -1925,8 +1917,8 @@ void render(ChessAssets *assets, Chess *chess)
         // Draw pieces on board and compute square colors
         for (pos.y = 0; pos.y < 10; pos.y++) {
             for (pos.x = 0; pos.x < 10; pos.x++) {
-                JkIntVector2 board_pos = apply_perspective(
-                        state.perspective, jk_int_vector_2_add(pos, (JkIntVector2){-1, -1}));
+                JkIntVec2 board_pos = apply_perspective(
+                        state.perspective, jk_int_vec2_add(pos, (JkIntVec2){-1, -1}));
                 int32_t index = board_index_get_unbounded(board_pos);
                 if (index < 64) {
                     Piece piece = board_piece_get(state.board, board_pos);
@@ -1976,7 +1968,7 @@ void render(ChessAssets *assets, Chess *chess)
         // Draw horizontal square coordinates
         float coords_scale = 0.0192f;
         for (int32_t x = 0; x < 8; x++) {
-            int64_t shape_id = 'a' + apply_perspective(state.perspective, (JkIntVector2){x, 0}).x
+            int64_t shape_id = 'a' + apply_perspective(state.perspective, (JkIntVec2){x, 0}).x
                     + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
             float width = coords_scale * shape->dimensions.x;
@@ -1991,7 +1983,7 @@ void render(ChessAssets *assets, Chess *chess)
             for (int64_t i = 0; i < JK_ARRAY_COUNT(cursor_ys); i++) {
                 jk_shapes_draw(&renderer,
                         shape_id,
-                        (JkVector2){cursor_x, cursor_ys[i]},
+                        (JkVec2){cursor_x, cursor_ys[i]},
                         coords_scale,
                         color_faded);
             }
@@ -1999,11 +1991,11 @@ void render(ChessAssets *assets, Chess *chess)
 
         // Draw vertical square coordinates
         for (int32_t y = 0; y < 8; y++) {
-            int64_t shape_id = '1' + apply_perspective(state.perspective, (JkIntVector2){0, y}).y
+            int64_t shape_id = '1' + apply_perspective(state.perspective, (JkIntVec2){0, y}).y
                     + CHARACTER_SHAPE_OFFSET;
             JkShape *shape = shapes.items + shape_id;
-            JkVector2 dimensions = jk_vector_2_mul(coords_scale, shape->dimensions);
-            JkVector2 offset = jk_vector_2_mul(coords_scale, shape->offset);
+            JkVec2 dimensions = jk_vec2_mul(coords_scale, shape->dimensions);
+            JkVec2 offset = jk_vec2_mul(coords_scale, shape->offset);
             float padding = square_size * 0.15f;
             float cursor_xs[] = {
                 square_size - padding - dimensions.x * 0.5f - offset.x,
@@ -2015,7 +2007,7 @@ void render(ChessAssets *assets, Chess *chess)
             for (int64_t i = 0; i < JK_ARRAY_COUNT(cursor_xs); i++) {
                 jk_shapes_draw(&renderer,
                         shape_id,
-                        (JkVector2){cursor_xs[i], cursor_y},
+                        (JkVec2){cursor_xs[i], cursor_y},
                         coords_scale,
                         color_faded);
             }
@@ -2046,7 +2038,7 @@ void render(ChessAssets *assets, Chess *chess)
                 digits[1] = remaining % 10; // minutes
                 remaining /= 10;
                 digits[0] = (uint8_t)remaining; // ten minutes
-                JkVector2 digit_pos = {.y = bar_text_y[team_index]};
+                JkVec2 digit_pos = {.y = bar_text_y[team_index]};
                 float raw_x = 64.0f;
                 float width = 13.2f;
                 for (int64_t i = 0; i < JK_ARRAY_COUNT(digits); i++) {
@@ -2065,7 +2057,7 @@ void render(ChessAssets *assets, Chess *chess)
                 }
 
                 // Draw captured pieces
-                JkVector2 draw_pos = {140.0f, y_value[!team_index]};
+                JkVec2 draw_pos = {140.0f, y_value[!team_index]};
                 for (PieceType piece_type = 1; piece_type < PIECE_TYPE_COUNT; piece_type++) {
                     JkColor color = color_teams[team_index];
                     color.a = 200;
@@ -2085,10 +2077,10 @@ void render(ChessAssets *assets, Chess *chess)
                             .data = (uint8_t *)characters,
                         };
                         TextLayout layout = text_layout_get(assets, text, coords_scale);
-                        JkVector2 cursor_pos;
+                        JkVec2 cursor_pos;
                         cursor_pos.x = draw_pos.x + 32.0f;
                         cursor_pos.y = draw_pos.y + 0.5f * (32.0f - layout.dimensions.y);
-                        cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
+                        cursor_pos = jk_vec2_add(cursor_pos, layout.offset);
 
                         draw_text(&renderer, text, cursor_pos, coords_scale, color_faded);
 
@@ -2103,12 +2095,12 @@ void render(ChessAssets *assets, Chess *chess)
             JkBuffer text = JKS("Menu");
             TextLayout layout = text_layout_get(assets, text, coords_scale);
 
-            JkVector2 dimensions = jk_vector_2_add(layout.dimensions,
-                    (JkVector2){2 * (BUTTON_PADDING + RECT_THICKNESS),
+            JkVec2 dimensions = jk_vec2_add(layout.dimensions,
+                    (JkVec2){2 * (BUTTON_PADDING + RECT_THICKNESS),
                         2 * (BUTTON_PADDING + RECT_THICKNESS)});
 
-            JkVector2 top_left = {.x = 64.0f * 9.0f - dimensions.x};
-            JkVector2 cursor = {
+            JkVec2 top_left = {.x = 64.0f * 9.0f - dimensions.x};
+            JkVec2 cursor = {
                 top_left.x + BUTTON_PADDING + RECT_THICKNESS + layout.offset.x,
                 bar_text_y[!state.perspective],
             };
@@ -2136,17 +2128,17 @@ void render(ChessAssets *assets, Chess *chess)
         // If the game is over, display the result
         if (state.result) {
             float result_scale = 0.05f;
-            JkVector2 result_origin_f = {192.0f, 256.0f};
-            JkVector2 result_dimensions_f = {256.0f, 128.0f};
+            JkVec2 result_origin_f = {192.0f, 256.0f};
+            JkVec2 result_dimensions_f = {256.0f, 128.0f};
 
             if (state.result == RESULT_STALEMATE) {
                 JkBuffer text = JKS("Stalemate");
 
                 TextLayout layout = text_layout_get(assets, text, result_scale);
-                JkVector2 cursor_pos = jk_vector_2_mul(
-                        0.5f, jk_vector_2_sub(result_dimensions_f, layout.dimensions));
-                cursor_pos = jk_vector_2_add(cursor_pos, result_origin_f);
-                cursor_pos = jk_vector_2_add(cursor_pos, layout.offset);
+                JkVec2 cursor_pos =
+                        jk_vec2_mul(0.5f, jk_vec2_sub(result_dimensions_f, layout.dimensions));
+                cursor_pos = jk_vec2_add(cursor_pos, result_origin_f);
+                cursor_pos = jk_vec2_add(cursor_pos, layout.offset);
 
                 draw_text(&renderer, text, cursor_pos, result_scale, color_light_squares);
             } else {
@@ -2165,13 +2157,13 @@ void render(ChessAssets *assets, Chess *chess)
                                         - (victor_layout.dimensions.y + padding
                                                 + condition_layout.dimensions.y));
 
-                JkVector2 victor_cursor;
+                JkVec2 victor_cursor;
                 victor_cursor.x = result_origin_f.x
                         + 0.5f * (result_dimensions_f.x - victor_layout.dimensions.x)
                         + victor_layout.offset.x;
                 victor_cursor.y = y_start + victor_layout.offset.y;
 
-                JkVector2 condition_cursor;
+                JkVec2 condition_cursor;
                 condition_cursor.x = result_origin_f.x
                         + 0.5f * (result_dimensions_f.x - condition_layout.dimensions.x)
                         + condition_layout.offset.x;
@@ -2197,20 +2189,20 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
 
-        JkVector2 top_left = {(640 - MENU_WIDTH) / 2, 98.88f};
+        JkVec2 top_left = {(640 - MENU_WIDTH) / 2, 98.88f};
 
         {
             JkBuffer text = JKS("Close menu");
             TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
-            JkVector2 dimensions = {
+            JkVec2 dimensions = {
                 MENU_WIDTH,
                 text_layout.dimensions.y + 2 * (BUTTON_PADDING + RECT_THICKNESS),
             };
 
-            JkVector2 cursor = jk_vector_2_add(jk_vector_2_add(top_left,
-                                                       (JkVector2){BUTTON_PADDING + RECT_THICKNESS,
-                                                           BUTTON_PADDING + RECT_THICKNESS}),
+            JkVec2 cursor = jk_vec2_add(jk_vec2_add(top_left,
+                                                (JkVec2){BUTTON_PADDING + RECT_THICKNESS,
+                                                    BUTTON_PADDING + RECT_THICKNESS}),
                     text_layout.offset);
 
             JkColor text_color;
@@ -2242,7 +2234,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             top_left.y += 32;
 
-            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            JkVec2 cursor = jk_vec2_add(top_left, text_layout.offset);
             draw_text(&renderer, text, cursor, heading_scale, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
@@ -2254,7 +2246,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             top_left.y += 20;
 
-            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            JkVec2 cursor = jk_vec2_add(top_left, text_layout.offset);
             draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
@@ -2275,7 +2267,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             top_left.y += 20;
 
-            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            JkVec2 cursor = jk_vec2_add(top_left, text_layout.offset);
             draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
@@ -2296,7 +2288,7 @@ void render(ChessAssets *assets, Chess *chess)
 
             top_left.y += 20;
 
-            JkVector2 cursor = jk_vector_2_add(top_left, text_layout.offset);
+            JkVec2 cursor = jk_vec2_add(top_left, text_layout.offset);
             draw_text(&renderer, text, cursor, BUTTON_TEXT_SCALE, color_light_squares);
 
             top_left.y += text_layout.dimensions.y;
@@ -2317,14 +2309,14 @@ void render(ChessAssets *assets, Chess *chess)
             JkBuffer text = JKS("Start new game");
             TextLayout text_layout = text_layout_get(assets, text, BUTTON_TEXT_SCALE);
 
-            JkVector2 dimensions = {
+            JkVec2 dimensions = {
                 MENU_WIDTH,
                 text_layout.dimensions.y + 2 * (BUTTON_PADDING + RECT_THICKNESS),
             };
 
-            JkVector2 cursor = jk_vector_2_add(jk_vector_2_add(top_left,
-                                                       (JkVector2){BUTTON_PADDING + RECT_THICKNESS,
-                                                           BUTTON_PADDING + RECT_THICKNESS}),
+            JkVec2 cursor = jk_vec2_add(jk_vec2_add(top_left,
+                                                (JkVec2){BUTTON_PADDING + RECT_THICKNESS,
+                                                    BUTTON_PADDING + RECT_THICKNESS}),
                     text_layout.offset);
 
             JkColor text_color;
@@ -2358,9 +2350,9 @@ void render(ChessAssets *assets, Chess *chess)
 
     int64_t cs = 0;
     int64_t ce = 0;
-    JkIntVector2 pos_in_square;
-    JkIntVector2 square_pos;
-    JkIntVector2 mouse_square_pos = jk_int_vector_2_div(state.square_side_length, state.mouse_pos);
+    JkIntVec2 pos_in_square;
+    JkIntVec2 square_pos;
+    JkIntVec2 mouse_square_pos = jk_int_vec2_div(state.square_side_length, state.mouse_pos);
     for (pos.y = 0, pos_in_square.y = 0, square_pos.y = 0; pos.y < state.square_side_length * 10;
             pos.y++) {
         while (ce < draw_commands.count && draw_commands.items[ce].rect.min.y <= pos.y) {
@@ -2376,7 +2368,7 @@ void render(ChessAssets *assets, Chess *chess)
             JkColor color = square_colors[square_pos.y][square_pos.x];
 
             // Shows a gap in the selection to indicate which square the held piece will drop on
-            if (jk_int_vector_2_equal(square_pos, mouse_square_pos) && ready_to_drop) {
+            if (jk_int_vec2_equal(square_pos, mouse_square_pos) && ready_to_drop) {
                 int32_t x_dist_from_edge = pos_in_square.x < state.square_side_length / 2
                         ? pos_in_square.x
                         : state.square_side_length - 1 - pos_in_square.x;
@@ -2397,7 +2389,7 @@ void render(ChessAssets *assets, Chess *chess)
                         && pos.y < command->rect.max.y) {
                     uint8_t alpha;
                     if (command->alpha_map) {
-                        JkIntVector2 pos_in_rect = jk_int_vector_2_sub(pos, command->rect.min);
+                        JkIntVec2 pos_in_rect = jk_int_vec2_sub(pos, command->rect.min);
                         int32_t width = (command->rect.max.x - command->rect.min.x);
                         uint8_t bitmap_alpha =
                                 command->alpha_map[pos_in_rect.y * width + pos_in_rect.x];
@@ -2429,11 +2421,11 @@ void render(ChessAssets *assets, Chess *chess)
         Piece piece = board_piece_get_index(state.board, state.selected_index);
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, piece.type, 1.0f);
         if (bitmap.data) {
-            JkIntVector2 held_piece_offset = jk_int_vector_2_sub(state.mouse_pos,
-                    (JkIntVector2){state.square_side_length / 2, state.square_side_length / 2});
+            JkIntVec2 held_piece_offset = jk_int_vec2_sub(state.mouse_pos,
+                    (JkIntVec2){state.square_side_length / 2, state.square_side_length / 2});
             for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y++) {
                 for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x++) {
-                    JkIntVector2 screen_pos = jk_int_vector_2_add(pos, held_piece_offset);
+                    JkIntVec2 screen_pos = jk_int_vec2_add(pos, held_piece_offset);
                     if (screen_in_bounds(state.square_side_length, screen_pos)) {
                         int32_t index = screen_pos.y * DRAW_BUFFER_SIDE_LENGTH + screen_pos.x;
                         JkColor color_piece = color_teams[piece.team];
@@ -2448,15 +2440,14 @@ void render(ChessAssets *assets, Chess *chess)
 
     if (state.animation_time) {
         JkColor piece_color = color_teams[team];
-        JkIntVector2 src = chess->animation_src;
-        JkIntVector2 dest = chess->animation_dest;
+        JkIntVec2 src = chess->animation_src;
+        JkIntVec2 dest = chess->animation_dest;
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(&renderer, chess->piece_prev_type, 1.0f);
-        JkVector2 src_pos = board_to_canvas_pos(state.perspective, square_size, src);
-        JkVector2 canvas_pos = board_to_canvas_pos(state.perspective, square_size, dest);
-        JkVector2 origin_direction = jk_vector_2_normalized(jk_vector_2_sub(src_pos, canvas_pos));
-        JkVector2 blast_center =
-                jk_vector_2_add(jk_vector_2_add(canvas_pos, (JkVector2){32.0f, 32.0f}),
-                        jk_vector_2_mul(64.0f, origin_direction));
+        JkVec2 src_pos = board_to_canvas_pos(state.perspective, square_size, src);
+        JkVec2 canvas_pos = board_to_canvas_pos(state.perspective, square_size, dest);
+        JkVec2 origin_direction = jk_vec2_normalized(jk_vec2_sub(src_pos, canvas_pos));
+        JkVec2 blast_center = jk_vec2_add(jk_vec2_add(canvas_pos, (JkVec2){32.0f, 32.0f}),
+                jk_vec2_mul(64.0f, origin_direction));
 
         float speed = 1.8f;
         float deceleration = 0.001152f;
@@ -2472,27 +2463,25 @@ void render(ChessAssets *assets, Chess *chess)
         for (pos.y = 0; pos.y < bitmap.dimensions.x; pos.y += skip) {
             for (pos.x = 0; pos.x < bitmap.dimensions.y; pos.x += skip) {
                 uint64_t rand64 = jk_random_u64(&generator);
-                JkIntVector2 rand_offset_i = {
+                JkIntVec2 rand_offset_i = {
                     (int32_t)(rand64 % 256) - 128, (uint32_t)((rand64 >> 32) % 256) - 128};
-                JkVector2 rand_offset =
-                        jk_vector_2_mul(1.0f / 128.0f, jk_vector_2_from_int(rand_offset_i));
+                JkVec2 rand_offset = jk_vec2_mul(1.0f / 128.0f, jk_vec2_from_int(rand_offset_i));
 
-                JkVector2 offset = jk_vector_2_mul(1.0f / pixels_per_unit,
-                        jk_vector_2_add(jk_vector_2_from_int(pos), rand_offset));
-                JkVector2 pixel_pos = jk_vector_2_add(canvas_pos, offset);
-                JkVector2 direction =
-                        jk_vector_2_normalized(jk_vector_2_sub(pixel_pos, blast_center));
-                JkVector2 delta = jk_vector_2_mul(distance, direction);
-                JkVector2 prev_delta = jk_vector_2_mul(prev_distance, direction);
-                JkVector2 pixel_dest = jk_vector_2_add(pixel_pos, delta);
-                JkVector2 prev_dest = jk_vector_2_add(pixel_pos, prev_delta);
+                JkVec2 offset = jk_vec2_mul(
+                        1.0f / pixels_per_unit, jk_vec2_add(jk_vec2_from_int(pos), rand_offset));
+                JkVec2 pixel_pos = jk_vec2_add(canvas_pos, offset);
+                JkVec2 direction = jk_vec2_normalized(jk_vec2_sub(pixel_pos, blast_center));
+                JkVec2 delta = jk_vec2_mul(distance, direction);
+                JkVec2 prev_delta = jk_vec2_mul(prev_distance, direction);
+                JkVec2 pixel_dest = jk_vec2_add(pixel_pos, delta);
+                JkVec2 prev_dest = jk_vec2_add(pixel_pos, prev_delta);
 
                 piece_color.a = bitmap.data[pos.y * bitmap.dimensions.x + pos.x];
                 if (piece_color.a) {
                     draw_line(chess,
                             piece_color,
-                            jk_vector_2_mul(pixels_per_unit, prev_dest),
-                            jk_vector_2_mul(pixels_per_unit, pixel_dest));
+                            jk_vec2_mul(pixels_per_unit, prev_dest),
+                            jk_vec2_mul(pixels_per_unit, pixel_dest));
                 }
             }
         }
@@ -2504,7 +2493,7 @@ void print_set(void (*print)(JkBuffer string))
     jk_print = print;
 }
 
-b32 is_draggable(Chess *chess, JkIntVector2 pos)
+b32 is_draggable(Chess *chess, JkIntVec2 pos)
 {
     if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
         uint8_t index = board_index_get_unbounded(screen_to_board_pos(chess, pos));

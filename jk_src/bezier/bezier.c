@@ -88,12 +88,12 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
             &arena);
 
     {
-        jk_shapes_draw(&renderer, 2, (JkVector2){256.0f, 256.0f}, 1.0f, color_black_pieces);
-        jk_shapes_draw(&renderer, 1, (JkVector2){320.0f, 256.0f}, 1.0f, color_black_pieces);
-        jk_shapes_draw(&renderer, 3, (JkVector2){256.0f, 320.0f}, 1.0f, color_black_pieces);
-        jk_shapes_draw(&renderer, 4, (JkVector2){320.0f, 320.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 2, (JkVec2){256.0f, 256.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 1, (JkVec2){320.0f, 256.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 3, (JkVec2){256.0f, 320.0f}, 1.0f, color_black_pieces);
+        jk_shapes_draw(&renderer, 4, (JkVec2){320.0f, 320.0f}, 1.0f, color_black_pieces);
 
-        JkVector2 current_point = {font_scale * first_point, -font_scale * assets->font_ascent};
+        JkVec2 current_point = {font_scale * first_point, -font_scale * assets->font_ascent};
         for (int32_t i = 0; i < display_string.size; i++) {
             current_point.x += jk_shapes_draw(&renderer,
                     display_string.data[i] + CHARACTER_SHAPE_OFFSET,
@@ -104,7 +104,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
 
         JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
 
-        JkIntVector2 pos;
+        JkIntVec2 pos;
         int32_t cs = 0;
         int32_t ce = 0;
         for (pos.y = 0; pos.y < bezier->draw_square_side_length; pos.y++) {
@@ -123,8 +123,8 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
                             && pos.y < command->rect.max.y) {
                         uint8_t alpha;
                         if (command->alpha_map) {
-                            JkIntVector2 bitmap_pos =
-                                    jk_int_vector_2_sub(pos, draw_commands.items[i].rect.min);
+                            JkIntVec2 bitmap_pos =
+                                    jk_int_vec2_sub(pos, draw_commands.items[i].rect.min);
                             int32_t width = command->rect.max.x - command->rect.min.x;
                             int32_t index = bitmap_pos.y * width + bitmap_pos.x;
                             alpha = command->alpha_map[index];

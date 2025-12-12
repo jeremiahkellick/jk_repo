@@ -42,17 +42,13 @@ typedef struct JkSpan {
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal)                    \
-    {                                                            \
-        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
-    }
+#define JK_STRING_INITIALIZER(string_literal) \
+    {JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal}
 
 #define JKSI JK_STRING_INITIALIZER
 
-#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)        \
-    {                                                     \
-        .size = JK_SIZEOF(byte_array), .data = byte_array \
-    }
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array) \
+    {.size = JK_SIZEOF(byte_array), .data = byte_array}
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
@@ -322,129 +318,129 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length);
 
 // ---- Quicksort end ----------------------------------------------------------
 
-// ---- JkIntVector2 begin -------------------------------------------------------
+// ---- JkIntVec2 begin --------------------------------------------------------
 
-typedef union JkIntVector2 {
+typedef union JkIntVec2 {
     int32_t coords[2];
     struct {
         int32_t x;
         int32_t y;
     };
-} JkIntVector2;
+} JkIntVec2;
 
-JK_PUBLIC b32 jk_int_vector_2_equal(JkIntVector2 a, JkIntVector2 b);
+JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b);
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b);
+JK_PUBLIC JkIntVec2 jk_int_vec2_add(JkIntVec2 a, JkIntVec2 b);
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_sub(JkIntVector2 a, JkIntVector2 b);
+JK_PUBLIC JkIntVec2 jk_int_vec2_sub(JkIntVec2 a, JkIntVec2 b);
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_mul(int32_t scalar, JkIntVector2 vector);
+JK_PUBLIC JkIntVec2 jk_int_vec2_mul(int32_t scalar, JkIntVec2 vector);
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_div(int32_t divisor, JkIntVector2 vector);
+JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector);
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 vector);
+JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector);
 
 // ---- IntVector2 end ---------------------------------------------------------
 
-// ---- JkVector2 begin -------------------------------------------------------
+// ---- JkVec2 begin -----------------------------------------------------------
 
-typedef union JkVector2 {
+typedef union JkVec2 {
     float coords[2];
     struct {
         float x;
         float y;
     };
-} JkVector2;
+} JkVec2;
 
-JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance);
+JK_PUBLIC b32 jk_vec2_approx_equal(JkVec2 a, JkVec2 b, float tolerance);
 
-JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b);
+JK_PUBLIC JkVec2 jk_vec2_add(JkVec2 a, JkVec2 b);
 
-JK_PUBLIC JkVector2 jk_vector_2_sub(JkVector2 a, JkVector2 b);
+JK_PUBLIC JkVec2 jk_vec2_sub(JkVec2 a, JkVec2 b);
 
-JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector);
+JK_PUBLIC JkVec2 jk_vec2_mul(float scalar, JkVec2 vector);
 
-JK_PUBLIC JkVector2 jk_vector_2_ceil(JkVector2 v);
+JK_PUBLIC JkVec2 jk_vec2_ceil(JkVec2 v);
 
-JK_PUBLIC JkIntVector2 jk_vector_2_ceil_i(JkVector2 v);
+JK_PUBLIC JkIntVec2 jk_vec2_ceil_i(JkVec2 v);
 
-JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v);
+JK_PUBLIC float jk_vec2_magnitude_sqr(JkVec2 v);
 
-JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v);
+JK_PUBLIC float jk_vec2_magnitude(JkVec2 v);
 
-JK_PUBLIC JkVector2 jk_vector_2_normalized(JkVector2 v);
+JK_PUBLIC JkVec2 jk_vec2_normalized(JkVec2 v);
 
-JK_PUBLIC float jk_vector_2_dot(JkVector2 u, JkVector2 v);
+JK_PUBLIC float jk_vec2_dot(JkVec2 u, JkVec2 v);
 
-JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v);
+JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v);
 
-JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t);
+JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t);
 
-JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b);
+JK_PUBLIC float jk_vec2_distance_squared(JkVec2 a, JkVec2 b);
 
-JK_PUBLIC JkVector2 jk_vector_2_from_int(JkIntVector2 int_vector);
+JK_PUBLIC JkVec2 jk_vec2_from_int(JkIntVec2 int_vector);
 
-JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector);
+JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector);
 
-JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector);
+JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector);
 
-// ---- JkVector2 end ----------------------------------------------------------
+// ---- JkVec2 end -------------------------------------------------------------
 
-// ---- JkVector3 begin -------------------------------------------------------
+// ---- JkVec3 begin -----------------------------------------------------------
 
-typedef union JkVector3 {
+typedef union JkVec3 {
     float coords[3];
     struct {
         float x;
         float y;
         float z;
     };
-} JkVector3;
+} JkVec3;
 
-typedef struct JkVector3Array {
+typedef struct JkVec3Array {
     int64_t count;
-    JkVector3 *items;
-} JkVector3Array;
+    JkVec3 *items;
+} JkVec3Array;
 
-JK_PUBLIC b32 jk_vector_3_approx_equal(JkVector3 a, JkVector3 b, float tolerance);
+JK_PUBLIC b32 jk_vec3_approx_equal(JkVec3 a, JkVec3 b, float tolerance);
 
-JK_PUBLIC JkVector3 jk_vector_3_add(JkVector3 a, JkVector3 b);
+JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b);
 
-JK_PUBLIC JkVector3 jk_vector_3_sub(JkVector3 a, JkVector3 b);
+JK_PUBLIC JkVec3 jk_vec3_sub(JkVec3 a, JkVec3 b);
 
-JK_PUBLIC JkVector3 jk_vector_3_mul(float scalar, JkVector3 vector);
+JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector);
 
-JK_PUBLIC JkVector3 jk_vector_3_ceil(JkVector3 v);
+JK_PUBLIC JkVec3 jk_vec3_ceil(JkVec3 v);
 
-JK_PUBLIC float jk_vector_3_magnitude_sqr(JkVector3 v);
+JK_PUBLIC float jk_vec3_magnitude_sqr(JkVec3 v);
 
-JK_PUBLIC float jk_vector_3_magnitude(JkVector3 v);
+JK_PUBLIC float jk_vec3_magnitude(JkVec3 v);
 
-JK_PUBLIC JkVector3 jk_vector_3_normalized(JkVector3 v);
+JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v);
 
-JK_PUBLIC float jk_vector_3_dot(JkVector3 u, JkVector3 v);
+JK_PUBLIC float jk_vec3_dot(JkVec3 u, JkVec3 v);
 
-JK_PUBLIC JkVector3 jk_vector_3_cross(JkVector3 u, JkVector3 v);
+JK_PUBLIC JkVec3 jk_vec3_cross(JkVec3 u, JkVec3 v);
 
-JK_PUBLIC float jk_vector_3_angle_between(JkVector3 u, JkVector3 v);
+JK_PUBLIC float jk_vec3_angle_between(JkVec3 u, JkVec3 v);
 
-JK_PUBLIC JkVector3 jk_vector_3_lerp(JkVector3 a, JkVector3 b, float t);
+JK_PUBLIC JkVec3 jk_vec3_lerp(JkVec3 a, JkVec3 b, float t);
 
-JK_PUBLIC float jk_vector_3_distance_squared(JkVector3 a, JkVector3 b);
+JK_PUBLIC float jk_vec3_distance_squared(JkVec3 a, JkVec3 b);
 
-JK_PUBLIC JkVector3 jk_vector_3_round(JkVector3 vector);
+JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector);
 
-JK_PUBLIC JkVector2 jk_vector_3_to_2(JkVector3 v);
+JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
-// ---- JkVector3 end ----------------------------------------------------------
+// ---- JkVec3 end -------------------------------------------------------------
 
 // ---- Shapes begin -----------------------------------------------------------
 
 typedef union JkSegment {
-    JkVector2 endpoints[2];
+    JkVec2 endpoints[2];
     struct {
-        JkVector2 p1;
-        JkVector2 p2;
+        JkVec2 p1;
+        JkVec2 p2;
     };
 } JkSegment;
 
@@ -462,28 +458,28 @@ typedef struct JkEdgeArray {
     JkEdge *items;
 } JkEdgeArray;
 
-JK_PUBLIC JkEdge jk_points_to_edge(JkVector2 a, JkVector2 b);
+JK_PUBLIC JkEdge jk_points_to_edge(JkVec2 a, JkVec2 b);
 
 typedef struct JkRect {
-    JkVector2 min;
-    JkVector2 max;
+    JkVec2 min;
+    JkVec2 max;
 } JkRect;
 
 typedef struct JkIntRect {
-    JkIntVector2 min;
-    JkIntVector2 max;
+    JkIntVec2 min;
+    JkIntVec2 max;
 } JkIntRect;
 
-JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions);
+JK_PUBLIC JkRect jk_rect(JkVec2 position, JkVec2 dimensions);
 
-JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect);
+JK_PUBLIC JkIntVec2 jk_int_rect_dimensions(JkIntRect rect);
 
-JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point);
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point);
 
 JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b);
 
 typedef struct JkTriangle2 {
-    JkVector2 v[3];
+    JkVec2 v[3];
 } JkTriangle2;
 
 JK_PUBLIC JkIntRect jk_triangle2_int_bounding_box(JkTriangle2 t);

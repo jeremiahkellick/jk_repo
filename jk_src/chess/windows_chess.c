@@ -61,7 +61,7 @@ static Shared g_shared = {
     .debug_print_lock = SRWLOCK_INIT,
 };
 
-static JkIntVector2 g_window_dimensions;
+static JkIntVec2 g_window_dimensions;
 static Chess g_chess = {0};
 static ChessAssets *g_assets;
 static JkBuffer g_ai_memory;
@@ -125,8 +125,8 @@ typedef struct WinRect {
 typedef struct Rect {
     union {
         struct {
-            JkIntVector2 pos;
-            JkIntVector2 dimensions;
+            JkIntVec2 pos;
+            JkIntVec2 dimensions;
         };
         int32_t a[4];
     };
@@ -136,7 +136,7 @@ static Rect draw_rect_get(void)
 {
     Rect result = {0};
 
-    result.dimensions = (JkIntVector2){
+    result.dimensions = (JkIntVec2){
         JK_MIN(g_window_dimensions.x, g_chess.square_side_length * 10),
         JK_MIN(g_window_dimensions.y, g_chess.square_side_length * 10),
     };
@@ -469,8 +469,8 @@ DWORD game_thread(LPVOID param)
                         win_audio_buffer, &play_cursor, &write_cursor)
                     == DS_OK) {
                 int64_t safe_start_point = (write_cursor
-                                                    + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
-                                                            * JK_SIZEOF(AudioSample))
+                                                   + ((SAMPLES_PER_SECOND * AUDIO_DELAY_MS) / 1000)
+                                                           * JK_SIZEOF(AudioSample))
                         % g_audio_buffer_size;
                 if (reset_audio_position) {
                     reset_audio_position = FALSE;

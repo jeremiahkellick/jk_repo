@@ -206,5 +206,5 @@ b32 ai_tick(double os_time)
 
 b32 web_is_draggable(int32_t x, int32_t y)
 {
-    return is_draggable(&g_chess, (JkIntVector2){x, y});
+    return is_draggable(&g_chess, (JkIntVec2){x, y});
 }

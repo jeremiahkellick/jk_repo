@@ -940,202 +940,199 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int length)
 
 // ---- Quicksort end ----------------------------------------------------------
 
-// ---- JkIntVector2 begin -------------------------------------------------------
+// ---- JkIntVec2 begin --------------------------------------------------------
 
-JK_PUBLIC b32 jk_int_vector_2_equal(JkIntVector2 a, JkIntVector2 b)
+JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b)
 {
     return a.x == b.x && a.y == b.y;
 }
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_add(JkIntVector2 a, JkIntVector2 b)
+JK_PUBLIC JkIntVec2 jk_int_vec2_add(JkIntVec2 a, JkIntVec2 b)
 {
-    return (JkIntVector2){.x = a.x + b.x, .y = a.y + b.y};
+    return (JkIntVec2){.x = a.x + b.x, .y = a.y + b.y};
 }
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_sub(JkIntVector2 a, JkIntVector2 b)
+JK_PUBLIC JkIntVec2 jk_int_vec2_sub(JkIntVec2 a, JkIntVec2 b)
 {
-    return (JkIntVector2){.x = a.x - b.x, .y = a.y - b.y};
+    return (JkIntVec2){.x = a.x - b.x, .y = a.y - b.y};
 }
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_mul(int32_t scalar, JkIntVector2 vector)
+JK_PUBLIC JkIntVec2 jk_int_vec2_mul(int32_t scalar, JkIntVec2 vector)
 {
-    return (JkIntVector2){.x = scalar * vector.x, .y = scalar * vector.y};
+    return (JkIntVec2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_div(int32_t divisor, JkIntVector2 vector)
+JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector)
 {
-    return (JkIntVector2){.x = vector.x / divisor, .y = vector.y / divisor};
+    return (JkIntVec2){.x = vector.x / divisor, .y = vector.y / divisor};
 }
 
-JK_PUBLIC JkIntVector2 jk_int_vector_2_remainder(int32_t divisor, JkIntVector2 vector)
+JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector)
 {
-    return (JkIntVector2){.x = vector.x % divisor, .y = vector.y % divisor};
+    return (JkIntVec2){.x = vector.x % divisor, .y = vector.y % divisor};
 }
 
-// ---- JkIntVector2 end -------------------------------------------------------
+// ---- JkIntVec2 end ----------------------------------------------------------
 
-// ---- JkVector2 begin --------------------------------------------------------
+// ---- JkVec2 begin -----------------------------------------------------------
 
-JK_PUBLIC b32 jk_vector_2_approx_equal(JkVector2 a, JkVector2 b, float tolerance)
+JK_PUBLIC b32 jk_vec2_approx_equal(JkVec2 a, JkVec2 b, float tolerance)
 {
     return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance);
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_add(JkVector2 a, JkVector2 b)
+JK_PUBLIC JkVec2 jk_vec2_add(JkVec2 a, JkVec2 b)
 {
-    return (JkVector2){.x = a.x + b.x, .y = a.y + b.y};
+    return (JkVec2){.x = a.x + b.x, .y = a.y + b.y};
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_sub(JkVector2 a, JkVector2 b)
+JK_PUBLIC JkVec2 jk_vec2_sub(JkVec2 a, JkVec2 b)
 {
-    return (JkVector2){.x = a.x - b.x, .y = a.y - b.y};
+    return (JkVec2){.x = a.x - b.x, .y = a.y - b.y};
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_mul(float scalar, JkVector2 vector)
+JK_PUBLIC JkVec2 jk_vec2_mul(float scalar, JkVec2 vector)
 {
-    return (JkVector2){.x = scalar * vector.x, .y = scalar * vector.y};
+    return (JkVec2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_ceil(JkVector2 v)
+JK_PUBLIC JkVec2 jk_vec2_ceil(JkVec2 v)
 {
-    return (JkVector2){jk_ceil_f32(v.x), jk_ceil_f32(v.y)};
+    return (JkVec2){jk_ceil_f32(v.x), jk_ceil_f32(v.y)};
 }
 
-JK_PUBLIC JkIntVector2 jk_vector_2_ceil_i(JkVector2 v)
+JK_PUBLIC JkIntVec2 jk_vec2_ceil_i(JkVec2 v)
 {
-    JkVector2 v_ceiled = jk_vector_2_ceil(v);
-    return (JkIntVector2){(int32_t)v_ceiled.x, (int32_t)v_ceiled.y};
+    JkVec2 v_ceiled = jk_vec2_ceil(v);
+    return (JkIntVec2){(int32_t)v_ceiled.x, (int32_t)v_ceiled.y};
 }
 
-JK_PUBLIC float jk_vector_2_magnitude_sqr(JkVector2 v)
+JK_PUBLIC float jk_vec2_magnitude_sqr(JkVec2 v)
 {
     return v.x * v.x + v.y * v.y;
 }
 
-JK_PUBLIC float jk_vector_2_magnitude(JkVector2 v)
+JK_PUBLIC float jk_vec2_magnitude(JkVec2 v)
 {
-    return jk_sqrt_f32(jk_vector_2_magnitude_sqr(v));
+    return jk_sqrt_f32(jk_vec2_magnitude_sqr(v));
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_normalized(JkVector2 v)
+JK_PUBLIC JkVec2 jk_vec2_normalized(JkVec2 v)
 {
-    return jk_vector_2_mul(1.0f / jk_vector_2_magnitude(v), v);
+    return jk_vec2_mul(1.0f / jk_vec2_magnitude(v), v);
 }
 
-JK_PUBLIC float jk_vector_2_dot(JkVector2 u, JkVector2 v)
+JK_PUBLIC float jk_vec2_dot(JkVec2 u, JkVec2 v)
 {
     return u.x * v.x + u.y * v.y;
 }
 
-JK_PUBLIC float jk_vector_2_angle_between(JkVector2 u, JkVector2 v)
+JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v)
 {
     float sign = u.x * v.y - u.y * v.x < 0.0f ? -1.0f : 1.0f;
-    return sign
-            * jk_acos_f32(
-                    jk_vector_2_dot(u, v) / (jk_vector_2_magnitude(u) * jk_vector_2_magnitude(v)));
+    return sign * jk_acos_f32(jk_vec2_dot(u, v) / (jk_vec2_magnitude(u) * jk_vec2_magnitude(v)));
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_lerp(JkVector2 a, JkVector2 b, float t)
+JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t)
 {
-    return jk_vector_2_add(jk_vector_2_mul(1.0f - t, a), jk_vector_2_mul(t, b));
+    return jk_vec2_add(jk_vec2_mul(1.0f - t, a), jk_vec2_mul(t, b));
 }
 
-JK_PUBLIC float jk_vector_2_distance_squared(JkVector2 a, JkVector2 b)
+JK_PUBLIC float jk_vec2_distance_squared(JkVec2 a, JkVec2 b)
 {
     float dx = b.x - a.x;
     float dy = b.y - a.y;
     return dx * dx + dy * dy;
 }
 
-JK_PUBLIC JkVector2 jk_vector_2_from_int(JkIntVector2 int_vector)
+JK_PUBLIC JkVec2 jk_vec2_from_int(JkIntVec2 int_vector)
 {
-    return (JkVector2){(float)int_vector.x, (float)int_vector.y};
+    return (JkVec2){(float)int_vector.x, (float)int_vector.y};
 }
 
-JK_PUBLIC JkIntVector2 jk_vector_2_round(JkVector2 vector)
+JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector)
 {
-    return (JkIntVector2){jk_round(vector.x), jk_round(vector.y)};
+    return (JkIntVec2){jk_round(vector.x), jk_round(vector.y)};
 }
 
-JK_PUBLIC JkVector2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVector2 vector)
+JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector)
 {
-    return (JkVector2){
+    return (JkVec2){
         matrix[0][0] * vector.x + matrix[0][1] * vector.y,
         matrix[1][0] * vector.x + matrix[1][1] * vector.y,
     };
 }
 
-// ---- JkVector2 end ----------------------------------------------------------
+// ---- JkVec2 end -------------------------------------------------------------
 
-// ---- JkVector3 begin --------------------------------------------------------
+// ---- JkVec3 begin -----------------------------------------------------------
 
-JK_PUBLIC b32 jk_vector_3_approx_equal(JkVector3 a, JkVector3 b, float tolerance)
+JK_PUBLIC b32 jk_vec3_approx_equal(JkVec3 a, JkVec3 b, float tolerance)
 {
     return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance)
             && jk_float32_equal(a.z, b.z, tolerance);
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_add(JkVector3 a, JkVector3 b)
+JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b)
 {
-    return (JkVector3){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z};
+    return (JkVec3){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z};
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_sub(JkVector3 a, JkVector3 b)
+JK_PUBLIC JkVec3 jk_vec3_sub(JkVec3 a, JkVec3 b)
 {
-    return (JkVector3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
+    return (JkVec3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_mul(float scalar, JkVector3 vector)
+JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector)
 {
-    return (JkVector3){.x = scalar * vector.x, .y = scalar * vector.y, .z = scalar * vector.z};
+    return (JkVec3){.x = scalar * vector.x, .y = scalar * vector.y, .z = scalar * vector.z};
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_ceil(JkVector3 v)
+JK_PUBLIC JkVec3 jk_vec3_ceil(JkVec3 v)
 {
-    return (JkVector3){jk_ceil_f32(v.x), jk_ceil_f32(v.y), jk_ceil_f32(v.z)};
+    return (JkVec3){jk_ceil_f32(v.x), jk_ceil_f32(v.y), jk_ceil_f32(v.z)};
 }
 
-JK_PUBLIC float jk_vector_3_magnitude_sqr(JkVector3 v)
+JK_PUBLIC float jk_vec3_magnitude_sqr(JkVec3 v)
 {
     return v.x * v.x + v.y * v.y + v.z * v.z;
 }
 
-JK_PUBLIC float jk_vector_3_magnitude(JkVector3 v)
+JK_PUBLIC float jk_vec3_magnitude(JkVec3 v)
 {
-    return jk_sqrt_f32(jk_vector_3_magnitude_sqr(v));
+    return jk_sqrt_f32(jk_vec3_magnitude_sqr(v));
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_normalized(JkVector3 v)
+JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v)
 {
-    return jk_vector_3_mul(1.0f / jk_vector_3_magnitude(v), v);
+    return jk_vec3_mul(1.0f / jk_vec3_magnitude(v), v);
 }
 
-JK_PUBLIC float jk_vector_3_dot(JkVector3 u, JkVector3 v)
+JK_PUBLIC float jk_vec3_dot(JkVec3 u, JkVec3 v)
 {
     return u.x * v.x + u.y * v.y + u.z * v.z;
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_cross(JkVector3 u, JkVector3 v)
+JK_PUBLIC JkVec3 jk_vec3_cross(JkVec3 u, JkVec3 v)
 {
-    return (JkVector3){
+    return (JkVec3){
         .x = u.y * v.z - u.z * v.y,
         .y = u.z * v.x - u.x * v.z,
         .z = u.x * v.y - u.y * v.x,
     };
 }
 
-JK_PUBLIC float jk_vector_3_angle_between(JkVector3 u, JkVector3 v)
+JK_PUBLIC float jk_vec3_angle_between(JkVec3 u, JkVec3 v)
 {
-    return jk_acos_f32(
-            jk_vector_3_dot(u, v) / (jk_vector_3_magnitude(u) * jk_vector_3_magnitude(v)));
+    return jk_acos_f32(jk_vec3_dot(u, v) / (jk_vec3_magnitude(u) * jk_vec3_magnitude(v)));
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_lerp(JkVector3 a, JkVector3 b, float t)
+JK_PUBLIC JkVec3 jk_vec3_lerp(JkVec3 a, JkVec3 b, float t)
 {
-    return jk_vector_3_add(jk_vector_3_mul(1.0f - t, a), jk_vector_3_mul(t, b));
+    return jk_vec3_add(jk_vec3_mul(1.0f - t, a), jk_vec3_mul(t, b));
 }
 
-JK_PUBLIC float jk_vector_3_distance_squared(JkVector3 a, JkVector3 b)
+JK_PUBLIC float jk_vec3_distance_squared(JkVec3 a, JkVec3 b)
 {
     float dx = b.x - a.x;
     float dy = b.y - a.y;
@@ -1143,17 +1140,17 @@ JK_PUBLIC float jk_vector_3_distance_squared(JkVector3 a, JkVector3 b)
     return dx * dx + dy * dy + dz * dz;
 }
 
-JK_PUBLIC JkVector3 jk_vector_3_round(JkVector3 vector)
+JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector)
 {
-    return (JkVector3){jk_round_f32(vector.x), jk_round_f32(vector.y)};
+    return (JkVec3){jk_round_f32(vector.x), jk_round_f32(vector.y)};
 }
 
-JK_PUBLIC JkVector2 jk_vector_3_to_2(JkVector3 v)
+JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v)
 {
-    return (JkVector2){v.x, v.y};
+    return (JkVec2){v.x, v.y};
 }
 
-// ---- JkVector3 end ----------------------------------------------------------
+// ---- JkVec3 end -------------------------------------------------------------
 
 // ---- Shapes begin -----------------------------------------------------------
 
@@ -1171,7 +1168,7 @@ JK_PUBLIC float jk_segment_x_intersection(JkSegment segment, float x)
     return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
 }
 
-JK_PUBLIC JkEdge jk_points_to_edge(JkVector2 a, JkVector2 b)
+JK_PUBLIC JkEdge jk_points_to_edge(JkVec2 a, JkVec2 b)
 {
     JkEdge edge;
     if (a.y < b.y) {
@@ -1186,17 +1183,17 @@ JK_PUBLIC JkEdge jk_points_to_edge(JkVector2 a, JkVector2 b)
     return edge;
 }
 
-JK_PUBLIC JkRect jk_rect(JkVector2 position, JkVector2 dimensions)
+JK_PUBLIC JkRect jk_rect(JkVec2 position, JkVec2 dimensions)
 {
-    return (JkRect){position, jk_vector_2_add(position, dimensions)};
+    return (JkRect){position, jk_vec2_add(position, dimensions)};
 }
 
-JK_PUBLIC JkIntVector2 jk_int_rect_dimensions(JkIntRect rect)
+JK_PUBLIC JkIntVec2 jk_int_rect_dimensions(JkIntRect rect)
 {
-    return (JkIntVector2){rect.max.x - rect.min.x, rect.max.y - rect.min.y};
+    return (JkIntVec2){rect.max.x - rect.min.x, rect.max.y - rect.min.y};
 }
 
-JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVector2 point)
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point)
 {
     return rect.min.x <= point.x && point.x < rect.max.x && rect.min.y <= point.y
             && point.y < rect.max.y;

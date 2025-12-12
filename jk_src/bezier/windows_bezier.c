@@ -26,7 +26,7 @@ static int win32_debug_printf(char *format, ...)
     return result;
 }
 
-static JkIntVector2 global_window_dimensions;
+static JkIntVec2 global_window_dimensions;
 static Bezier global_bezier = {0};
 static ChessAssets *global_assets;
 
@@ -74,8 +74,8 @@ typedef struct WinRect {
 typedef struct Rect {
     union {
         struct {
-            JkIntVector2 pos;
-            JkIntVector2 dimensions;
+            JkIntVec2 pos;
+            JkIntVec2 dimensions;
         };
         int32_t a[4];
     };
@@ -85,7 +85,7 @@ static Rect draw_rect_get(void)
 {
     Rect result = {0};
 
-    result.dimensions = (JkIntVector2){
+    result.dimensions = (JkIntVec2){
         JK_MIN(global_window_dimensions.x, global_bezier.draw_square_side_length),
         JK_MIN(global_window_dimensions.y, global_bezier.draw_square_side_length),
     };
@@ -215,11 +215,11 @@ DWORD game_thread(LPVOID param)
 
     global_bezier.time = 0;
     int64_t work_time_total = 0;
-    int64_t work_time_min = LLONG_MAX;
-    int64_t work_time_max = LLONG_MIN;
+    int64_t work_time_min = INT64_MAX;
+    int64_t work_time_max = INT64_MIN;
     int64_t frame_time_total = 0;
-    int64_t frame_time_min = LLONG_MAX;
-    int64_t frame_time_max = LLONG_MIN;
+    int64_t frame_time_min = INT64_MAX;
+    int64_t frame_time_max = INT64_MIN;
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     while (global_running) {

@@ -96,7 +96,7 @@ void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos)
                 }
                 if (coords) {
                     int64_t vertex_count = array->length / 3;
-                    JkVector3 *vertices =
+                    JkVec3 *vertices =
                             jk_arena_push(c->verts_arena, vertex_count * JK_SIZEOF(*vertices));
                     for (int64_t vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
                         for (int64_t coord_index = 0; coord_index < 3; coord_index++) {

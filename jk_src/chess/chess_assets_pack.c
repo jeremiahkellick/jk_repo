@@ -76,9 +76,9 @@ int main(int argc, char **argv)
             assets->shapes[piece_index].dimensions.y = 64.0f;
             assets->shapes[piece_index].commands.offset = storage.pos;
 
-            JkVector2 prev_pos = {0};
+            JkVec2 prev_pos = {0};
 
-            JkVector2 first_pos = {0};
+            JkVec2 first_pos = {0};
             int64_t pos = 0;
             int c;
             while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
@@ -94,8 +94,7 @@ int main(int argc, char **argv)
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type =
                                 c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->coords[0] =
-                                (JkVector2){numbers.items[i], numbers.items[i + 1]};
+                        new_command->coords[0] = (JkVec2){numbers.items[i], numbers.items[i + 1]};
                         prev_pos = new_command->coords[0];
 
                         if (c == 'M') {
@@ -112,9 +111,8 @@ int main(int argc, char **argv)
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->coords[0] = c == 'H'
-                                ? (JkVector2){numbers.items[i], prev_pos.y}
-                                : (JkVector2){prev_pos.x, numbers.items[i]};
+                        new_command->coords[0] = c == 'H' ? (JkVec2){numbers.items[i], prev_pos.y}
+                                                          : (JkVec2){prev_pos.x, numbers.items[i]};
                         prev_pos = new_command->coords[0];
                     }
                 } break;
@@ -127,7 +125,7 @@ int main(int argc, char **argv)
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
                         for (int32_t j = 0; j < 2; j++) {
-                            new_command->coords[j] = (JkVector2){
+                            new_command->coords[j] = (JkVec2){
                                 numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
                         }
                         prev_pos = new_command->coords[1];
@@ -142,7 +140,7 @@ int main(int argc, char **argv)
                                 jk_arena_push(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                         for (int32_t j = 0; j < 3; j++) {
-                            new_command->coords[j] = (JkVector2){
+                            new_command->coords[j] = (JkVec2){
                                 numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
                         }
                         prev_pos = new_command->coords[2];

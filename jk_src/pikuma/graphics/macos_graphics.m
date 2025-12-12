@@ -35,8 +35,8 @@ typedef struct IntArray4 {
 typedef struct MyRect {
     union {
         struct {
-            JkIntVector2 pos;
-            JkIntVector2 dimensions;
+            JkIntVec2 pos;
+            JkIntVec2 dimensions;
         };
         int32_t a[4];
     };
@@ -316,7 +316,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
 - (void)drawRect:(NSRect)dirtyRect
 {
-    JkIntVector2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
+    JkIntVec2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
     g.state.dimensions.x = JK_MAX(256, JK_MIN(window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
     g.state.dimensions.y = JK_MAX(256, JK_MIN(window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
 
@@ -343,9 +343,9 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
                       withBytes:g.state.draw_buffer
                     bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * JK_SIZEOF(JkColor)];
 
-    JkVector2 pos = {-1.0f, 1.0f};
+    JkVec2 pos = {-1.0f, 1.0f};
 
-    JkVector2 dimensions;
+    JkVec2 dimensions;
     dimensions.x = g.state.dimensions.x * 2.0f / window_dimensions.x;
     dimensions.y = -(g.state.dimensions.y * 2.0f / window_dimensions.y);
 

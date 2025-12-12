@@ -19,7 +19,7 @@ typedef struct Global {
     JkArena arena;
     Assets *assets;
     RenderFunction *render;
-    JkIntVector2 window_dimensions;
+    JkIntVec2 window_dimensions;
     b32 running;
     State state;
 } Global;
@@ -153,11 +153,11 @@ DWORD app_thread(LPVOID param)
 
     uint64_t time = 0;
     int64_t work_time_total = 0;
-    int64_t work_time_min = ULLONG_MAX;
-    int64_t work_time_max = 0;
+    int64_t work_time_min = INT64_MAX;
+    int64_t work_time_max = INT64_MIN;
     int64_t frame_time_total = 0;
-    int64_t frame_time_min = ULLONG_MAX;
-    int64_t frame_time_max = 0;
+    int64_t frame_time_min = INT64_MAX;
+    int64_t frame_time_max = INT64_MIN;
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     while (g.running) {

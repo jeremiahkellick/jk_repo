@@ -83,8 +83,8 @@ typedef struct IntArray4 {
 typedef struct MyRect {
     union {
         struct {
-            JkIntVector2 pos;
-            JkIntVector2 dimensions;
+            JkIntVec2 pos;
+            JkIntVec2 dimensions;
         };
         int32_t a[4];
     };
@@ -101,11 +101,11 @@ static int32_t square_side_length_get(IntArray4 dimensions)
     return min_dimension / 10;
 }
 
-static MyRect draw_rect_get(JkIntVector2 window_dimensions)
+static MyRect draw_rect_get(JkIntVec2 window_dimensions)
 {
     MyRect result = {0};
 
-    result.dimensions = (JkIntVector2){
+    result.dimensions = (JkIntVec2){
         JK_MIN(window_dimensions.x, g.main.chess.square_side_length * 10),
         JK_MIN(window_dimensions.y, g.main.chess.square_side_length * 10),
     };
@@ -515,7 +515,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
 - (void)drawRect:(NSRect)dirtyRect
 {
-    JkIntVector2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
+    JkIntVec2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
     IntArray4 bounds = {
         window_dimensions.x,
         window_dimensions.y,
@@ -575,11 +575,11 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
                       withBytes:g.main.chess.draw_buffer
                     bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * JK_SIZEOF(JkColor)];
 
-    JkVector2 pos;
+    JkVec2 pos;
     pos.x = (draw_rect.pos.x * 2.0f / window_dimensions.x) - 1.0f;
     pos.y = -((draw_rect.pos.y * 2.0f / window_dimensions.y) - 1.0f);
 
-    JkVector2 dimensions;
+    JkVec2 dimensions;
     dimensions.x = ((g.main.chess.square_side_length * 10) * 2.0f / window_dimensions.x);
     dimensions.y = -(((g.main.chess.square_side_length * 10) * 2.0f / window_dimensions.y));
 

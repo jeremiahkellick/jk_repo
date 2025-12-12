@@ -17,7 +17,7 @@ typedef enum InputId {
 
 typedef struct Input {
     int64_t flags;
-    JkIntVector2 mouse_pos;
+    JkIntVec2 mouse_pos;
 } Input;
 
 typedef enum AudioChannel {
@@ -258,9 +258,9 @@ typedef struct RenderState {
     b32 holding_piece;
     Board board;
     Team perspective;
-    JkIntVector2 mouse_pos;
+    JkIntVec2 mouse_pos;
     uint8_t selected_index;
-    JkIntVector2 promo_square;
+    JkIntVec2 promo_square;
     Result result;
     int64_t time_player_seconds[2];
     Screen screen;
@@ -286,14 +286,14 @@ typedef struct Chess {
     Board board;
     PlayerType player_types[2];
     Team perspective;
-    JkIntVector2 selected_square;
-    JkIntVector2 promo_square;
+    JkIntVec2 selected_square;
+    JkIntVec2 promo_square;
     Input input_prev;
     MoveArray moves;
     Result result;
     PieceType piece_prev_type;
-    JkIntVector2 animation_src;
-    JkIntVector2 animation_dest;
+    JkIntVec2 animation_src;
+    JkIntVec2 animation_dest;
     uint64_t os_time_prev;
     uint64_t os_time_move_prev;
     int64_t os_time_player[TEAM_COUNT];
@@ -332,7 +332,7 @@ RenderFunction render;
 typedef void PrintSetFunction(void (*print)(JkBuffer string));
 PrintSetFunction print_set;
 
-typedef b32 IsDraggableFunction(Chess *chess, JkIntVector2 pos);
+typedef b32 IsDraggableFunction(Chess *chess, JkIntVec2 pos);
 IsDraggableFunction is_draggable;
 
 #endif

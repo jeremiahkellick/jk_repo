@@ -4,8 +4,8 @@
 #include <jk_src/jk_lib/jk_lib.h>
 
 typedef struct JkShapesBitmap {
-    JkIntVector2 offset;
-    JkIntVector2 dimensions;
+    JkIntVec2 offset;
+    JkIntVec2 dimensions;
     uint8_t *data;
 } JkShapesBitmap;
 
@@ -42,9 +42,9 @@ typedef enum JkShapesArcFlag {
 
 typedef struct JkShapesArcByEndpoint {
     uint32_t flags;
-    JkVector2 dimensions;
+    JkVec2 dimensions;
     float rotation;
-    JkVector2 point_end;
+    JkVec2 point_end;
 } JkShapesArcByEndpoint;
 
 typedef enum JkShapesPenCommandType {
@@ -58,7 +58,7 @@ typedef enum JkShapesPenCommandType {
 typedef struct JkShapesPenCommand {
     JkShapesPenCommandType type;
     union {
-        JkVector2 coords[3];
+        JkVec2 coords[3];
         JkShapesArcByEndpoint arc;
     };
 } JkShapesPenCommand;
@@ -69,8 +69,8 @@ typedef struct JkShapesPenCommandArray {
 } JkShapesPenCommandArray;
 
 typedef struct JkShape {
-    JkVector2 offset;
-    JkVector2 dimensions;
+    JkVec2 offset;
+    JkVec2 dimensions;
     float advance_width;
     JkSpan commands;
 } JkShape;
@@ -107,7 +107,7 @@ typedef struct JkShapesRenderer {
 
 typedef struct JkShapesPointListNode {
     struct JkShapesPointListNode *next;
-    JkVector2 point;
+    JkVec2 point;
     float t;
     b32 is_cursor_movement;
 } JkShapesPointListNode;
@@ -136,7 +136,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
 
 JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         int64_t shape_index,
-        JkVector2 position,
+        JkVec2 position,
         float scale,
         JkColor color);
 

@@ -17,7 +17,7 @@ typedef enum InputId {
 
 typedef struct Input {
     uint64_t flags;
-    JkIntVector2 mouse_pos;
+    JkIntVec2 mouse_pos;
 } Input;
 
 typedef enum Flag {
@@ -44,7 +44,7 @@ typedef struct State {
     int64_t os_timer_frequency;
 
     uint64_t flags;
-    JkIntVector2 dimensions;
+    JkIntVec2 dimensions;
     uint64_t os_time;
     Input input;
 } State;

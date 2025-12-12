@@ -9,25 +9,25 @@
 // #jk_build dependencies_end
 
 static JkColor fgs[] = {
-    {.r = 0xff, .g = 0x69, .b = 0xb4, .a = 0xff},
-    {.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
+    {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff},
+    {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-static void draw_pixel(State *state, JkIntVector2 pos, JkColor color)
+static void draw_pixel(State *state, JkIntVec2 pos, JkColor color)
 {
     if (0 <= pos.x && pos.x < state->dimensions.x && 0 <= pos.y && pos.y < state->dimensions.y) {
         state->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * pos.y + pos.x] = color;
     }
 }
 
-static void draw_rect(State *state, JkIntVector2 pos, JkIntVector2 dimensions, JkColor color)
+static void draw_rect(State *state, JkIntVec2 pos, JkIntVec2 dimensions, JkColor color)
 {
-    JkIntVector2 top_left;
+    JkIntVec2 top_left;
     for (int64_t i = 0; i < JK_ARRAY_COUNT(top_left.coords); i++) {
         top_left.coords[i] = JK_MAX(pos.coords[i], 0);
     }
-    JkIntVector2 bottom_right;
+    JkIntVec2 bottom_right;
     for (int64_t i = 0; i < JK_ARRAY_COUNT(bottom_right.coords); i++) {
         bottom_right.coords[i] =
                 JK_MIN(top_left.coords[i] + dimensions.coords[i], state->dimensions.coords[i]);
@@ -58,7 +58,7 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
 
 // ---- Xiaolin Wu's line algorithm begin --------------------------------------------
 
-static uint8_t region_code(JkIntVector2 dimensions, JkVector2 v)
+static uint8_t region_code(JkIntVec2 dimensions, JkVec2 v)
 {
     return ((v.x < 0.0f) << 0) | ((dimensions.x - 1.0f < v.x) << 1) | ((v.y < 0.0f) << 2)
             | ((dimensions.y - 1.0f < v.y) << 3);
@@ -66,10 +66,10 @@ static uint8_t region_code(JkIntVector2 dimensions, JkVector2 v)
 
 typedef struct Endpoint {
     uint8_t code;
-    JkVector2 *point;
+    JkVec2 *point;
 } Endpoint;
 
-static b32 clip_to_draw_region(JkIntVector2 dimensions, JkVector2 *a, JkVector2 *b)
+static b32 clip_to_draw_region(JkIntVec2 dimensions, JkVec2 *a, JkVec2 *b)
 {
     Endpoint endpoint_a = {.code = region_code(dimensions, *a), .point = a};
     Endpoint endpoint_b = {.code = region_code(dimensions, *b), .point = b};
@@ -80,8 +80,8 @@ static b32 clip_to_draw_region(JkIntVector2 dimensions, JkVector2 *a, JkVector2 
         } else if (endpoint_a.code & endpoint_b.code) {
             return 0;
         } else {
-            JkVector2 u = *a;
-            JkVector2 v = *b;
+            JkVec2 u = *a;
+            JkVec2 v = *b;
             Endpoint *endpoint = endpoint_a.code < endpoint_b.code ? &endpoint_b : &endpoint_a;
             if ((endpoint->code >> 0) & 1) {
                 endpoint->point->x = 0.0f;
@@ -122,7 +122,7 @@ static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, floa
             color_multiply(color.a, (uint8_t)brightness_i));
 }
 
-static void draw_line(State *state, JkColor color, JkVector2 a, JkVector2 b)
+static void draw_line(State *state, JkColor color, JkVec2 a, JkVec2 b)
 {
     if (!clip_to_draw_region(state->dimensions, &a, &b)) {
         return;
@@ -137,10 +137,10 @@ static void draw_line(State *state, JkColor color, JkVector2 a, JkVector2 b)
         JK_SWAP(b.x, b.y, float);
     }
     if (a.x > b.x) {
-        JK_SWAP(a, b, JkVector2);
+        JK_SWAP(a, b, JkVec2);
     }
 
-    JkVector2 delta = jk_vector_2_sub(b, a);
+    JkVec2 delta = jk_vec2_sub(b, a);
 
     float gradient;
     if (delta.x) {
@@ -200,16 +200,16 @@ static void draw_line(State *state, JkColor color, JkVector2 a, JkVector2 b)
 
 // ---- Xiaolin Wu's line algorithm end ----------------------------------------------
 
-static JkVector2 project(JkVector3 v, JkVector2 offset, float scale)
+static JkVec2 project(JkVec3 v, JkVec2 offset, float scale)
 {
-    JkVector2 result = (JkVector2){v.x / v.z, v.y / v.z};
+    JkVec2 result = (JkVec2){v.x / v.z, v.y / v.z};
     result.y = -result.y;
-    result = jk_vector_2_mul(scale, result);
-    result = jk_vector_2_add(result, offset);
+    result = jk_vec2_mul(scale, result);
+    result = jk_vec2_add(result, offset);
     return result;
 }
 
-static JkVector3 camera_pos = {0.0f, 0.0f, -4.0f};
+static JkVec3 camera_pos = {0.0f, 0.0f, -4.0f};
 static int32_t rotation_seconds = 8;
 
 static void add_cover(float *coverage, JkIntRect bounds, int32_t x, float value)
@@ -230,9 +230,9 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
 {
     JkArena tmp_arena = jk_arena_child_get(arena);
 
-    JkIntRect screen_rect = {.min = (JkIntVector2){0}, .max = state->dimensions};
+    JkIntRect screen_rect = {.min = (JkIntVec2){0}, .max = state->dimensions};
     JkIntRect bounds = jk_int_rect_intersect(screen_rect, jk_triangle2_int_bounding_box(tri));
-    JkIntVector2 dimensions = jk_int_rect_dimensions(bounds);
+    JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
 
     JkEdgeArray edges = jk_triangle2_edges_get(&tmp_arena, tri);
 
@@ -345,14 +345,14 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
 }
 
 typedef struct FaceIdsSortContext {
-    JkVector3 *vertices;
+    JkVec3 *vertices;
     Face *faces;
 } FaceIdsSortContext;
 
 static int face_ids_compare(void *data, void *a_id_ptr, void *b_id_ptr)
 {
     FaceIdsSortContext *c = data;
-    JkVector3 *verts = c->vertices;
+    JkVec3 *verts = c->vertices;
     Face *a = c->faces + *(int64_t *)a_id_ptr;
     Face *b = c->faces + *(int64_t *)b_id_ptr;
     float a_avg_z = (verts[a->v[0]].z + verts[a->v[1]].z + verts[a->v[2]].z) / 3.0f;
@@ -366,7 +366,7 @@ static int face_ids_compare(void *data, void *a_id_ptr, void *b_id_ptr)
     }
 }
 
-static void face_ids_sort(JkVector3 *vertices, Face *faces, JkInt64Array face_ids)
+static void face_ids_sort(JkVec3 *vertices, Face *faces, JkInt64Array face_ids)
 {
     int64_t tmp;
     FaceIdsSortContext c = {.vertices = vertices, .faces = faces};
@@ -379,7 +379,7 @@ void render(Assets *assets, State *state)
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
 
-    JkVector3Array vertices;
+    JkVec3Array vertices;
     JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
 
     FaceArray faces;
@@ -397,19 +397,18 @@ void render(Assets *assets, State *state)
     }
 
     float scale = JK_MIN(state->dimensions.x * 1.5f, state->dimensions.y * 1.5f) / 2.0f;
-    JkVector2 offset = {state->dimensions.x / 2.0f, state->dimensions.y / 2.0f};
+    JkVec2 offset = {state->dimensions.x / 2.0f, state->dimensions.y / 2.0f};
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
-    JkVector3 *screen_vertices =
-            jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
+    JkVec3 *screen_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
-        screen_vertices[i] = (JkVector3){
+        screen_vertices[i] = (JkVec3){
             .x = vertices.items[i].x,
             .y = vertices.items[i].y * jk_cos_f32(angle) - vertices.items[i].z * jk_sin_f32(angle),
             .z = vertices.items[i].y * jk_sin_f32(angle) + vertices.items[i].z * jk_cos_f32(angle),
         };
-        screen_vertices[i] = jk_vector_3_sub(screen_vertices[i], camera_pos);
+        screen_vertices[i] = jk_vec3_sub(screen_vertices[i], camera_pos);
     }
 
     JkInt64Array face_ids;
@@ -422,10 +421,10 @@ void render(Assets *assets, State *state)
         int64_t face_id = face_ids.items[face_id_index];
         Face *face = faces.items + face_id;
 
-        JkVector3 normal = jk_vector_3_cross(
-                jk_vector_3_sub(screen_vertices[face->v[1]], screen_vertices[face->v[0]]),
-                jk_vector_3_sub(screen_vertices[face->v[2]], screen_vertices[face->v[0]]));
-        if (jk_vector_3_dot(normal, jk_vector_3_mul(-1, screen_vertices[face->v[0]])) > 0) {
+        JkVec3 normal =
+                jk_vec3_cross(jk_vec3_sub(screen_vertices[face->v[1]], screen_vertices[face->v[0]]),
+                        jk_vec3_sub(screen_vertices[face->v[2]], screen_vertices[face->v[0]]));
+        if (jk_vec3_dot(normal, jk_vec3_mul(-1, screen_vertices[face->v[0]])) > 0) {
             JkTriangle2 tri;
             for (int64_t i = 0; i < 3; i++) {
                 tri.v[i] = project(screen_vertices[face->v[i]], offset, scale);

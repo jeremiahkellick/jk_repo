@@ -91,21 +91,19 @@ static int64_t jk_shapes_bitmap_key_get(int64_t shape_index, float scale)
     return (shape_index << 32) | *(uint32_t *)&scale;
 }
 
-static JkVector2 jk_shapes_evaluate_bezier_quadratic(
-        float t, JkVector2 p0, JkVector2 p1, JkVector2 p2)
+static JkVec2 jk_shapes_evaluate_bezier_quadratic(float t, JkVec2 p0, JkVec2 p1, JkVec2 p2)
 {
     float t_squared = t * t;
     float one_minus_t = 1.0f - t;
     float one_minus_t_squared = one_minus_t * one_minus_t;
 
-    JkVector2 result = jk_vector_2_mul(one_minus_t_squared, p0);
-    result = jk_vector_2_add(result, jk_vector_2_mul(2.0f * one_minus_t * t, p1));
-    result = jk_vector_2_add(result, jk_vector_2_mul(t_squared, p2));
+    JkVec2 result = jk_vec2_mul(one_minus_t_squared, p0);
+    result = jk_vec2_add(result, jk_vec2_mul(2.0f * one_minus_t * t, p1));
+    result = jk_vec2_add(result, jk_vec2_mul(t_squared, p2));
     return result;
 }
 
-static JkVector2 jk_shapes_evaluate_bezier_cubic(
-        float t, JkVector2 p0, JkVector2 p1, JkVector2 p2, JkVector2 p3)
+static JkVec2 jk_shapes_evaluate_bezier_cubic(float t, JkVec2 p0, JkVec2 p1, JkVec2 p2, JkVec2 p3)
 {
     float t_squared = t * t;
     float t_cubed = t_squared * t;
@@ -113,18 +111,18 @@ static JkVector2 jk_shapes_evaluate_bezier_cubic(
     float one_minus_t_squared = one_minus_t * one_minus_t;
     float one_minus_t_cubed = one_minus_t_squared * one_minus_t;
 
-    JkVector2 result = jk_vector_2_mul(one_minus_t_cubed, p0);
-    result = jk_vector_2_add(result, jk_vector_2_mul(3.0f * one_minus_t_squared * t, p1));
-    result = jk_vector_2_add(result, jk_vector_2_mul(3.0f * one_minus_t * t_squared, p2));
-    result = jk_vector_2_add(result, jk_vector_2_mul(t_cubed, p3));
+    JkVec2 result = jk_vec2_mul(one_minus_t_cubed, p0);
+    result = jk_vec2_add(result, jk_vec2_mul(3.0f * one_minus_t_squared * t, p1));
+    result = jk_vec2_add(result, jk_vec2_mul(3.0f * one_minus_t * t_squared, p2));
+    result = jk_vec2_add(result, jk_vec2_mul(t_cubed, p3));
     return result;
 }
 
 typedef struct JkShapesArcByCenter {
     b32 treat_as_line;
-    JkVector2 center;
-    JkVector2 dimensions;
-    JkVector2 point_end;
+    JkVec2 center;
+    JkVec2 dimensions;
+    JkVec2 point_end;
     float rotation_matrix[2][2];
     float angle_start;
     float angle_delta;
@@ -132,15 +130,15 @@ typedef struct JkShapesArcByCenter {
 
 // https://www.w3.org/TR/SVG2/implnote.html#ArcImplementationNotes
 static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
-        JkVector2 offset, float scale, JkVector2 point_start, JkShapesArcByEndpoint a)
+        JkVec2 offset, float scale, JkVec2 point_start, JkShapesArcByEndpoint a)
 {
     JkShapesArcByCenter r = {0};
 
     // Transform arc values
-    a.dimensions = jk_vector_2_add(jk_vector_2_mul(scale, a.dimensions), offset);
-    r.point_end = jk_vector_2_add(jk_vector_2_mul(scale, a.point_end), offset);
+    a.dimensions = jk_vec2_add(jk_vec2_mul(scale, a.dimensions), offset);
+    r.point_end = jk_vec2_add(jk_vec2_mul(scale, a.point_end), offset);
 
-    if (jk_vector_2_approx_equal(point_start, r.point_end, 0.00001f)) {
+    if (jk_vec2_approx_equal(point_start, r.point_end, 0.00001f)) {
         r.treat_as_line = 1;
         return r;
     }
@@ -156,9 +154,8 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
     };
 
     // Transform point_start into ellipse space
-    JkVector2 point_prime = jk_matrix_2x2_multiply_vector(inverse_rotation_matrix,
-            jk_vector_2_mul(
-                    0.5f, jk_vector_2_add(point_start, jk_vector_2_mul(-1.0f, r.point_end))));
+    JkVec2 point_prime = jk_matrix_2x2_multiply_vector(inverse_rotation_matrix,
+            jk_vec2_mul(0.5f, jk_vec2_add(point_start, jk_vec2_mul(-1.0f, r.point_end))));
 
     // Correct out-of-range radii
     float lambda = 0.0f;
@@ -172,14 +169,14 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
                 / (r.dimensions.coords[i] * r.dimensions.coords[i]);
     }
     if (1.0f < lambda) {
-        r.dimensions = jk_vector_2_mul(jk_sqrt_f32(lambda), r.dimensions);
+        r.dimensions = jk_vec2_mul(jk_sqrt_f32(lambda), r.dimensions);
     }
 
     b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_LARGE) & 1;
     b32 flag_sweep = (a.flags >> JK_SHAPES_ARC_FLAG_SWEEP) & 1;
 
     // Compute center in ellipse space
-    JkVector2 center_prime;
+    JkVec2 center_prime;
     {
         float rx_sqr = r.dimensions.x * r.dimensions.x;
         float ry_sqr = r.dimensions.y * r.dimensions.y;
@@ -188,25 +185,25 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         float expr = (rx_sqr * ry_sqr - rx_sqr * y_sqr - ry_sqr * x_sqr)
                 / (rx_sqr * y_sqr + ry_sqr * x_sqr);
         float scalar = jk_sqrt_f32(JK_MAX(0.0f, expr));
-        JkVector2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
+        JkVec2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
             -(r.dimensions.y * point_prime.x) / r.dimensions.x};
         float sign = flag_large == flag_sweep ? -1.0f : 1.0f;
-        center_prime = jk_vector_2_mul(sign * scalar, vector);
+        center_prime = jk_vec2_mul(sign * scalar, vector);
     }
     // Transform center point back into screen space
-    r.center = jk_vector_2_add(jk_matrix_2x2_multiply_vector(r.rotation_matrix, center_prime),
-            jk_vector_2_lerp(point_start, r.point_end, 0.5f));
+    r.center = jk_vec2_add(jk_matrix_2x2_multiply_vector(r.rotation_matrix, center_prime),
+            jk_vec2_lerp(point_start, r.point_end, 0.5f));
 
     // Compute angles
     {
-        JkVector2 delta = jk_vector_2_add(point_prime, jk_vector_2_mul(-1.0f, center_prime));
-        JkVector2 nsum = jk_vector_2_mul(-1.0f, jk_vector_2_add(point_prime, center_prime));
+        JkVec2 delta = jk_vec2_add(point_prime, jk_vec2_mul(-1.0f, center_prime));
+        JkVec2 nsum = jk_vec2_mul(-1.0f, jk_vec2_add(point_prime, center_prime));
 
-        JkVector2 v1 = (JkVector2){delta.x / r.dimensions.x, delta.y / r.dimensions.y};
-        JkVector2 v2 = (JkVector2){nsum.x / r.dimensions.x, nsum.y / r.dimensions.y};
+        JkVec2 v1 = (JkVec2){delta.x / r.dimensions.x, delta.y / r.dimensions.y};
+        JkVec2 v2 = (JkVec2){nsum.x / r.dimensions.x, nsum.y / r.dimensions.y};
 
-        r.angle_start = jk_vector_2_angle_between((JkVector2){1.0f, 0.0f}, v1);
-        r.angle_delta = jk_vector_2_angle_between(v1, v2);
+        r.angle_start = jk_vec2_angle_between((JkVec2){1.0f, 0.0f}, v1);
+        r.angle_delta = jk_vec2_angle_between(v1, v2);
 
         if (flag_sweep) {
             if (r.angle_delta < 0.0f) {
@@ -222,12 +219,12 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
     return r;
 }
 
-static JkVector2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc)
+static JkVec2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc)
 {
     float angle = arc.angle_start + t * arc.angle_delta;
-    return jk_vector_2_add(jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
-                                   (JkVector2){arc.dimensions.x * jk_cos_f32(angle),
-                                       arc.dimensions.y * jk_sin_f32(angle)}),
+    return jk_vec2_add(jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
+                               (JkVec2){arc.dimensions.x * jk_cos_f32(angle),
+                                   arc.dimensions.y * jk_sin_f32(angle)}),
             arc.center);
 }
 
@@ -243,7 +240,7 @@ typedef struct JkShapesLinearizer {
 static void jk_shapes_linearizer_init(JkShapesLinearizer *l,
         JkArena *arena,
         JkShapesPointListNode **current_node,
-        JkVector2 target,
+        JkVec2 target,
         float tolerance)
 {
     l->arena = arena;
@@ -271,12 +268,12 @@ static b32 jk_shapes_linearizer_running(JkShapesLinearizer *l)
     }
 }
 
-static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point)
+static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVec2 point)
 {
     JkShapesPointListNode *next = (*l->current_node)->next;
-    JkVector2 approx_point = jk_vector_2_lerp((*l->current_node)->point, next->point, 0.5f);
+    JkVec2 approx_point = jk_vec2_lerp((*l->current_node)->point, next->point, 0.5f);
 
-    if (jk_vector_2_distance_squared(approx_point, point) <= l->tolerance_squared) {
+    if (jk_vec2_distance_squared(approx_point, point) <= l->tolerance_squared) {
         *l->current_node = next;
     } else {
         JkShapesPointListNode *new_node = jk_arena_push(l->arena, JK_SIZEOF(*new_node));
@@ -291,13 +288,13 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVector2 point
 
 static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
         JkShapesPenCommandArray commands,
-        JkVector2 offset,
+        JkVec2 offset,
         float scale,
         float tolerance)
 {
     JkShapesPointListNode *start_node = jk_arena_push(arena, JK_SIZEOF(*start_node));
     start_node->next = 0;
-    start_node->point = (JkVector2){0};
+    start_node->point = (JkVec2){0};
     start_node->is_cursor_movement = 0;
 
     JkShapesPointListNode *current_node = start_node;
@@ -311,8 +308,7 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
             current_node = jk_arena_push(arena, JK_SIZEOF(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point =
-                    jk_vector_2_add(jk_vector_2_mul(scale, command->coords[0]), offset);
+            current_node->point = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
             current_node->is_cursor_movement = 1;
         } break;
 
@@ -321,15 +317,14 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
             current_node = jk_arena_push(arena, JK_SIZEOF(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point =
-                    jk_vector_2_add(jk_vector_2_mul(scale, command->coords[0]), offset);
+            current_node->point = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
             current_node->is_cursor_movement = 0;
         } break;
 
         case JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC: {
-            JkVector2 p0 = current_node->point;
-            JkVector2 p1 = jk_vector_2_add(jk_vector_2_mul(scale, command->coords[0]), offset);
-            JkVector2 p2 = jk_vector_2_add(jk_vector_2_mul(scale, command->coords[1]), offset);
+            JkVec2 p0 = current_node->point;
+            JkVec2 p1 = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
+            JkVec2 p2 = jk_vec2_add(jk_vec2_mul(scale, command->coords[1]), offset);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p2, tolerance);
@@ -341,10 +336,10 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
         } break;
 
         case JK_SHAPES_PEN_COMMAND_CURVE_CUBIC: {
-            JkVector2 p0 = current_node->point;
-            JkVector2 p1 = jk_vector_2_add(jk_vector_2_mul(scale, command->coords[0]), offset);
-            JkVector2 p2 = jk_vector_2_add(jk_vector_2_mul(scale, command->coords[1]), offset);
-            JkVector2 p3 = jk_vector_2_add(jk_vector_2_mul(scale, command->coords[2]), offset);
+            JkVec2 p0 = current_node->point;
+            JkVec2 p1 = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
+            JkVec2 p2 = jk_vec2_add(jk_vec2_mul(scale, command->coords[1]), offset);
+            JkVec2 p3 = jk_vec2_add(jk_vec2_mul(scale, command->coords[2]), offset);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p3, tolerance);
@@ -387,8 +382,8 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
 JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect)
 {
     return (JkIntRect){
-        jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit, rect.min)),
-        jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit, rect.max)),
+        jk_vec2_round(jk_vec2_mul(renderer->pixels_per_unit, rect.min)),
+        jk_vec2_round(jk_vec2_mul(renderer->pixels_per_unit, rect.max)),
     };
 }
 
@@ -482,15 +477,14 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
         if (bitmap_slot->filled) {
             bitmap = bitmap_slot->value;
         } else {
-            JkVector2 negative_offset = jk_vector_2_mul(-pixel_scale, shape.offset);
-            JkVector2 negative_offset_ceil = jk_vector_2_ceil(negative_offset);
-            JkVector2 negative_offset_delta =
-                    jk_vector_2_sub(negative_offset_ceil, negative_offset);
+            JkVec2 negative_offset = jk_vec2_mul(-pixel_scale, shape.offset);
+            JkVec2 negative_offset_ceil = jk_vec2_ceil(negative_offset);
+            JkVec2 negative_offset_delta = jk_vec2_sub(negative_offset_ceil, negative_offset);
 
-            bitmap.offset = (JkIntVector2){
-                -(int32_t)negative_offset_ceil.x, -(int32_t)negative_offset_ceil.y};
-            bitmap.dimensions = jk_vector_2_ceil_i(jk_vector_2_add(
-                    jk_vector_2_mul(pixel_scale, shape.dimensions), negative_offset_delta));
+            bitmap.offset =
+                    (JkIntVec2){-(int32_t)negative_offset_ceil.x, -(int32_t)negative_offset_ceil.y};
+            bitmap.dimensions = jk_vec2_ceil_i(
+                    jk_vec2_add(jk_vec2_mul(pixel_scale, shape.dimensions), negative_offset_delta));
             bitmap.data = jk_arena_push(renderer->arena,
                     bitmap.dimensions.x * bitmap.dimensions.y * JK_SIZEOF(bitmap.data[0]));
             jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmap);
@@ -608,7 +602,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
 // Returns the shape's scaled advance_width
 JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         int64_t shape_index,
-        JkVector2 position,
+        JkVec2 position,
         float scale,
         JkColor color)
 {
@@ -618,11 +612,10 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
 
         JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, JK_SIZEOF(*node));
-        node->command.rect.min = jk_int_vector_2_add(
-                jk_vector_2_round(jk_vector_2_mul(renderer->pixels_per_unit, position)),
-                bitmap.offset);
+        node->command.rect.min = jk_int_vec2_add(
+                jk_vec2_round(jk_vec2_mul(renderer->pixels_per_unit, position)), bitmap.offset);
         node->command.color = color;
-        node->command.rect.max = jk_int_vector_2_add(node->command.rect.min, bitmap.dimensions);
+        node->command.rect.max = jk_int_vec2_add(node->command.rect.min, bitmap.dimensions);
         node->command.alpha_map = bitmap.data;
         node->next = renderer->draw_commands_head;
         renderer->draw_commands_head = node;
