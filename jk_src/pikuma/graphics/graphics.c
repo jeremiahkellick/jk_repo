@@ -8,7 +8,10 @@
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
-static JkColor fg = {.r = 0xff, .g = 0x69, .b = 0xb4, .a = 0xff};
+static JkColor fgs[] = {
+    {.r = 0xff, .g = 0x69, .b = 0xb4, .a = 0xff},
+    {.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff},
+};
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
 static void draw_pixel(State *state, JkIntVector2 pos, JkColor color)
@@ -341,6 +344,36 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
     }
 }
 
+typedef struct FaceIdsSortContext {
+    JkVector3 *vertices;
+    Face *faces;
+} FaceIdsSortContext;
+
+static int face_ids_compare(void *data, void *a_id_ptr, void *b_id_ptr)
+{
+    FaceIdsSortContext *c = data;
+    JkVector3 *verts = c->vertices;
+    Face *a = c->faces + *(int64_t *)a_id_ptr;
+    Face *b = c->faces + *(int64_t *)b_id_ptr;
+    float a_avg_z = (verts[a->v[0]].z + verts[a->v[1]].z + verts[a->v[2]].z) / 3.0f;
+    float b_avg_z = (verts[b->v[0]].z + verts[b->v[1]].z + verts[b->v[2]].z) / 3.0f;
+    if (a_avg_z < b_avg_z) {
+        return -1;
+    } else if (b_avg_z < a_avg_z) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+static void face_ids_sort(JkVector3 *vertices, Face *faces, JkInt64Array face_ids)
+{
+    int64_t tmp;
+    FaceIdsSortContext c = {.vertices = vertices, .faces = faces};
+    jk_quicksort(
+            face_ids.items, face_ids.count, sizeof(*face_ids.items), &tmp, &c, face_ids_compare);
+}
+
 void render(Assets *assets, State *state)
 {
     JkArenaRoot arena_root;
@@ -379,8 +412,15 @@ void render(Assets *assets, State *state)
         screen_vertices[i] = jk_vector_3_sub(screen_vertices[i], camera_pos);
     }
 
-    for (int32_t face_index = 0; face_index < (int32_t)faces.count; face_index++) {
-        Face *face = faces.items + face_index;
+    JkInt64Array face_ids;
+    JK_ARENA_PUSH_ARRAY(&arena, face_ids, faces.count);
+    for (int64_t i = 0; i < face_ids.count; i++) {
+        face_ids.items[i] = i;
+    }
+    face_ids_sort(screen_vertices, faces.items, face_ids);
+    for (int32_t face_id_index = 0; face_id_index < face_ids.count; face_id_index++) {
+        int64_t face_id = face_ids.items[face_id_index];
+        Face *face = faces.items + face_id;
 
         JkVector3 normal = jk_vector_3_cross(
                 jk_vector_3_sub(screen_vertices[face->v[1]], screen_vertices[face->v[0]]),
@@ -390,7 +430,7 @@ void render(Assets *assets, State *state)
             for (int64_t i = 0; i < 3; i++) {
                 tri.v[i] = project(screen_vertices[face->v[i]], offset, scale);
             }
-            triangle_fill(&arena, state, tri, fg);
+            triangle_fill(&arena, state, tri, fgs[face_id % 2]);
         }
     }
 

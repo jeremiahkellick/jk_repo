@@ -516,6 +516,11 @@ typedef struct JkFloatArray {
     float *items;
 } JkFloatArray;
 
+typedef struct JkInt64Array {
+    int64_t count;
+    int64_t *items;
+} JkInt64Array;
+
 typedef struct JkColor {
     union {
         struct {
