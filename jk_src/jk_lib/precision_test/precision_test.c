@@ -86,7 +86,7 @@ JK_PUBLIC void jk_precision_test_result(
     }
 }
 
-static int jk_precision_test_result_compare(void *a, void *b)
+static int jk_precision_test_result_compare(void *data, void *a, void *b)
 {
     double a_diff_max = ((JkPrecisionTestResult *)a)->diff_max;
     double b_diff_max = ((JkPrecisionTestResult *)b)->diff_max;
@@ -96,8 +96,12 @@ static int jk_precision_test_result_compare(void *a, void *b)
 static void jk_precision_test_result_quicksort(int64_t count, JkPrecisionTestResult *data)
 {
     JkPrecisionTestResult tmp;
-    jk_quicksort(
-            data, count, JK_SIZEOF(JkPrecisionTestResult), &tmp, jk_precision_test_result_compare);
+    jk_quicksort(data,
+            count,
+            JK_SIZEOF(JkPrecisionTestResult),
+            &tmp,
+            0,
+            jk_precision_test_result_compare);
 }
 
 JK_PUBLIC void jk_precision_test_print(JkPrecisionTest *t)

@@ -191,12 +191,12 @@ JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)
 {
     JkBuffer result = {0};
     if (0 <= *pos && *pos < buffer.size) {
-		result.data = buffer.data + *pos;
-		while (*pos < buffer.size && buffer.data[*pos]) {
-			(*pos)++;
-		}
-		result.size = (buffer.data + *pos) - result.data;
-		(*pos)++;
+        result.data = buffer.data + *pos;
+        while (*pos < buffer.size && buffer.data[*pos]) {
+            (*pos)++;
+        }
+        result.size = (buffer.data + *pos) - result.data;
+        (*pos)++;
     }
     return result;
 }
@@ -701,7 +701,7 @@ JK_PUBLIC b32 jk_arena_valid(JkArena *arena)
 
 JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
 {
-	JK_DEBUG_ASSERT(0 <= size);
+    JK_DEBUG_ASSERT(0 <= size);
     int64_t new_pos = arena->pos + size;
     if (arena->root->memory.size < new_pos) {
         if (!arena->grow(arena, new_pos)) {
@@ -830,9 +830,10 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
         int64_t element_count,
         int64_t element_size,
         void *tmp,
-        int (*compare)(void *a, void *b))
+        void *data,
+        int (*compare)(void *data, void *a, void *b))
 {
-	JK_DEBUG_ASSERT(0 <= element_size);
+    JK_DEBUG_ASSERT(0 <= element_size);
 
     if (element_count < 2) {
         return;
@@ -849,7 +850,7 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
 
     while (mid <= high) {
         // Compare mid with pivot. Pivot is always 1 element before mid.
-        int comparison = compare(mid, mid - element_size);
+        int comparison = compare(data, mid, mid - element_size);
 
         if (comparison < 0) {
             jk_bytes_swap(low, mid, element_size, tmp);
@@ -865,8 +866,8 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
 
     int64_t left_count = (int64_t)(low - array) / element_size;
     int64_t right_count = element_count - (int64_t)(mid - array) / element_size;
-    jk_quicksort_internal(generator, array, left_count, element_size, tmp, compare);
-    jk_quicksort_internal(generator, mid, right_count, element_size, tmp, compare);
+    jk_quicksort_internal(generator, array, left_count, element_size, tmp, data, compare);
+    jk_quicksort_internal(generator, mid, right_count, element_size, tmp, data, compare);
 }
 
 /**
@@ -886,13 +887,14 @@ JK_PUBLIC void jk_quicksort(void *array_void,
         int64_t element_count,
         int64_t element_size,
         void *tmp,
-        int (*compare)(void *a, void *b))
+        void *data,
+        int (*compare)(void *data, void *a, void *b))
 {
     JkRandomGeneratorU64 generator = jk_random_generator_new_u64(0x9646e4db8d81f399);
-    jk_quicksort_internal(&generator, array_void, element_count, element_size, tmp, compare);
+    jk_quicksort_internal(&generator, array_void, element_count, element_size, tmp, data, compare);
 }
 
-static int jk_int_compare(void *a, void *b)
+static int jk_int_compare(void *data, void *a, void *b)
 {
     return *(int *)a - *(int *)b;
 }
@@ -900,10 +902,10 @@ static int jk_int_compare(void *a, void *b)
 JK_PUBLIC void jk_quicksort_ints(int *array, int length)
 {
     int tmp;
-    jk_quicksort(array, length, JK_SIZEOF(int), &tmp, jk_int_compare);
+    jk_quicksort(array, length, JK_SIZEOF(int), &tmp, 0, jk_int_compare);
 }
 
-static int jk_float_compare(void *a, void *b)
+static int jk_float_compare(void *data, void *a, void *b)
 {
     float delta = *(float *)a - *(float *)b;
     return delta == 0.0f ? 0 : (delta < 0.0f ? -1 : 1);
@@ -912,10 +914,10 @@ static int jk_float_compare(void *a, void *b)
 JK_PUBLIC void jk_quicksort_floats(float *array, int length)
 {
     float tmp;
-    jk_quicksort(array, length, JK_SIZEOF(float), &tmp, jk_float_compare);
+    jk_quicksort(array, length, JK_SIZEOF(float), &tmp, 0, jk_float_compare);
 }
 
-static int jk_string_compare(void *a, void *b)
+static int jk_string_compare(void *data, void *a, void *b)
 {
     uint8_t *a_ptr = *(uint8_t **)a;
     uint8_t *b_ptr = *(uint8_t **)b;
@@ -933,7 +935,7 @@ static int jk_string_compare(void *a, void *b)
 JK_PUBLIC void jk_quicksort_strings(char **array, int length)
 {
     char *tmp;
-    jk_quicksort(array, length, JK_SIZEOF(char *), &tmp, jk_string_compare);
+    jk_quicksort(array, length, JK_SIZEOF(char *), &tmp, 0, jk_string_compare);
 }
 
 // ---- Quicksort end ----------------------------------------------------------
@@ -1243,7 +1245,7 @@ JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t)
 
 static uint64_t jk_rotate_left(uint64_t value, int64_t shift)
 {
-	JK_DEBUG_ASSERT(0 <= shift && shift < 64);
+    JK_DEBUG_ASSERT(0 <= shift && shift < 64);
     return (value << shift) | (value >> (64 - shift));
 }
 
@@ -1352,7 +1354,7 @@ JK_PUBLIC int jk_parse_positive_integer(char *string)
 
 JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
 {
-	JK_DEBUG_ASSERT(0 <= size);
+    JK_DEBUG_ASSERT(0 <= size);
     uint8_t *bytes = address;
     for (int64_t i = 0; i < size; i++) {
         bytes[i] = value;
@@ -1362,7 +1364,7 @@ JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
 
 JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size)
 {
-	JK_DEBUG_ASSERT(0 <= size);
+    JK_DEBUG_ASSERT(0 <= size);
     uint8_t *dest_bytes = dest;
     uint8_t *src_bytes = src;
     for (int64_t i = 0; i < size; i++) {
@@ -1445,9 +1447,9 @@ JK_PUBLIC b32 jk_is_power_of_two(int64_t x)
 // Rounds up to nearest power of 2. Leaves 0 as 0.
 JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x)
 {
-	if (x <= 0) {
-		return 0;
-	} else {
+    if (x <= 0) {
+        return 0;
+    } else {
         x--;
         x |= x >> 1;
         x |= x >> 2;
@@ -1456,16 +1458,16 @@ JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x)
         x |= x >> 16;
         x |= x >> 32;
         x++;
-    	return x;
-	}
+        return x;
+    }
 }
 
 // Rounds down to nearest power of 2. Leaves 0 as 0.
 JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x)
 {
-	if (x <= 0) {
-		return 0;
-	} else {
+    if (x <= 0) {
+        return 0;
+    } else {
         x |= x >> 1;
         x |= x >> 2;
         x |= x >> 4;
@@ -1473,7 +1475,7 @@ JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x)
         x |= x >> 16;
         x |= x >> 32;
         x -= x >> 1;
-    	return x;
+        return x;
     }
 }
 

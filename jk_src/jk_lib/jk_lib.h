@@ -307,11 +307,12 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
 
 // ---- Quicksort begin --------------------------------------------------------
 
-JK_PUBLIC void jk_quicksort(void *array,
+JK_PUBLIC void jk_quicksort(void *array_void,
         int64_t element_count,
         int64_t element_size,
         void *tmp,
-        int32_t (*compare)(void *a, void *b));
+        void *data,
+        int (*compare)(void *data, void *a, void *b));
 
 JK_PUBLIC void jk_quicksort_ints(int32_t *array, int32_t length);
 

@@ -631,7 +631,7 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
     return scale * shape.advance_width;
 }
 
-static int jk_shapes_draw_command_compare(void *a, void *b)
+static int jk_shapes_draw_command_compare(void *data, void *a, void *b)
 {
     JkShapesDrawCommand *x = a;
     JkShapesDrawCommand *y = b;
@@ -645,6 +645,7 @@ static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands)
             commands.count,
             JK_SIZEOF(commands.items[0]),
             &tmp,
+            0,
             jk_shapes_draw_command_compare);
 }
 

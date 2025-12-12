@@ -10,7 +10,7 @@
 #define ARRAY_LENGTH 20000000
 int array[ARRAY_LENGTH];
 
-static int int_compare(void *a, void *b)
+static int int_compare(void *data, void *a, void *b)
 {
     return *(int *)a - *(int *)b;
 }
@@ -25,6 +25,6 @@ int main(void)
 
     int tmp;
     jk_platform_profile_frame_begin();
-    jk_quicksort(array, ARRAY_LENGTH, JK_SIZEOF(int), &tmp, int_compare);
+    jk_quicksort(array, ARRAY_LENGTH, JK_SIZEOF(int), &tmp, 0, int_compare);
     jk_platform_profile_frame_end_and_print();
 }
