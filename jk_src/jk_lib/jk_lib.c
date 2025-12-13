@@ -1238,6 +1238,57 @@ JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 v)
 }
 // clang-format on
 
+// Conversion matrix from a given source coordinate system to my preferred one,
+// x = right, y = forward, z = up (which is right-handed)
+JK_PUBLIC JkMat4 jk_mat4_conversion_from(JkCoordinateSystem source)
+{
+    JkMat4 result = {0};
+    for (int32_t src_axis = 0; src_axis < 3; src_axis++) {
+        int32_t dest_axis = source.direction[src_axis] / 2;
+        b32 negative = source.direction[src_axis] % 2;
+        result.e[dest_axis][src_axis] += negative ? -1 : 1;
+    }
+    result.e[3][3] = 1;
+    return result;
+}
+
+// Conversion matrix from my preferred coordinate system, x = right, y = forward, z = up, to a given
+// destination coordinate system
+JK_PUBLIC JkMat4 jk_mat4_conversion_to(JkCoordinateSystem dest)
+{
+    JkMat4 result = {0};
+    for (int32_t dest_axis = 0; dest_axis < 3; dest_axis++) {
+        int32_t src_axis = dest.direction[dest_axis] / 2;
+        b32 negative = dest.direction[dest_axis] % 2;
+        result.e[dest_axis][src_axis] += negative ? -1 : 1;
+    }
+    result.e[3][3] = 1;
+    return result;
+}
+
+JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordinateSystem dest)
+{
+    JkMat4 result = {0};
+    for (int32_t src_axis = 0; src_axis < 3; src_axis++) {
+        int32_t value = 1;
+        int32_t src_dir_index = source.direction[src_axis] / 2;
+        int32_t dest_axis;
+        for (dest_axis = 0; dest_axis < 3; dest_axis++) {
+            int32_t dest_dir_index = dest.direction[dest_axis] / 2;
+            if (dest_dir_index == src_dir_index) {
+                if (source.direction[src_axis] % 2 != dest.direction[dest_axis] % 2) {
+                    value = -1;
+                }
+                break;
+            }
+        }
+        JK_DEBUG_ASSERT(dest_axis < 3);
+        result.e[dest_axis][src_axis] += value;
+    }
+    result.e[3][3] = 1;
+    return result;
+}
+
 // ---- JkMat4 end -------------------------------------------------------------
 
 // ---- Shapes begin -----------------------------------------------------------

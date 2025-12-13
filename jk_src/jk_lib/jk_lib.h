@@ -460,6 +460,31 @@ JK_PUBLIC JkMat4 jk_mat4_rotate_z(float a);
 
 JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 scale);
 
+// The order here is important. My preferred coordinate system is x = right, y = forward, z = up,
+// which is right-handed. These are ordered such that direction / 2 is the axis and direction % 2
+// tells us whether or not we're talking about the negative direction. For example,
+// JK_DOWN / 2 = 5 / 2 = 2 (the index of our Z axis). JK_DOWN % 2 = 5 % 2 = 1, so we're talking
+// about -Z.
+typedef enum JkDirection {
+    JK_RIGHT,
+    JK_LEFT,
+    JK_FORWARD,
+    JK_BACKWARD,
+    JK_UP,
+    JK_DOWN,
+    JK_DIRECTION_COUNT,
+} JkDirection;
+
+typedef struct JkCoordinateSystem {
+    JkDirection direction[3];
+} JkCoordinateSystem;
+
+JK_PUBLIC JkMat4 jk_mat4_conversion_from(JkCoordinateSystem source);
+
+JK_PUBLIC JkMat4 jk_mat4_conversion_to(JkCoordinateSystem dest);
+
+JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordinateSystem dest);
+
 // ---- JkMat4 end -------------------------------------------------------------
 
 // ---- Shapes begin -----------------------------------------------------------
