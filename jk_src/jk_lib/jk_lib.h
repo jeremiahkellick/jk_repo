@@ -42,13 +42,17 @@ typedef struct JkSpan {
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal) \
-    {JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal}
+#define JK_STRING_INITIALIZER(string_literal)                    \
+    {                                                            \
+        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
+    }
 
 #define JKSI JK_STRING_INITIALIZER
 
-#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array) \
-    {.size = JK_SIZEOF(byte_array), .data = byte_array}
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)        \
+    {                                                     \
+        .size = JK_SIZEOF(byte_array), .data = byte_array \
+    }
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
@@ -340,7 +344,7 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector);
 
 JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector);
 
-// ---- IntVector2 end ---------------------------------------------------------
+// ---- JkIntVec2 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------
 
@@ -433,6 +437,30 @@ JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector);
 JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
 // ---- JkVec3 end -------------------------------------------------------------
+
+// ---- JkMat4 begin -----------------------------------------------------------
+
+typedef struct JkMat4 {
+    float e[4][4];
+} JkMat4;
+
+JK_PUBLIC JkMat4 const jk_mat4_i;
+
+JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b);
+
+JK_PUBLIC JkVec3 jk_mat4_mul_vec3(JkMat4 m, JkVec3 v);
+
+JK_PUBLIC JkMat4 jk_mat4_translate(JkVec3 offset);
+
+JK_PUBLIC JkMat4 jk_mat4_rotate_x(float a);
+
+JK_PUBLIC JkMat4 jk_mat4_rotate_y(float a);
+
+JK_PUBLIC JkMat4 jk_mat4_rotate_z(float a);
+
+JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 scale);
+
+// ---- JkMat4 end -------------------------------------------------------------
 
 // ---- Shapes begin -----------------------------------------------------------
 

@@ -1152,6 +1152,94 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v)
 
 // ---- JkVec3 end -------------------------------------------------------------
 
+// ---- JkMat4 begin -----------------------------------------------------------
+
+JK_PUBLIC JkMat4 const jk_mat4_i = {{
+    {1, 0, 0, 0},
+    {0, 1, 0, 0},
+    {0, 0, 1, 0},
+    {0, 0, 0, 1},
+}};
+
+JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b)
+{
+    JkMat4 result = {0};
+    for (int64_t i = 0; i < 4; i++) {
+        for (int64_t j = 0; j < 4; j++) {
+            for (int64_t k = 0; k < 4; k++) {
+                result.e[i][j] += a.e[i][k] * b.e[k][j];
+            }
+        }
+    }
+    return result;
+}
+
+JK_PUBLIC JkVec3 jk_mat4_mul_vec3(JkMat4 m, JkVec3 v)
+{
+    JkVec3 result = {0};
+    for (int64_t i = 0; i < 3; i++) {
+        for (int64_t k = 0; k < 3; k++) {
+            result.coords[i] += m.e[i][k] * v.coords[k];
+        }
+        result.coords[i] += m.e[i][3];
+    }
+    return result;
+}
+
+// clang-format off
+JK_PUBLIC JkMat4 jk_mat4_translate(JkVec3 v)
+{
+    return (JkMat4){{
+        {1, 0, 0, v.x},
+        {0, 1, 0, v.y},
+        {0, 0, 1, v.z},
+        {0, 0, 0,   1},
+    }};
+}
+
+JK_PUBLIC JkMat4 jk_mat4_rotate_x(float a)
+{
+    return (JkMat4){{
+        {1,             0,              0, 0},
+        {0, jk_cos_f32(a), -jk_sin_f32(a), 0},
+        {0, jk_sin_f32(a),  jk_cos_f32(a), 0},
+        {0,             0,              0, 1},
+    }};
+}
+
+JK_PUBLIC JkMat4 jk_mat4_rotate_y(float a)
+{
+    return (JkMat4){{
+        { jk_cos_f32(a), 0, jk_sin_f32(a), 0},
+        {             0, 1,             0, 0},
+        {-jk_sin_f32(a), 0, jk_cos_f32(a), 0},
+        {             0, 0,             0, 1},
+    }};
+}
+
+JK_PUBLIC JkMat4 jk_mat4_rotate_z(float a)
+{
+    return (JkMat4){{
+        {jk_cos_f32(a), -jk_sin_f32(a), 0, 0},
+        {jk_sin_f32(a),  jk_cos_f32(a), 0, 0},
+        {            0,              0, 1, 0},
+        {            0,              0, 0, 1},
+    }};
+}
+
+JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 v)
+{
+    return (JkMat4){{
+        {v.x,   0,   0, 0},
+        {0,   v.y,   0, 0},
+        {0,     0, v.z, 0},
+        {0,     0,   0, 1},
+    }};
+}
+// clang-format on
+
+// ---- JkMat4 end -------------------------------------------------------------
+
 // ---- Shapes begin -----------------------------------------------------------
 
 JK_PUBLIC float jk_segment_y_intersection(JkSegment segment, float y)

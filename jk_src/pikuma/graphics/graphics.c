@@ -234,6 +234,10 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
     JkIntRect bounds = jk_int_rect_intersect(screen_rect, jk_triangle2_int_bounding_box(tri));
     JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
 
+    if (dimensions.x < 1) {
+        return;
+    }
+
     JkEdgeArray edges = jk_triangle2_edges_get(&tmp_arena, tri);
 
     int64_t coverage_size = JK_SIZEOF(float) * (dimensions.x + 1);
@@ -401,14 +405,13 @@ void render(Assets *assets, State *state)
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
+    JkMat4 matrix = jk_mat4_scale((JkVec3){0.5, 1, 1});
+    matrix = jk_mat4_mul(jk_mat4_rotate_x(angle), matrix);
+    matrix = jk_mat4_mul(jk_mat4_translate(jk_vec3_mul(-1, camera_pos)), matrix);
+
     JkVec3 *screen_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
-        screen_vertices[i] = (JkVec3){
-            .x = vertices.items[i].x,
-            .y = vertices.items[i].y * jk_cos_f32(angle) - vertices.items[i].z * jk_sin_f32(angle),
-            .z = vertices.items[i].y * jk_sin_f32(angle) + vertices.items[i].z * jk_cos_f32(angle),
-        };
-        screen_vertices[i] = jk_vec3_sub(screen_vertices[i], camera_pos);
+        screen_vertices[i] = jk_mat4_mul_vec3(matrix, vertices.items[i]);
     }
 
     JkInt64Array face_ids;
