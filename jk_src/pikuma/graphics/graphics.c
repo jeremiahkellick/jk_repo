@@ -209,7 +209,7 @@ static JkVec2 project(JkVec3 v, JkVec2 offset, float scale)
     return result;
 }
 
-static JkVec3 camera_pos = {0.0f, 0.0f, -4.0f};
+static JkVec3 camera_pos = {0.0f, -2.5f, 0};
 static int32_t rotation_seconds = 8;
 
 static void add_cover(float *coverage, JkIntRect bounds, int32_t x, float value)
@@ -362,9 +362,9 @@ static int face_ids_compare(void *data, void *a_id_ptr, void *b_id_ptr)
     float a_avg_z = (verts[a->v[0]].z + verts[a->v[1]].z + verts[a->v[2]].z) / 3.0f;
     float b_avg_z = (verts[b->v[0]].z + verts[b->v[1]].z + verts[b->v[2]].z) / 3.0f;
     if (a_avg_z < b_avg_z) {
-        return -1;
-    } else if (b_avg_z < a_avg_z) {
         return 1;
+    } else if (b_avg_z < a_avg_z) {
+        return -1;
     } else {
         return 0;
     }
@@ -376,6 +376,15 @@ static void face_ids_sort(JkVec3 *vertices, Face *faces, JkInt64Array face_ids)
     FaceIdsSortContext c = {.vertices = vertices, .faces = faces};
     jk_quicksort(
             face_ids.items, face_ids.count, sizeof(*face_ids.items), &tmp, &c, face_ids_compare);
+}
+
+static b32 clockwise(JkVec3 *vertices, Face face)
+{
+    JkVec3 p[3];
+    for (int64_t i = 0; i < 3; i++) {
+        p[i] = vertices[face.v[i]];
+    }
+    return (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x) < 0;
 }
 
 void render(Assets *assets, State *state)
@@ -400,14 +409,21 @@ void render(Assets *assets, State *state)
                 sizeof(JkColor) * state->dimensions.x);
     }
 
-    float scale = JK_MIN(state->dimensions.x * 1.5f, state->dimensions.y * 1.5f) / 2.0f;
-    JkVec2 offset = {state->dimensions.x / 2.0f, state->dimensions.y / 2.0f};
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
 
-    JkMat4 matrix = jk_mat4_scale((JkVec3){0.5, 1, 1});
+    JkMat4 matrix = jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
+    matrix = jk_mat4_mul(jk_mat4_rotate_z(-JK_PI / 2.0f), matrix);
     matrix = jk_mat4_mul(jk_mat4_rotate_x(angle), matrix);
     matrix = jk_mat4_mul(jk_mat4_translate(jk_vec3_mul(-1, camera_pos)), matrix);
+    matrix = jk_mat4_mul(
+            jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), matrix);
+    matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 2, 0.05f), matrix);
+
+    JkMat4 pixel_matrix = jk_mat4_translate((JkVec3){1, -1, 0});
+    pixel_matrix = jk_mat4_mul(
+            jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
+            pixel_matrix);
 
     JkVec3 *screen_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
@@ -422,15 +438,12 @@ void render(Assets *assets, State *state)
     face_ids_sort(screen_vertices, faces.items, face_ids);
     for (int32_t face_id_index = 0; face_id_index < face_ids.count; face_id_index++) {
         int64_t face_id = face_ids.items[face_id_index];
-        Face *face = faces.items + face_id;
+        Face face = faces.items[face_id];
 
-        JkVec3 normal =
-                jk_vec3_cross(jk_vec3_sub(screen_vertices[face->v[1]], screen_vertices[face->v[0]]),
-                        jk_vec3_sub(screen_vertices[face->v[2]], screen_vertices[face->v[0]]));
-        if (jk_vec3_dot(normal, jk_vec3_mul(-1, screen_vertices[face->v[0]])) > 0) {
+        if (!clockwise(screen_vertices, face)) {
             JkTriangle2 tri;
             for (int64_t i = 0; i < 3; i++) {
-                tri.v[i] = project(screen_vertices[face->v[i]], offset, scale);
+                tri.v[i] = jk_vec3_to_2(jk_mat4_mul_vec3(pixel_matrix, screen_vertices[face.v[i]]));
             }
             triangle_fill(&arena, state, tri, fgs[face_id % 2]);
         }

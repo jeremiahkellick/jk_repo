@@ -642,6 +642,11 @@ JK_PUBLIC float jk_cos_f32(float x)
     return jk_sin_f32(x + JK_PI / 2);
 }
 
+JK_PUBLIC float jk_tan_f32(float value)
+{
+    return jk_sin_f32(value) / jk_cos_f32(value);
+}
+
 JK_PUBLIC float jk_acos_core_f32(float x)
 {
     float result = -0x1.056a66p+0f;
@@ -1177,11 +1182,14 @@ JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b)
 JK_PUBLIC JkVec3 jk_mat4_mul_vec3(JkMat4 m, JkVec3 v)
 {
     JkVec3 result = {0};
+    float w = m.e[3][0] * v.coords[0] + m.e[3][1] * v.coords[1] + m.e[3][2] * v.coords[2]
+            + m.e[3][3] * 1;
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t k = 0; k < 3; k++) {
             result.coords[i] += m.e[i][k] * v.coords[k];
         }
-        result.coords[i] += m.e[i][3];
+        result.coords[i] += m.e[i][3] * 1;
+        result.coords[i] /= w;
     }
     return result;
 }
@@ -1234,6 +1242,18 @@ JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 v)
         {0,   v.y,   0, 0},
         {0,     0, v.z, 0},
         {0,     0,   0, 1},
+    }};
+}
+
+JK_PUBLIC JkMat4 jk_mat4_perspective(JkIntVec2 dimensions, float fov_radians, float near_clip)
+{
+    float inv_tan = 1 / jk_tan_f32(fov_radians / 2);
+    float r = (float)dimensions.y / (float)dimensions.x;
+    return (JkMat4){{
+        {r*inv_tan,       0,  0,         0},
+        {        0, inv_tan,  0,         0},
+        {        0,       0,  0, near_clip},
+        {        0,       0, -1,         0},
     }};
 }
 // clang-format on

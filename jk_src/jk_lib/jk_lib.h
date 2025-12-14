@@ -195,6 +195,8 @@ JK_PUBLIC float jk_sin_f32(float value);
 
 JK_PUBLIC float jk_cos_f32(float value);
 
+JK_PUBLIC float jk_tan_f32(float value);
+
 JK_PUBLIC float jk_acos_core_f32(float value);
 
 JK_PUBLIC float jk_acos_f32(float value);
@@ -459,6 +461,8 @@ JK_PUBLIC JkMat4 jk_mat4_rotate_y(float a);
 JK_PUBLIC JkMat4 jk_mat4_rotate_z(float a);
 
 JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 scale);
+
+JK_PUBLIC JkMat4 jk_mat4_perspective(JkIntVec2 dimensions, float fov_radians, float near_clip);
 
 // The order here is important. My preferred coordinate system is x = right, y = forward, z = up,
 // which is right-handed. These are ordered such that direction / 2 is the axis and direction % 2
