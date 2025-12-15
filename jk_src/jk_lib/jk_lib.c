@@ -1248,13 +1248,23 @@ JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 v)
 JK_PUBLIC JkMat4 jk_mat4_perspective(JkIntVec2 dimensions, float fov_radians, float near_clip)
 {
     float inv_tan = 1 / jk_tan_f32(fov_radians / 2);
-    float r = (float)dimensions.y / (float)dimensions.x;
-    return (JkMat4){{
-        {r*inv_tan,       0,  0,         0},
-        {        0, inv_tan,  0,         0},
-        {        0,       0,  0, near_clip},
-        {        0,       0, -1,         0},
-    }};
+    if (dimensions.x < dimensions.y) {
+        float r = (float)dimensions.x / (float)dimensions.y;
+        return (JkMat4){{
+            {  inv_tan,         0,  0,         0},
+            {        0, r*inv_tan,  0,         0},
+            {        0,         0,  0, near_clip},
+            {        0,         0, -1,         0},
+        }};
+    } else {
+        float r = (float)dimensions.y / (float)dimensions.x;
+        return (JkMat4){{
+            {r*inv_tan,         0,  0,         0},
+            {        0,   inv_tan,  0,         0},
+            {        0,         0,  0, near_clip},
+            {        0,         0, -1,         0},
+        }};
+    }
 }
 // clang-format on
 

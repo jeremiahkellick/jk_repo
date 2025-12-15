@@ -14,6 +14,10 @@ static JkColor fgs[] = {
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
+static JkVec3 camera_pos = {0.0f, -3.0, 0.2};
+static JkVec3 light_dir = {-1, 4, -1};
+static int32_t rotation_seconds = 8;
+
 static void draw_pixel(State *state, JkIntVec2 pos, JkColor color)
 {
     if (0 <= pos.x && pos.x < state->dimensions.x && 0 <= pos.y && pos.y < state->dimensions.y) {
@@ -209,9 +213,6 @@ static JkVec2 project(JkVec3 v, JkVec2 offset, float scale)
     return result;
 }
 
-static JkVec3 camera_pos = {0.0f, -2.5f, 0};
-static int32_t rotation_seconds = 8;
-
 static void add_cover(float *coverage, JkIntRect bounds, int32_t x, float value)
 {
     if (bounds.min.x <= x && x < bounds.max.x) {
@@ -387,6 +388,14 @@ static b32 clockwise(JkVec3 *vertices, Face face)
     return (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x) < 0;
 }
 
+static JkColor color_scalar_mul(float s, JkColor c)
+{
+    for (int64_t i = 0; i < 3; i++) {
+        c.v[i] = JK_MIN(255.0f, c.v[i] * s);
+    }
+    return c;
+}
+
 void render(Assets *assets, State *state)
 {
     JkArenaRoot arena_root;
@@ -411,23 +420,31 @@ void render(Assets *assets, State *state)
 
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
     float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
+    JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
 
-    JkMat4 matrix = jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
-    matrix = jk_mat4_mul(jk_mat4_rotate_z(-JK_PI / 2.0f), matrix);
-    matrix = jk_mat4_mul(jk_mat4_rotate_x(angle), matrix);
-    matrix = jk_mat4_mul(jk_mat4_translate(jk_vec3_mul(-1, camera_pos)), matrix);
-    matrix = jk_mat4_mul(
-            jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), matrix);
-    matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 2, 0.05f), matrix);
+    JkMat4 world_matrix =
+            jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
+    world_matrix = jk_mat4_mul(jk_mat4_rotate_x(JK_PI / 8), world_matrix);
+    world_matrix = jk_mat4_mul(jk_mat4_rotate_z(angle), world_matrix);
+
+    JkMat4 ndc_matrix = jk_mat4_translate(jk_vec3_mul(-1, camera_pos));
+    ndc_matrix = jk_mat4_mul(
+            jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), ndc_matrix);
+    ndc_matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 2, 0.05f), ndc_matrix);
 
     JkMat4 pixel_matrix = jk_mat4_translate((JkVec3){1, -1, 0});
     pixel_matrix = jk_mat4_mul(
             jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
             pixel_matrix);
 
+    JkVec3 *world_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*world_vertices));
+    for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
+        world_vertices[i] = jk_mat4_mul_vec3(world_matrix, vertices.items[i]);
+    }
+
     JkVec3 *screen_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
     for (int32_t i = 0; i < (int32_t)vertices.count; i++) {
-        screen_vertices[i] = jk_mat4_mul_vec3(matrix, vertices.items[i]);
+        screen_vertices[i] = jk_mat4_mul_vec3(ndc_matrix, world_vertices[i]);
     }
 
     JkInt64Array face_ids;
@@ -441,11 +458,20 @@ void render(Assets *assets, State *state)
         Face face = faces.items[face_id];
 
         if (!clockwise(screen_vertices, face)) {
+            JkVec3 normal = jk_vec3_normalized(
+                    jk_vec3_cross(jk_vec3_sub(world_vertices[face.v[1]], world_vertices[face.v[0]]),
+                            jk_vec3_sub(world_vertices[face.v[2]], world_vertices[face.v[0]])));
+            float dot = -jk_vec3_dot(light_dir_n, normal);
+            float multiplier = 1.2;
+            if (0 < dot) {
+                multiplier += dot * 5;
+            }
+
             JkTriangle2 tri;
             for (int64_t i = 0; i < 3; i++) {
                 tri.v[i] = jk_vec3_to_2(jk_mat4_mul_vec3(pixel_matrix, screen_vertices[face.v[i]]));
             }
-            triangle_fill(&arena, state, tri, fgs[face_id % 2]);
+            triangle_fill(&arena, state, tri, color_scalar_mul(multiplier, bg));
         }
     }
 
