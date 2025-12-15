@@ -280,6 +280,31 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
     return 1;
 }
 
+JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
+{
+    char buffer[MAX_PATH];
+
+    int64_t i = 0;
+    if (path.data[i] == '/') {
+        i++; // Skip leading slash which indicates an absolute path
+    }
+    while (i < path.size) {
+        while (i < path.size && path.data[i] != '/') {
+            i++;
+        }
+        memcpy(buffer, path.data, i);
+        buffer[i] = '\0';
+
+        if (!CreateDirectoryA(buffer, 0) && GetLastError() != ERROR_ALREADY_EXISTS) {
+            return 0;
+        }
+
+        i++;
+    }
+
+    return 1;
+}
+
 #else
 
 #include <limits.h>
@@ -1296,6 +1321,52 @@ JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_n
 end:
     lines.count = (JkBuffer *)jk_arena_pointer_current(arena) - lines.items;
     return lines;
+}
+
+JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
+        JkBuffer buffer, JkBuffer file_path, JkBuffer array_name)
+{
+    if (!jk_platform_create_directory(jk_path_directory(file_path))) {
+        jk_print(JKS("jk_platform_write_as_c_byte_array: Failed to create directory\n"));
+        return 0;
+    }
+
+    uint8_t stack_memory_byte_array[4096];
+    JkBuffer stack_memory = JK_BUFFER_INIT_FROM_BYTE_ARRAY(stack_memory_byte_array);
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(&arena_root, stack_memory);
+
+    char *file_path_nt = jk_buffer_to_null_terminated(&arena, file_path);
+    char *array_name_nt = jk_buffer_to_null_terminated(&arena, array_name);
+    if (!file_path_nt || !array_name_nt) {
+        jk_print(JKS("jk_platform_write_as_c_byte_array: String memory limit exceeded\n"));
+        return 0;
+    }
+
+    FILE *file = fopen(file_path_nt, "wb");
+    if (!file) {
+        jk_print(JKS("jk_platform_write_as_c_byte_array: Failed to open file '"));
+        jk_print(file_path);
+        jk_print(JKS("': "));
+        jk_print(jk_buffer_from_null_terminated(strerror(errno)));
+        jk_print(JKS("\n"));
+        return 0;
+    }
+
+    fprintf(file, "JK_PUBLIC char %s[%lld] = {\n", array_name_nt, (long long)buffer.size);
+    int64_t byte_index = 0;
+    while (byte_index < buffer.size) {
+        fprintf(file, "   ");
+        for (int64_t i = 0; i < 16 && byte_index < buffer.size; i++) {
+            fprintf(file, " 0x%02x,", (int32_t)buffer.data[byte_index++]);
+        }
+        fprintf(file, "\n");
+    }
+    fprintf(file, "};\n");
+
+    fclose(file);
+
+    return 1;
 }
 
 JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait)

@@ -170,8 +170,10 @@ JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
 JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
 {
     char *result = jk_arena_push(arena, buffer.size + 1);
-    result[buffer.size] = '\0';
-    jk_memcpy(result, buffer.data, buffer.size);
+    if (result) {
+        result[buffer.size] = '\0';
+        jk_memcpy(result, buffer.data, buffer.size);
+    }
     return result;
 }
 
@@ -546,6 +548,18 @@ JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items)
     jk_print(string);
 }
 
+JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path)
+{
+    // Truncate path at last component to convert it the containing directory name
+    for (int64_t new_size = path.size - 1; 0 <= new_size; new_size--) {
+        if (path.data[new_size] == '/' || path.data[new_size] == '\\') {
+            path.size = new_size;
+            break;
+        }
+    }
+    return path;
+}
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Math begin -------------------------------------------------------------
@@ -733,6 +747,14 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size)
 JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size)
 {
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
+}
+
+JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena)
+{
+    return (JkBuffer){
+        .size = arena->pos - arena->base,
+        .data = arena->root->memory.data + arena->base,
+    };
 }
 
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size)
@@ -1159,7 +1181,7 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v)
 
 // ---- JkMat4 begin -----------------------------------------------------------
 
-JK_PUBLIC JkMat4 const jk_mat4_i = {{
+JK_PUBLIC JkMat4 jk_mat4_i = {{
     {1, 0, 0, 0},
     {0, 1, 0, 0},
     {0, 0, 1, 0},

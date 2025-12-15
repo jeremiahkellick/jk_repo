@@ -426,6 +426,7 @@ void render(Assets *assets, State *state)
             jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
     world_matrix = jk_mat4_mul(jk_mat4_rotate_x(JK_PI / 8), world_matrix);
     world_matrix = jk_mat4_mul(jk_mat4_rotate_z(angle), world_matrix);
+    world_matrix = jk_mat4_mul(jk_mat4_translate((JkVec3){0, 0, 0}), world_matrix);
 
     JkMat4 ndc_matrix = jk_mat4_translate(jk_vec3_mul(-1, camera_pos));
     ndc_matrix = jk_mat4_mul(

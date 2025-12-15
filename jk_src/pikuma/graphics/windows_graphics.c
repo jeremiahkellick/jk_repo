@@ -2,15 +2,18 @@
 
 #include <windows.h>
 
-#include "graphics.h"
-
 // #jk_build run jk_src/pikuma/graphics/graphics_assets_pack.c
 // #jk_build build jk_src/pikuma/graphics/graphics.c
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
+#include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
+
+#if JK_BUILD_MODE == JK_RELEASE
+#include <jk_gen/pikuma/graphics/assets.c>
+#endif
 
 #define FRAME_RATE 60
 
@@ -148,8 +151,10 @@ DWORD app_thread(LPVOID param)
     HDC device_context = GetDC(window);
     update_dimensions(window);
 
+#if JK_BUILD_MODE != JK_RELEASE
     HINSTANCE graphics_library = 0;
     FILETIME graphics_dll_last_modified_time = {0};
+#endif
 
     uint64_t time = 0;
     int64_t work_time_total = 0;
@@ -161,6 +166,7 @@ DWORD app_thread(LPVOID param)
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     while (g.running) {
+#if JK_BUILD_MODE != JK_RELEASE
         // Hot reloading
         WIN32_FILE_ATTRIBUTE_DATA graphics_dll_info;
         if (GetFileAttributesExA("graphics.dll", GetFileExInfoStandard, &graphics_dll_info)) {
@@ -185,6 +191,7 @@ DWORD app_thread(LPVOID param)
         } else {
             OutputDebugStringA("Failed to get last modified time of graphics.dll\n");
         }
+#endif
 
         g.state.dimensions.x = JK_MAX(256, JK_MIN(g.window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
         g.state.dimensions.y = JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
@@ -278,7 +285,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         exit(1);
     }
 
+#if JK_BUILD_MODE == JK_RELEASE
+    g.assets = (Assets *)assets_byte_array;
+    g.render = render;
+#else
     g.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
+#endif
 
     g.state.memory.size = 2 * JK_MEGABYTE;
     uint8_t *memory =

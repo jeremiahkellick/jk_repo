@@ -57,6 +57,8 @@ JK_PUBLIC void jk_platform_sleep(int64_t milliseconds);
 
 JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path);
 
+JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path);
+
 // ---- OS functions end -------------------------------------------------------
 
 // ---- ISA functions begin ----------------------------------------------------
@@ -411,6 +413,9 @@ JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n);
 JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name);
 
 JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name);
+
+JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
+        JkBuffer buffer, JkBuffer file_path, JkBuffer array_name);
 
 JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait);
 

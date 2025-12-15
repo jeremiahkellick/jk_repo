@@ -228,6 +228,8 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size);
 
 JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size);
 
+JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena);
+
 #define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                                   \
     do {                                                                                \
         (array).count = item_count;                                                     \
@@ -283,6 +285,8 @@ JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
             (JkFormatItemArray){                                                               \
                 .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
                 .items = (JkFormatItem[]){__VA_ARGS__}})
+
+JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
@@ -446,7 +450,7 @@ typedef struct JkMat4 {
     float e[4][4];
 } JkMat4;
 
-JK_PUBLIC JkMat4 const jk_mat4_i;
+JK_PUBLIC JkMat4 jk_mat4_i;
 
 JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b);
 

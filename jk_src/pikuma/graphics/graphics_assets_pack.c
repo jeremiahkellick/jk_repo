@@ -230,5 +230,9 @@ int main(int argc, char **argv)
                 strerror(errno));
     }
 
+    jk_platform_write_as_c_byte_array(jk_arena_as_buffer(&result_arena),
+            JKS("../jk_gen/pikuma/graphics/assets.c"),
+            JKS("assets_byte_array"));
+
     return 0;
 }
