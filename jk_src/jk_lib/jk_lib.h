@@ -451,6 +451,28 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
 // ---- JkVec3 end -------------------------------------------------------------
 
+// ---- JkVec3 begin -----------------------------------------------------------
+
+typedef union JkVec4 {
+    float coords[4];
+    struct {
+        float x;
+        float y;
+        float z;
+        float w;
+    };
+} JkVec4;
+
+JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w);
+
+JK_PUBLIC JkVec2 jk_vec4_to_2(JkVec4 v);
+
+JK_PUBLIC JkVec3 jk_vec4_to_3(JkVec4 v);
+
+JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v);
+
+// ---- JkVec4 end -------------------------------------------------------------
+
 // ---- JkMat4 begin -----------------------------------------------------------
 
 typedef struct JkMat4 {
@@ -461,7 +483,11 @@ JK_PUBLIC JkMat4 jk_mat4_i;
 
 JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b);
 
-JK_PUBLIC JkVec3 jk_mat4_mul_vec3(JkMat4 m, JkVec3 v);
+JK_PUBLIC JkVec3 jk_mat4_mul_point(JkMat4 m, JkVec3 v);
+
+JK_PUBLIC JkVec3 jk_mat4_mul_normal(JkMat4 m, JkVec3 v);
+
+JK_PUBLIC JkVec4 jk_mat4_mul_vec4(JkMat4 m, JkVec4 v);
 
 JK_PUBLIC JkMat4 jk_mat4_translate(JkVec3 offset);
 

@@ -1184,6 +1184,30 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v)
 
 // ---- JkVec3 end -------------------------------------------------------------
 
+// ---- JkVec3 begin -----------------------------------------------------------
+
+JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w)
+{
+    return (JkVec4){.x = v.x, .y = v.y, .z = v.z, .w = w};
+}
+
+JK_PUBLIC JkVec2 jk_vec4_to_2(JkVec4 v)
+{
+    return (JkVec2){.x = v.x, .y = v.y};
+}
+
+JK_PUBLIC JkVec3 jk_vec4_to_3(JkVec4 v)
+{
+    return (JkVec3){.x = v.x, .y = v.y, .z = v.z};
+}
+
+JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v)
+{
+    return (JkVec3){.x = v.x / v.w, .y = v.y / v.w, .z = v.z / v.w};
+}
+
+// ---- JkVec4 end -------------------------------------------------------------
+
 // ---- JkMat4 begin -----------------------------------------------------------
 
 JK_PUBLIC JkMat4 jk_mat4_i = {{
@@ -1206,17 +1230,36 @@ JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b)
     return result;
 }
 
-JK_PUBLIC JkVec3 jk_mat4_mul_vec3(JkMat4 m, JkVec3 v)
+JK_PUBLIC JkVec3 jk_mat4_mul_point(JkMat4 m, JkVec3 v)
 {
     JkVec3 result = {0};
-    float w = m.e[3][0] * v.coords[0] + m.e[3][1] * v.coords[1] + m.e[3][2] * v.coords[2]
-            + m.e[3][3] * 1;
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t k = 0; k < 3; k++) {
             result.coords[i] += m.e[i][k] * v.coords[k];
         }
         result.coords[i] += m.e[i][3] * 1;
-        result.coords[i] /= w;
+    }
+    return result;
+}
+
+JK_PUBLIC JkVec3 jk_mat4_mul_normal(JkMat4 m, JkVec3 v)
+{
+    JkVec3 result = {0};
+    for (int64_t i = 0; i < 3; i++) {
+        for (int64_t k = 0; k < 3; k++) {
+            result.coords[i] += m.e[i][k] * v.coords[k];
+        }
+    }
+    return result;
+}
+
+JK_PUBLIC JkVec4 jk_mat4_mul_vec4(JkMat4 m, JkVec4 v)
+{
+    JkVec4 result = {0};
+    for (int64_t i = 0; i < 4; i++) {
+        for (int64_t k = 0; k < 4; k++) {
+            result.coords[i] += m.e[i][k] * v.coords[k];
+        }
     }
     return result;
 }
