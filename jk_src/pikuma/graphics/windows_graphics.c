@@ -197,6 +197,7 @@ DWORD app_thread(LPVOID param)
         g.state.dimensions.y = JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
 
         g.state.os_time = jk_platform_os_timer_get();
+        g.state.print = jk_print;
 
         g.render(g.assets, &g.state);
         time++;

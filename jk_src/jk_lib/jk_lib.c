@@ -1054,6 +1054,11 @@ JK_PUBLIC float jk_vec2_dot(JkVec2 u, JkVec2 v)
     return u.x * v.x + u.y * v.y;
 }
 
+JK_PUBLIC float jk_vec2_cross(JkVec2 u, JkVec2 v)
+{
+    return u.x * v.y - u.y * v.x;
+}
+
 JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v)
 {
     float sign = u.x * v.y - u.y * v.x < 0.0f ? -1.0f : 1.0f;
@@ -1398,30 +1403,6 @@ JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b)
         .max.x = JK_MIN(a.max.x, b.max.x),
         .max.y = JK_MIN(a.max.y, b.max.y),
     };
-}
-
-JK_PUBLIC JkIntRect jk_triangle2_int_bounding_box(JkTriangle2 t)
-{
-    return (JkIntRect){
-        .min.x = JK_MIN3(t.v[0].x, t.v[1].x, t.v[2].x),
-        .min.y = JK_MIN3(t.v[0].y, t.v[1].y, t.v[2].y),
-        .max.x = jk_ceil_f32(JK_MAX3(t.v[0].x, t.v[1].x, t.v[2].x)),
-        .max.y = jk_ceil_f32(JK_MAX3(t.v[0].y, t.v[1].y, t.v[2].y)),
-    };
-}
-
-JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t)
-{
-    JkEdgeArray result = {.items = jk_arena_pointer_current(arena)};
-    for (int64_t i = 0; i < 3; i++) {
-        int64_t next = (i + 1) % 3;
-        if (t.v[i].y != t.v[next].y) {
-            JkEdge *edge = jk_arena_push(arena, JK_SIZEOF(*edge));
-            *edge = jk_points_to_edge(t.v[i], t.v[next]);
-        }
-    }
-    result.count = (JkEdge *)jk_arena_pointer_current(arena) - result.items;
-    return result;
 }
 
 // ---- Shapes end -------------------------------------------------------------

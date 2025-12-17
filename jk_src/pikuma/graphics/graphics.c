@@ -8,6 +8,8 @@
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
+#include <jk_src/pikuma/graphics/hardcoded_assets.c>
+
 static JkColor fgs[] = {
     {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff},
     {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
@@ -204,6 +206,36 @@ static void draw_line(State *state, JkColor color, JkVec2 a, JkVec2 b)
 
 // ---- Xiaolin Wu's line algorithm end ----------------------------------------------
 
+typedef struct Triangle {
+    JkVec2 v[3];
+    JkVec2 t[3];
+    Bitmap texture;
+} Triangle;
+
+static JkIntRect triangle_bounding_box(Triangle t)
+{
+    return (JkIntRect){
+        .min.x = JK_MIN3(t.v[0].x, t.v[1].x, t.v[2].x),
+        .min.y = JK_MIN3(t.v[0].y, t.v[1].y, t.v[2].y),
+        .max.x = jk_ceil_f32(JK_MAX3(t.v[0].x, t.v[1].x, t.v[2].x)),
+        .max.y = jk_ceil_f32(JK_MAX3(t.v[0].y, t.v[1].y, t.v[2].y)),
+    };
+}
+
+static JkEdgeArray triangle_edges(JkArena *arena, Triangle t)
+{
+    JkEdgeArray result = {.items = jk_arena_pointer_current(arena)};
+    for (int64_t i = 0; i < 3; i++) {
+        int64_t next = (i + 1) % 3;
+        if (t.v[i].y != t.v[next].y) {
+            JkEdge *edge = jk_arena_push(arena, JK_SIZEOF(*edge));
+            *edge = jk_points_to_edge(t.v[i], t.v[next]);
+        }
+    }
+    result.count = (JkEdge *)jk_arena_pointer_current(arena) - result.items;
+    return result;
+}
+
 static JkVec2 project(JkVec3 v, JkVec2 offset, float scale)
 {
     JkVec2 result = (JkVec2){v.x / v.z, v.y / v.z};
@@ -227,19 +259,26 @@ static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
     }
 }
 
-static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor color)
+static JkColor texture_lookup(Bitmap texture, JkVec2 texcoord)
+{
+    int32_t x = JK_CLAMP(texcoord.x * texture.dimensions.x, 0, texture.dimensions.x - 1);
+    int32_t y = JK_CLAMP((1 - texcoord.y) * texture.dimensions.y, 0, texture.dimensions.y - 1);
+    return texture.memory[texture.dimensions.x * y + x];
+}
+
+static void triangle_fill(JkArena *arena, State *state, Triangle tri)
 {
     JkArena tmp_arena = jk_arena_child_get(arena);
 
     JkIntRect screen_rect = {.min = (JkIntVec2){0}, .max = state->dimensions};
-    JkIntRect bounds = jk_int_rect_intersect(screen_rect, jk_triangle2_int_bounding_box(tri));
+    JkIntRect bounds = jk_int_rect_intersect(screen_rect, triangle_bounding_box(tri));
     JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
 
     if (dimensions.x < 1) {
         return;
     }
 
-    JkEdgeArray edges = jk_triangle2_edges_get(&tmp_arena, tri);
+    JkEdgeArray edges = triangle_edges(&tmp_arena, tri);
 
     int64_t coverage_size = JK_SIZEOF(float) * (dimensions.x + 1);
     JkBuffer coverage_buf = jk_arena_push_buffer(&tmp_arena, 2 * coverage_size);
@@ -336,11 +375,28 @@ static void triangle_fill(JkArena *arena, State *state, JkTriangle2 tri, JkColor
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
             acc += fill[x - bounds.min.x];
 
+            JkVec2 point = {x + 0.5, y + 0.5};
+            float total_area = JK_ABS(jk_vec2_cross(
+                    jk_vec2_sub(tri.v[1], tri.v[0]), jk_vec2_sub(tri.v[2], tri.v[0])));
+            float weight[3];
+            for (int64_t i = 0; i < 3; i++) {
+                int64_t a = (i + 1) % 3;
+                int64_t b = (i + 2) % 3;
+                float area = JK_ABS(
+                        jk_vec2_cross(jk_vec2_sub(tri.v[a], point), jk_vec2_sub(tri.v[b], point)));
+                weight[i] = area / total_area;
+            }
+
+            JkVec2 texcoord = {0};
+            for (int64_t i = 0; i < 3; i++) {
+                texcoord = jk_vec2_add(texcoord, jk_vec2_mul(weight[i], tri.t[i]));
+            }
+
             int32_t alpha = (int32_t)(JK_ABS((coverage[x - bounds.min.x] + acc) * 255.0f));
             if (255 < alpha) {
                 alpha = 255;
             }
-            JkColor pixel_color = color;
+            JkColor pixel_color = texture_lookup(tri.texture, texcoord);
             pixel_color.a = (uint8_t)alpha;
 
             int64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
@@ -396,16 +452,21 @@ static JkColor color_scalar_mul(float s, JkColor c)
     return c;
 }
 
+static Bitmap redbrick_texture = {
+    .dimensions = {64, 64},
+    .memory = (JkColor *)redbrick_byte_array,
+};
+
 void render(Assets *assets, State *state)
 {
+    jk_print = state->print;
+
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
 
-    JkVec3Array vertices;
-    JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
-
-    FaceArray faces;
-    JK_ARRAY_FROM_SPAN(faces, assets, assets->faces);
+    JkVec3Array vertices = {.count = JK_ARRAY_COUNT(cube_vertices), .items = cube_vertices};
+    JkVec2Array texcoords = {.count = JK_ARRAY_COUNT(cube_texcoords), .items = cube_texcoords};
+    FaceArray faces = {.count = JK_ARRAY_COUNT(cube_faces), .items = cube_faces};
 
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
@@ -423,8 +484,7 @@ void render(Assets *assets, State *state)
     JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
 
     JkMat4 world_matrix =
-            jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
-    world_matrix = jk_mat4_mul(jk_mat4_rotate_x(JK_PI / 8), world_matrix);
+            jk_mat4_conversion_from((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_FORWARD});
     world_matrix = jk_mat4_mul(jk_mat4_rotate_z(angle), world_matrix);
     world_matrix = jk_mat4_mul(jk_mat4_translate((JkVec3){0, 0, 0}), world_matrix);
 
@@ -458,7 +518,8 @@ void render(Assets *assets, State *state)
         int64_t face_id = face_ids.items[face_id_index];
         Face face = faces.items[face_id];
 
-        if (!clockwise(screen_vertices, face)) {
+        if (clockwise(screen_vertices, face)) {
+            /*
             JkVec3 normal = jk_vec3_normalized(
                     jk_vec3_cross(jk_vec3_sub(world_vertices[face.v[1]], world_vertices[face.v[0]]),
                             jk_vec3_sub(world_vertices[face.v[2]], world_vertices[face.v[0]])));
@@ -467,12 +528,14 @@ void render(Assets *assets, State *state)
             if (0 < dot) {
                 multiplier += dot * 5;
             }
+            */
 
-            JkTriangle2 tri;
+            Triangle tri = {.texture = redbrick_texture};
             for (int64_t i = 0; i < 3; i++) {
                 tri.v[i] = jk_vec3_to_2(jk_mat4_mul_vec3(pixel_matrix, screen_vertices[face.v[i]]));
+                tri.t[i] = texcoords.items[face.t[i]];
             }
-            triangle_fill(&arena, state, tri, color_scalar_mul(multiplier, bg));
+            triangle_fill(&arena, state, tri);
         }
     }
 

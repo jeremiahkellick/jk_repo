@@ -25,7 +25,8 @@ typedef enum Flag {
 } Flag;
 
 typedef struct Face {
-    int32_t v[3];
+    int32_t v[3]; // vertex indexes
+    int32_t t[3]; // texcoord indexes
 } Face;
 
 typedef struct FaceArray {
@@ -33,15 +34,22 @@ typedef struct FaceArray {
     Face *items;
 } FaceArray;
 
+typedef struct Bitmap {
+    JkIntVec2 dimensions;
+    JkColor *memory;
+} Bitmap;
+
 typedef struct Assets {
-    JkSpan vertices;
-    JkSpan faces;
+    JkSpan vertices; // JkVec3
+    JkSpan texcoords; // JkVec2
+    JkSpan faces; // Face
 } Assets;
 
 typedef struct State {
     JkColor *draw_buffer;
     JkBuffer memory;
     int64_t os_timer_frequency;
+    void (*print)(JkBuffer string);
 
     uint64_t flags;
     JkIntVec2 dimensions;

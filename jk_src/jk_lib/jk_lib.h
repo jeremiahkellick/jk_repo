@@ -362,6 +362,11 @@ typedef union JkVec2 {
     };
 } JkVec2;
 
+typedef struct JkVec2Array {
+    int64_t count;
+    JkVec2 *items;
+} JkVec2Array;
+
 JK_PUBLIC b32 jk_vec2_approx_equal(JkVec2 a, JkVec2 b, float tolerance);
 
 JK_PUBLIC JkVec2 jk_vec2_add(JkVec2 a, JkVec2 b);
@@ -381,6 +386,8 @@ JK_PUBLIC float jk_vec2_magnitude(JkVec2 v);
 JK_PUBLIC JkVec2 jk_vec2_normalized(JkVec2 v);
 
 JK_PUBLIC float jk_vec2_dot(JkVec2 u, JkVec2 v);
+
+JK_PUBLIC float jk_vec2_cross(JkVec2 u, JkVec2 v);
 
 JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v);
 
@@ -538,14 +545,6 @@ JK_PUBLIC JkIntVec2 jk_int_rect_dimensions(JkIntRect rect);
 JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point);
 
 JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b);
-
-typedef struct JkTriangle2 {
-    JkVec2 v[3];
-} JkTriangle2;
-
-JK_PUBLIC JkIntRect jk_triangle2_int_bounding_box(JkTriangle2 t);
-
-JK_PUBLIC JkEdgeArray jk_triangle2_edges_get(JkArena *arena, JkTriangle2 t);
 
 // ---- Shapes end -------------------------------------------------------------
 
