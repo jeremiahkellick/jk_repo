@@ -236,8 +236,10 @@ static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
 
 static JkColor texture_lookup(Bitmap texture, JkVec2 texcoord)
 {
-    int32_t x = JK_CLAMP(texcoord.x * texture.dimensions.x, 0, texture.dimensions.x - 1);
-    int32_t y = JK_CLAMP(texcoord.y * texture.dimensions.y, 0, texture.dimensions.y - 1);
+    int32_t x = texcoord.x * texture.dimensions.x;
+    int32_t y = texcoord.y * texture.dimensions.y;
+    x = JK_MOD(x, texture.dimensions.x);
+    y = JK_MOD(y, texture.dimensions.y);
     return jk_color3_to_4(texture.memory[texture.dimensions.x * y + x], 0xff);
 }
 
