@@ -218,6 +218,21 @@ JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b)
     }
 }
 
+JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer)
+{
+    uint64_t result = 0;
+    int64_t i = 0;
+    while (i < buffer.size) {
+        JkConversionUnion bits = {0};
+        int64_t byte_index = 0;
+        while (byte_index < 8 && i < buffer.size) {
+            bits.uint8_v[byte_index++] = buffer.data[i++];
+        }
+        result ^= jk_hash_uint64(bits.uint64_v);
+    }
+    return result;
+}
+
 JK_PUBLIC b32 jk_char_is_whitespace(int c)
 {
     return c == ' ' || ('\t' <= c && c <= '\r');
@@ -771,6 +786,11 @@ JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent)
         .root = parent->root,
         .grow = parent->grow,
     };
+}
+
+JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child)
+{
+    parent->pos = child->pos;
 }
 
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena)
@@ -1391,6 +1411,10 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 
 // ---- JkMat4 end -------------------------------------------------------------
 
+// ---- JkTransform begin ------------------------------------------------------
+
+// ---- JkTransform end --------------------------------------------------------
+
 // ---- Shapes begin -----------------------------------------------------------
 
 JK_PUBLIC float jk_segment_y_intersection(JkSegment segment, float y)
@@ -1489,6 +1513,11 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
 
 // ---- Random generator end ---------------------------------------------------
 
+JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha)
+{
+    return (JkColor){.r = color.r, .b = color.b, .g = color.g, .a = alpha};
+}
+
 JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha)
 {
     JkColor result = {0, 0, 0, 255};
@@ -1522,6 +1551,11 @@ JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg)
 
 JK_NOINLINE JK_PUBLIC void jk_panic(void)
 {
+#if defined(_MSC_VER) && !defined(__clang__)
+    __debugbreak();
+#elif defined(__clang__) || defined(__GNUC__)
+    __builtin_debugtrap();
+#endif
     for (;;) {
     }
 }
@@ -1598,6 +1632,16 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     x *= 0x735a2d97;
     x ^= x >> 15;
     return x;
+}
+
+JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x)
+{
+
+    uint32_t lo = (uint32_t)x;
+    uint32_t hi = (uint32_t)(x >> 32);
+    uint32_t lo_hash = jk_hash_uint32(lo);
+    uint32_t hi_hash = jk_hash_uint32(hi ^ lo_hash);
+    return ((uint64_t)hi_hash << 32) | (lo_hash ^ hi_hash);
 }
 
 // clang-format off

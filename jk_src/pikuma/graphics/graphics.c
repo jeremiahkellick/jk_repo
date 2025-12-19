@@ -8,8 +8,6 @@
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
-#include <jk_src/pikuma/graphics/hardcoded_assets.c>
-
 static JkColor fgs[] = {
     {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff},
     {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
@@ -239,8 +237,8 @@ static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
 static JkColor texture_lookup(Bitmap texture, JkVec2 texcoord)
 {
     int32_t x = JK_CLAMP(texcoord.x * texture.dimensions.x, 0, texture.dimensions.x - 1);
-    int32_t y = JK_CLAMP((1 - texcoord.y) * texture.dimensions.y, 0, texture.dimensions.y - 1);
-    return texture.memory[texture.dimensions.x * y + x];
+    int32_t y = JK_CLAMP(texcoord.y * texture.dimensions.y, 0, texture.dimensions.y - 1);
+    return jk_color3_to_4(texture.memory[texture.dimensions.x * y + x], 0xff);
 }
 
 static void triangle_fill(JkArena *arena, State *state, Triangle tri)
@@ -426,7 +424,7 @@ static void face_ids_sort(JkVec3 *vertices, Face *faces, JkInt64Array face_ids)
     int64_t tmp;
     FaceIdsSortContext c = {.vertices = vertices, .faces = faces};
     jk_quicksort(
-            face_ids.items, face_ids.count, sizeof(*face_ids.items), &tmp, &c, face_ids_compare);
+            face_ids.items, face_ids.count, JK_SIZEOF(*face_ids.items), &tmp, &c, face_ids_compare);
 }
 
 static b32 clockwise(JkVec3 *vertices, Face face)
@@ -446,10 +444,13 @@ static JkColor color_scalar_mul(float s, JkColor c)
     return c;
 }
 
-static Bitmap redbrick_texture = {
-    .dimensions = {64, 64},
-    .memory = (JkColor *)redbrick_byte_array,
-};
+static Bitmap bitmap_from_span(Assets *assets, BitmapSpan span)
+{
+    return (Bitmap){
+        .dimensions = span.dimensions,
+        .memory = (JkColor3 *)((uint8_t *)assets + span.offset),
+    };
+}
 
 void render(Assets *assets, State *state)
 {
@@ -458,9 +459,12 @@ void render(Assets *assets, State *state)
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
 
-    JkVec3Array vertices = {.count = JK_ARRAY_COUNT(cube_vertices), .items = cube_vertices};
-    JkVec2Array texcoords = {.count = JK_ARRAY_COUNT(cube_texcoords), .items = cube_texcoords};
-    FaceArray faces = {.count = JK_ARRAY_COUNT(cube_faces), .items = cube_faces};
+    JkVec3Array vertices;
+    JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
+    JkVec2Array texcoords;
+    JK_ARRAY_FROM_SPAN(texcoords, assets, assets->texcoords);
+    ObjectArray objects;
+    JK_ARRAY_FROM_SPAN(objects, assets, assets->objects);
 
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
@@ -470,7 +474,7 @@ void render(Assets *assets, State *state)
     for (int32_t y = 0; y < state->dimensions.y; y++) {
         jk_memset(state->draw_buffer + (y * DRAW_BUFFER_SIDE_LENGTH),
                 0,
-                sizeof(JkColor) * state->dimensions.x);
+                JK_SIZEOF(JkColor) * state->dimensions.x);
     }
 
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
@@ -478,9 +482,10 @@ void render(Assets *assets, State *state)
     JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
 
     JkMat4 world_matrix =
-            jk_mat4_conversion_from((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_FORWARD});
+            jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
+    world_matrix = jk_mat4_mul(jk_mat4_rotate_x(JK_PI / 7), world_matrix);
     world_matrix = jk_mat4_mul(jk_mat4_rotate_z(angle), world_matrix);
-    world_matrix = jk_mat4_mul(jk_mat4_translate((JkVec3){0, 0, 0}), world_matrix);
+    world_matrix = jk_mat4_mul(jk_mat4_translate((JkVec3){0, 0, -0.05}), world_matrix);
 
     JkMat4 ndc_matrix = jk_mat4_translate(jk_vec3_mul(-1, camera_pos));
     ndc_matrix = jk_mat4_mul(
@@ -503,41 +508,47 @@ void render(Assets *assets, State *state)
         screen_vertices[i] = jk_mat4_mul_point(pixel_matrix, jk_vec4_perspective_divide(vec4));
     }
 
-    JkInt64Array face_ids;
-    JK_ARENA_PUSH_ARRAY(&arena, face_ids, faces.count);
-    for (int64_t i = 0; i < face_ids.count; i++) {
-        face_ids.items[i] = i;
-    }
-    face_ids_sort(screen_vertices, faces.items, face_ids);
-    for (int32_t face_id_index = 0; face_id_index < face_ids.count; face_id_index++) {
-        int64_t face_id = face_ids.items[face_id_index];
-        Face face = faces.items[face_id];
+    for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
+        Object *object = objects.items + object_id.i;
 
-        if (!clockwise(screen_vertices, face)) {
-            /*
-            JkVec3 normal = jk_vec3_normalized(
-                    jk_vec3_cross(jk_vec3_sub(world_vertices[face.v[1]], world_vertices[face.v[0]]),
-                            jk_vec3_sub(world_vertices[face.v[2]], world_vertices[face.v[0]])));
-            float dot = -jk_vec3_dot(light_dir_n, normal);
-            float multiplier = 1.2;
-            if (0 < dot) {
-                multiplier += dot * 5;
-            }
-            */
+        FaceArray faces;
+        JK_ARRAY_FROM_SPAN(faces, assets, object->faces);
+        Bitmap texture = bitmap_from_span(assets, object->texture);
 
-            Triangle tri = {.texture = redbrick_texture};
-            for (int64_t i = 0; i < 3; i++) {
-                tri.v[i] = screen_vertices[face.v[i]];
-                tri.t[i] = jk_vec2_mul(tri.v[i].z, texcoords.items[face.t[i]]);
-            }
-            triangle_fill(&arena, state, tri);
+        JkInt64Array face_ids;
+        JK_ARENA_PUSH_ARRAY(&arena, face_ids, faces.count);
+        for (int64_t i = 0; i < face_ids.count; i++) {
+            face_ids.items[i] = i;
         }
-    }
+        face_ids_sort(screen_vertices, faces.items, face_ids);
+        for (int32_t face_id_index = 0; face_id_index < face_ids.count; face_id_index++) {
+            int64_t face_id = face_ids.items[face_id_index];
+            Face face = faces.items[face_id];
 
-    for (int32_t y = 0; y < state->dimensions.y; y++) {
-        for (int32_t x = 0; x < state->dimensions.x; x++) {
-            int32_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
-            state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], bg);
+            if (clockwise(screen_vertices, face)) {
+                /*
+                JkVec3 normal = jk_vec3_normalized(
+                        jk_vec3_cross(jk_vec3_sub(world_vertices[face.v[1]],
+                world_vertices[face.v[0]]), jk_vec3_sub(world_vertices[face.v[2]],
+                world_vertices[face.v[0]]))); float dot = -jk_vec3_dot(light_dir_n, normal); float
+                multiplier = 1.2; if (0 < dot) { multiplier += dot * 5;
+                }
+                */
+
+                Triangle tri = {.texture = texture};
+                for (int64_t i = 0; i < 3; i++) {
+                    tri.v[i] = screen_vertices[face.v[i]];
+                    tri.t[i] = jk_vec2_mul(tri.v[i].z, texcoords.items[face.t[i]]);
+                }
+                triangle_fill(&arena, state, tri);
+            }
+        }
+
+        for (int32_t y = 0; y < state->dimensions.y; y++) {
+            for (int32_t x = 0; x < state->dimensions.x; x++) {
+                int32_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
+                state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], bg);
+            }
         }
     }
 }

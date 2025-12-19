@@ -81,6 +81,8 @@ JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int
 
 JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b);
 
+JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer);
+
 JK_PUBLIC b32 jk_char_is_whitespace(int32_t c);
 
 JK_PUBLIC b32 jk_char_is_digit(int32_t c);
@@ -239,6 +241,8 @@ JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena);
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size);
 
 JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
+
+JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child);
 
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
@@ -528,6 +532,16 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 
 // ---- JkMat4 end -------------------------------------------------------------
 
+// ---- JkTransform begin ------------------------------------------------------
+
+typedef struct JkTransform {
+    JkVec3 position;
+    JkVec3 rotation;
+    JkVec3 scale;
+} JkTransform;
+
+// ---- JkTransform end --------------------------------------------------------
+
 // ---- Shapes begin -----------------------------------------------------------
 
 typedef union JkSegment {
@@ -598,10 +612,42 @@ typedef struct JkFloatArray {
     float *items;
 } JkFloatArray;
 
+typedef struct JkDoubleArray {
+    int64_t count;
+    double *items;
+} JkDoubleArray;
+
+typedef struct JkInt32Array {
+    int64_t count;
+    int32_t *items;
+} JkInt32Array;
+
 typedef struct JkInt64Array {
     int64_t count;
     int64_t *items;
 } JkInt64Array;
+
+typedef union JkConversionUnion {
+    uint64_t uint64_v;
+    uint8_t uint8_v[8];
+} JkConversionUnion;
+
+typedef struct JkColor3 {
+    union {
+        struct {
+#if defined(__wasm32__)
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+#else
+            uint8_t b;
+            uint8_t g;
+            uint8_t r;
+#endif
+        };
+        uint8_t v[3];
+    };
+} JkColor3;
 
 typedef struct JkColor {
     union {
@@ -620,6 +666,8 @@ typedef struct JkColor {
         uint8_t v[4];
     };
 } JkColor;
+
+JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha);
 
 JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha);
 
@@ -697,6 +745,8 @@ JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size);
 JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size);
 
 JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
+
+JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x);
 
 JK_PUBLIC uint8_t jk_bit_reverse_table[256];
 

@@ -36,13 +36,34 @@ typedef struct FaceArray {
 
 typedef struct Bitmap {
     JkIntVec2 dimensions;
-    JkColor *memory;
+    JkColor3 *memory;
 } Bitmap;
 
+typedef struct BitmapSpan {
+    JkIntVec2 dimensions;
+    int64_t offset;
+} BitmapSpan;
+
+typedef struct ObjectId {
+    int64_t i;
+} ObjectId;
+
+typedef struct Object {
+    ObjectId parent;
+    JkTransform transform;
+    JkSpan faces; // FaceArray
+    BitmapSpan texture;
+} Object;
+
+typedef struct ObjectArray {
+    int64_t count;
+    Object *items;
+} ObjectArray;
+
 typedef struct Assets {
-    JkSpan vertices; // JkVec3
-    JkSpan texcoords; // JkVec2
-    JkSpan faces; // Face
+    JkSpan vertices; // JkVec3Array
+    JkSpan texcoords; // JkVec2Array
+    JkSpan objects; // ObjectArray
 } Assets;
 
 typedef struct State {

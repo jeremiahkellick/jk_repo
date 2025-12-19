@@ -18,8 +18,7 @@ static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
 {
     // Hash and mask off bits to get a result in the range 0..capacity-1. Assumes capacity is a
     // power if 2.
-    int64_t slot_i =
-            jk_hash_uint32((uint32_t)((key >> 32) ^ (key & 0xffffffff))) & (t->capacity - 1);
+    int64_t slot_i = jk_hash_uint64(key) & (t->capacity - 1);
 
 #if JK_BUILD_MODE != JK_RELEASE
     int64_t iterations = 0;
