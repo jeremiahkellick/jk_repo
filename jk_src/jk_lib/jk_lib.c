@@ -1749,3 +1749,46 @@ JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
 {
     return JK_ABS(b - a) < tolerance;
 }
+
+// ---- raddebugger type views begin -------------------------------------------
+
+#ifndef RADDBG_MARKUP_H
+
+#define raddbg_glue_(a, b) a##b
+#define raddbg_glue(a, b) raddbg_glue_(a, b)
+#define raddbg_gen_data_id() raddbg_glue(raddbg_data__, __COUNTER__)
+
+#ifdef _WIN32
+#pragma section(".raddbg", read, write)
+#define raddbg_exe_data __declspec(allocate(".raddbg"))
+#define raddbg_type_view(type, ...)               \
+    raddbg_exe_data char raddbg_gen_data_id()[] = \
+            ("type_view: {type: ```" #type "```, expr: ```" #__VA_ARGS__ "```}")
+#else
+#define raddbg_type_view(type, ...) \
+    struct raddbg_gen_data_id()     \
+    {                               \
+        int __unused__;             \
+    }
+#endif
+
+#endif
+
+raddbg_type_view(JkBuffer, text(data, size = size));
+raddbg_type_view(JkBufferArray, array(items, count));
+raddbg_type_view(JkFormatItemArray, array(items, count));
+raddbg_type_view(JkIntVec2, omit($, coords));
+raddbg_type_view(JkIntVec2Array, array(items, count));
+raddbg_type_view(JkVec2, omit($, coords));
+raddbg_type_view(JkVec2Array, array(items, count));
+raddbg_type_view(JkVec3, omit($, coords));
+raddbg_type_view(JkVec3Array, array(items, count));
+raddbg_type_view(JkEdgeArray, array(items, count));
+raddbg_type_view(JkFloatArray, array(items, count));
+raddbg_type_view(JkDoubleArray, array(items, count));
+raddbg_type_view(JkInt32Array, array(items, count));
+raddbg_type_view(JkInt64Array, array(items, count));
+raddbg_type_view(JkColor3, omit($, v));
+raddbg_type_view(JkColor, omit($, v));
+
+// ---- raddebugger type views end -------------------------------------------

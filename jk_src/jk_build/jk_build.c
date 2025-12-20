@@ -1205,6 +1205,25 @@ static int64_t parse_files(JkArena *storage,
     return flags;
 }
 
+static void append_shared_defines(
+        JkArena *storage, Options options, uint64_t flags, StringArrayBuilder *command)
+{
+    char *d = options.compiler == COMPILER_MSVC ? "/D" : "-D";
+    int64_t buffer_size = sizeof(char) * 16;
+    char *mode_define = jk_arena_push(storage, buffer_size);
+    snprintf(mode_define, buffer_size, "JK_BUILD_MODE=%d", options.mode);
+
+    append(command, d, mode_define);
+    append(command, d, "_DEFAULT_SOURCE=");
+    append(command, d, "_CRT_SECURE_NO_WARNINGS");
+    if (!JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
+        append(command, d, "JK_PUBLIC=");
+    }
+    if (options.no_profile) {
+        append(command, d, "JK_PLATFORM_PROFILE_DISABLE");
+    }
+}
+
 static int jk_build(Options options, JkBuffer source_file_relative_path)
 {
     JkPlatformArenaVirtualRoot storage_root;
@@ -1221,6 +1240,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     string_array_builder_init(&compiler_arguments, &storage);
     StringArrayBuilder linker_arguments;
     string_array_builder_init(&linker_arguments, &storage);
+    StringArrayBuilder defines;
+    string_array_builder_init(&defines, &storage);
 
     Paths paths = paths_get(&storage, &scratch_arena, source_file_relative_path);
 
@@ -1248,6 +1269,25 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
             &nasm_files,
             &compiler_arguments,
             &linker_arguments);
+
+    // Move jk_lib.c dependency to the end of the dependency list. This is unfortunately necessary
+    // because it defines a subset of certain headers if they are not included elsewhere. However,
+    // if they _are_ included elsewhere, we don't want two definitions. Because I do not control the
+    // contents of those headers, I can only add an include guard to my definitions. This means
+    // including the other headers first and the jk_lib.c is fine. However, including jk_lib.c first
+    // and then one of these other headers fails. To prevent this, we'll include jk_lib.c last.
+    StringNode **link = &dependencies.tail.previous;
+    while (*link) {
+        StringNode *node = *link;
+        if (jk_buffer_compare(node->string, JKS("jk_src/jk_lib/jk_lib.c")) == 0) {
+            *link = node->previous;
+            node->previous = dependencies.tail.previous;
+            dependencies.tail.previous = node;
+            break;
+        } else {
+            link = &node->previous;
+        }
+    }
 
     JkBuffer extension = {0};
 #ifdef _WIN32
@@ -1301,9 +1341,6 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     StringArrayBuilder command;
     string_array_builder_init(&command, &storage);
 
-    char mode_define[16];
-    snprintf(mode_define, JK_SIZEOF(mode_define), "JK_BUILD_MODE=%d", options.mode);
-
     switch (options.compiler) { // Compiler options
     case COMPILER_MSVC: {
         append(&command, "cl");
@@ -1320,11 +1357,10 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "/nologo");
         append(&command, "/Gm-");
         append(&command, "/GR-");
-        append(&command, "/D", "_CRT_SECURE_NO_WARNINGS");
         append(&command, "/Zi");
         append(&command, "/std:c11");
         append(&command, "/EHa-");
-        append(&command, "/D", mode_define);
+        append_shared_defines(&storage, options, flags, &command);
 
         if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
             append(&command, "/LD");
@@ -1349,12 +1385,6 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         } break;
         }
 
-        if (!JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
-            append(&command, "/D", "JK_PUBLIC=");
-        }
-        if (options.no_profile) {
-            append(&command, "/D", "JK_PLATFORM_PROFILE_DISABLE");
-        }
         append(&command, "/I");
         string_array_builder_push(&command, paths.repo_root);
     } break;
@@ -1376,15 +1406,13 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "-Werror=vla");
         append(&command, "-Wno-missing-braces");
         append(&command, "-Wno-unused-parameter");
+        append_shared_defines(&storage, options, flags, &command);
         if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
             append(&command, "-shared");
         }
         if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
             append(&command, "-Wno-unused-function");
-        } else {
-            append(&command, "-D", "JK_PUBLIC=");
         }
-        append(&command, "-D", mode_define);
         if (options.mode == JK_DEBUG_SLOW) {
             append(&command, "-Og");
         } else {
@@ -1392,10 +1420,6 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
             append(&command, "-flto");
             append(&command, "-fuse-linker-plugin");
         }
-        if (options.no_profile) {
-            append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
-        }
-        append(&command, "-D", "_DEFAULT_SOURCE=");
 
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);
@@ -1413,15 +1437,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
             append(&command, "-shared");
         }
-        append(&command, "-D", mode_define);
-
-        if (!JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
-            append(&command, "-D", "JK_PUBLIC=");
-        }
-        if (options.no_profile) {
-            append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
-        }
-        append(&command, "-D", "_DEFAULT_SOURCE=");
+        append_shared_defines(&storage, options, flags, &command);
 
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);
@@ -1440,7 +1456,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
                 "-Wno-missing-braces",
                 "-Wno-missing-field-initializers",
                 "-Wno-unused-command-line-argument",
-                "-Wno-unused-parameter");
+                "-Wno-unused-parameter",
+                "-Wno-dollar-in-identifier-extension");
 #if defined(__x86_64__) || defined(_M_X64)
         append(&command, "-mfma");
 #endif
@@ -1453,10 +1470,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         }
         if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
             append(&command, "-Wno-unused-function");
-        } else {
-            append(&command, "-D", "JK_PUBLIC=");
         }
-        append(&command, "-D", mode_define);
+        append_shared_defines(&storage, options, flags, &command);
         if (options.mode == JK_DEBUG_SLOW) {
             append(&command, "-Og");
         } else {
@@ -1465,11 +1480,6 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
             append(&command, "-flto");
 #endif
         }
-        if (options.no_profile) {
-            append(&command, "-D", "JK_PLATFORM_PROFILE_DISABLE");
-        }
-        append(&command, "-D", "_DEFAULT_SOURCE=");
-        append(&command, "-D", "_CRT_SECURE_NO_WARNINGS");
 
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);

@@ -342,6 +342,11 @@ typedef union JkIntVec2 {
     };
 } JkIntVec2;
 
+typedef struct JkIntVec2Array {
+    int64_t count;
+    JkIntVec2 *items;
+} JkIntVec2Array;
+
 JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b);
 
 JK_PUBLIC JkIntVec2 jk_int_vec2_add(JkIntVec2 a, JkIntVec2 b);
