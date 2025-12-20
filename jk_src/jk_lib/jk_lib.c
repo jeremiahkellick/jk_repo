@@ -123,32 +123,6 @@ JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size)
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
 }
 
-JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count)
-{
-    JK_DEBUG_ASSERT(0 <= bit_count && bit_count <= 32);
-    uint64_t result = 0;
-
-    int64_t byte_index = JK_FLOOR_DIV(bit_cursor, 8);
-    int64_t bit_index = JK_MOD(bit_cursor, 8);
-
-    for (int64_t i = 0; i < 8; i++) {
-        result >>= 8;
-        if (0 <= byte_index && byte_index < buffer.size) {
-            result |= (uint64_t)buffer.data[byte_index] << 56;
-        }
-        byte_index++;
-    }
-
-    return (uint32_t)((result >> bit_index) & ((1llu << bit_count) - 1));
-}
-
-JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count)
-{
-    uint32_t result = jk_buffer_bits_peek(buffer, *bit_cursor, bit_count);
-    *bit_cursor += bit_count;
-    return result;
-}
-
 JK_PUBLIC int64_t jk_strlen(char *string)
 {
     char *pointer = string;
@@ -187,6 +161,32 @@ JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos)
     int32_t c = jk_buffer_character_get(buffer, *pos);
     (*pos)++;
     return c;
+}
+
+JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count)
+{
+    JK_DEBUG_ASSERT(0 <= bit_count && bit_count <= 32);
+    uint64_t result = 0;
+
+    int64_t byte_index = JK_FLOOR_DIV(bit_cursor, 8);
+    int64_t bit_index = JK_MOD(bit_cursor, 8);
+
+    for (int64_t i = 0; i < 8; i++) {
+        result >>= 8;
+        if (0 <= byte_index && byte_index < buffer.size) {
+            result |= (uint64_t)buffer.data[byte_index] << 56;
+        }
+        byte_index++;
+    }
+
+    return (uint32_t)((result >> bit_index) & ((1llu << bit_count) - 1));
+}
+
+JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count)
+{
+    uint32_t result = jk_buffer_bits_peek(buffer, *bit_cursor, bit_count);
+    *bit_cursor += bit_count;
+    return result;
 }
 
 JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)

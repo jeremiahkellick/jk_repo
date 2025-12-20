@@ -20,12 +20,23 @@ typedef uint32_t b32;
 #define JK_NOINLINE
 #endif
 
-// ---- Buffer begin -----------------------------------------------------------
-
 typedef struct JkBuffer {
     int64_t size;
     uint8_t *data;
 } JkBuffer;
+
+typedef struct JkArenaRoot {
+    JkBuffer memory;
+} JkArenaRoot;
+
+typedef struct JkArena {
+    int64_t base;
+    int64_t pos;
+    JkArenaRoot *root;
+    b32 (*grow)(struct JkArena *arena, int64_t new_size);
+} JkArena;
+
+// ---- Buffer begin -----------------------------------------------------------
 
 typedef struct JkBufferArray {
     int64_t count;
@@ -56,19 +67,29 @@ typedef struct JkSpan {
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
+JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer);
+
 JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer);
 
+JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, int64_t size);
+
+JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size);
+
+JK_PUBLIC int64_t jk_strlen(char *string);
+
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
+
+JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
 
 JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos);
 
 JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos);
 
-JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos);
-
 JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count);
 
 JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count);
+
+JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos);
 
 #define JK_BUFFER_FIELD_NEXT(buffer, pos, type) \
     (*(pos) += JK_SIZEOF(type),                 \
@@ -92,6 +113,17 @@ JK_PUBLIC int32_t jk_char_to_lower(int32_t c);
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string);
 
 JK_PUBLIC int64_t jk_string_find(JkBuffer string, JkBuffer substring);
+
+JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
+
+JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
+
+JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
+        JkArena *arena, uint64_t value, int16_t min_width);
+
+JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width);
+
+JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, int64_t decimal_places);
 
 typedef enum JkFormatItemType {
     JK_FORMAT_ITEM_NULL_TERMINATED,
@@ -138,7 +170,27 @@ JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width);
 
 JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places);
 
+JK_PUBLIC JkFormatItem jkf_nl;
+
+JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
+
+#define JK_FORMAT(arena, ...)                                                                  \
+    jk_format(arena,                                                                           \
+            (JkFormatItemArray){                                                               \
+                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
+                .items = (JkFormatItem[]){__VA_ARGS__}})
+
 JK_PUBLIC void (*jk_print)(JkBuffer string);
+
+JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
+
+#define JK_PRINT_FMT(arena, ...)                                                               \
+    jk_print_fmt(arena,                                                                        \
+            (JkFormatItemArray){                                                               \
+                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
+                .items = (JkFormatItem[]){__VA_ARGS__}})
+
+JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
 // ---- Buffer end -------------------------------------------------------------
 
@@ -207,17 +259,6 @@ JK_PUBLIC float jk_acos_f32(float value);
 
 // ---- Arena begin ------------------------------------------------------------
 
-typedef struct JkArenaRoot {
-    JkBuffer memory;
-} JkArenaRoot;
-
-typedef struct JkArena {
-    int64_t base;
-    int64_t pos;
-    JkArenaRoot *root;
-    b32 (*grow)(struct JkArena *arena, int64_t new_size);
-} JkArena;
-
 JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory);
 
 JK_PUBLIC b32 jk_arena_valid(JkArena *arena);
@@ -247,50 +288,6 @@ JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child);
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
 // ---- Arena end --------------------------------------------------------------
-
-// These things conceptually belong to the buffer code but depend on the JkArena declaration so
-// we'll just let them hang out down here I guess...
-
-JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer);
-
-JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, int64_t size);
-
-JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size);
-
-JK_PUBLIC int64_t jk_strlen(char *string);
-
-JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
-
-JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
-
-JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
-
-JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
-        JkArena *arena, uint64_t value, int16_t min_width);
-
-JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width);
-
-JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, int64_t decimal_places);
-
-JK_PUBLIC JkFormatItem jkf_nl;
-
-JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
-
-#define JK_FORMAT(arena, ...)                                                                  \
-    jk_format(arena,                                                                           \
-            (JkFormatItemArray){                                                               \
-                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
-                .items = (JkFormatItem[]){__VA_ARGS__}})
-
-JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
-
-#define JK_PRINT_FMT(arena, ...)                                                               \
-    jk_print_fmt(arena,                                                                        \
-            (JkFormatItemArray){                                                               \
-                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
-                .items = (JkFormatItem[]){__VA_ARGS__}})
-
-JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
