@@ -294,14 +294,18 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
 #endif
 
     g.state.memory.size = 2 * JK_MEGABYTE;
-    uint8_t *memory =
-            VirtualAlloc(0, DRAW_BUFFER_SIZE + g.state.memory.size, MEM_COMMIT, PAGE_READWRITE);
+    uint8_t *memory = VirtualAlloc(0,
+            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE + g.state.memory.size,
+            MEM_COMMIT,
+            PAGE_READWRITE);
     if (!memory) {
         jk_print(JKS("Failed to allocate memory\n"));
         exit(1);
     }
     g.state.draw_buffer = (JkColor *)memory;
-    g.state.memory.data = memory + DRAW_BUFFER_SIZE;
+    g.state.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
+    g.state.next_buffer = (PixelIndex *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
+    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
 
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
 

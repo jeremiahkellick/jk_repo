@@ -18,30 +18,47 @@ static JkVec3 camera_pos = {0.0f, -3.0, 0.2};
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
 
-static void draw_pixel(State *state, JkIntVec2 pos, JkColor color)
+static Pixel pixel_get(State *state, PixelIndex index)
 {
-    if (0 <= pos.x && pos.x < state->dimensions.x && 0 <= pos.y && pos.y < state->dimensions.y) {
-        state->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * pos.y + pos.x] = color;
+    return (Pixel){
+        .color = state->draw_buffer + index.i,
+        .z = state->z_buffer + index.i,
+        .next = state->next_buffer + index.i,
+    };
+}
+
+static JkColor color_get(State *state, PixelIndex index)
+{
+    return state->draw_buffer[index.i];
+}
+
+static float z_get(State *state, PixelIndex index)
+{
+    return state->z_buffer[index.i];
+}
+
+static PixelIndex *next_get(State *state, PixelIndex index)
+{
+    return state->next_buffer + index.i;
+}
+
+static PixelIndex pixel_alloc(State *state)
+{
+    if (state->pixel_count < PIXEL_COUNT) {
+        return (PixelIndex){state->pixel_count++};
+    } else {
+        return (PixelIndex){0};
     }
 }
 
-static void draw_rect(State *state, JkIntVec2 pos, JkIntVec2 dimensions, JkColor color)
+static b32 pixel_index_nil(PixelIndex index)
 {
-    JkIntVec2 top_left;
-    for (int64_t i = 0; i < JK_ARRAY_COUNT(top_left.coords); i++) {
-        top_left.coords[i] = JK_MAX(pos.coords[i], 0);
-    }
-    JkIntVec2 bottom_right;
-    for (int64_t i = 0; i < JK_ARRAY_COUNT(bottom_right.coords); i++) {
-        bottom_right.coords[i] =
-                JK_MIN(top_left.coords[i] + dimensions.coords[i], state->dimensions.coords[i]);
-    }
+    return !index.i;
+}
 
-    for (int32_t y = top_left.y; y < bottom_right.y; y++) {
-        for (int32_t x = top_left.x; x < bottom_right.x; x++) {
-            state->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * y + x] = color;
-        }
-    }
+static PixelIndex pixel_index_by_coords(State *state, int32_t x, int32_t y)
+{
+    return (PixelIndex){DRAW_BUFFER_SIDE_LENGTH * y + x + 1};
 }
 
 static uint8_t color_multiply(uint8_t a, uint8_t b)
@@ -59,150 +76,6 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
     }
     return result;
 }
-
-// ---- Xiaolin Wu's line algorithm begin --------------------------------------------
-
-static uint8_t region_code(JkIntVec2 dimensions, JkVec2 v)
-{
-    return ((v.x < 0.0f) << 0) | ((dimensions.x - 1.0f < v.x) << 1) | ((v.y < 0.0f) << 2)
-            | ((dimensions.y - 1.0f < v.y) << 3);
-}
-
-typedef struct Endpoint {
-    uint8_t code;
-    JkVec2 *point;
-} Endpoint;
-
-static b32 clip_to_draw_region(JkIntVec2 dimensions, JkVec2 *a, JkVec2 *b)
-{
-    Endpoint endpoint_a = {.code = region_code(dimensions, *a), .point = a};
-    Endpoint endpoint_b = {.code = region_code(dimensions, *b), .point = b};
-
-    for (;;) {
-        if (!(endpoint_a.code | endpoint_b.code)) {
-            return 1;
-        } else if (endpoint_a.code & endpoint_b.code) {
-            return 0;
-        } else {
-            JkVec2 u = *a;
-            JkVec2 v = *b;
-            Endpoint *endpoint = endpoint_a.code < endpoint_b.code ? &endpoint_b : &endpoint_a;
-            if ((endpoint->code >> 0) & 1) {
-                endpoint->point->x = 0.0f;
-                endpoint->point->y = u.y + (v.y - u.y) * (0.0f - u.x) / (v.x - u.x);
-            } else if ((endpoint->code >> 1) & 1) {
-                endpoint->point->x = dimensions.x - 1.0f;
-                endpoint->point->y = u.y + (v.y - u.y) * (dimensions.x - 1.0f - u.x) / (v.x - u.x);
-            } else if ((endpoint->code >> 2) & 1) {
-                endpoint->point->x = u.x + (v.x - u.x) * (0.0f - u.y) / (v.y - u.y);
-                endpoint->point->y = 0.0f;
-            } else if ((endpoint->code >> 3) & 1) {
-                endpoint->point->x = u.x + (v.x - u.x) * (dimensions.y - 1.0f - u.y) / (v.y - u.y);
-                endpoint->point->y = dimensions.y - 1.0f;
-            }
-            endpoint->code = region_code(dimensions, *endpoint->point);
-        }
-    }
-}
-
-static float fpart(float x)
-{
-    return x - jk_floor_f32(x);
-}
-
-static float fpart_complement(float x)
-{
-    return 1.0f - fpart(x);
-}
-
-static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness)
-{
-    int32_t brightness_i = (int32_t)(brightness * 255.0f);
-    if (brightness_i > 255) {
-        brightness_i = 255;
-    }
-    draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = blend_alpha(color,
-            draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x],
-            color_multiply(color.a, (uint8_t)brightness_i));
-}
-
-static void draw_line(State *state, JkColor color, JkVec2 a, JkVec2 b)
-{
-    if (!clip_to_draw_region(state->dimensions, &a, &b)) {
-        return;
-    }
-
-    JkColor *draw_buffer = state->draw_buffer;
-
-    b32 steep = JK_ABS(b.y - a.y) > JK_ABS(b.x - a.x);
-
-    if (steep) {
-        JK_SWAP(a.x, a.y, float);
-        JK_SWAP(b.x, b.y, float);
-    }
-    if (a.x > b.x) {
-        JK_SWAP(a, b, JkVec2);
-    }
-
-    JkVec2 delta = jk_vec2_sub(b, a);
-
-    float gradient;
-    if (delta.x) {
-        gradient = delta.y / delta.x;
-    } else {
-        gradient = 1.0f;
-    }
-
-    // handle first endpoint
-    int32_t x_pixel_1;
-    float intery;
-    {
-        x_pixel_1 = jk_round(a.x);
-        float yend = a.y + gradient * (x_pixel_1 - a.x);
-        float xcoverage = fpart_complement(a.x + 0.5f);
-        int32_t y_pixel_1 = (int32_t)yend;
-        if (steep) {
-            plot(draw_buffer, color, y_pixel_1, x_pixel_1, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, y_pixel_1 + 1, x_pixel_1, fpart(yend) * xcoverage);
-        } else {
-            plot(draw_buffer, color, x_pixel_1, y_pixel_1, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, x_pixel_1, y_pixel_1 + 1, fpart(yend) * xcoverage);
-        }
-        intery = yend + gradient;
-    }
-
-    // handle second endpoint
-    int32_t x_pixel_2;
-    {
-        x_pixel_2 = jk_round(b.x);
-        float yend = b.y + gradient * (x_pixel_2 - b.x);
-        float xcoverage = fpart(b.x + 0.5f);
-        int32_t y_pixel_2 = (int32_t)yend;
-        if (steep) {
-            plot(draw_buffer, color, y_pixel_2, x_pixel_2, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, y_pixel_2 + 1, x_pixel_2, fpart(yend) * xcoverage);
-        } else {
-            plot(draw_buffer, color, x_pixel_2, y_pixel_2, fpart_complement(yend) * xcoverage);
-            plot(draw_buffer, color, x_pixel_2, y_pixel_2 + 1, fpart(yend) * xcoverage);
-        }
-    }
-
-    if (steep) {
-        for (int32_t x = x_pixel_1 + 1; x < x_pixel_2; x++) {
-            plot(draw_buffer, color, (int32_t)intery, x, fpart_complement(intery));
-            plot(draw_buffer, color, (int32_t)intery + 1, x, fpart(intery));
-            intery += gradient;
-        }
-    } else {
-        for (int32_t x = x_pixel_1 + 1; x < x_pixel_2; x++) {
-            plot(draw_buffer, color, x, (int32_t)intery, fpart_complement(intery));
-            plot(draw_buffer, color, x, (int32_t)intery + 1, fpart(intery));
-            intery += gradient;
-        }
-    }
-}
-
-// ---- Xiaolin Wu's line algorithm end ----------------------------------------------
 
 typedef struct Triangle {
     JkVec3 v[3];
@@ -365,36 +238,50 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri)
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
             acc += fill[x - bounds.min.x];
 
-            JkVec2 point = {x + 0.5, y + 0.5};
-            float total_area = JK_ABS(jk_vec2_cross(
-                    jk_vec2_sub(verts_2d[1], verts_2d[0]), jk_vec2_sub(verts_2d[2], verts_2d[0])));
-            float weight[3];
-            for (int64_t i = 0; i < 3; i++) {
-                int64_t a = (i + 1) % 3;
-                int64_t b = (i + 2) % 3;
-                float area = JK_ABS(jk_vec2_cross(
-                        jk_vec2_sub(verts_2d[a], point), jk_vec2_sub(verts_2d[b], point)));
-                weight[i] = area / total_area;
-            }
-
-            JkVec2 texcoord = {0};
-            float z = 0;
-            for (int64_t i = 0; i < 3; i++) {
-                texcoord = jk_vec2_add(texcoord, jk_vec2_mul(weight[i], tri.t[i]));
-                z += weight[i] * tri.v[i].z;
-            }
-            texcoord.x /= z;
-            texcoord.y /= z;
-
             int32_t alpha = (int32_t)(JK_ABS((coverage[x - bounds.min.x] + acc) * 255.0f));
             if (255 < alpha) {
                 alpha = 255;
             }
-            JkColor pixel_color = texture_lookup(tri.texture, texcoord);
-            pixel_color.a = (uint8_t)alpha;
 
-            int64_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
-            state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], pixel_color);
+            if (0 < alpha) {
+                JkVec2 point = {x + 0.5, y + 0.5};
+                float total_area = jk_vec2_cross(jk_vec2_sub(verts_2d[1], verts_2d[0]),
+                        jk_vec2_sub(verts_2d[2], verts_2d[0]));
+                float weight[3];
+                for (int64_t i = 0; i < 2; i++) {
+                    int64_t a = (i + 1) % 3;
+                    int64_t b = (i + 2) % 3;
+                    float area = jk_vec2_cross(
+                            jk_vec2_sub(verts_2d[a], point), jk_vec2_sub(verts_2d[b], point));
+                    weight[i] = area / total_area;
+                }
+                weight[2] = 1 - weight[0] - weight[1];
+
+                JkVec2 texcoord = {0};
+                float z = 0;
+                for (int64_t i = 0; i < 3; i++) {
+                    texcoord = jk_vec2_add(texcoord, jk_vec2_mul(weight[i], tri.t[i]));
+                    z += weight[i] * tri.v[i].z;
+                }
+                texcoord.x /= z;
+                texcoord.y /= z;
+
+                JkColor pixel_color = texture_lookup(tri.texture, texcoord);
+                pixel_color.a = (uint8_t)alpha;
+
+                PixelIndex head_index = pixel_index_by_coords(state, x, y);
+                PixelIndex *head_next = next_get(state, head_index);
+                PixelIndex new_pixel_index = pixel_alloc(state);
+                if (!pixel_index_nil(new_pixel_index)) {
+                    Pixel new_pixel = pixel_get(state, new_pixel_index);
+
+                    *new_pixel.color = pixel_color;
+                    *new_pixel.z = z;
+                    *new_pixel.next = *head_next;
+
+                    *head_next = new_pixel_index;
+                }
+            }
         }
     }
 }
@@ -413,9 +300,9 @@ static int face_ids_compare(void *data, void *a_id_ptr, void *b_id_ptr)
     float a_avg_z = (verts[a->v[0]].z + verts[a->v[1]].z + verts[a->v[2]].z) / 3.0f;
     float b_avg_z = (verts[b->v[0]].z + verts[b->v[1]].z + verts[b->v[2]].z) / 3.0f;
     if (a_avg_z < b_avg_z) {
-        return 1;
-    } else if (b_avg_z < a_avg_z) {
         return -1;
+    } else if (b_avg_z < a_avg_z) {
+        return 1;
     } else {
         return 0;
     }
@@ -472,11 +359,13 @@ void render(Assets *assets, State *state)
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
     }
 
-    // Clear buffer
+    state->pixel_count = PIXEL_COUNT / 2;
+
+    // Clear next links
     for (int32_t y = 0; y < state->dimensions.y; y++) {
-        jk_memset(state->draw_buffer + (y * DRAW_BUFFER_SIDE_LENGTH),
+        jk_memset(state->next_buffer + (y * DRAW_BUFFER_SIDE_LENGTH),
                 0,
-                JK_SIZEOF(JkColor) * state->dimensions.x);
+                JK_SIZEOF(PixelIndex) * state->dimensions.x + 1);
     }
 
     int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
@@ -545,12 +434,31 @@ void render(Assets *assets, State *state)
                 triangle_fill(&arena, state, tri);
             }
         }
+    }
 
-        for (int32_t y = 0; y < state->dimensions.y; y++) {
-            for (int32_t x = 0; x < state->dimensions.x; x++) {
-                int32_t i = y * DRAW_BUFFER_SIDE_LENGTH + x;
-                state->draw_buffer[i] = jk_color_disjoint_over(state->draw_buffer[i], bg);
+    PixelIndex list[16];
+    for (int32_t y = 0; y < state->dimensions.y; y++) {
+        for (int32_t x = 0; x < state->dimensions.x; x++) {
+            Pixel pixel = pixel_get(state, pixel_index_by_coords(state, x, y));
+            JkColor color = {0};
+
+            int64_t list_count = 0;
+            for (PixelIndex new = *pixel.next;
+                    !pixel_index_nil(new) && list_count < JK_ARRAY_COUNT(list);
+                    new = *next_get(state, new)) {
+                int64_t j = list_count++;
+                list[j] = new;
+                for (; 0 < j && z_get(state, list[j - 1]) < z_get(state, list[j]); j--) {
+                    JK_SWAP(list[j - 1], list[j], PixelIndex);
+                }
             }
+
+            for (int64_t i = 0; i < list_count; i++) {
+                color = jk_color_disjoint_over(color, color_get(state, list[i]));
+            }
+            color = jk_color_disjoint_over(color, bg);
+
+            *pixel.color = color;
         }
     }
 }

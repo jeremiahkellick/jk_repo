@@ -3,8 +3,11 @@
 
 #include <jk_src/jk_lib/jk_lib.h>
 
-#define DRAW_BUFFER_SIDE_LENGTH 4096
-#define DRAW_BUFFER_SIZE (JK_SIZEOF(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
+#define DRAW_BUFFER_SIDE_LENGTH 4096ll
+#define PIXEL_COUNT (2 * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH + 1)
+#define DRAW_BUFFER_SIZE (JK_SIZEOF(JkColor) * PIXEL_COUNT)
+#define NEXT_BUFFER_SIZE (JK_SIZEOF(PixelIndex) * PIXEL_COUNT)
+#define Z_BUFFER_SIZE (JK_SIZEOF(float) * PIXEL_COUNT)
 
 #define CLEAR_COLOR_R 0x16
 #define CLEAR_COLOR_G 0x20
@@ -66,13 +69,26 @@ typedef struct Assets {
     JkSpan objects; // ObjectArray
 } Assets;
 
+typedef struct PixelIndex {
+    int32_t i;
+} PixelIndex;
+
+typedef struct Pixel {
+    JkColor *color;
+    float *z;
+    PixelIndex *next;
+} Pixel;
+
 typedef struct State {
     JkColor *draw_buffer;
+    float *z_buffer;
+    PixelIndex *next_buffer;
     JkBuffer memory;
     int64_t os_timer_frequency;
     void (*print)(JkBuffer string);
 
     uint64_t flags;
+    int64_t pixel_count;
     JkIntVec2 dimensions;
     uint64_t os_time;
     Input input;
