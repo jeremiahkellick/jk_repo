@@ -89,14 +89,6 @@ JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *roo
 #define JK_PLATFORM_PROFILE_DISABLE 0
 #endif
 
-#if JK_PLATFORM_PROFILE_DISABLE
-
-#define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(...)
-#define JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(...)
-#define JK_PLATFORM_PROFILE_ZONE_END(...)
-
-#else
-
 typedef enum JkPlatformProfileFrameType {
     JK_PLATFORM_PROFILE_FRAME_CURRENT,
     JK_PLATFORM_PROFILE_FRAME_MIN,
@@ -104,6 +96,14 @@ typedef enum JkPlatformProfileFrameType {
     JK_PLATFORM_PROFILE_FRAME_TOTAL,
     JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT,
 } JkPlatformProfileFrameType;
+
+#if JK_PLATFORM_PROFILE_DISABLE
+
+#define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(...)
+#define JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(...)
+#define JK_PLATFORM_PROFILE_ZONE_END(...)
+
+#else
 
 typedef enum JkPlatformProfileMetric {
     JK_PLATFORM_PROFILE_METRIC_ELAPSED_EXCLUSIVE,
