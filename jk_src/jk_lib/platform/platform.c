@@ -492,6 +492,35 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
     return 1;
 }
 
+JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
+{
+    char buffer[PATH_MAX];
+
+    int64_t i = 0;
+    if (path.data[i] == '/') {
+        i++; // Skip leading slash which indicates an absolute path
+    }
+    while (i < path.size) {
+        while (i < path.size && path.data[i] != '/') {
+            i++;
+        }
+        memcpy(buffer, path.data, i);
+        buffer[i] = '\0';
+
+        if (mkdir(buffer, 0755) == -1 && errno != EEXIST) {
+            fprintf(stderr,
+                    "jk_platform_ensure_directory_exists: Failed to create \"%s\": %s\n",
+                    buffer,
+                    strerror(errno));
+            return 0;
+        }
+
+        i++;
+    }
+
+    return 1;
+}
+
 #endif
 
 // ---- OS functions end -------------------------------------------------------

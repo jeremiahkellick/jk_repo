@@ -112,7 +112,7 @@ int main(void)
 
     g.state.memory.size = 2 * JK_MEGABYTE;
     uint8_t *memory = mmap(NULL,
-            DRAW_BUFFER_SIZE + g.state.memory.size,
+            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE + g.state.memory.size,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANON,
             -1,
@@ -122,7 +122,9 @@ int main(void)
         exit(1);
     }
     g.state.draw_buffer = (JkColor *)memory;
-    g.state.memory.data = memory + DRAW_BUFFER_SIZE;
+    g.state.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
+    g.state.next_buffer = (PixelIndex *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
+    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
 
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
 
