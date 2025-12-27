@@ -194,6 +194,72 @@ JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
 // ---- Buffer end -------------------------------------------------------------
 
+// ---- Logging begin ----------------------------------------------------------
+
+typedef enum JkLogType {
+    JK_LOG_NIL,
+    JK_LOG_INFO,
+    JK_LOG_WARNING,
+    JK_LOG_ERROR,
+    JK_LOG_FATAL,
+    JK_LOG_TYPE_COUNT,
+} JkLogType;
+
+typedef struct JkLogEntry {
+    int64_t i;
+} JkLogEntry;
+
+typedef struct JkLogEntryData {
+    JkLogEntry next;
+    JkLogEntry prev;
+
+    JkLogType type;
+    JkSpan message;
+} JkLogEntryData;
+
+typedef struct JkLog {
+    void (*print)(JkBuffer string);
+
+    int64_t entry_slot_next;
+    int64_t entry_slot_max;
+    int64_t string_buffer_start;
+    int64_t string_buffer_capacity;
+    int64_t string_offset_next;
+
+    // Array of size max_entry_count. entries[0] is the log sentinel node. entries[1] is the free
+    // list sentinel node.
+    JkLogEntryData entries[2];
+} JkLog;
+
+JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory);
+
+JK_PUBLIC b32 jk_log_valid(JkLog *l);
+
+JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message);
+
+JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b);
+
+JK_PUBLIC b32 jk_log_entry_valid(JkLogEntry entry);
+
+JK_PUBLIC JkLogType jk_log_entry_type(JkLog *l, JkLogEntry entry);
+
+JK_PUBLIC JkBuffer jk_log_entry_message(JkLog *l, JkLogEntry entry);
+
+JK_PUBLIC JkLogEntry jk_log_entry_first(JkLog *l);
+
+JK_PUBLIC JkLogEntry jk_log_entry_next(JkLog *l, JkLogEntry entry);
+
+JK_PUBLIC void jk_log_entry_print(JkLog *l, JkLogEntry entry);
+
+JK_PUBLIC void jk_log_entry_remove(JkLog *l, JkLogEntry entry);
+
+#define JK_LOG_ITER(log, entry_field_name)                                                         \
+    for (JkLogEntry next, entry_field_name = jk_log_entry_first(log);                              \
+            next = jk_log_entry_next(log, entry_field_name), jk_log_entry_valid(entry_field_name); \
+            entry_field_name = next)
+
+// ---- Logging end ------------------------------------------------------------
+
 // ---- Math begin -------------------------------------------------------------
 
 #define JK_FLOAT_EXPONENT_SPECIAL INT32_MAX

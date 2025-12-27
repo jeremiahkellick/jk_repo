@@ -253,6 +253,87 @@ int main(void)
 
     // ---- Buffer end ---------------------------------------------------------
 
+    // ---- Logging begin ------------------------------------------------------
+
+    JkBuffer log_memory;
+    log_memory.size = 768;
+    log_memory.data = jk_platform_memory_alloc(log_memory.size);
+    JkLog *log = jk_log_init(jk_platform_print_stdout, log_memory);
+    jk_log(log, JK_LOG_INFO, JKS("Whose woods these are I think I know."));
+    jk_log(log, JK_LOG_ERROR, JKS("Soon may the Wellerman come"));
+    jk_log(log, JK_LOG_INFO, JKS("His house is in the village though;"));
+
+    jk_print(JKS("\n"));
+
+    JK_LOG_ITER(log, e)
+    {
+        if (jk_log_entry_type(log, e) == JK_LOG_ERROR) {
+            jk_log_entry_remove(log, e);
+        } else {
+            jk_log_entry_print(log, e);
+        }
+    }
+
+    jk_print(JKS("\n"));
+
+    JK_LOG_ITER(log, e)
+    {
+        jk_log_entry_print(log, e);
+    }
+
+    jk_print(JKS("\n"));
+
+    jk_log(log, JK_LOG_INFO, JKS("He will not see me stopping here"));
+    jk_log(log, JK_LOG_INFO, JKS("To watch his woods fill up with snow."));
+    jk_log(log, JK_LOG_INFO, JKS("My little horse must think it queer"));
+
+    jk_print(JKS("\n"));
+
+    JK_LOG_ITER(log, e)
+    {
+        jk_log_entry_print(log, e);
+    }
+
+    jk_print(JKS("\n"));
+
+    jk_log_init(jk_platform_print_stdout, log_memory);
+
+    JK_LOG_ITER(log, e)
+    {
+        jk_log_entry_print(log, e);
+    }
+
+    jk_print(JKS("\n"));
+
+    // Fill the circular buffer to test wraparound
+    uint8_t x_byte_array[176];
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(x_byte_array); i++) {
+        x_byte_array[i] = 'x';
+    }
+    JkBuffer xs = JK_BUFFER_INIT_FROM_BYTE_ARRAY(x_byte_array);
+    uint8_t y_byte_array[176];
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(y_byte_array); i++) {
+        y_byte_array[i] = 'y';
+    }
+    JkBuffer ys = JK_BUFFER_INIT_FROM_BYTE_ARRAY(y_byte_array);
+    uint8_t z_byte_array[176];
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(z_byte_array); i++) {
+        z_byte_array[i] = 'z';
+    }
+    JkBuffer zs = JK_BUFFER_INIT_FROM_BYTE_ARRAY(z_byte_array);
+    jk_log(log, JK_LOG_WARNING, xs);
+    jk_log(log, JK_LOG_WARNING, ys);
+    jk_log(log, JK_LOG_WARNING, zs);
+
+    jk_print(JKS("\n"));
+
+    JK_LOG_ITER(log, entry)
+    {
+        jk_log_entry_print(log, entry);
+    }
+
+    // ---- Logging end --------------------------------------------------------
+
     // ---- Math begin ---------------------------------------------------------
 
     JkRandomGeneratorU64 generator = jk_random_generator_new_u64(3523520312864767571);

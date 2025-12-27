@@ -577,6 +577,198 @@ JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path)
 
 // ---- Buffer end -------------------------------------------------------------
 
+// ---- Logging begin ----------------------------------------------------------
+
+JK_PUBLIC JkLogEntry jk_log_sentinel = {0};
+JK_PUBLIC JkLogEntry jk_log_free_list_sentinel = {1};
+
+static JkBuffer jk_log_type_prefixes[JK_LOG_TYPE_COUNT] = {
+    JKSI("[NIL??  ]: "),
+    JKSI("[INFO   ]: "),
+    JKSI("[WARNING]: "),
+    JKSI("[ERROR  ]: "),
+    JKSI("[FATAL  ]: "),
+};
+
+static JkLogEntryData *jk_log_entry_data(JkLog *l, JkLogEntry handle)
+{
+    return l->entries + handle.i;
+}
+
+static int64_t jk_log_list_empty(JkLog *l, JkLogEntry sentinel)
+{
+    return jk_log_entry_equal(jk_log_entry_next(l, sentinel), sentinel);
+}
+
+static void jk_log_list_push(JkLog *l, JkLogEntry sentinel, JkLogEntry entry)
+{
+    JkLogEntryData *sentinel_data = jk_log_entry_data(l, sentinel);
+    JkLogEntryData *entry_data = jk_log_entry_data(l, entry);
+
+    jk_log_entry_data(l, sentinel_data->prev)->next = entry;
+    entry_data->prev = sentinel_data->prev;
+    entry_data->next = sentinel;
+    sentinel_data->prev = entry;
+}
+
+static void jk_log_list_remove(JkLog *l, JkLogEntry entry)
+{
+    JkLogEntryData *data = jk_log_entry_data(l, entry);
+    jk_log_entry_data(l, data->prev)->next = data->next;
+    jk_log_entry_data(l, data->next)->prev = data->prev;
+}
+
+static uint8_t *jk_log_string_offset_to_ptr(JkLog *l, int64_t offset)
+{
+    return ((uint8_t *)l + l->string_buffer_start) + (offset % l->string_buffer_capacity);
+}
+
+JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory)
+{
+    JkLog *l = 0;
+
+    int64_t entry_slot_max = (memory.size - JK_SIZEOF(*l)) / (4 * JK_SIZEOF(*l->entries))
+            + JK_ARRAY_COUNT(l->entries);
+    if (print && memory.data && 4 <= entry_slot_max) {
+        l = (JkLog *)memory.data;
+        jk_memset(l, 0, JK_SIZEOF(*l));
+
+        l->print = print;
+        l->entry_slot_next = JK_ARRAY_COUNT(l->entries);
+        l->entry_slot_max = entry_slot_max;
+        int64_t entires_array_offset = (uint8_t *)l->entries - memory.data;
+        l->string_buffer_start = entires_array_offset + l->entry_slot_max * sizeof(*l->entries);
+        l->string_buffer_capacity = memory.size - l->string_buffer_start;
+
+        JkLogEntryData *sentinel_data = jk_log_entry_data(l, jk_log_sentinel);
+        sentinel_data->next = jk_log_sentinel;
+        sentinel_data->prev = jk_log_sentinel;
+
+        JkLogEntryData *free_list_sentinel_data = jk_log_entry_data(l, jk_log_free_list_sentinel);
+        free_list_sentinel_data->next = jk_log_free_list_sentinel;
+        free_list_sentinel_data->prev = jk_log_free_list_sentinel;
+    } else {
+        print(JKS("[ERROR  ]: The given memory buffer is too small for a log\n"));
+    }
+
+    return l;
+}
+
+JK_PUBLIC b32 jk_log_valid(JkLog *l)
+{
+    return l && l->print;
+}
+
+JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message)
+{
+    if (!jk_log_valid(l)) {
+        return;
+    }
+    if (l->string_buffer_capacity < message.size) {
+        l->print(JKS("[ERROR  ]: Message too large for the log\n"));
+        return;
+    }
+
+    JkLogEntryData *sentinel_data = jk_log_entry_data(l, jk_log_sentinel);
+
+    // Get an entry slot
+    JkLogEntry entry;
+    if (!jk_log_list_empty(l, jk_log_free_list_sentinel)) {
+        entry = jk_log_entry_data(l, jk_log_free_list_sentinel)->next;
+        jk_log_list_remove(l, entry);
+    } else if (l->entry_slot_next < l->entry_slot_max) {
+        entry.i = l->entry_slot_next++;
+    } else { // All full. We'll have to overwrite the oldest log entry
+        entry = sentinel_data->next;
+        jk_log_list_remove(l, entry);
+    }
+    JkLogEntryData *data = jk_log_entry_data(l, entry);
+
+    // Fill out the entry
+    data->type = type;
+    // If the circular buffer would wrap in the middle of the message, advance string_offset_next to
+    // prevent that
+    int64_t rem = l->string_offset_next % l->string_buffer_capacity;
+    if (l->string_buffer_capacity < rem + message.size) {
+        l->string_offset_next += l->string_buffer_capacity - rem;
+    }
+    data->message.size = message.size;
+    data->message.offset = l->string_offset_next;
+    l->string_offset_next += message.size;
+    jk_memcpy(jk_log_string_offset_to_ptr(l, data->message.offset), message.data, message.size);
+
+    // Some number of the oldest log entries might point to messages that were overwritten by this
+    // latest one. Let's remove those.
+    int64_t largest_valid_offset = l->string_offset_next - l->string_buffer_capacity;
+    while (jk_log_entry_data(l, sentinel_data->next)->message.offset < largest_valid_offset
+            && !jk_log_entry_equal(sentinel_data->next, jk_log_sentinel)) {
+        jk_log_list_remove(l, sentinel_data->next);
+    }
+
+    // Append the entry to the end of the log
+    jk_log_list_push(l, jk_log_sentinel, entry);
+
+    jk_log_entry_print(l, entry);
+}
+
+JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b)
+{
+    return a.i == b.i;
+}
+
+JK_PUBLIC b32 jk_log_entry_valid(JkLogEntry entry)
+{
+    return entry.i != jk_log_sentinel.i;
+}
+
+JK_PUBLIC JkLogType jk_log_entry_type(JkLog *l, JkLogEntry entry)
+{
+    return jk_log_entry_data(l, entry)->type;
+}
+
+JK_PUBLIC JkBuffer jk_log_entry_message(JkLog *l, JkLogEntry entry)
+{
+    JkLogEntryData *data = jk_log_entry_data(l, entry);
+    return (JkBuffer){
+        .size = data->message.size,
+        .data = jk_log_string_offset_to_ptr(l, data->message.offset),
+    };
+}
+
+JK_PUBLIC JkLogEntry jk_log_entry_first(JkLog *l)
+{
+    if (l && l->print) {
+        return jk_log_entry_next(l, jk_log_sentinel);
+    } else {
+        return jk_log_sentinel;
+    }
+}
+
+JK_PUBLIC JkLogEntry jk_log_entry_next(JkLog *l, JkLogEntry entry)
+{
+    if (l && l->print) {
+        return jk_log_entry_data(l, entry)->next;
+    } else {
+        return jk_log_sentinel;
+    }
+}
+
+JK_PUBLIC void jk_log_entry_print(JkLog *l, JkLogEntry entry)
+{
+    JkLogEntryData *data = jk_log_entry_data(l, entry);
+    l->print(jk_log_type_prefixes[data->type]);
+    l->print(jk_log_entry_message(l, entry));
+    l->print(JKS("\n"));
+}
+
+JK_PUBLIC void jk_log_entry_remove(JkLog *l, JkLogEntry entry)
+{
+    jk_log_list_remove(l, entry);
+    jk_log_list_push(l, jk_log_free_list_sentinel, entry);
+}
+
+// ---- Logging end ------------------------------------------------------------
+
 // ---- Math begin -------------------------------------------------------------
 
 JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value)
@@ -1636,7 +1828,6 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
 
 JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x)
 {
-
     uint32_t lo = (uint32_t)x;
     uint32_t hi = (uint32_t)(x >> 32);
     uint32_t lo_hash = jk_hash_uint32(lo);
