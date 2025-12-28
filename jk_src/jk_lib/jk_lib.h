@@ -118,6 +118,8 @@ JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
 
 JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
 
+JK_PUBLIC uint8_t jk_hex_char[16];
+
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
         JkArena *arena, uint64_t value, int16_t min_width);
 
@@ -192,6 +194,8 @@ JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
 
 JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
+JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path);
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Logging begin ----------------------------------------------------------
@@ -225,6 +229,8 @@ typedef struct JkLog {
     int64_t string_buffer_start;
     int64_t string_buffer_capacity;
     int64_t string_offset_next;
+
+    uint8_t scratch_buffer[4096];
 
     // Array of size max_entry_count. entries[0] is the log sentinel node. entries[1] is the free
     // list sentinel node.

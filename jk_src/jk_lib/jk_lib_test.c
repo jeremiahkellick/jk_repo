@@ -255,10 +255,11 @@ int main(void)
 
     // ---- Logging begin ------------------------------------------------------
 
+    JkLog *log;
     JkBuffer log_memory;
-    log_memory.size = 768;
+    log_memory.size = JK_SIZEOF(log->scratch_buffer) + 768;
     log_memory.data = jk_platform_memory_alloc(log_memory.size);
-    JkLog *log = jk_log_init(jk_platform_print_stdout, log_memory);
+    log = jk_log_init(jk_platform_print_stdout, log_memory);
     jk_log(log, JK_LOG_INFO, JKS("Whose woods these are I think I know."));
     jk_log(log, JK_LOG_ERROR, JKS("Soon may the Wellerman come"));
     jk_log(log, JK_LOG_INFO, JKS("His house is in the village though;"));
@@ -296,7 +297,7 @@ int main(void)
 
     jk_print(JKS("\n"));
 
-    jk_log_init(jk_platform_print_stdout, log_memory);
+    log = jk_log_init(jk_platform_print_stdout, log_memory);
 
     JK_LOG_ITER(log, e)
     {

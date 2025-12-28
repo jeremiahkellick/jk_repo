@@ -342,7 +342,7 @@ JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t
     return result;
 }
 
-static uint8_t jk_hex_char[16] = {
+JK_PUBLIC uint8_t jk_hex_char[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
@@ -573,6 +573,22 @@ JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path)
         }
     }
     return path;
+}
+
+JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path)
+{
+    JkBuffer result = path;
+
+    // Basename begins at last slash
+    for (int64_t i = path.size - 1; 0 <= i; i--) {
+        if (path.data[i] == '/' || path.data[i] == '\\') {
+            result.size -= i + 1;
+            result.data += i + 1;
+            break;
+        }
+    }
+
+    return result;
 }
 
 // ---- Buffer end -------------------------------------------------------------
