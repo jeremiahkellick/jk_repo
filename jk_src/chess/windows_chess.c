@@ -142,9 +142,9 @@ static Rect draw_rect_get(void)
     };
 
     int32_t max_dimension_index = g_window_dimensions.x < g_window_dimensions.y ? 1 : 0;
-    result.pos.coords[max_dimension_index] =
-            (g_window_dimensions.coords[max_dimension_index]
-                    - result.dimensions.coords[max_dimension_index])
+    result.pos.v[max_dimension_index] =
+            (g_window_dimensions.v[max_dimension_index]
+                    - result.dimensions.v[max_dimension_index])
             / 2;
 
     return result;

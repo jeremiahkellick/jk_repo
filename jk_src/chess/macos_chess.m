@@ -111,9 +111,9 @@ static MyRect draw_rect_get(JkIntVec2 window_dimensions)
     };
 
     int32_t max_dimension_index = window_dimensions.x < window_dimensions.y ? 1 : 0;
-    result.pos.coords[max_dimension_index] =
-            (window_dimensions.coords[max_dimension_index]
-                    - result.dimensions.coords[max_dimension_index])
+    result.pos.v[max_dimension_index] =
+            (window_dimensions.v[max_dimension_index]
+                    - result.dimensions.v[max_dimension_index])
             / 2;
 
     return result;

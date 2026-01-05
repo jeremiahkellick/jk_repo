@@ -328,7 +328,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId th
             JkVec3 *vertices = jk_arena_push(c->verts_arena, vertex_count * JK_SIZEOF(*vertices));
             for (int64_t vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
                 for (int64_t coord_index = 0; coord_index < 3; coord_index++) {
-                    vertices[vertex_index].coords[coord_index] =
+                    vertices[vertex_index].v[coord_index] =
                             coords.items[vertex_index * 3 + coord_index];
                 }
             }
@@ -339,7 +339,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId th
                     jk_arena_push(c->texcoords_arena, texcoord_count * JK_SIZEOF(*texcoords));
             for (int64_t texcoord_index = 0; texcoord_index < texcoord_count; texcoord_index++) {
                 for (int64_t coord_index = 0; coord_index < 2; coord_index++) {
-                    texcoords[texcoord_index].coords[coord_index] =
+                    texcoords[texcoord_index].v[coord_index] =
                             coords.items[texcoord_index * 2 + coord_index];
                 }
             }

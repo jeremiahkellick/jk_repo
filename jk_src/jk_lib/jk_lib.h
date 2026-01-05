@@ -404,7 +404,7 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length);
 // ---- JkIntVec2 begin --------------------------------------------------------
 
 typedef union JkIntVec2 {
-    int32_t coords[2];
+    int32_t v[2];
     struct {
         int32_t x;
         int32_t y;
@@ -433,7 +433,7 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector);
 // ---- JkVec2 begin -----------------------------------------------------------
 
 typedef union JkVec2 {
-    float coords[2];
+    float v[2];
     struct {
         float x;
         float y;
@@ -484,7 +484,7 @@ JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector
 // ---- JkVec3 begin -----------------------------------------------------------
 
 typedef union JkVec3 {
-    float coords[3];
+    float v[3];
     struct {
         float x;
         float y;
@@ -532,7 +532,7 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 // ---- JkVec3 begin -----------------------------------------------------------
 
 typedef union JkVec4 {
-    float coords[4];
+    float v[4];
     struct {
         float x;
         float y;

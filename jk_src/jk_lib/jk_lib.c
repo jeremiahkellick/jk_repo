@@ -1463,9 +1463,9 @@ JK_PUBLIC JkVec3 jk_mat4_mul_point(JkMat4 m, JkVec3 v)
     JkVec3 result = {0};
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t k = 0; k < 3; k++) {
-            result.coords[i] += m.e[i][k] * v.coords[k];
+            result.v[i] += m.e[i][k] * v.v[k];
         }
-        result.coords[i] += m.e[i][3] * 1;
+        result.v[i] += m.e[i][3] * 1;
     }
     return result;
 }
@@ -1475,7 +1475,7 @@ JK_PUBLIC JkVec3 jk_mat4_mul_normal(JkMat4 m, JkVec3 v)
     JkVec3 result = {0};
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t k = 0; k < 3; k++) {
-            result.coords[i] += m.e[i][k] * v.coords[k];
+            result.v[i] += m.e[i][k] * v.v[k];
         }
     }
     return result;
@@ -1486,7 +1486,7 @@ JK_PUBLIC JkVec4 jk_mat4_mul_vec4(JkMat4 m, JkVec4 v)
     JkVec4 result = {0};
     for (int64_t i = 0; i < 4; i++) {
         for (int64_t k = 0; k < 4; k++) {
-            result.coords[i] += m.e[i][k] * v.coords[k];
+            result.v[i] += m.e[i][k] * v.v[k];
         }
     }
     return result;
@@ -1984,11 +1984,11 @@ JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
 raddbg_type_view(JkBuffer, text(data, size = size));
 raddbg_type_view(JkBufferArray, array(items, count));
 raddbg_type_view(JkFormatItemArray, array(items, count));
-raddbg_type_view(JkIntVec2, omit($, coords));
+raddbg_type_view(JkIntVec2, omit($, v));
 raddbg_type_view(JkIntVec2Array, array(items, count));
-raddbg_type_view(JkVec2, omit($, coords));
+raddbg_type_view(JkVec2, omit($, v));
 raddbg_type_view(JkVec2Array, array(items, count));
-raddbg_type_view(JkVec3, omit($, coords));
+raddbg_type_view(JkVec3, omit($, v));
 raddbg_type_view(JkVec3Array, array(items, count));
 raddbg_type_view(JkEdgeArray, array(items, count));
 raddbg_type_view(JkFloatArray, array(items, count));

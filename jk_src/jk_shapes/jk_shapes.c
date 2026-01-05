@@ -160,13 +160,13 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
     // Correct out-of-range radii
     float lambda = 0.0f;
     for (int32_t i = 0; i < 2; i++) {
-        if (!a.dimensions.coords[i]) {
+        if (!a.dimensions.v[i]) {
             r.treat_as_line = 1;
             return r;
         }
-        r.dimensions.coords[i] = JK_ABS(a.dimensions.coords[i]);
-        lambda += (point_prime.coords[i] * point_prime.coords[i])
-                / (r.dimensions.coords[i] * r.dimensions.coords[i]);
+        r.dimensions.v[i] = JK_ABS(a.dimensions.v[i]);
+        lambda += (point_prime.v[i] * point_prime.v[i])
+                / (r.dimensions.v[i] * r.dimensions.v[i]);
     }
     if (1.0f < lambda) {
         r.dimensions = jk_vec2_mul(jk_sqrt_f32(lambda), r.dimensions);
@@ -308,7 +308,7 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
             current_node = jk_arena_push(arena, JK_SIZEOF(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
+            current_node->point = jk_vec2_add(jk_vec2_mul(scale, command->v[0]), offset);
             current_node->is_cursor_movement = 1;
         } break;
 
@@ -317,14 +317,14 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
             current_node = jk_arena_push(arena, JK_SIZEOF(*current_node));
             previous_node->next = current_node;
             current_node->next = 0;
-            current_node->point = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
+            current_node->point = jk_vec2_add(jk_vec2_mul(scale, command->v[0]), offset);
             current_node->is_cursor_movement = 0;
         } break;
 
         case JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC: {
             JkVec2 p0 = current_node->point;
-            JkVec2 p1 = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
-            JkVec2 p2 = jk_vec2_add(jk_vec2_mul(scale, command->coords[1]), offset);
+            JkVec2 p1 = jk_vec2_add(jk_vec2_mul(scale, command->v[0]), offset);
+            JkVec2 p2 = jk_vec2_add(jk_vec2_mul(scale, command->v[1]), offset);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p2, tolerance);
@@ -337,9 +337,9 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
 
         case JK_SHAPES_PEN_COMMAND_CURVE_CUBIC: {
             JkVec2 p0 = current_node->point;
-            JkVec2 p1 = jk_vec2_add(jk_vec2_mul(scale, command->coords[0]), offset);
-            JkVec2 p2 = jk_vec2_add(jk_vec2_mul(scale, command->coords[1]), offset);
-            JkVec2 p3 = jk_vec2_add(jk_vec2_mul(scale, command->coords[2]), offset);
+            JkVec2 p1 = jk_vec2_add(jk_vec2_mul(scale, command->v[0]), offset);
+            JkVec2 p2 = jk_vec2_add(jk_vec2_mul(scale, command->v[1]), offset);
+            JkVec2 p3 = jk_vec2_add(jk_vec2_mul(scale, command->v[2]), offset);
 
             JkShapesLinearizer l;
             jk_shapes_linearizer_init(&l, arena, &current_node, p3, tolerance);

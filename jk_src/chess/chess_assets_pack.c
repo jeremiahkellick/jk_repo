@@ -95,11 +95,11 @@ int main(int argc, char **argv)
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type =
                                 c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->coords[0] = (JkVec2){numbers.items[i], numbers.items[i + 1]};
-                        prev_pos = new_command->coords[0];
+                        new_command->v[0] = (JkVec2){numbers.items[i], numbers.items[i + 1]};
+                        prev_pos = new_command->v[0];
 
                         if (c == 'M') {
-                            first_pos = new_command->coords[0];
+                            first_pos = new_command->v[0];
                         }
                     }
                 } break;
@@ -112,9 +112,9 @@ int main(int argc, char **argv)
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->coords[0] = c == 'H' ? (JkVec2){numbers.items[i], prev_pos.y}
+                        new_command->v[0] = c == 'H' ? (JkVec2){numbers.items[i], prev_pos.y}
                                                           : (JkVec2){prev_pos.x, numbers.items[i]};
-                        prev_pos = new_command->coords[0];
+                        prev_pos = new_command->v[0];
                     }
                 } break;
 
@@ -126,10 +126,10 @@ int main(int argc, char **argv)
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
                         for (int32_t j = 0; j < 2; j++) {
-                            new_command->coords[j] = (JkVec2){
+                            new_command->v[j] = (JkVec2){
                                 numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
                         }
-                        prev_pos = new_command->coords[1];
+                        prev_pos = new_command->v[1];
                     }
                 } break;
 
@@ -141,10 +141,10 @@ int main(int argc, char **argv)
                                 jk_arena_push(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                         for (int32_t j = 0; j < 3; j++) {
-                            new_command->coords[j] = (JkVec2){
+                            new_command->v[j] = (JkVec2){
                                 numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
                         }
-                        prev_pos = new_command->coords[2];
+                        prev_pos = new_command->v[2];
                     }
                 } break;
 
@@ -174,7 +174,7 @@ int main(int argc, char **argv)
                     JkShapesPenCommand *new_command =
                             jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                     new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                    new_command->coords[0] = first_pos;
+                    new_command->v[0] = first_pos;
                 } break;
 
                 default: {
@@ -259,26 +259,26 @@ int main(int argc, char **argv)
                     commands[i].type = verticies[i].type == STBTT_vmove
                             ? JK_SHAPES_PEN_COMMAND_MOVE
                             : JK_SHAPES_PEN_COMMAND_LINE;
-                    commands[i].coords[0].x = (float)verticies[i].x;
-                    commands[i].coords[0].y = (float)-verticies[i].y;
+                    commands[i].v[0].x = (float)verticies[i].x;
+                    commands[i].v[0].y = (float)-verticies[i].y;
                 } break;
 
                 case STBTT_vcurve: {
                     commands[i].type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
-                    commands[i].coords[0].x = (float)verticies[i].cx;
-                    commands[i].coords[0].y = (float)-verticies[i].cy;
-                    commands[i].coords[1].x = (float)verticies[i].x;
-                    commands[i].coords[1].y = (float)-verticies[i].y;
+                    commands[i].v[0].x = (float)verticies[i].cx;
+                    commands[i].v[0].y = (float)-verticies[i].cy;
+                    commands[i].v[1].x = (float)verticies[i].x;
+                    commands[i].v[1].y = (float)-verticies[i].y;
                 } break;
 
                 case STBTT_vcubic: {
                     commands[i].type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
-                    commands[i].coords[0].x = (float)verticies[i].cx;
-                    commands[i].coords[0].y = (float)-verticies[i].cy;
-                    commands[i].coords[1].x = (float)verticies[i].cx1;
-                    commands[i].coords[1].y = (float)-verticies[i].cy1;
-                    commands[i].coords[2].x = (float)verticies[i].x;
-                    commands[i].coords[2].y = (float)-verticies[i].y;
+                    commands[i].v[0].x = (float)verticies[i].cx;
+                    commands[i].v[0].y = (float)-verticies[i].cy;
+                    commands[i].v[1].x = (float)verticies[i].cx1;
+                    commands[i].v[1].y = (float)-verticies[i].cy1;
+                    commands[i].v[2].x = (float)verticies[i].x;
+                    commands[i].v[2].y = (float)-verticies[i].y;
                 } break;
 
                 default: {

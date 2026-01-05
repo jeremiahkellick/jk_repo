@@ -58,7 +58,7 @@ typedef enum JkShapesPenCommandType {
 typedef struct JkShapesPenCommand {
     JkShapesPenCommandType type;
     union {
-        JkVec2 coords[3];
+        JkVec2 v[3];
         JkShapesArcByEndpoint arc;
     };
 } JkShapesPenCommand;
