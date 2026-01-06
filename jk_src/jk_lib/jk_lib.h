@@ -529,7 +529,7 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
 // ---- JkVec3 end -------------------------------------------------------------
 
-// ---- JkVec3 begin -----------------------------------------------------------
+// ---- JkVec4 begin -----------------------------------------------------------
 
 typedef union JkVec4 {
     float v[4];
@@ -540,6 +540,14 @@ typedef union JkVec4 {
         float w;
     };
 } JkVec4;
+
+JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v);
+
+JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v);
+
+JK_PUBLIC float jk_vec4_magnitude(JkVec4 v);
+
+JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v);
 
 JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w);
 
@@ -605,6 +613,20 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_to(JkCoordinateSystem dest);
 JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordinateSystem dest);
 
 // ---- JkMat4 end -------------------------------------------------------------
+
+// ---- Quaternion begin -------------------------------------------------------
+
+// Reuse the JkVec4 type for quaternions, but the functions are prefixed jk_quat
+
+JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis);
+
+JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b);
+
+JkMat4 jk_quat_to_mat4(JkVec4 q);
+
+JkVec4 jk_mat4_to_quat(JkMat4 m);
+
+// ---- Quaternion end ---------------------------------------------------------
 
 // ---- JkTransform begin ------------------------------------------------------
 

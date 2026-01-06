@@ -1412,7 +1412,27 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v)
 
 // ---- JkVec3 end -------------------------------------------------------------
 
-// ---- JkVec3 begin -----------------------------------------------------------
+// ---- JkVec4 begin -----------------------------------------------------------
+
+JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v)
+{
+    return (JkVec4){.x = scalar * v.x, .y = scalar * v.y, .z = scalar * v.z, .w = scalar * v.w};
+}
+
+JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v)
+{
+    return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+}
+
+JK_PUBLIC float jk_vec4_magnitude(JkVec4 v)
+{
+    return jk_sqrt_f32(jk_vec4_magnitude_sqr(v));
+}
+
+JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v)
+{
+    return jk_vec4_mul(1.0f / jk_vec4_magnitude(v), v);
+}
 
 JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w)
 {
@@ -1444,6 +1464,17 @@ JK_PUBLIC JkMat4 jk_mat4_i = {{
     {0, 0, 1, 0},
     {0, 0, 0, 1},
 }};
+
+JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m)
+{
+    JkMat4 result;
+    for (int64_t i = 0; i < 4; i++) {
+        for (int64_t j = 0; j < 4; j++) {
+            result.e[i][j] = m.e[j][i];
+        }
+    }
+    return result;
+}
 
 JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b)
 {
@@ -1618,6 +1649,103 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 }
 
 // ---- JkMat4 end -------------------------------------------------------------
+
+// ---- JkQuat begin -----------------------------------------------------------
+
+JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis)
+{
+    JkVec4 result;
+    result.w = jk_cos_f32(angle / 2);
+    float sin = jk_sin_f32(angle / 2);
+    axis = jk_vec3_normalized(axis);
+    for (int64_t i = 0; i < 3; i++) {
+        result.v[i] = sin * axis.v[i];
+    }
+    return result;
+}
+
+JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b)
+{
+    return (JkVec4){{
+        a.v[0] * b.v[3] + a.v[3] * b.v[0] - a.v[2] * b.v[1] + a.v[1] * b.v[2],
+        a.v[1] * b.v[3] + a.v[2] * b.v[0] + a.v[3] * b.v[1] - a.v[0] * b.v[2],
+        a.v[2] * b.v[3] - a.v[1] * b.v[0] + a.v[0] * b.v[1] + a.v[3] * b.v[2],
+        a.v[3] * b.v[3] - a.v[0] * b.v[0] - a.v[1] * b.v[1] - a.v[2] * b.v[2],
+    }};
+}
+
+JkMat4 jk_quat_to_mat4(JkVec4 q)
+{
+    float sqr[4];
+    for (int64_t i = 0; i < 4; i++) {
+        sqr[i] = q.v[i] * q.v[i];
+    }
+    // clang-format off
+    return (JkMat4){{
+        {(sqr[3] - sqr[2] - sqr[1] + sqr[0]),     2*(q.v[0]*q.v[1] - q.v[2]*q.v[3]),     2*(q.v[0]*q.v[2] + q.v[1]*q.v[3]), 0},
+        {  2*(q.v[0]*q.v[1] + q.v[2]*q.v[3]),  (-sqr[2] + sqr[3] - sqr[0] + sqr[1]),     2*(q.v[1]*q.v[2] - q.v[0]*q.v[3]), 0},
+        {  2*(q.v[0]*q.v[2] - q.v[1]*q.v[3]),     2*(q.v[0]*q.v[3] + q.v[1]*q.v[2]),  (-sqr[1] - sqr[0] + sqr[3] + sqr[2]), 0},
+        {                                  0,                                     0,                                     0, 1},
+    }};
+    // clang-format on
+}
+
+// Only works on pure rotation matrices
+JkVec4 jk_mat4_to_quat(JkMat4 m)
+{
+    JkVec4 r;
+
+    r.v[0] = jk_sqrt_f32(JK_ABS(1 + m.e[0][0] - m.e[1][1] - m.e[2][2]));
+    r.v[1] = jk_sqrt_f32(JK_ABS(1 - m.e[0][0] + m.e[1][1] - m.e[2][2]));
+    r.v[2] = jk_sqrt_f32(JK_ABS(1 - m.e[0][0] - m.e[1][1] + m.e[2][2]));
+    r.v[3] = jk_sqrt_f32(JK_ABS(1 + m.e[0][0] + m.e[1][1] + m.e[2][2]));
+
+    float max = -1;
+    int64_t max_i = 0;
+    for (int64_t i = 0; i < 4; i++) {
+        if (max < r.v[i]) {
+            max = r.v[i];
+            max_i = i;
+        }
+    }
+
+    r.v[max_i] = max / 2;
+    float divisor = 2 * max;
+
+    switch (max_i) {
+    case 0: {
+        r.v[1] = (m.e[1][0] + m.e[0][1]) / divisor;
+        r.v[2] = (m.e[2][0] + m.e[0][2]) / divisor;
+        r.v[3] = (m.e[2][1] - m.e[1][2]) / divisor;
+    } break;
+
+    case 1: {
+        r.v[0] = (m.e[1][0] + m.e[0][1]) / divisor;
+        r.v[2] = (m.e[2][1] + m.e[1][2]) / divisor;
+        r.v[3] = (m.e[0][2] - m.e[2][0]) / divisor;
+    } break;
+
+    case 2: {
+        r.v[0] = (m.e[2][0] + m.e[0][2]) / divisor;
+        r.v[1] = (m.e[2][1] + m.e[1][2]) / divisor;
+        r.v[3] = (m.e[1][0] - m.e[0][1]) / divisor;
+    } break;
+
+    case 3: {
+        r.v[0] = (m.e[2][1] - m.e[1][2]) / divisor;
+        r.v[1] = (m.e[0][2] - m.e[2][0]) / divisor;
+        r.v[2] = (m.e[1][0] - m.e[0][1]) / divisor;
+    } break;
+
+    default: {
+        JK_ASSERT(0);
+    } break;
+    }
+
+    return jk_vec4_normalized(r);
+}
+
+// ---- JkQuat end -------------------------------------------------------------
 
 // ---- JkTransform begin ------------------------------------------------------
 

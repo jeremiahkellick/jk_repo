@@ -1,0 +1,590 @@
+Multiplication of two complex numbers can perform 2D rotations, why?
+
+Here's what complex multiplication looks like
+(ax + ayi)(bx + byi) = axbx + axbyi + ayibx + ayibyi = axbx + axbyi + aybxi - ayby
+= (axbx - ayby) + (axby + aybx)i
+
+What matrix multiplication would give us the same result?
+axbx - ayby = axbx - ayby = bx ax + by -ay = ax -ay * bx
+axby + aybx   aybx + axby      ay       ax   ay  ax   by
+
+So complex multiplication is equivalent to matrix multiplication of a certain form. The form is
+basically any vector in the first column (real part is x coordinate, imaginary is y). The second
+column is that same vector rotated 90 degrees. Basically you specify the x axis of a coordinate
+system and the y axis automatically orthogonal and euqal magnitude. Therefore, complex
+multiplication can perform rotations and uniform scaling.
+
+(cosθ + sinθi)(x + yi) = cosθx + cosθyi + sinθxi - sinθy = (cosθx - sinθy) + (cosθy + sinθx)i
+
+cosθ -sinθ * x = cosθx - sinθy
+sinθ  cosθ   y   sinθx + cosθy
+
+GEOMETRIC ALGEBRA
+
+Let V be a vector space.
+
+Let x,y,z be an orthogonal basis of our vector space.
+
+Vector addition works normally, but we aim to keep most expressions in terms of the basis vectors,
+so we would not compute expressions like x + x = (2, 0, 0). Instead we would simplify down x + x to
+2x and leave at that.
+
+Now without defining the operation yet, let's assume we can multiply vectors together. Assume this
+multiplication is associative and distributes over vector addition.
+
+For the basis vectors specifically, we will also assume that their multiplication is anticommutative
+and that a basis vector multiplied by itself is 1 (the scalar).
+
+Symbolically,
+
+For every u,v,w ∈ V
+1. (uv)w = u(vw)
+2. u(v + w) = uv + uw
+3. (v + w)u = vu + wu
+
+For every u,v ∈ {x, y, z},
+1. uv = -vu
+2. uu = 1
+
+Since x,y,z is a basis of V, every v ∈ V can be written as a linear combination of x,y,z. We'll use
+the notation v = v[0]x + v[1]y + v[2]z. To be clear, each v[n] is a scalar.
+
+Now let's multiply two vectors in component form. For every a,b ∈ V.
+
+ab = (a[0]x + a[1]y + a[2]z)(b[0]x + b[1]y + b[2]z)
+   =   a[0]x(b[0]x + b[1]y + b[2]z)
+     + a[1]y(b[0]x + b[1]y + b[2]z)
+     + a[2]z(b[0]x + b[1]y + b[2]z)
+   =   a[0]b[0]xx + a[0]b[1]xy + a[0]b[2]xz
+     + a[1]b[0]yx + a[1]b[1]yy + a[1]b[2]yz
+     + a[2]b[0]zx + a[2]b[1]zy + a[2]b[2]zz
+   =   a[0]b[0]   + a[0]b[1]xy - a[0]b[2]zx
+     - a[1]b[0]xy + a[1]b[1]   + a[1]b[2]yz
+     + a[2]b[0]zx - a[2]b[1]yz + a[2]b[2]
+   =   (a[0]b[0] + a[1]b[1] + a[2]b[2])
+     + (a[1]b[2] - a[2]b[1])yz
+     + (a[2]b[0] - a[0]b[2])zx
+     + (a[0]b[1] - a[1]b[0])xy
+
+Ta-da! The dot product and the cross product have appeared. We call this kind of vector
+multiplication the geometric product. The result has both a scalar part and a bivector part. A
+bivector is anything that can be written in the form ayz + bzx + cxy, where a,b,c are scalars.
+
+We'll also define some operations to do either only the scalar or only the bivector part of the
+geometric product.
+
+Definition: dot product, aka inner product
+a.b = a[0]b[0] + a[1]b[1] + a[2]b[2]
+
+Definition: cross product, aka outer product, aka wedge
+a^b = (a[1]b[2] - a[2]b[1])yz + (a[2]b[0] - a[0]b[2])zx + (a[0]b[1] - a[1]b[0])xy
+
+Then ab = a.b + a^b
+
+A rotor is the result of vector multiplication. So for every rotor m, there's some c,d ∈ V such that
+
+m = cd = c.d + c^d
+  = c[0]d[0] + c[1]d[1] + c[2]d[2]   
+  + (c[1]d[2] - c[2]d[1])yz
+  + (c[2]d[0] - c[0]d[2])zx
+  + (c[0]d[1] - c[1]d[0])xy
+
+So we can think of each rotor as having four scalar components: one for the scalar part and three
+scalars multiplied by yz, zx, and xy respectively. Let's introduce some notation for these scalars.
+
+Let
+m[3] = c[0]d[0] + c[1]d[1] + c[2]d[2]
+m[0] = (c[1]d[2] - c[2]d[1])
+m[1] = (c[2]d[0] - c[0]d[2])
+m[2] = (c[0]d[1] - c[1]d[0])
+
+Then m = m[3] + m[0]yz + m[1]zx + m[2]xy
+
+Now we can derive rotor multiplication
+mn = (m[3] + m[0]yz + m[1]zx + m[2]xy)(n[3] + n[0]yz + n[1]zx + n[2]xy)
+   =     m[3](n[3] + n[0]yz + n[1]zx + n[2]xy)
+     + m[0]yz(n[3] + n[0]yz + n[1]zx + n[2]xy)
+     + m[1]zx(n[3] + n[0]yz + n[1]zx + n[2]xy)
+     + m[2]xy(n[3] + n[0]yz + n[1]zx + n[2]xy)
+   =   m[3]n[3]   + m[3]n[0]yz   + m[3]n[1]zx   + m[3]n[2]xy
+     + m[0]n[3]yz + m[0]n[0]yzyz + m[0]n[1]yzzx + m[0]n[2]yzxy
+     + m[1]n[3]zx + m[1]n[0]zxyz + m[1]n[1]zxzx + m[1]n[2]zxxy
+     + m[2]n[3]xy + m[2]n[0]xyyz + m[2]n[1]xyzx + m[2]n[2]xyxy
+   =   m[3]n[3]   + m[3]n[0]yz   + m[3]n[1]zx   + m[3]n[2]xy
+     + m[0]n[3]yz - m[0]n[0]zyyz + m[0]n[1]yx   + m[0]n[2]zyyx
+     + m[1]n[3]zx + m[1]n[0]xzzy - m[1]n[1]xzzx + m[1]n[2]zy
+     + m[2]n[3]xy + m[2]n[0]xz   + m[2]n[1]yxxz - m[2]n[2]yxxy
+   =   m[3]n[3]   + m[3]n[0]yz + m[3]n[1]zx + m[3]n[2]xy
+     + m[0]n[3]yz - m[0]n[0]   + m[0]n[1]yx + m[0]n[2]zx
+     + m[1]n[3]zx + m[1]n[0]xy - m[1]n[1]   + m[1]n[2]zy
+     + m[2]n[3]xy + m[2]n[0]xz + m[2]n[1]yz - m[2]n[2]
+   =   m[3]n[3]   + m[3]n[0]yz + m[3]n[1]zx + m[3]n[2]xy
+     + m[0]n[3]yz - m[0]n[0]   - m[0]n[1]xy + m[0]n[2]zx
+     + m[1]n[3]zx + m[1]n[0]xy - m[1]n[1]   - m[1]n[2]yz
+     + m[2]n[3]xy - m[2]n[0]zx + m[2]n[1]yz - m[2]n[2]
+   =   (m[3]n[3] - m[0]n[0] - m[1]n[1] - m[2]n[2])
+     + (m[3]n[0] + m[0]n[3] - m[1]n[2] + m[2]n[1])yz
+     + (m[3]n[1] + m[0]n[2] + m[1]n[3] - m[2]n[0])zx
+     + (m[3]n[2] - m[0]n[1] + m[1]n[0] + m[2]n[3])xy
+
+Let a be a unit vector and v ∈ V
+
+We want v_r, v reflected by a
+
+v_p = (v.a)a
+v_d = v - v_p = v - (v.a)a
+
+v_r = v_d - v_p = v - (v.a)a - (v.a)a = v - 2(v.a)a
+
+ava = a(v_p + v_d)a
+  = av_pa + av_da
+
+av_pa = a(v.a)aa = a(v.a) = (v.a)a = v_p
+
+Since v_d is perpendicular to a, v_d.a = 0.
+Then v_da = v_d.a + v_d ^ a = v_d ^ a = -(a ^ v_d) = -a.v_d - (a ^ v_d) = -(a.v_d + a ^ v_d) = -av_d
+So av_da = -aav_d = -v_d
+Then ava = av_pa + av_da = v_p - v_d
+Finally, multiply both sides by -1 to see that
+-ava = v_d - v_p = v_r
+
+So -ava is v reflected along a's axis. A rotation is two reflections so (-b)(-a)vab = bavab is a
+rotation of vector v. So if m = cd for some vectors c,d, then dcvcd would be v rotated by m, which
+means we need to first find dc.
+
+Definition: reverse of a rotor
+For every rotor m, we know there's some vectors c,d such that m = cd. Let the reverse of m, notated
+~m be dc.
+
+Then ~mvm is the result of rotating v by m
+
+What's this look like in component form?
+If m = cd, then m = m[3] + m[0]yz + m[1]zx + m[2]xy where
+m[3] = c[0]d[0] + c[1]d[1] + c[2]d[2]
+m[0] = (c[1]d[2] - c[2]d[1])
+m[1] = (c[2]d[0] - c[0]d[2])
+m[2] = (c[0]d[1] - c[1]d[0])
+
+Observe:
+~m = dc = d.c + d^c
+   =   (d[0]c[0] + d[1]c[1] + d[2]c[2])
+     + (d[1]c[2] - d[2]c[1])yz
+     + (d[2]c[0] - d[0]c[2])zx
+     + (d[0]c[1] - d[1]c[0])xy
+   =   (c[0]d[0] + c[1]d[1] + c[2]d[2])
+     --(c[2]d[1] - c[1]d[2])yz
+     --(c[0]d[2] - c[2]d[0])zx
+     --(c[1]d[0] - c[0]d[1])xy
+   =   m[3]
+     -(-c[2]d[1] + c[1]d[2])yz
+     -(-c[0]d[2] + c[2]d[0])zx
+     -(-c[1]d[0] + c[0]d[1])xy
+   =   m[3]
+     - (c[1]d[2] - c[2]d[1])yz
+     - (c[2]d[0] - c[0]d[2])zx
+     - (c[0]d[1] - c[1]d[0])xy
+   =   m[3]
+     - m[0]yz
+     - m[1]zx
+     - m[2]xy
+   = m[3] - (m[0]yz + m[1]zx + m[2]xy)
+
+Therefore, reversing a rotor is just flipping the sign of the bivector part, while leaving the
+scalar part alone.
+
+Let's try right multiplying a vector by a rotor
+vm = (v[0]x + v[1]y + v[2]z)(m[3] + m[0]yz + m[1]zx + m[2]xy)
+   =   v[0]x(m[3] + m[0]yz + m[1]zx + m[2]xy)
+     + v[1]y(m[3] + m[0]yz + m[1]zx + m[2]xy)
+     + v[2]z(m[3] + m[0]yz + m[1]zx + m[2]xy)
+   =   v[0]m[3]x + v[0]m[0]xyz + v[0]m[1]xzx + v[0]m[2]xxy
+     + v[1]m[3]y + v[1]m[0]yyz + v[1]m[1]yzx + v[1]m[2]yxy
+     + v[2]m[3]z + v[2]m[0]zyz + v[2]m[1]zzx + v[2]m[2]zxy
+   =   v[0]m[3]x + v[0]m[0]xyz - v[0]m[1]zxx + v[0]m[2]y
+     + v[1]m[3]y + v[1]m[0]z   + v[1]m[1]xyz - v[1]m[2]xyy
+     + v[2]m[3]z - v[2]m[0]yzz + v[2]m[1]x   + v[2]m[2]xyz
+   =   v[0]m[3]x + v[0]m[0]xyz - v[0]m[1]z   + v[0]m[2]y
+     + v[1]m[3]y + v[1]m[0]z   + v[1]m[1]xyz - v[1]m[2]x
+     + v[2]m[3]z - v[2]m[0]y   + v[2]m[1]x   + v[2]m[2]xyz
+   =   ( v[0]m[3] - v[1]m[2] + v[2]m[1])x
+     + ( v[0]m[2] + v[1]m[3] - v[2]m[0])y
+     + (-v[0]m[1] + v[1]m[0] + v[2]m[3])z
+     + ( v[0]m[0] + v[1]m[1] + v[2]m[2])xyz
+
+And now let's left multiply that result by the reverse of the rotor
+
+~mvm = (m[3] - m[0]yz - m[1]zx - m[2]xy)(
+           ( v[0]m[3] - v[1]m[2] + v[2]m[1])x
+         + ( v[0]m[2] + v[1]m[3] - v[2]m[0])y
+         + (-v[0]m[1] + v[1]m[0] + v[2]m[3])z
+         + ( v[0]m[0] + v[1]m[1] + v[2]m[2])xyz
+       )
+     =   (m[3] - m[0]yz - m[1]zx - m[2]xy)( v[0]m[3] - v[1]m[2] + v[2]m[1])x
+       + (m[3] - m[0]yz - m[1]zx - m[2]xy)( v[0]m[2] + v[1]m[3] - v[2]m[0])y
+       + (m[3] - m[0]yz - m[1]zx - m[2]xy)(-v[0]m[1] + v[1]m[0] + v[2]m[3])z
+       + (m[3] - m[0]yz - m[1]zx - m[2]xy)( v[0]m[0] + v[1]m[1] + v[2]m[2])xyz
+     =   ( v[0]m[3] - v[1]m[2] + v[2]m[1])(m[3] - m[0]yz - m[1]zx - m[2]xy)x
+       + ( v[0]m[2] + v[1]m[3] - v[2]m[0])(m[3] - m[0]yz - m[1]zx - m[2]xy)y
+       + (-v[0]m[1] + v[1]m[0] + v[2]m[3])(m[3] - m[0]yz - m[1]zx - m[2]xy)z
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])(m[3] - m[0]yz - m[1]zx - m[2]xy)xyz
+     =   ( v[0]m[3] - v[1]m[2] + v[2]m[1])(m[3]x - m[0]yzx - m[1]zxx - m[2]xyx)
+       + ( v[0]m[2] + v[1]m[3] - v[2]m[0])(m[3]y - m[0]yzy - m[1]zxy - m[2]xyy)
+       + (-v[0]m[1] + v[1]m[0] + v[2]m[3])(m[3]z - m[0]yzz - m[1]zxz - m[2]xyz)
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])(m[3]xyz - m[0]yzxyz - m[1]zxxyz - m[2]xyxyz)
+     =   ( v[0]m[3] - v[1]m[2] + v[2]m[1])(m[3]x - m[0]xyz - m[1]z   + m[2]yxx)
+       + ( v[0]m[2] + v[1]m[3] - v[2]m[0])(m[3]y + m[0]zyy - m[1]xyz - m[2]x  )
+       + (-v[0]m[1] + v[1]m[0] + v[2]m[3])(m[3]z - m[0]y   + m[1]xzz - m[2]xyz)
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])(m[3]xyz + m[0]xzyyz + m[1]yzz + m[2]yxxyz)
+     =   ( v[0]m[3] - v[1]m[2] + v[2]m[1])(m[3]x - m[0]xyz - m[1]z   + m[2]y  )
+       + ( v[0]m[2] + v[1]m[3] - v[2]m[0])(m[3]y + m[0]z   - m[1]xyz - m[2]x  )
+       + (-v[0]m[1] + v[1]m[0] + v[2]m[3])(m[3]z - m[0]y   + m[1]x   - m[2]xyz)
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])(m[3]xyz + m[0]x + m[1]y + m[2]z)
+
+     =   ( v[0]m[3] - v[1]m[2] + v[2]m[1])m[3]x
+       - ( v[0]m[3] - v[1]m[2] + v[2]m[1])m[0]xyz
+       - ( v[0]m[3] - v[1]m[2] + v[2]m[1])m[1]z
+       + ( v[0]m[3] - v[1]m[2] + v[2]m[1])m[2]y
+
+       + ( v[0]m[2] + v[1]m[3] - v[2]m[0])m[3]y
+       + ( v[0]m[2] + v[1]m[3] - v[2]m[0])m[0]z
+       - ( v[0]m[2] + v[1]m[3] - v[2]m[0])m[1]xyz
+       - ( v[0]m[2] + v[1]m[3] - v[2]m[0])m[2]x
+
+       + (-v[0]m[1] + v[1]m[0] + v[2]m[3])m[3]z
+       - (-v[0]m[1] + v[1]m[0] + v[2]m[3])m[0]y
+       + (-v[0]m[1] + v[1]m[0] + v[2]m[3])m[1]x
+       - (-v[0]m[1] + v[1]m[0] + v[2]m[3])m[2]xyz
+
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])m[3]xyz
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])m[0]x
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])m[1]y
+       + ( v[0]m[0] + v[1]m[1] + v[2]m[2])m[2]z
+
+     =   ( v[0]m[3]m[3] - v[1]m[2]m[3] + v[2]m[1]m[3])x
+       - ( v[0]m[3]m[0] - v[1]m[2]m[0] + v[2]m[1]m[0])xyz
+       - ( v[0]m[3]m[1] - v[1]m[2]m[1] + v[2]m[1]m[1])z
+       + ( v[0]m[3]m[2] - v[1]m[2]m[2] + v[2]m[1]m[2])y
+
+       + ( v[0]m[2]m[3] + v[1]m[3]m[3] - v[2]m[0]m[3])y
+       + ( v[0]m[2]m[0] + v[1]m[3]m[0] - v[2]m[0]m[0])z
+       - ( v[0]m[2]m[1] + v[1]m[3]m[1] - v[2]m[0]m[1])xyz
+       - ( v[0]m[2]m[2] + v[1]m[3]m[2] - v[2]m[0]m[2])x
+
+       + (-v[0]m[1]m[3] + v[1]m[0]m[3] + v[2]m[3]m[3])z
+       - (-v[0]m[1]m[0] + v[1]m[0]m[0] + v[2]m[3]m[0])y
+       + (-v[0]m[1]m[1] + v[1]m[0]m[1] + v[2]m[3]m[1])x
+       - (-v[0]m[1]m[2] + v[1]m[0]m[2] + v[2]m[3]m[2])xyz
+
+       + ( v[0]m[0]m[3] + v[1]m[1]m[3] + v[2]m[2]m[3])xyz
+       + ( v[0]m[0]m[0] + v[1]m[1]m[0] + v[2]m[2]m[0])x
+       + ( v[0]m[0]m[1] + v[1]m[1]m[1] + v[2]m[2]m[1])y
+       + ( v[0]m[0]m[2] + v[1]m[1]m[2] + v[2]m[2]m[2])z
+
+     =   ( v[0]m[3]²    - v[1]m[2]m[3] + v[2]m[1]m[3])x
+       - ( v[0]m[0]m[3] - v[1]m[0]m[2] + v[2]m[0]m[1])xyz
+       - ( v[0]m[1]m[3] - v[1]m[1]m[2] + v[2]m[1]²   )z
+       + ( v[0]m[2]m[3] - v[1]m[2]²    + v[2]m[1]m[2])y
+
+       + ( v[0]m[2]m[3] + v[1]m[3]²    - v[2]m[0]m[3])y
+       + ( v[0]m[0]m[2] + v[1]m[0]m[3] - v[2]m[0]²   )z
+       - ( v[0]m[1]m[2] + v[1]m[1]m[3] - v[2]m[0]m[1])xyz
+       - ( v[0]m[2]²    + v[1]m[2]m[3] - v[2]m[0]m[2])x
+
+       + (-v[0]m[1]m[3] + v[1]m[0]m[3] + v[2]m[3]²   )z
+       - (-v[0]m[0]m[1] + v[1]m[0]²    + v[2]m[0]m[3])y
+       + (-v[0]m[1]²    + v[1]m[0]m[1] + v[2]m[1]m[3])x
+       - (-v[0]m[1]m[2] + v[1]m[0]m[2] + v[2]m[2]m[3])xyz
+
+       + ( v[0]m[0]m[3] + v[1]m[1]m[3] + v[2]m[2]m[3])xyz
+       + ( v[0]m[0]²    + v[1]m[0]m[1] + v[2]m[0]m[2])x
+       + ( v[0]m[0]m[1] + v[1]m[1]²    + v[2]m[1]m[2])y
+       + ( v[0]m[0]m[2] + v[1]m[1]m[2] + v[2]m[2]²   )z
+
+     =   (   ( v[0]m[3]²    - v[1]m[2]m[3] + v[2]m[1]m[3])
+           - ( v[0]m[2]²    + v[1]m[2]m[3] - v[2]m[0]m[2])
+           + (-v[0]m[1]²    + v[1]m[0]m[1] + v[2]m[1]m[3])
+           + ( v[0]m[0]²    + v[1]m[0]m[1] + v[2]m[0]m[2]) )x
+
+       + ( + ( v[0]m[2]m[3] - v[1]m[2]²    + v[2]m[1]m[2])
+           + ( v[0]m[2]m[3] + v[1]m[3]²    - v[2]m[0]m[3])
+           - (-v[0]m[0]m[1] + v[1]m[0]²    + v[2]m[0]m[3])
+           + ( v[0]m[0]m[1] + v[1]m[1]²    + v[2]m[1]m[2]) ) y
+
+       + ( - ( v[0]m[1]m[3] - v[1]m[1]m[2] + v[2]m[1]²   )
+           + ( v[0]m[0]m[2] + v[1]m[0]m[3] - v[2]m[0]²   )
+           + (-v[0]m[1]m[3] + v[1]m[0]m[3] + v[2]m[3]²   )
+           + ( v[0]m[0]m[2] + v[1]m[1]m[2] + v[2]m[2]²   ) )z
+
+       + ( - ( v[0]m[0]m[3] - v[1]m[0]m[2] + v[2]m[0]m[1])
+           - ( v[0]m[1]m[2] + v[1]m[1]m[3] - v[2]m[0]m[1])
+           - (-v[0]m[1]m[2] + v[1]m[0]m[2] + v[2]m[2]m[3])
+           + ( v[0]m[0]m[3] + v[1]m[1]m[3] + v[2]m[2]m[3]) )xyz
+
+     =   (   v[0]m[3]²    - v[1]m[2]m[3] + v[2]m[1]m[3]
+           - v[0]m[2]²    - v[1]m[2]m[3] + v[2]m[0]m[2]
+           - v[0]m[1]²    + v[1]m[0]m[1] + v[2]m[1]m[3]
+           + v[0]m[0]²    + v[1]m[0]m[1] + v[2]m[0]m[2] )x
+
+       + ( + v[0]m[2]m[3] - v[1]m[2]²    + v[2]m[1]m[2]
+           + v[0]m[2]m[3] + v[1]m[3]²    - v[2]m[0]m[3]
+           + v[0]m[0]m[1] - v[1]m[0]²    - v[2]m[0]m[3]
+           + v[0]m[0]m[1] + v[1]m[1]²    + v[2]m[1]m[2] )y
+
+       + ( - v[0]m[1]m[3] + v[1]m[1]m[2] - v[2]m[1]²
+           + v[0]m[0]m[2] + v[1]m[0]m[3] - v[2]m[0]²
+           - v[0]m[1]m[3] + v[1]m[0]m[3] + v[2]m[3]²
+           + v[0]m[0]m[2] + v[1]m[1]m[2] + v[2]m[2]²    )z
+
+       + ( - v[0]m[0]m[3] + v[1]m[0]m[2] - v[2]m[0]m[1]
+           - v[0]m[1]m[2] - v[1]m[1]m[3] + v[2]m[0]m[1]
+           + v[0]m[1]m[2] - v[1]m[0]m[2] - v[2]m[2]m[3]
+           + v[0]m[0]m[3] + v[1]m[1]m[3] + v[2]m[2]m[3] )xyz
+
+     =   (   v[0]m[3]² - v[0]m[2]² - v[0]m[1]² + v[0]m[0]²
+           + 2v[1]m[0]m[1] - 2v[1]m[2]m[3]
+           + 2v[2]m[0]m[2] + 2v[2]m[1]m[3]                 )x
+
+       + ( - v[1]m[2]² + v[1]m[3]² - v[1]m[0]² + v[1]m[1]²
+           + 2v[0]m[0]m[1] + 2v[0]m[2]m[3]
+           + 2v[2]m[1]m[2] - 2v[2]m[0]m[3]                 )y
+
+       + ( - v[2]m[1]² - v[2]m[0]² + v[2]m[3]² + v[2]m[2]²
+           + 2v[0]m[0]m[2] - 2v[0]m[1]m[3]
+           + 2v[1]m[0]m[3] + 2v[1]m[1]m[2]                 )z
+
+       + 0xyz
+
+     =   (   v[0](m[3]² - m[2]² - m[1]² + m[0]²)
+           + 2v[1](m[0]m[1] - m[2]m[3])
+           + 2v[2](m[0]m[2] + m[1]m[3])           )x
+
+       + (   v[1](-m[2]² + m[3]² - m[0]² + m[1]²)
+           + 2v[0](m[0]m[1] + m[2]m[3])
+           + 2v[2](m[1]m[2] - m[0]m[3])           )y
+
+       + (   v[2](-m[1]² - m[0]² + m[3]² + m[2]²)
+           + 2v[0](m[0]m[2] - m[1]m[3])
+           + 2v[1](m[0]m[3] + m[1]m[2])           )z
+
+Whew, I'm not sure I would have attempted that manually if I knew it was going to be that big, but
+brought to you by the power of the sunk cost fallacy, we have a formula for rotating a vector by a
+rotor. Now we can use it to to rotate our orthogonal basis vectors to find the columns of a
+transformation matrix.
+
+x = 1x + 0y + 0z, so  x[0] = 1, x[1] = 0, x[2] = 0
+Similarly,            y[0] = 0, y[1] = 1, y[2] = 0
+and                   z[0] = 0, z[1] = 0, z[2] = 1
+
+Then
+~mxm =   (   (m[3]² - m[2]² - m[1]² + m[0]²)
+           + 0
+           + 0                                )x
+
+       + (   0
+           + 2(m[0]m[1] + m[2]m[3])
+           + 0                                )y
+
+       + (   0
+           + 2(m[0]m[2] - m[1]m[3])
+           + 0                                )z
+     = (m[3]² - m[2]² - m[1]² + m[0]²)x + 2(m[0]m[1] + m[2]m[3])y + 2(m[0]m[2] - m[1]m[3])z
+
+~mym =   (   0
+           + 2(m[0]m[1] - m[2]m[3])
+           + 0                                )x
+
+       + (   (-m[2]² + m[3]² - m[0]² + m[1]²)
+           + 0
+           + 0                                )y
+
+       + (   0
+           + 0
+           + 2(m[0]m[3] + m[1]m[2])           )z
+     = 2(m[0]m[1] - m[2]m[3])x + (-m[2]² + m[3]² - m[0]² + m[1]²)y + 2(m[0]m[3] + m[1]m[2])z
+
+~mzm =   (   0
+           + 0
+           + 2(m[0]m[2] + m[1]m[3])           )x
+
+       + (   0
+           + 0
+           + 2(m[1]m[2] - m[0]m[3])           )y
+
+       + (   (-m[1]² - m[0]² + m[3]² + m[2]²)
+           + 0
+           + 0                                    )z
+     = 2(m[0]m[2] + m[1]m[3])x + 2(m[1]m[2] - m[0]m[3]) + (-m[1]² - m[0]² + m[3]² + m[2]²)z
+
+So the 3x3 matrix for a given rotor m is
+
+(m[3]² - m[2]² - m[1]² + m[0]²)            2(m[0]m[1] - m[2]m[3])            2(m[0]m[2] + m[1]m[3])
+         2(m[0]m[1] + m[2]m[3])  (-m[2]² + m[3]² - m[0]² + m[1]²)            2(m[1]m[2] - m[0]m[3])
+         2(m[0]m[2] - m[1]m[3])            2(m[0]m[3] + m[1]m[2])  (-m[1]² - m[0]² + m[3]² + m[2]²)
+
+Okay, but how do we actually generate rotors to perform the rotations we want? The simplest way is
+to compute the dot product and cross product of two vectors. The resulting rotation will be in the
+plane those vectors occupy and twice the angle between them. The direction will be in the same
+direction as the first vector towards the second.
+
+But in 3D angle-axis is really the most convenient way for humans to think about rotations in my
+opinion. So given some angle θ and some unit vector v, what is the rotor m that will perform that
+a rotation of θ radians around the axis v? 
+
+We know that m = ab for some a,b ∈ V. If m is to rotate by θ radians, then then angle between a and
+b must be θ/2.
+
+For now I will introduce two statements without justifying them. For every u,v ∈ V, let A be the
+angle between u and v. Then
+1. u.v = |u||v|cosA
+2. |u^v| = |u||v|sinA
+
+Because our reflection logic ealier assumed unit vectors, we want our rotation rotors to be composed
+of unit vectors. Therefore, 1 = |a| = |b|. Then a.b = |a||b|cos(θ/2) = cos(θ/2). We also know that
+|a^b| = sin(θ/2). But that's just the magnitude of the bivector. How do we find the individual
+components?
+
+We can take advantage of the fact that in 3D, the outer product is identical to the cross product.
+This means that although we think of u^v as a bivector in geometric algebra, we can simply
+reinterpret it component-for-component as a vector. That vector will be normal to the plane occupied
+by u and v. Or going the other way around, we can reinterpret our axis vector v as a bivector know
+that it represents our desired plane of rotation.
+
+So v as a bivector represents the correct plane, but probably the incorrect magnitude, given that it
+is a unit vector with a magnitude of 1. What we want is a manitude of sin(θ/2). That's easy enough.
+To get a bivector representing the same plane as v but with a magnitude of sinθ, we just need to
+scale v by sinθ.
+
+Therefore, m = ab = a.b + a^b = cos(θ/2) + sin(θ/2)v
+Componentwise, m[3] = cos(θ/2), m[0] = sin(θ/2)v[0], m[1] = sin(θ/2)v[1], m[2] = sin(θ/2)v[2]
+
+Okay, now we want some way to recover a rotor from a matrix. In other words, we want the inverse of
+the convert to matrix function. The reason being that we could be receiving data from sources that
+use a variety of coordinate systems and local transformation schemes, like euler angles
+(disgusting!). The easiest way to deal with this variety is to collapse the local transformation
+into a single matrix M and apply our coordinate system converion matrix C in this pattern: CMC^-1.
+However, the result of the is a matrix, so we'll need to decompose that matrix into separate
+translation, rotation, and scale data.
+
+Once again, here's the 3x3 matrix for some rotor r:
+(r[3]² - r[2]² - r[1]² + r[0]²)            2(r[0]r[1] - r[2]r[3])            2(r[0]r[2] + r[1]r[3])
+         2(r[0]r[1] + r[2]r[3])  (-r[2]² + r[3]² - r[0]² + r[1]²)            2(r[1]r[2] - r[0]r[3])
+         2(r[0]r[2] - r[1]r[3])            2(r[0]r[3] + r[1]r[2])  (-r[1]² - r[0]² + r[3]² + r[2]²)
+
+Let m[i][j] refer to the value in the ith row and jth column. We want to find r[n] for every
+n ∈ {0, 1, 2, 3} in terms of those matrix values.
+
+We can assume what we have is a pure rotation matrix because local transformation is always just
+translation, rotation, and scaling, and we'll strip the matrix of translation and scale first.
+
+Therefore, we can assume that the resulting rotor will be a unit rotor. In other words
+1 = r[0]² + r[1]² + r[2]² + r[3]².
+
+1 + m[0][0] + m[1][1] + m[2][2]
+    =   r[0]² + r[1]² + r[2]² + r[3]²
+      + r[3]² - r[2]² - r[1]² + r[0]²
+      - r[2]² + r[3]² - r[0]² + r[1]²
+      - r[1]² - r[0]² + r[3]² + r[2]²
+    = 4r[3]²
+
+So r[3]² = (1 + m[0][0] + m[1][1] + m[2][2])/4
+Which implies either
+r[3] = sqrt((1 + m[0][0] + m[1][1] + m[2][2])/4)
+or
+r[3] = -sqrt((1 + m[0][0] + m[1][1] + m[2][2])/4)
+
+Sorry for not proving this, but I asked an AI and it said the positive and negative options result
+in equivalent rotations because of the double cover, so we can just choose one. That sounds
+plausible enough so I won't worry about the proof right now. Let's go with the positive one.
+
+r[3] = sqrt((1 + m[0][0] + m[1][1] + m[2][2])/4)
+     = sqrt(1 + m[0][0] + m[1][1] + m[2][2])sqrt(1/4)
+     = sqrt(1 + m[0][0] + m[1][1] + m[2][2])/2
+
+We can use the non-diagonal cells to get pairs of rotor components multiplied together. Now that we
+have r[3] we'll be able to divide r[3] out from these pairs later to get the other coordinates.
+
+m[1][0] + m[0][1]
+    = 2(r[0]r[1] + r[2]r[3]) + 2(r[0]r[1] - r[2]r[3])
+    = 2(r[0]r[1] + r[2]r[3] + r[0]r[1] - r[2]r[3])
+    = 2(r[0]r[1] + r[0]r[1]) = 2(2r[0]r[1]) = 4r[0]r[1]
+
+m[2][0] + m[0][2]
+    = 2(r[0]r[2] - r[1]r[3]) + 2(r[0]r[2] + r[1]r[3])
+    = 2(r[0]r[2] - r[1]r[3] + r[0]r[2] + r[1]r[3])
+    = 2(r[0]r[2] + r[0]r[2]) = 2(2r[0]r[2]) = 4r[0]r[2]
+
+m[2][1] + m[1][2]
+    = 2(r[0]r[3] + r[1]r[2]) + 2(r[1]r[2] - r[0]r[3])
+    = 2(r[0]r[3] + r[1]r[2] + r[1]r[2] - r[0]r[3])
+    = 2(r[1]r[2] + r[1]r[2]) = 2(2r[1]r[2]) = 4r[1]r[2]
+
+m[1][0] - m[0][1]
+    = 2(r[0]r[1] + r[2]r[3]) - 2(r[0]r[1] - r[2]r[3])
+    = 2(r[0]r[1] + r[2]r[3] - r[0]r[1] + r[2]r[3])
+    = 2(r[2]r[3] + r[2]r[3]) = 2(2r[2]r[3]) = 4r[2]r[3]
+
+m[0][2] - m[2][0]
+    = 2(r[0]r[2] + r[1]r[3]) - 2(r[0]r[2] - r[1]r[3])
+    = 2(r[0]r[2] + r[1]r[3] - r[0]r[2] + r[1]r[3])
+    = 2(r[1]r[3] + r[1]r[3]) = 2(2r[1]r[3]) = 4r[1]r[3]
+
+m[2][1] - m[1][2]
+    = 2(r[0]r[3] + r[1]r[2]) - 2(r[1]r[2] - r[0]r[3])
+    = 2(r[0]r[3] + r[1]r[2] - r[1]r[2] + r[0]r[3])
+    = 2(r[0]r[3] + r[0]r[3]) = 2(2r[0]r[3]) = 4r[0]r[3]
+
+Now we just need to divide each of these values by 4r[3] = 2sqrt(1 + m[0][0] + m[1][1] + m[2][2])
+
+r[0] = (4r[0]r[3])/(4r[3]) = (m[2][1] - m[1][2])/(2sqrt(1 + m[0][0] + m[1][1] + m[2][2]))
+r[1] = (4r[1]r[3])/(4r[3]) = (m[0][2] - m[2][0])/(2sqrt(1 + m[0][0] + m[1][1] + m[2][2]))
+r[2] = (4r[2]r[3])/(4r[3]) = (m[1][0] - m[0][1])/(2sqrt(1 + m[0][0] + m[1][1] + m[2][2]))
+
+Altogether we have
+r[0] = (m[2][1] - m[1][2])/(2sqrt(1 + m[0][0] + m[1][1] + m[2][2]))
+r[1] = (m[0][2] - m[2][0])/(2sqrt(1 + m[0][0] + m[1][1] + m[2][2]))
+r[2] = (m[1][0] - m[0][1])/(2sqrt(1 + m[0][0] + m[1][1] + m[2][2]))
+r[3] = sqrt(1 + m[0][0] + m[1][1] + m[2][2])/2
+
+However, there's a fatal flaw with this approach: r[3] might well be zero, which gives us a divide
+by zero error. But we can use a similar approach starting with any of the rotor components. The
+non-diagonal matrix cells give us pairs of coordinates multiplied together. The diagonal plus the
+unit rotor equation can give us any single coordinate which we can use to recover the others from
+the pairs. The most stable approach is to compute all of them from the diagonal and choose the
+largest one as our starting coordinate. This is similar to Shepperd's method.
+
+1 + m[0][0] - m[1][1] - m[2][2]
+    =   r[0]² + r[1]² + r[2]² + r[3]²
+      + r[3]² - r[2]² - r[1]² + r[0]²
+      + r[2]² - r[3]² + r[0]² - r[1]²
+      + r[1]² + r[0]² - r[3]² - r[2]²
+    = 4r[0]²
+So r[0] = sqrt(1 + m[0][0] - m[1][1] - m[2][2])/2
+r[1] = (4r[0]r[1])/(4r[0]) = (m[1][0] + m[0][1])/(2sqrt(1 + m[0][0] - m[1][1] - m[2][2]))
+r[2] = (4r[0]r[2])/(4r[0]) = (m[2][0] + m[0][2])/(2sqrt(1 + m[0][0] - m[1][1] - m[2][2]))
+r[3] = (4r[0]r[3])/(4r[0]) = (m[2][1] - m[1][2])/(2sqrt(1 + m[0][0] - m[1][1] - m[2][2]))
+
+1 - m[0][0] + m[1][1] - m[2][2]
+    =   r[0]² + r[1]² + r[2]² + r[3]²
+      - r[3]² + r[2]² + r[1]² - r[0]²
+      - r[2]² + r[3]² - r[0]² + r[1]²
+      + r[1]² + r[0]² - r[3]² - r[2]²
+    = 4r[1]²
+So r[1] = sqrt(1 - m[0][0] + m[1][1] - m[2][2])/2
+r[0] = (4r[0]r[1])/(4r[1]) = (m[1][0] + m[0][1])/(2sqrt(1 - m[0][0] + m[1][1] - m[2][2]))
+r[2] = (4r[1]r[2])/(4r[1]) = (m[2][1] + m[1][2])/(2sqrt(1 - m[0][0] + m[1][1] - m[2][2]))
+r[3] = (4r[1]r[3])/(4r[1]) = (m[0][2] - m[2][0])/(2sqrt(1 - m[0][0] + m[1][1] - m[2][2]))
+
+1 - m[0][0] - m[1][1] + m[2][2]
+    =   r[0]² + r[1]² + r[2]² + r[3]²
+      - r[3]² + r[2]² + r[1]² - r[0]²
+      + r[2]² - r[3]² + r[0]² - r[1]²
+      - r[1]² - r[0]² + r[3]² + r[2]²
+    = 4r[2]²
+So r[2] = sqrt(1 - m[0][0] - m[1][1] + m[2][2])/2
+r[0] = (4r[0]r[2])/(4r[2]) = (m[2][0] + m[0][2])/(2sqrt(1 - m[0][0] - m[1][1] + m[2][2]))
+r[1] = (4r[1]r[2])/(4r[2]) = (m[2][1] + m[1][2])/(2sqrt(1 - m[0][0] - m[1][1] + m[2][2]))
+r[3] = (4r[2]r[3])/(4r[2]) = (m[1][0] - m[0][1])/(2sqrt(1 - m[0][0] - m[1][1] + m[2][2]))
+
+Whew, there we have it. Four different alternatives depending on which value recovered from the
+diagonal is the largest. That should be everything we need to implement a quaternion to matrix
+conversion function.
