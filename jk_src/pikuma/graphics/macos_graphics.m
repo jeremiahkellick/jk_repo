@@ -126,6 +126,7 @@ int main(void)
     g.state.next_buffer = (PixelIndex *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
     g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
 
+    g.state.print = jk_print;
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
 
     g.running = 1;

@@ -14,9 +14,17 @@ static JkColor fgs[] = {
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-static JkVec3 camera_pos = {0.0f, -3.0, 0.2};
+static JkVec3 camera_pos = {0.0f, -8.0, 0};
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
+
+static JkMat4 object_matrix(Object *o)
+{
+    JkMat4 result = jk_mat4_scale(o->transform.scale);
+    result = jk_mat4_mul(jk_quat_to_mat4(o->transform.rotation), result);
+    result = jk_mat4_mul(jk_mat4_translate(o->transform.translation), result);
+    return result;
+}
 
 static Pixel pixel_get(State *state, PixelIndex index)
 {
@@ -368,15 +376,9 @@ void render(Assets *assets, State *state)
                 JK_SIZEOF(PixelIndex) * state->dimensions.x + 1);
     }
 
-    int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
-    float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
-    JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
-
-    JkMat4 world_matrix =
-            jk_mat4_conversion_from((JkCoordinateSystem){JK_LEFT, JK_BACKWARD, JK_UP});
-    world_matrix = jk_mat4_mul(jk_mat4_rotate_x(JK_PI / 7), world_matrix);
-    world_matrix = jk_mat4_mul(jk_mat4_rotate_z(angle), world_matrix);
-    world_matrix = jk_mat4_mul(jk_mat4_translate((JkVec3){0, 0, -0.05}), world_matrix);
+    // int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
+    // float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
+    // JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
 
     JkMat4 ndc_matrix = jk_mat4_translate(jk_vec3_mul(-1, camera_pos));
     ndc_matrix = jk_mat4_mul(
@@ -388,26 +390,36 @@ void render(Assets *assets, State *state)
             jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
             pixel_matrix);
 
-    JkVec3 *world_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*world_vertices));
-    for (int64_t i = 0; i < vertices.count; i++) {
-        world_vertices[i] = jk_mat4_mul_point(world_matrix, vertices.items[i]);
-    }
-
-    JkVec3 *screen_vertices = jk_arena_push(&arena, vertices.count * JK_SIZEOF(*screen_vertices));
-    for (int64_t i = 0; i < vertices.count; i++) {
-        JkVec4 vec4 = jk_mat4_mul_vec4(ndc_matrix, jk_vec3_to_4(world_vertices[i], 1));
-        screen_vertices[i] = jk_mat4_mul_point(pixel_matrix, jk_vec4_perspective_divide(vec4));
-    }
-
     for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
         Object *object = objects.items + object_id.i;
+        JkArena object_arena = jk_arena_child_get(&arena);
+
+        JkMat4 world_matrix = jk_mat4_i;
+        for (ObjectId parent_id = object_id; parent_id.i;
+                parent_id = objects.items[parent_id.i].parent) {
+            Object *parent = objects.items + parent_id.i;
+            world_matrix = jk_mat4_mul(object_matrix(parent), world_matrix);
+        }
+
+        JkVec3 *world_vertices =
+                jk_arena_push(&object_arena, vertices.count * JK_SIZEOF(*world_vertices));
+        for (int64_t i = 0; i < vertices.count; i++) {
+            world_vertices[i] = jk_mat4_mul_point(world_matrix, vertices.items[i]);
+        }
+
+        JkVec3 *screen_vertices =
+                jk_arena_push(&object_arena, vertices.count * JK_SIZEOF(*screen_vertices));
+        for (int64_t i = 0; i < vertices.count; i++) {
+            JkVec4 vec4 = jk_mat4_mul_vec4(ndc_matrix, jk_vec3_to_4(world_vertices[i], 1));
+            screen_vertices[i] = jk_mat4_mul_point(pixel_matrix, jk_vec4_perspective_divide(vec4));
+        }
 
         FaceArray faces;
         JK_ARRAY_FROM_SPAN(faces, assets, object->faces);
         Bitmap texture = bitmap_from_span(assets, object->texture);
 
         JkInt64Array face_ids;
-        JK_ARENA_PUSH_ARRAY(&arena, face_ids, faces.count);
+        JK_ARENA_PUSH_ARRAY(&object_arena, face_ids, faces.count);
         for (int64_t i = 0; i < face_ids.count; i++) {
             face_ids.items[i] = i;
         }
@@ -431,7 +443,7 @@ void render(Assets *assets, State *state)
                     tri.v[i] = screen_vertices[face.v[i]];
                     tri.t[i] = jk_vec2_mul(tri.v[i].z, texcoords.items[face.t[i]]);
                 }
-                triangle_fill(&arena, state, tri);
+                triangle_fill(&object_arena, state, tri);
             }
         }
     }

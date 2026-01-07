@@ -503,6 +503,18 @@ JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places)
         .type = JK_FORMAT_ITEM_FLOAT, .float_value = float_value, .param = decimal_places};
 }
 
+// Include a JkVec3 value in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfv(JkVec3 v)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC3, .vec3_value = v};
+}
+
+// Include a JkVec4 value in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfv4(JkVec4 v)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC4, .vec4_value = v};
+}
+
 // JK_FORMAT argument representing a newline
 JK_PUBLIC JkFormatItem jkf_nl = {.type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
 
@@ -540,6 +552,30 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
 
         case JK_FORMAT_ITEM_FLOAT: {
             jk_f64_to_string(arena, item->float_value, item->param);
+        } break;
+
+        case JK_FORMAT_ITEM_VEC3: {
+            JK_FORMAT(arena,
+                    jkfn("("),
+                    jkff(item->vec3_value.x, 6),
+                    jkfn(", "),
+                    jkff(item->vec3_value.y, 6),
+                    jkfn(", "),
+                    jkff(item->vec3_value.z, 6),
+                    jkfn(")"));
+        } break;
+
+        case JK_FORMAT_ITEM_VEC4: {
+            JK_FORMAT(arena,
+                    jkfn("("),
+                    jkff(item->vec4_value.x, 6),
+                    jkfn(", "),
+                    jkff(item->vec4_value.y, 6),
+                    jkfn(", "),
+                    jkff(item->vec4_value.z, 6),
+                    jkfn(", "),
+                    jkff(item->vec4_value.w, 6),
+                    jkfn(")"));
         } break;
 
         case JK_FORMAT_ITEM_TYPE_COUNT: {

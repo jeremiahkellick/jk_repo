@@ -12,24 +12,39 @@
 #include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
-JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/models.fbx");
+static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/cube.fbx");
+static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};
 
-typedef struct ThingId {
-    int64_t i;
-} ThingId;
+static JkMat4 conversion_matrix;
+static JkMat4 inv_conversion_matrix;
+
+typedef enum TransformType {
+    TRANSFORM_TRANSLATION,
+    TRANSFORM_ROTATION,
+    TRANSFORM_SCALE,
+    TRANSFORM_TYPE_COUNT,
+} TransformType;
+
+typedef struct Thing Thing;
+
+typedef struct Link {
+    struct Link *next;
+    Thing *thing;
+} Link;
 
 typedef enum ThingFlag {
     THING_FLAG_HAS_PARENT,
     THING_FLAG_MODEL,
+    THING_FLAG_SCALE,
 } ThingFlag;
 
-typedef struct Thing {
+struct Thing {
     uint64_t flags;
 
-    ThingId kid;
-    ThingId bro;
+    Link *first_child;
 
-    JkTransform transform;
+    JkVec3 transform[TRANSFORM_TYPE_COUNT];
+
     JkSpan faces;
     BitmapSpan image;
 
@@ -37,51 +52,47 @@ typedef struct Thing {
     JkInt32Array vertex_indexes;
     int64_t texcoords_base;
     JkInt32Array texcoord_indexes;
-} Thing;
+};
 
-#define MAX_THINGS 100000
+#define ARBITRARY_CAP 100000
 
-static Thing things[MAX_THINGS];
-static int64_t thing_count = 1;
+static Link links[ARBITRARY_CAP];
+static int64_t link_count = 0;
+static Thing things[ARBITRARY_CAP];
+static int64_t thing_count = 0;
 static JkHashTable *fbx_id_map;
 static JkHashTable *bitmap_map;
 
-static ThingId thing_new(int64_t fbx_id)
+static Thing *thing_new(int64_t fbx_id)
 {
-    JK_DEBUG_ASSERT(thing_count < MAX_THINGS);
-    ThingId result = {thing_count++};
-    jk_hash_table_put(fbx_id_map, fbx_id, result.i);
+    JK_DEBUG_ASSERT(thing_count < ARBITRARY_CAP);
+    Thing *result = things + (thing_count++);
+    jk_hash_table_put(fbx_id_map, fbx_id, (int64_t)result);
     return result;
 }
 
-static ThingId thing_by_fbx_id(int64_t fbx_id)
+static Thing *thing_by_fbx_id(int64_t fbx_id)
 {
-    ThingId result = {0};
-    JkHashTableValue *id = jk_hash_table_get(fbx_id_map, fbx_id);
-    if (id) {
-        result.i = *id;
+    Thing *result = 0;
+    JkHashTableValue *value = jk_hash_table_get(fbx_id_map, fbx_id);
+    if (value) {
+        result = (Thing *)*value;
     }
     return result;
 }
 
-static Thing *thing_get(ThingId id)
+void thing_connect(int64_t child_fbx_id, int64_t parent_fbx_id)
 {
-    JK_DEBUG_ASSERT(0 <= id.i && id.i < thing_count);
-    return things + id.i;
-}
+    Thing *child = thing_by_fbx_id(child_fbx_id);
+    Thing *parent = thing_by_fbx_id(parent_fbx_id);
 
-void thing_connect(int64_t kid_fbx_id, int64_t parent_fbx_id)
-{
-    ThingId kid_id = thing_by_fbx_id(kid_fbx_id);
-    ThingId parent_id = thing_by_fbx_id(parent_fbx_id);
-
-    if (kid_id.i && parent_id.i) {
-        Thing *kid = thing_get(kid_id);
-        Thing *parent = thing_get(parent_id);
-
-        kid->bro = parent->kid;
-        parent->kid = kid_id;
-        JK_FLAG_SET(kid->flags, THING_FLAG_HAS_PARENT, 1);
+    if (child && parent) {
+        JK_DEBUG_ASSERT(link_count < ARBITRARY_CAP);
+        Link *link = links + (link_count++);
+        link->next = parent->first_child;
+        link->thing = child;
+        parent->first_child = link;
+        JK_FLAG_SET(child->flags, THING_FLAG_HAS_PARENT, 1);
     }
 }
 
@@ -177,6 +188,13 @@ typedef struct Context {
     JkArena *texcoords_arena;
     JkArena *scratch_arena;
 } Context;
+
+static JkBuffer fbx_prop_string_read(uint8_t *base, int64_t *cursor)
+{
+    JkFbxString *string = (JkFbxString *)(base + *cursor);
+    *cursor += JK_SIZEOF(string->length) + string->length;
+    return (JkBuffer){.size = string->length, .data = string->data};
+}
 
 static BitmapSpan error_bitmap(Context *c)
 {
@@ -310,7 +328,7 @@ static JkInt32Array read_ints(Context *c, JkFbxNode *node)
     return result;
 }
 
-static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId thing_id)
+static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thing)
 {
     while (0 < pos && pos < file.size) {
         JkFbxNode *node = (JkFbxNode *)(file.data + pos);
@@ -331,6 +349,8 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId th
                     vertices[vertex_index].v[coord_index] =
                             coords.items[vertex_index * 3 + coord_index];
                 }
+                vertices[vertex_index] =
+                        jk_mat4_mul_point(conversion_matrix, vertices[vertex_index]);
             }
         } else if (jk_buffer_compare(name, JKS("UV")) == 0) {
             JkDoubleArray coords = read_doubles(c, node);
@@ -344,8 +364,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId th
                 }
             }
         } else if (is_vertex_indexes || is_texcoord_indexes) {
-            if (thing_id.i) {
-                Thing *thing = thing_get(thing_id);
+            if (thing) {
                 JkInt32Array indexes = read_ints(c, node);
                 if (is_vertex_indexes) {
                     thing->vertex_indexes = indexes;
@@ -357,27 +376,26 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId th
             }
         } else if (jk_buffer_compare(name, JKS("C")) == 0) {
             b32 valid = 1;
-            int64_t kid_fbx_id = -1;
+            int64_t child_fbx_id = -1;
             int64_t parent_fbx_id = -1;
 
             int64_t cursor = node->name_length;
 
             valid = valid && 3 <= node->property_count && node->name[cursor++] == 'S';
             if (valid) {
-                JkFbxString *string = (JkFbxString *)(node->name + cursor);
-                cursor += JK_SIZEOF(string->length) + string->length;
+                fbx_prop_string_read(node->name, &cursor);
             }
 
             valid = valid && node->name[cursor++] == 'L';
             if (valid) {
-                kid_fbx_id = *(int64_t *)(node->name + cursor);
-                cursor += JK_SIZEOF(kid_fbx_id);
+                child_fbx_id = *(int64_t *)(node->name + cursor);
+                cursor += JK_SIZEOF(child_fbx_id);
             }
 
             valid = valid && node->name[cursor++] == 'L';
             if (valid) {
                 parent_fbx_id = *(int64_t *)(node->name + cursor);
-                thing_connect(kid_fbx_id, parent_fbx_id);
+                thing_connect(child_fbx_id, parent_fbx_id);
             } else {
                 fprintf(stderr, "process_fbx_nodes: Problem parsing connection\n");
             }
@@ -387,29 +405,68 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, ThingId th
                 JkFbxString *string = (JkFbxString *)(node->name + cursor);
                 JkBuffer image_file_name = {.size = string->length, .data = string->data};
 
-                if (thing_id.i) {
-                    Thing *thing = thing_get(thing_id);
+                if (thing) {
                     thing->image = bitmap_get(c, image_file_name);
                 }
             } else {
                 fprintf(stderr, "process_fbx_nodes: Problem parsing RelativeFilename\n");
             }
+        } else if (jk_buffer_compare(name, JKS("P")) == 0) {
+            b32 valid = 1;
+
+            TransformType type = 0;
+
+            int64_t cursor = node->name_length;
+            valid = valid && 7 <= node->property_count && node->name[cursor++] == 'S';
+            if (valid) {
+                JkBuffer string = fbx_prop_string_read(node->name, &cursor);
+                if (jk_buffer_compare(string, JKS("Lcl Translation")) == 0) {
+                    type = TRANSFORM_TRANSLATION;
+                } else if (jk_buffer_compare(string, JKS("Lcl Rotation")) == 0) {
+                    type = TRANSFORM_ROTATION;
+                } else if (jk_buffer_compare(string, JKS("Lcl Scaling")) == 0) {
+                    type = TRANSFORM_SCALE;
+                } else {
+                    valid = 0;
+                }
+            }
+
+            // Skip type label and flags properties
+            for (int64_t i = 0; i < 3 && valid; i++) {
+                valid = valid && node->name[cursor++] == 'S';
+                fbx_prop_string_read(node->name, &cursor);
+            }
+
+            if (valid && thing) {
+                for (int64_t i = 0; i < 3 && valid; i++) {
+                    valid = valid && node->name[cursor++] == 'D';
+                    if (valid) {
+                        thing->transform[type].v[i] = *(double *)(node->name + cursor);
+                        cursor += sizeof(double);
+                    }
+                }
+
+                if (valid && type == TRANSFORM_SCALE) {
+                    JK_FLAG_SET(thing->flags, THING_FLAG_SCALE, 1);
+                }
+            }
         } else if (jk_buffer_compare(name, JKS("Connections")) == 0
                 || jk_buffer_compare(name, JKS("LayerElementUV")) == 0
                 || jk_buffer_compare(name, JKS("Objects")) == 0) {
-            process_fbx_nodes(c, file, pos_children, thing_id);
+            process_fbx_nodes(c, file, pos_children, thing);
+        } else if (jk_buffer_compare(name, JKS("Properties70")) == 0) {
+            process_fbx_nodes(c, file, pos_children, thing);
         } else if (jk_buffer_compare(name, JKS("Geometry")) == 0
                 || jk_buffer_compare(name, JKS("Material")) == 0 || is_model
                 || jk_buffer_compare(name, JKS("Texture")) == 0) {
             uint8_t type = *(node->name + node->name_length);
             if (0 < node->property_count && type == 'L') {
                 int64_t fbx_id = *(int64_t *)(node->name + node->name_length + 1);
-                ThingId new_thing_id = thing_new(fbx_id);
-                Thing *thing = thing_get(new_thing_id);
+                Thing *thing = thing_new(fbx_id);
                 JK_FLAG_SET(thing->flags, THING_FLAG_MODEL, is_model);
                 thing->vertices_base = c->verts_arena->pos / JK_SIZEOF(JkVec3);
                 thing->texcoords_base = c->texcoords_arena->pos / JK_SIZEOF(JkVec2);
-                process_fbx_nodes(c, file, pos_children, new_thing_id);
+                process_fbx_nodes(c, file, pos_children, thing);
             } else {
                 fprintf(stderr, "read_doubles: For object ID, expected type 'L', got '%c'\n", type);
             }
@@ -430,16 +487,53 @@ static Object *object_get(JkArena *objects_arena, ObjectId id)
     return (Object *)(objects_arena->root->memory.data + objects_arena->base) + id.i;
 }
 
-static void process_thing(JkArena *objects_arena, ThingId thing_id, ObjectId object_id)
+static void process_thing(JkArena *objects_arena, Thing *thing, ObjectId object_id)
 {
-    if (!thing_id.i) {
+    if (!thing) {
         return;
     }
 
-    Thing *thing = thing_get(thing_id);
-
     if (JK_FLAG_GET(thing->flags, THING_FLAG_MODEL)) {
+        ObjectId parent = object_id;
         object_id = object_new(objects_arena);
+        Object *object = object_get(objects_arena, object_id);
+        object->parent = parent;
+
+        JkMat4 local_matrix = inv_conversion_matrix;
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_SCALE)) {
+            local_matrix =
+                    jk_mat4_mul(jk_mat4_scale(thing->transform[TRANSFORM_SCALE]), local_matrix);
+        }
+        local_matrix = jk_mat4_mul(
+                jk_mat4_rotate_x(thing->transform[TRANSFORM_ROTATION].x * (JK_PI / 180)),
+                local_matrix);
+        local_matrix = jk_mat4_mul(
+                jk_mat4_rotate_y(thing->transform[TRANSFORM_ROTATION].y * (JK_PI / 180)),
+                local_matrix);
+        local_matrix = jk_mat4_mul(
+                jk_mat4_rotate_z(thing->transform[TRANSFORM_ROTATION].z * (JK_PI / 180)),
+                local_matrix);
+        local_matrix = jk_mat4_mul(
+                jk_mat4_translate(thing->transform[TRANSFORM_TRANSLATION]), local_matrix);
+        local_matrix = jk_mat4_mul(conversion_matrix, local_matrix);
+
+        // Strip translation values from matrix
+        for (int64_t i = 0; i < 3; i++) {
+            object->transform.translation.v[i] = local_matrix.e[i][3];
+            local_matrix.e[i][3] = 0;
+        }
+
+        // Strip scale from matrix
+        for (int64_t j = 0; j < 3; j++) {
+            JkVec3 v = {local_matrix.e[0][j], local_matrix.e[1][j], local_matrix.e[2][j]};
+            float magnitude = jk_vec3_magnitude(v);
+            object->transform.scale.v[j] = magnitude;
+            for (int64_t i = 0; i < 3; i++) {
+                local_matrix.e[i][j] = v.v[i] / magnitude;
+            }
+        }
+
+        object->transform.rotation = jk_mat4_to_quat(local_matrix);
     }
 
     if (object_id.i) {
@@ -452,8 +546,8 @@ static void process_thing(JkArena *objects_arena, ThingId thing_id, ObjectId obj
         }
     }
 
-    for (ThingId kid = thing->kid; kid.i; kid = thing_get(kid)->bro) {
-        process_thing(objects_arena, kid, object_id);
+    for (Link *child = thing->first_child; child; child = child->next) {
+        process_thing(objects_arena, child->thing, object_id);
     }
 }
 
@@ -480,6 +574,9 @@ int main(int argc, char **argv)
 {
     jk_print = jk_platform_print_stdout;
     jk_platform_set_working_directory_to_executable_directory();
+
+    conversion_matrix = jk_mat4_conversion_from(coordinate_system);
+    inv_conversion_matrix = jk_mat4_transpose(conversion_matrix);
 
     Context context;
     Context *c = &context;
@@ -517,14 +614,14 @@ int main(int argc, char **argv)
 
     Assets *assets = jk_arena_push(&result_arena, JK_SIZEOF(*assets));
 
-    process_fbx_nodes(c, file, header->first_node - file.data, (ThingId){0});
+    process_fbx_nodes(c, file, header->first_node - file.data, 0);
 
     assets->vertices = append_arena(&result_arena, c->verts_arena);
     assets->texcoords = append_arena(&result_arena, c->texcoords_arena);
 
     // Process faces
-    for (ThingId id = {1}; id.i < thing_count; id.i++) {
-        Thing *thing = thing_get(id);
+    for (int64_t i = 0; i < thing_count; i++) {
+        Thing *thing = things + i;
         int64_t faces_base = result_arena.pos;
         int64_t i = 0;
         while (i < thing->vertex_indexes.count) {
@@ -563,9 +660,10 @@ int main(int argc, char **argv)
 
     JkArena objects_arena = jk_arena_child_get(&result_arena);
     jk_arena_push(&objects_arena, JK_SIZEOF(Object)); // Push nil object
-    for (ThingId id = {1}; id.i < thing_count; id.i++) {
-        if (!JK_FLAG_GET(thing_get(id)->flags, THING_FLAG_HAS_PARENT)) {
-            process_thing(&objects_arena, id, (ObjectId){0});
+    for (int64_t i = 0; i < thing_count; i++) {
+        Thing *thing = things + i;
+        if (!JK_FLAG_GET(thing->flags, THING_FLAG_HAS_PARENT)) {
+            process_thing(&objects_arena, thing, (ObjectId){0});
         }
     }
 

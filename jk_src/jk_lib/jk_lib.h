@@ -25,6 +25,25 @@ typedef struct JkBuffer {
     uint8_t *data;
 } JkBuffer;
 
+typedef union JkVec3 {
+    float v[3];
+    struct {
+        float x;
+        float y;
+        float z;
+    };
+} JkVec3;
+
+typedef union JkVec4 {
+    float v[4];
+    struct {
+        float x;
+        float y;
+        float z;
+        float w;
+    };
+} JkVec4;
+
 typedef struct JkArenaRoot {
     JkBuffer memory;
 } JkArenaRoot;
@@ -135,6 +154,8 @@ typedef enum JkFormatItemType {
     JK_FORMAT_ITEM_HEX,
     JK_FORMAT_ITEM_BINARY,
     JK_FORMAT_ITEM_FLOAT,
+    JK_FORMAT_ITEM_VEC3,
+    JK_FORMAT_ITEM_VEC4,
 
     JK_FORMAT_ITEM_TYPE_COUNT,
 } JkFormatItemType;
@@ -147,6 +168,8 @@ typedef struct JkFormatItem {
         int64_t signed_value;
         uint64_t unsigned_value;
         double float_value;
+        JkVec3 vec3_value;
+        JkVec4 vec4_value;
     };
     int16_t param;
 } JkFormatItem;
@@ -171,6 +194,10 @@ JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width);
 JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width);
 
 JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places);
+
+JK_PUBLIC JkFormatItem jkfv(JkVec3 v);
+
+JK_PUBLIC JkFormatItem jkfv4(JkVec4 v);
 
 JK_PUBLIC JkFormatItem jkf_nl;
 
@@ -483,15 +510,6 @@ JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector
 
 // ---- JkVec3 begin -----------------------------------------------------------
 
-typedef union JkVec3 {
-    float v[3];
-    struct {
-        float x;
-        float y;
-        float z;
-    };
-} JkVec3;
-
 typedef struct JkVec3Array {
     int64_t count;
     JkVec3 *items;
@@ -531,16 +549,6 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
 // ---- JkVec4 begin -----------------------------------------------------------
 
-typedef union JkVec4 {
-    float v[4];
-    struct {
-        float x;
-        float y;
-        float z;
-        float w;
-    };
-} JkVec4;
-
 JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v);
 
 JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v);
@@ -566,6 +574,8 @@ typedef struct JkMat4 {
 } JkMat4;
 
 JK_PUBLIC JkMat4 jk_mat4_i;
+
+JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m);
 
 JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b);
 
@@ -631,8 +641,8 @@ JkVec4 jk_mat4_to_quat(JkMat4 m);
 // ---- JkTransform begin ------------------------------------------------------
 
 typedef struct JkTransform {
-    JkVec3 position;
-    JkVec3 rotation;
+    JkVec3 translation;
+    JkVec4 rotation;
     JkVec3 scale;
 } JkTransform;
 
