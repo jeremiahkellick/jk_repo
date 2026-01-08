@@ -630,6 +630,8 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 
 JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis);
 
+JkVec4 jk_quat_reverse(JkVec4 q);
+
 JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b);
 
 JkMat4 jk_quat_to_mat4(JkVec4 q);
@@ -645,6 +647,10 @@ typedef struct JkTransform {
     JkVec4 rotation;
     JkVec3 scale;
 } JkTransform;
+
+JK_PUBLIC JkMat4 jk_transform_to_mat4(JkTransform t);
+
+JK_PUBLIC JkMat4 jk_transform_to_mat4_inv(JkTransform t);
 
 // ---- JkTransform end --------------------------------------------------------
 

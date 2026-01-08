@@ -14,17 +14,12 @@ static JkColor fgs[] = {
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-static JkVec3 camera_pos = {0.0f, -8.0, 0};
+static JkVec3 camera_translation = {0, 8, 0};
+static float camera_rot_angle = JK_PI;
+static JkVec3 camera_rot_axis = {0, 0, 1};
+
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
-
-static JkMat4 object_matrix(Object *o)
-{
-    JkMat4 result = jk_mat4_scale(o->transform.scale);
-    result = jk_mat4_mul(jk_quat_to_mat4(o->transform.rotation), result);
-    result = jk_mat4_mul(jk_mat4_translate(o->transform.translation), result);
-    return result;
-}
 
 static Pixel pixel_get(State *state, PixelIndex index)
 {
@@ -380,7 +375,12 @@ void render(Assets *assets, State *state)
     // float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
     // JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
 
-    JkMat4 ndc_matrix = jk_mat4_translate(jk_vec3_mul(-1, camera_pos));
+    JkTransform camera_transform = {
+        .translation = camera_translation,
+        .rotation = jk_quat_angle_axis(camera_rot_angle, camera_rot_axis),
+        .scale = {1, 1, 1},
+    };
+    JkMat4 ndc_matrix = jk_transform_to_mat4_inv(camera_transform);
     ndc_matrix = jk_mat4_mul(
             jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), ndc_matrix);
     ndc_matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 2, 0.05f), ndc_matrix);
@@ -398,7 +398,7 @@ void render(Assets *assets, State *state)
         for (ObjectId parent_id = object_id; parent_id.i;
                 parent_id = objects.items[parent_id.i].parent) {
             Object *parent = objects.items + parent_id.i;
-            world_matrix = jk_mat4_mul(object_matrix(parent), world_matrix);
+            world_matrix = jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
         }
 
         JkVec3 *world_vertices =
