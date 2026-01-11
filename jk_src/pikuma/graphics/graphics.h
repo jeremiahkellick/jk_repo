@@ -82,8 +82,11 @@ typedef struct State {
 
     JkKeyboard keyboard;
     JkIntVec2 mouse_pos;
+    JkVec2 mouse_delta;
 
     uint64_t flags;
+    float camera_yaw;
+    float camera_pitch;
     int64_t pixel_count;
     JkIntVec2 dimensions;
     uint64_t os_time;

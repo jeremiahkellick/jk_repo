@@ -16,7 +16,6 @@ static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B,
 
 static JkVec3 camera_translation_init = {0, 8, 0};
 static float camera_rot_angle_init = JK_PI;
-static JkVec3 camera_rot_axis_init = {0, 0, 1};
 
 static JkTransform camera_transform;
 
@@ -366,9 +365,18 @@ void render(Assets *assets, State *state)
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
 
         camera_transform.translation = camera_translation_init;
-        camera_transform.rotation = jk_quat_angle_axis(camera_rot_angle_init, camera_rot_axis_init);
+        state->camera_yaw = camera_rot_angle_init;
         camera_transform.scale = (JkVec3){1, 1, 1};
     }
+
+    float mouse_sensitivity = 0.4 * DELTA_TIME;
+    state->camera_yaw += jk_remainder_f32(mouse_sensitivity * -state->mouse_delta.x, 2 * JK_PI);
+    state->camera_pitch = JK_CLAMP(
+            state->camera_pitch + mouse_sensitivity * -state->mouse_delta.y, -JK_PI / 2, JK_PI / 2);
+
+    JkVec4 yaw_quat = jk_quat_angle_axis(state->camera_yaw, (JkVec3){0, 0, 1});
+    camera_transform.rotation =
+            jk_quat_mul(yaw_quat, jk_quat_angle_axis(state->camera_pitch, (JkVec3){1, 0, 0}));
 
     JkVec3 camera_move = {0};
     if (jk_key_down(&state->keyboard, JK_KEY_W)) {
@@ -383,8 +391,8 @@ void render(Assets *assets, State *state)
     if (jk_key_down(&state->keyboard, JK_KEY_D)) {
         camera_move.x += 1;
     }
-    camera_move = jk_vec3_mul(5 * DELTA_TIME,
-            jk_vec3_normalized(jk_quat_rotate(camera_transform.rotation, camera_move)));
+    camera_move =
+            jk_vec3_mul(5 * DELTA_TIME, jk_vec3_normalized(jk_quat_rotate(yaw_quat, camera_move)));
 
     camera_transform.translation = jk_vec3_add(camera_transform.translation, camera_move);
 

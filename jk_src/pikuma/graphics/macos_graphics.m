@@ -50,12 +50,15 @@ typedef struct Global {
     State state;
 
     _Alignas(64) pthread_mutex_t keyboard_lock;
-
     _Alignas(64) JkKeyboard keyboard;
+
+    _Alignas(64) pthread_mutex_t mouse_lock;
+    _Alignas(64) JkVec2 mouse_delta;
 } Global;
 
 static Global g = {
     .keyboard_lock = PTHREAD_MUTEX_INITIALIZER,
+    .mouse_lock = PTHREAD_MUTEX_INITIALIZER,
 };
 
 // clang-format off
@@ -201,6 +204,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 - (BOOL)acceptsFirstResponder;
 - (void)keyDown:(NSEvent *)anEvent;
 - (void)keyUp:(NSEvent *)anEvent;
+- (void)mouseMoved:(NSEvent *)anEvent;
 @end
 
 @implementation MyNSWindow
@@ -215,6 +219,11 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 }
 
 - (BOOL)acceptsFirstResponder
+{
+    return YES;
+}
+
+- (BOOL)acceptsMouseMovedEvents
 {
     return YES;
 }
@@ -247,6 +256,14 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
             pthread_mutex_unlock(&g.keyboard_lock);
         }
     }
+}
+
+- (void)mouseMoved:(NSEvent *)anEvent
+{
+    pthread_mutex_lock(&g.mouse_lock);
+    g.mouse_delta.x += anEvent.deltaX;
+    g.mouse_delta.y += anEvent.deltaY;
+    pthread_mutex_unlock(&g.mouse_lock);
 }
 @end
 
@@ -349,6 +366,10 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         jk_keyboard_clear(&g.keyboard);
         pthread_mutex_unlock(&g.keyboard_lock);
 
+        pthread_mutex_lock(&g.mouse_lock);
+        g.mouse_delta = (JkVec2){0};
+        pthread_mutex_unlock(&g.mouse_lock);
+
         CVDisplayLinkRef display_link;
         CVDisplayLinkCreateWithActiveCGDisplays(&display_link);
         CVDisplayLinkSetOutputCallback(display_link, &display_link_callback, (__bridge void *)self);
@@ -379,6 +400,11 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     g.state.keyboard = g.keyboard;
     jk_keyboard_clear(&g.keyboard);
     pthread_mutex_unlock(&g.keyboard_lock);
+
+    pthread_mutex_lock(&g.mouse_lock);
+    g.state.mouse_delta = g.mouse_delta;
+    g.mouse_delta = (JkVec2){0};
+    pthread_mutex_unlock(&g.mouse_lock);
 
     render(g.assets, &g.state);
 
