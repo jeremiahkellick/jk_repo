@@ -1401,7 +1401,12 @@ JK_PUBLIC float jk_vec3_magnitude(JkVec3 v)
 
 JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v)
 {
-    return jk_vec3_mul(1.0f / jk_vec3_magnitude(v), v);
+    float mag_sqr = jk_vec3_magnitude_sqr(v);
+    if (mag_sqr) {
+        return jk_vec3_mul(1.0f / jk_sqrt_f32(mag_sqr), v);
+    } else {
+        return v;
+    }
 }
 
 JK_PUBLIC float jk_vec3_dot(JkVec3 u, JkVec3 v)
@@ -1715,6 +1720,25 @@ JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b)
     }};
 }
 
+JkVec3 jk_quat_rotate(JkVec4 q, JkVec3 v)
+{
+    float sqr[4];
+    for (int64_t i = 0; i < 4; i++) {
+        sqr[i] = q.v[i] * q.v[i];
+    }
+    return (JkVec3){
+        v.v[0] * (sqr[3] - sqr[2] - sqr[1] + sqr[0])
+                + 2 * v.v[1] * (q.v[0] * q.v[1] - q.v[2] * q.v[3])
+                + 2 * v.v[2] * (q.v[0] * q.v[2] + q.v[1] * q.v[3]),
+        v.v[1] * (-sqr[2] + sqr[3] - sqr[0] + sqr[1])
+                + 2 * v.v[0] * (q.v[0] * q.v[1] + q.v[2] * q.v[3])
+                + 2 * v.v[2] * (q.v[1] * q.v[2] - q.v[0] * q.v[3]),
+        v.v[2] * (-sqr[1] - sqr[0] + sqr[3] + sqr[2])
+                + 2 * v.v[0] * (q.v[0] * q.v[2] - q.v[1] * q.v[3])
+                + 2 * v.v[1] * (q.v[0] * q.v[3] + q.v[1] * q.v[2]),
+    };
+}
+
 JkMat4 jk_quat_to_mat4(JkVec4 q)
 {
     float sqr[4];
@@ -1909,6 +1933,35 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
 }
 
 // ---- Random generator end ---------------------------------------------------
+
+// ---- JkKeyboard begin -------------------------------------------------------
+
+JK_PUBLIC void jk_keyboard_clear(JkKeyboard *keyboard)
+{
+    jk_memset(&keyboard->pressed,
+            0,
+            JK_ARRAY_COUNT(keyboard->pressed) * sizeof(keyboard->pressed[0]));
+    jk_memset(&keyboard->released,
+            0,
+            JK_ARRAY_COUNT(keyboard->released) * sizeof(keyboard->released[0]));
+}
+
+JK_PUBLIC b32 jk_key_down(JkKeyboard *keyboard, JkKey key)
+{
+    return (keyboard->down[key / 8] >> (key % 8)) & 1;
+}
+
+JK_PUBLIC b32 jk_key_pressed(JkKeyboard *keyboard, JkKey key)
+{
+    return (keyboard->pressed[key / 8] >> (key % 8)) & 1;
+}
+
+JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key)
+{
+    return (keyboard->released[key / 8] >> (key % 8)) & 1;
+}
+
+// ---- JkKeyboard end ---------------------------------------------------------
 
 JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha)
 {

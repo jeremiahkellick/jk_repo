@@ -3,6 +3,9 @@
 
 #include <jk_src/jk_lib/jk_lib.h>
 
+#define FPS 60
+#define DELTA_TIME (1.0f / FPS)
+
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
 #define PIXEL_COUNT (2 * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH + 1)
 #define DRAW_BUFFER_SIZE (JK_SIZEOF(JkColor) * PIXEL_COUNT)
@@ -12,16 +15,6 @@
 #define CLEAR_COLOR_R 0x16
 #define CLEAR_COLOR_G 0x20
 #define CLEAR_COLOR_B 0x27
-
-typedef enum InputId {
-    INPUT_CONFIRM,
-    INPUT_RESET,
-} InputId;
-
-typedef struct Input {
-    uint64_t flags;
-    JkIntVec2 mouse_pos;
-} Input;
 
 typedef enum Flag {
     FLAG_INITIALIZED,
@@ -87,11 +80,13 @@ typedef struct State {
     int64_t os_timer_frequency;
     void (*print)(JkBuffer string);
 
+    JkKeyboard keyboard;
+    JkIntVec2 mouse_pos;
+
     uint64_t flags;
     int64_t pixel_count;
     JkIntVec2 dimensions;
     uint64_t os_time;
-    Input input;
 } State;
 
 typedef void RenderFunction(Assets *assets, State *state);

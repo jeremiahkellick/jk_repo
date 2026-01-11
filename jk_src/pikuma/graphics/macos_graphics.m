@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <sys/mman.h>
 
@@ -47,11 +48,36 @@ typedef struct Global {
     uint32_t buttons_down;
     Assets *assets;
     State state;
+
+    _Alignas(64) pthread_mutex_t keyboard_lock;
+
+    _Alignas(64) JkKeyboard keyboard;
 } Global;
 
-static Global g;
+static Global g = {
+    .keyboard_lock = PTHREAD_MUTEX_INITIALIZER,
+};
 
 // clang-format off
+JkKey key_map[] = {
+    0x04, 0x16, 0x07, 0x09, 0x0b, 0x0a, 0x1d, 0x1b,
+    0x06, 0x19, 0x64, 0x05, 0x14, 0x1a, 0x08, 0x15,
+    0x1c, 0x17, 0x1e, 0x1f, 0x20, 0x21, 0x23, 0x22,
+    0x2e, 0x26, 0x24, 0x2d, 0x25, 0x27, 0x30, 0x12,
+    0x18, 0x2f, 0x0c, 0x13, 0x28, 0x0f, 0x0d, 0x34,
+    0x0e, 0x33, 0x31, 0x36, 0x38, 0x11, 0x10, 0x37,
+    0x2b, 0x2c, 0x35, 0x2a, 0x00, 0x29, 0xe7, 0xe3,
+    0xe1, 0x39, 0xe2, 0xe0, 0xe5, 0xe6, 0xe4, 0x00,
+    0x6c, 0x63, 0x00, 0x55, 0x00, 0x57, 0x00, 0x53,
+    0x80, 0x81, 0x7f, 0x54, 0x58, 0x00, 0x56, 0x6d,
+    0x6e, 0x67, 0x62, 0x59, 0x5a, 0x5b, 0x5c, 0x5d,
+    0x5e, 0x5f, 0x6f, 0x60, 0x61, 0x89, 0x87, 0x8c,
+    0x3e, 0x3f, 0x40, 0x3c, 0x41, 0x42, 0x91, 0x44,
+    0x90, 0x68, 0x6b, 0x69, 0x00, 0x43, 0x65, 0x45,
+    0x00, 0x6a, 0x75, 0x4a, 0x4b, 0x4c, 0x3d, 0x4d,
+    0x3b, 0x4e, 0x3a, 0x50, 0x4f, 0x51, 0x52,
+};
+
 static char const *const shaders_code =
         "#include <metal_stdlib>\n"
         "using namespace metal;\n"
@@ -196,19 +222,30 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 - (void)keyDown:(NSEvent *)anEvent
 {
     unsigned short keyCode = [anEvent keyCode];
-    if (keyCode == 53) {
-        [self close];
-    }
-    if (keyCode == 15) {
-        JK_FLAG_SET(g.buttons_down, MACOS_INPUT_R, 1);
+    if (keyCode < JK_ARRAY_COUNT(key_map)) {
+        JkKey key = key_map[keyCode];
+        if (key) {
+            uint8_t flag = 1 << (key % 8);
+            pthread_mutex_lock(&g.keyboard_lock);
+            g.keyboard.down[key / 8] |= flag;
+            g.keyboard.pressed[key / 8] |= flag;
+            pthread_mutex_unlock(&g.keyboard_lock);
+        }
     }
 }
 
 - (void)keyUp:(NSEvent *)anEvent
 {
     unsigned short keyCode = [anEvent keyCode];
-    if (keyCode == 15) {
-        JK_FLAG_SET(g.buttons_down, MACOS_INPUT_R, 0);
+    if (keyCode < JK_ARRAY_COUNT(key_map)) {
+        JkKey key = key_map[keyCode];
+        if (key) {
+            uint8_t flag = 1 << (key % 8);
+            pthread_mutex_lock(&g.keyboard_lock);
+            g.keyboard.down[key / 8] &= ~flag;
+            g.keyboard.released[key / 8] |= flag;
+            pthread_mutex_unlock(&g.keyboard_lock);
+        }
     }
 }
 @end
@@ -306,7 +343,11 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
         self.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
         self.enableSetNeedsDisplay = YES;
-        self.preferredFramesPerSecond = 60;
+        self.preferredFramesPerSecond = FPS;
+
+        pthread_mutex_lock(&g.keyboard_lock);
+        jk_keyboard_clear(&g.keyboard);
+        pthread_mutex_unlock(&g.keyboard_lock);
 
         CVDisplayLinkRef display_link;
         CVDisplayLinkCreateWithActiveCGDisplays(&display_link);
@@ -330,13 +371,14 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         NSRect window_rect = [self.window contentRectForFrameRect:self.window.frame];
         CGFloat x = mouse_location.x - window_rect.origin.x;
         CGFloat y = window_rect.size.height - (mouse_location.y - window_rect.origin.y);
-        g.state.input.mouse_pos.x = x * self.scale_factor;
-        g.state.input.mouse_pos.y = y * self.scale_factor;
+        g.state.mouse_pos.x = x * self.scale_factor;
+        g.state.mouse_pos.y = y * self.scale_factor;
     }
 
-    g.state.input.flags = 0;
-    g.state.input.flags |= ((g.buttons_down >> MACOS_INPUT_MOUSE) & 1) << INPUT_CONFIRM;
-    g.state.input.flags |= ((g.buttons_down >> MACOS_INPUT_R) & 1) << INPUT_RESET;
+    pthread_mutex_lock(&g.keyboard_lock);
+    g.state.keyboard = g.keyboard;
+    jk_keyboard_clear(&g.keyboard);
+    pthread_mutex_unlock(&g.keyboard_lock);
 
     render(g.assets, &g.state);
 

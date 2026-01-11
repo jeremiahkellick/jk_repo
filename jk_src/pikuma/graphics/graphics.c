@@ -14,9 +14,11 @@ static JkColor fgs[] = {
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-static JkVec3 camera_translation = {0, 8, 0};
-static float camera_rot_angle = JK_PI;
-static JkVec3 camera_rot_axis = {0, 0, 1};
+static JkVec3 camera_translation_init = {0, 8, 0};
+static float camera_rot_angle_init = JK_PI;
+static JkVec3 camera_rot_axis_init = {0, 0, 1};
+
+static JkTransform camera_transform;
 
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
@@ -344,6 +346,8 @@ static Bitmap bitmap_from_span(Assets *assets, BitmapSpan span)
     };
 }
 
+static b32 ran = 0;
+
 void render(Assets *assets, State *state)
 {
     jk_print = state->print;
@@ -360,7 +364,29 @@ void render(Assets *assets, State *state)
 
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
+
+        camera_transform.translation = camera_translation_init;
+        camera_transform.rotation = jk_quat_angle_axis(camera_rot_angle_init, camera_rot_axis_init);
+        camera_transform.scale = (JkVec3){1, 1, 1};
     }
+
+    JkVec3 camera_move = {0};
+    if (jk_key_down(&state->keyboard, JK_KEY_W)) {
+        camera_move.y += 1;
+    }
+    if (jk_key_down(&state->keyboard, JK_KEY_S)) {
+        camera_move.y -= 1;
+    }
+    if (jk_key_down(&state->keyboard, JK_KEY_A)) {
+        camera_move.x -= 1;
+    }
+    if (jk_key_down(&state->keyboard, JK_KEY_D)) {
+        camera_move.x += 1;
+    }
+    camera_move = jk_vec3_mul(5 * DELTA_TIME,
+            jk_vec3_normalized(jk_quat_rotate(camera_transform.rotation, camera_move)));
+
+    camera_transform.translation = jk_vec3_add(camera_transform.translation, camera_move);
 
     state->pixel_count = PIXEL_COUNT / 2;
 
@@ -375,11 +401,6 @@ void render(Assets *assets, State *state)
     // float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
     // JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
 
-    JkTransform camera_transform = {
-        .translation = camera_translation,
-        .rotation = jk_quat_angle_axis(camera_rot_angle, camera_rot_axis),
-        .scale = {1, 1, 1},
-    };
     JkMat4 ndc_matrix = jk_transform_to_mat4_inv(camera_transform);
     ndc_matrix = jk_mat4_mul(
             jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), ndc_matrix);
