@@ -412,7 +412,7 @@ void render(Assets *assets, State *state)
     JkMat4 ndc_matrix = jk_transform_to_mat4_inv(camera_transform);
     ndc_matrix = jk_mat4_mul(
             jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), ndc_matrix);
-    ndc_matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 2, 0.05f), ndc_matrix);
+    ndc_matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 3, 0.05f), ndc_matrix);
 
     JkMat4 pixel_matrix = jk_mat4_translate((JkVec3){1, -1, 0});
     pixel_matrix = jk_mat4_mul(

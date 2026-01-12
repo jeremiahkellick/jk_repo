@@ -19,10 +19,11 @@
 #include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
-typedef enum MacosInput {
-    MACOS_INPUT_MOUSE,
-    MACOS_INPUT_R,
-} MacosInput;
+typedef enum MouseFlags {
+    MOUSE_LEFT_DOWN,
+    MOUSE_LEFT_PRESSED,
+    MOUSE_LEFT_RELEASED,
+} MouseFlags;
 
 typedef struct Vertex {
     simd_float4 position;
@@ -45,7 +46,7 @@ typedef struct MyRect {
 
 typedef struct Global {
     b32 running;
-    uint32_t buttons_down;
+    b32 capture_mouse;
     Assets *assets;
     State state;
 
@@ -54,6 +55,7 @@ typedef struct Global {
 
     _Alignas(64) pthread_mutex_t mouse_lock;
     _Alignas(64) JkVec2 mouse_delta;
+    uint32_t mouse_flags;
 } Global;
 
 static Global g = {
@@ -111,7 +113,7 @@ static void print_stdout(JkBuffer string)
 @property(nonatomic, strong) id<MTLCommandQueue> command_queue;
 @property(nonatomic, strong) id<MTLBuffer> vertex_buffer;
 @property(nonatomic, strong) id<MTLTexture> texture;
-@property(nonatomic) CVDisplayLinkRef display_link;
+@property(nonatomic, assign) CVDisplayLinkRef display_link;
 @property(nonatomic) CGFloat scale_factor;
 
 - (instancetype)initWithFrame:(CGRect)frameRect scale_factor:(CGFloat)scale_factor;
@@ -298,7 +300,14 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     self.click_monitor = [NSEvent
             addLocalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseDown|NSEventMaskLeftMouseUp)
             handler:^NSEvent *(NSEvent *event) {
-        JK_FLAG_SET(g.buttons_down, MACOS_INPUT_MOUSE, event.type == NSEventTypeLeftMouseDown);
+        pthread_mutex_lock(&g.mouse_lock);
+        JK_FLAG_SET(g.mouse_flags, MOUSE_LEFT_DOWN, event.type == NSEventTypeLeftMouseDown);
+        if (event.type == NSEventTypeLeftMouseDown) {
+            JK_FLAG_SET(g.mouse_flags, MOUSE_LEFT_PRESSED, 1);
+        } else {
+            JK_FLAG_SET(g.mouse_flags, MOUSE_LEFT_RELEASED, 1);
+        }
+        pthread_mutex_unlock(&g.mouse_lock);
         return event;
     }];
     // clang-format on
@@ -370,11 +379,11 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         g.mouse_delta = (JkVec2){0};
         pthread_mutex_unlock(&g.mouse_lock);
 
-        CVDisplayLinkRef display_link;
-        CVDisplayLinkCreateWithActiveCGDisplays(&display_link);
-        CVDisplayLinkSetOutputCallback(display_link, &display_link_callback, (__bridge void *)self);
-        CVDisplayLinkSetCurrentCGDisplay(display_link, 0);
-        CVDisplayLinkStart(display_link);
+        CVDisplayLinkCreateWithActiveCGDisplays(&_display_link);
+        CVDisplayLinkSetOutputCallback(
+                self.display_link, &display_link_callback, (__bridge void *)self);
+        CVDisplayLinkSetCurrentCGDisplay(self.display_link, 0);
+        CVDisplayLinkStart(self.display_link);
     }
     return self;
 }
@@ -402,9 +411,31 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     pthread_mutex_unlock(&g.keyboard_lock);
 
     pthread_mutex_lock(&g.mouse_lock);
-    g.state.mouse_delta = g.mouse_delta;
+    JkVec2 mouse_delta = g.mouse_delta;
     g.mouse_delta = (JkVec2){0};
+    uint32 mouse_flags = g.mouse_flags;
+    g.mouse_flags &= JK_MASK(MOUSE_LEFT_DOWN);
     pthread_mutex_unlock(&g.mouse_lock);
+
+    int32_t deadzone = 10;
+
+    if (JK_FLAG_GET(mouse_flags, MOUSE_LEFT_PRESSED) && !g.capture_mouse
+            && deadzone <= g.state.mouse_pos.x
+            && g.state.mouse_pos.x < (g.state.dimensions.x - deadzone)
+            && deadzone <= g.state.mouse_pos.y
+            && g.state.mouse_pos.y < (g.state.dimensions.y - deadzone)) {
+        g.capture_mouse = 1;
+        CGDisplayHideCursor(CVDisplayLinkGetCurrentCGDisplay(self.display_link));
+    }
+    if (g.capture_mouse
+            && (jk_key_pressed(&g.state.keyboard, JK_KEY_ESC)
+                    || (self.window && ![self.window isKeyWindow]))) {
+        g.capture_mouse = 0;
+        CGDisplayShowCursor(CVDisplayLinkGetCurrentCGDisplay(self.display_link));
+    }
+    CGAssociateMouseAndMouseCursorPosition(!g.capture_mouse);
+
+    g.state.mouse_delta = g.capture_mouse ? mouse_delta : (JkVec2){0};
 
     render(g.assets, &g.state);
 
