@@ -84,8 +84,22 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
 typedef struct Triangle {
     JkVec3 v[3];
     JkVec2 t[3];
-    Bitmap texture;
 } Triangle;
+
+typedef struct TriangleArray {
+    int64_t count;
+    Triangle *items;
+} TriangleArray;
+
+typedef struct TexturedVertex {
+    JkVec3 v;
+    JkVec2 t;
+} TexturedVertex;
+
+typedef struct TexturedVertexArray {
+    int64_t count;
+    TexturedVertex *items;
+} TexturedVertexArray;
 
 static JkIntRect triangle_bounding_box(Triangle t)
 {
@@ -120,7 +134,7 @@ static JkColor texture_lookup(Bitmap texture, JkVec2 texcoord)
     return jk_color3_to_4(texture.memory[texture.dimensions.x * y + x], 0xff);
 }
 
-static void triangle_fill(JkArena *arena, State *state, Triangle tri)
+static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap texture)
 {
     JkArena tmp_arena = jk_arena_child_get(arena);
 
@@ -270,7 +284,7 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri)
                 texcoord.x /= z;
                 texcoord.y /= z;
 
-                JkColor pixel_color = texture_lookup(tri.texture, texcoord);
+                JkColor pixel_color = texture_lookup(texture, texcoord);
                 pixel_color.a = (uint8_t)alpha;
 
                 PixelIndex head_index = pixel_index_by_coords(state, x, y);
@@ -290,43 +304,11 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri)
     }
 }
 
-typedef struct FaceIdsSortContext {
-    JkVec3 *vertices;
-    Face *faces;
-} FaceIdsSortContext;
-
-static int face_ids_compare(void *data, void *a_id_ptr, void *b_id_ptr)
+static b32 clockwise(Triangle t)
 {
-    FaceIdsSortContext *c = data;
-    JkVec3 *verts = c->vertices;
-    Face *a = c->faces + *(int64_t *)a_id_ptr;
-    Face *b = c->faces + *(int64_t *)b_id_ptr;
-    float a_avg_z = (verts[a->v[0]].z + verts[a->v[1]].z + verts[a->v[2]].z) / 3.0f;
-    float b_avg_z = (verts[b->v[0]].z + verts[b->v[1]].z + verts[b->v[2]].z) / 3.0f;
-    if (a_avg_z < b_avg_z) {
-        return -1;
-    } else if (b_avg_z < a_avg_z) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-static void face_ids_sort(JkVec3 *vertices, Face *faces, JkInt64Array face_ids)
-{
-    int64_t tmp;
-    FaceIdsSortContext c = {.vertices = vertices, .faces = faces};
-    jk_quicksort(
-            face_ids.items, face_ids.count, JK_SIZEOF(*face_ids.items), &tmp, &c, face_ids_compare);
-}
-
-static b32 clockwise(JkVec3 *vertices, Face face)
-{
-    JkVec3 p[3];
-    for (int64_t i = 0; i < 3; i++) {
-        p[i] = vertices[face.v[i]];
-    }
-    return (p[1].x - p[0].x) * (p[2].y - p[0].y) - (p[1].y - p[0].y) * (p[2].x - p[0].x) < 0;
+    return (t.v[1].x - t.v[0].x) * (t.v[2].y - t.v[0].y)
+            - (t.v[1].y - t.v[0].y) * (t.v[2].x - t.v[0].x)
+            < 0;
 }
 
 static JkColor color_scalar_mul(float s, JkColor c)
@@ -345,7 +327,12 @@ static Bitmap bitmap_from_span(Assets *assets, BitmapSpan span)
     };
 }
 
-static b32 ran = 0;
+static void add_textured_vertex(JkArena *arena, JkMat4 pixel_matrix, JkVec4 v, JkVec2 t)
+{
+    TexturedVertex *new = jk_arena_push(arena, sizeof(*new));
+    new->v = jk_mat4_mul_point(pixel_matrix, jk_vec4_perspective_divide(v));
+    new->t = jk_vec2_mul(new->v.z, t);
+}
 
 void render(Assets *assets, State *state)
 {
@@ -405,14 +392,13 @@ void render(Assets *assets, State *state)
                 JK_SIZEOF(PixelIndex) * state->dimensions.x + 1);
     }
 
-    // int32_t rotation_ticks = rotation_seconds * state->os_timer_frequency;
-    // float angle = 2 * JK_PI * ((float)(state->os_time % rotation_ticks) / (float)rotation_ticks);
-    // JkVec3 light_dir_n = jk_vec3_normalized(light_dir);
-
-    JkMat4 ndc_matrix = jk_transform_to_mat4_inv(camera_transform);
-    ndc_matrix = jk_mat4_mul(
-            jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}), ndc_matrix);
-    ndc_matrix = jk_mat4_mul(jk_mat4_perspective(state->dimensions, JK_PI / 3, 0.05f), ndc_matrix);
+    float near_clip = 0.2f;
+    JkMat4 clip_space_matrix = jk_transform_to_mat4_inv(camera_transform);
+    clip_space_matrix =
+            jk_mat4_mul(jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
+                    clip_space_matrix);
+    clip_space_matrix = jk_mat4_mul(
+            jk_mat4_perspective(state->dimensions, JK_PI / 3, near_clip), clip_space_matrix);
 
     JkMat4 pixel_matrix = jk_mat4_translate((JkVec3){1, -1, 0});
     pixel_matrix = jk_mat4_mul(
@@ -436,43 +422,59 @@ void render(Assets *assets, State *state)
             world_vertices[i] = jk_mat4_mul_point(world_matrix, vertices.items[i]);
         }
 
-        JkVec3 *screen_vertices =
-                jk_arena_push(&object_arena, vertices.count * JK_SIZEOF(*screen_vertices));
+        JkVec4 *clip_space_vertices =
+                jk_arena_push(&object_arena, vertices.count * JK_SIZEOF(*clip_space_vertices));
         for (int64_t i = 0; i < vertices.count; i++) {
-            JkVec4 vec4 = jk_mat4_mul_vec4(ndc_matrix, jk_vec3_to_4(world_vertices[i], 1));
-            screen_vertices[i] = jk_mat4_mul_point(pixel_matrix, jk_vec4_perspective_divide(vec4));
+            clip_space_vertices[i] =
+                    jk_mat4_mul_vec4(clip_space_matrix, jk_vec3_to_4(world_vertices[i], 1));
         }
 
         FaceArray faces;
         JK_ARRAY_FROM_SPAN(faces, assets, object->faces);
         Bitmap texture = bitmap_from_span(assets, object->texture);
 
-        JkInt64Array face_ids;
-        JK_ARENA_PUSH_ARRAY(&object_arena, face_ids, faces.count);
-        for (int64_t i = 0; i < face_ids.count; i++) {
-            face_ids.items[i] = i;
-        }
-        face_ids_sort(screen_vertices, faces.items, face_ids);
-        for (int32_t face_id_index = 0; face_id_index < face_ids.count; face_id_index++) {
-            int64_t face_id = face_ids.items[face_id_index];
-            Face face = faces.items[face_id];
+        for (int64_t face_index = 0; face_index < faces.count; face_index++) {
+            Face face = faces.items[face_index];
+            JkArena face_arena = jk_arena_child_get(&object_arena);
 
-            if (clockwise(screen_vertices, face)) {
-                /*
-                JkVec3 normal = jk_vec3_normalized(
-                        jk_vec3_cross(jk_vec3_sub(world_vertices[face.v[1]],
-                world_vertices[face.v[0]]), jk_vec3_sub(world_vertices[face.v[2]],
-                world_vertices[face.v[0]]))); float dot = -jk_vec3_dot(light_dir_n, normal); float
-                multiplier = 1.2; if (0 < dot) { multiplier += dot * 5;
+            // Apply near clipping and projection
+            TexturedVertexArray vs = {.items = jk_arena_pointer_current(&face_arena)};
+            for (int64_t i = 0; i < 3; i++) {
+                int64_t b_i = (i + 1) % 3;
+                JkVec4 a = clip_space_vertices[face.v[i]];
+                JkVec4 b = clip_space_vertices[face.v[b_i]];
+                b32 a_inside = !!(a.z < a.w);
+                b32 b_inside = !!(b.z < b.w);
+                if (a_inside != b_inside) { // Crosses clip plane, add interpolated vertex
+                    float t = (near_clip - a.w) / (b.w - a.w);
+                    add_textured_vertex(&face_arena,
+                            pixel_matrix,
+                            jk_vec4_lerp(a, b, t),
+                            jk_vec2_lerp(
+                                    texcoords.items[face.t[i]], texcoords.items[face.t[b_i]], t));
                 }
-                */
+                if (b_inside) {
+                    add_textured_vertex(&face_arena, pixel_matrix, b, texcoords.items[face.t[b_i]]);
+                }
+            }
+            vs.count = (TexturedVertex *)jk_arena_pointer_current(&face_arena) - vs.items;
 
-                Triangle tri = {.texture = texture};
-                for (int64_t i = 0; i < 3; i++) {
-                    tri.v[i] = screen_vertices[face.v[i]];
-                    tri.t[i] = jk_vec2_mul(tri.v[i].z, texcoords.items[face.t[i]]);
+            // Triangulate the resulting polygon
+            TriangleArray tris = {.items = jk_arena_pointer_current(&face_arena)};
+            for (int64_t i = 2; i < vs.count; i++) {
+                Triangle *tri = jk_arena_push(&face_arena, sizeof(*tri));
+                int64_t indexes[3] = {0, i - 1, i};
+                for (int64_t j = 0; j < 3; j++) {
+                    tri->v[j] = vs.items[indexes[j]].v;
+                    tri->t[j] = vs.items[indexes[j]].t;
                 }
-                triangle_fill(&object_arena, state, tri);
+            }
+            tris.count = (Triangle *)jk_arena_pointer_current(&face_arena) - tris.items;
+
+            for (int64_t i = 0; i < tris.count; i++) {
+                if (clockwise(tris.items[i])) {
+                    triangle_fill(&face_arena, state, tris.items[i], texture);
+                }
             }
         }
     }

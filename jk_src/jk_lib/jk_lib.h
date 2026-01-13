@@ -549,6 +549,13 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
 // ---- JkVec4 begin -----------------------------------------------------------
 
+typedef struct JkVec4Array {
+    int64_t count;
+    JkVec4 *items;
+} JkVec4Array;
+
+JK_PUBLIC JkVec4 jk_vec4_add(JkVec4 a, JkVec4 b);
+
 JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v);
 
 JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v);
@@ -556,6 +563,8 @@ JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v);
 JK_PUBLIC float jk_vec4_magnitude(JkVec4 v);
 
 JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v);
+
+JK_PUBLIC JkVec4 jk_vec4_lerp(JkVec4 a, JkVec4 b, float t);
 
 JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w);
 

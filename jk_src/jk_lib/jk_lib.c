@@ -1455,6 +1455,11 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v)
 
 // ---- JkVec4 begin -----------------------------------------------------------
 
+JK_PUBLIC JkVec4 jk_vec4_add(JkVec4 a, JkVec4 b)
+{
+    return (JkVec4){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z, .w = a.w + b.w};
+}
+
 JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v)
 {
     return (JkVec4){.x = scalar * v.x, .y = scalar * v.y, .z = scalar * v.z, .w = scalar * v.w};
@@ -1473,6 +1478,11 @@ JK_PUBLIC float jk_vec4_magnitude(JkVec4 v)
 JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v)
 {
     return jk_vec4_mul(1.0f / jk_vec4_magnitude(v), v);
+}
+
+JK_PUBLIC JkVec4 jk_vec4_lerp(JkVec4 a, JkVec4 b, float t)
+{
+    return jk_vec4_add(jk_vec4_mul(1.0f - t, a), jk_vec4_mul(t, b));
 }
 
 JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w)
