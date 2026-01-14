@@ -49,6 +49,7 @@ typedef struct Object {
     JkTransform transform;
     JkSpan faces; // FaceArray
     BitmapSpan texture;
+    float repeat_size;
 } Object;
 
 typedef struct ObjectArray {

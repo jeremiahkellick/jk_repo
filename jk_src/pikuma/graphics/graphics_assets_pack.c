@@ -12,7 +12,7 @@
 #include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
-static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/cube.fbx");
+static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/scene.fbx");
 static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};
 
 static JkMat4 conversion_matrix;
@@ -52,6 +52,8 @@ struct Thing {
     JkInt32Array vertex_indexes;
     int64_t texcoords_base;
     JkInt32Array texcoord_indexes;
+
+    float repeat_size;
 };
 
 #define ARBITRARY_CAP 100000
@@ -403,13 +405,15 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 fprintf(stderr, "process_fbx_nodes: Problem parsing RelativeFilename\n");
             }
         } else if (jk_buffer_compare(name, JKS("P")) == 0) {
-            b32 valid = 1;
+            b32 proceed = 1;
+            b32 has_repeat_size = 0;
 
             TransformType type = 0;
 
             int64_t cursor = node->name_length;
-            valid = valid && 7 <= node->property_count && node->name[cursor++] == 'S';
-            if (valid) {
+            proceed =
+                    proceed && !!thing && 3 <= node->property_count && node->name[cursor++] == 'S';
+            if (proceed) {
                 JkBuffer string = fbx_prop_string_read(node->name, &cursor);
                 if (jk_buffer_compare(string, JKS("Lcl Translation")) == 0) {
                     type = TRANSFORM_TRANSLATION;
@@ -417,27 +421,38 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     type = TRANSFORM_ROTATION;
                 } else if (jk_buffer_compare(string, JKS("Lcl Scaling")) == 0) {
                     type = TRANSFORM_SCALE;
+                } else if (jk_buffer_compare(string, JKS("repeat_size")) == 0) {
+                    has_repeat_size = 1;
                 } else {
-                    valid = 0;
+                    proceed = 0;
                 }
             }
 
             // Skip type label and flags properties
-            for (int64_t i = 0; i < 3 && valid; i++) {
-                valid = valid && node->name[cursor++] == 'S';
+            for (int64_t i = 0; i < 3 && proceed; i++) {
+                proceed = proceed && node->name[cursor++] == 'S';
                 fbx_prop_string_read(node->name, &cursor);
             }
 
-            if (valid && thing) {
-                for (int64_t i = 0; i < 3 && valid; i++) {
-                    valid = valid && node->name[cursor++] == 'D';
-                    if (valid) {
+            if (proceed && has_repeat_size) {
+                if (node->name[cursor++] == 'D') {
+                    thing->repeat_size = *(double *)(node->name + cursor);
+                }
+                proceed = 0;
+            }
+
+            proceed = proceed && 7 <= node->property_count;
+
+            if (proceed) {
+                for (int64_t i = 0; i < 3 && proceed; i++) {
+                    proceed = proceed && node->name[cursor++] == 'D';
+                    if (proceed) {
                         thing->transform[type].v[i] = *(double *)(node->name + cursor);
                         cursor += sizeof(double);
                     }
                 }
 
-                if (valid && type == TRANSFORM_SCALE) {
+                if (proceed && type == TRANSFORM_SCALE) {
                     JK_FLAG_SET(thing->flags, THING_FLAG_SCALE, 1);
                 }
             }
@@ -534,6 +549,9 @@ static void process_thing(JkArena *objects_arena, Thing *thing, ObjectId object_
         }
         if (thing->image.offset) {
             object->texture = thing->image;
+        }
+        if (thing->repeat_size) {
+            object->repeat_size = thing->repeat_size;
         }
     }
 

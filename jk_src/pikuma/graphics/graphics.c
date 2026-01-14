@@ -14,7 +14,7 @@ static JkColor fgs[] = {
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-static JkVec3 camera_translation_init = {0, 8, 0};
+static JkVec3 camera_translation_init = {0, 0, 1.875};
 static float camera_rot_angle_init = JK_PI;
 
 static JkTransform camera_transform;
@@ -437,6 +437,53 @@ void render(Assets *assets, State *state)
             Face face = faces.items[face_index];
             JkArena face_arena = jk_arena_child_get(&object_arena);
 
+            JkVec2 uv[3];
+            if (object->repeat_size) {
+                JkVec3 local_points[3];
+                for (int64_t i = 0; i < 3; i++) {
+                    local_points[i] = jk_vec3_mul(1 / object->repeat_size,
+                            jk_vec3_hadamard_prod(
+                                    vertices.items[face.v[i]], object->transform.scale));
+                }
+                JkVec3 normal = jk_vec3_cross(jk_vec3_sub(local_points[1], local_points[0]),
+                        jk_vec3_sub(local_points[2], local_points[0]));
+
+                // Find which basis plane this face is most in line with
+                int64_t plane_index = 0;
+                float max_coord = JK_ABS(normal.v[0]);
+                for (int64_t i = 1; i < 3; i++) {
+                    float coord = JK_ABS(normal.v[i]);
+                    if (max_coord < coord) {
+                        max_coord = coord;
+                        plane_index = i;
+                    }
+                }
+
+                for (int64_t i = 0; i < 3; i++) {
+                    switch (plane_index) {
+                    case 0: {
+                        uv[i] = (JkVec2){local_points[i].y, local_points[i].z};
+                    } break;
+
+                    case 1: {
+                        uv[i] = (JkVec2){local_points[i].x, local_points[i].z};
+                    } break;
+
+                    case 2: {
+                        uv[i] = (JkVec2){local_points[i].x, local_points[i].y};
+                    } break;
+
+                    default: {
+                        JK_ASSERT(0);
+                    } break;
+                    }
+                }
+            } else {
+                for (int64_t i = 0; i < 3; i++) {
+                    uv[i] = texcoords.items[face.t[i]];
+                }
+            }
+
             // Apply near clipping and projection
             TexturedVertexArray vs = {.items = jk_arena_pointer_current(&face_arena)};
             for (int64_t i = 0; i < 3; i++) {
@@ -450,11 +497,10 @@ void render(Assets *assets, State *state)
                     add_textured_vertex(&face_arena,
                             pixel_matrix,
                             jk_vec4_lerp(a, b, t),
-                            jk_vec2_lerp(
-                                    texcoords.items[face.t[i]], texcoords.items[face.t[b_i]], t));
+                            jk_vec2_lerp(uv[i], uv[b_i], t));
                 }
                 if (b_inside) {
-                    add_textured_vertex(&face_arena, pixel_matrix, b, texcoords.items[face.t[b_i]]);
+                    add_textured_vertex(&face_arena, pixel_matrix, b, uv[b_i]);
                 }
             }
             vs.count = (TexturedVertex *)jk_arena_pointer_current(&face_arena) - vs.items;

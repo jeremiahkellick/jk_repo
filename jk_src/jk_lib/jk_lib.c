@@ -1384,6 +1384,11 @@ JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector)
     return (JkVec3){.x = scalar * vector.x, .y = scalar * vector.y, .z = scalar * vector.z};
 }
 
+JK_PUBLIC JkVec3 jk_vec3_hadamard_prod(JkVec3 u, JkVec3 v)
+{
+    return (JkVec3){.x = u.x * v.x, .y = u.y * v.y, .z = u.z * v.z};
+}
+
 JK_PUBLIC JkVec3 jk_vec3_ceil(JkVec3 v)
 {
     return (JkVec3){jk_ceil_f32(v.x), jk_ceil_f32(v.y), jk_ceil_f32(v.z)};
