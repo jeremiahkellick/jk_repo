@@ -1978,6 +1978,9 @@ JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key)
 
 // ---- JkKeyboard end ---------------------------------------------------------
 
+JK_PUBLIC JkConversionUnion jk_infinity_f64 = {.uint64_v = 0x7ff0000000000000llu};
+JK_PUBLIC JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};
+
 JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha)
 {
     return (JkColor){.r = color.r, .b = color.b, .g = color.g, .a = alpha};

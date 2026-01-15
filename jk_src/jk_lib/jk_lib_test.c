@@ -121,22 +121,10 @@ static b32 expect_string(JkBuffer expected, JkBuffer actual)
     }
 }
 
-typedef union DoubleUnion {
-    double f;
-    uint64_t bits;
-} DoubleUnion;
+JkConversionUnion some_nan_64 = {.uint64_v = 0x7ffb83f05b73e306llu};
+JkConversionUnion unprintable_64 = {.uint64_v = 0x7feb83f05b73e306llu};
 
-DoubleUnion infinity_64 = {.bits = 0x7ff0000000000000llu};
-DoubleUnion some_nan_64 = {.bits = 0x7ffb83f05b73e306llu};
-DoubleUnion unprintable_64 = {.bits = 0x7feb83f05b73e306llu};
-
-typedef union FloatUnion {
-    float f;
-    uint32_t bits;
-} FloatUnion;
-
-FloatUnion infinity_32 = {.bits = 0x7f800000};
-FloatUnion some_nan_32 = {.bits = 0x7fE9605C};
+JkConversionUnion some_nan_32 = {.uint32_v = 0x7fE9605C};
 
 int main(void)
 {
@@ -230,12 +218,12 @@ int main(void)
     expect_string(JKS("0001"), jk_unsigned_to_binary_string(&arena, 1, 4));
     expect_string(JKS("0"), jk_unsigned_to_binary_string(&arena, 0, 0));
 
-    expect_string(JKS("inf"), jk_f64_to_string(&arena, infinity_64.f, 8));
-    expect_string(JKS("-inf"), jk_f64_to_string(&arena, -infinity_64.f, 8));
-    expect_string(JKS("nan"), jk_f64_to_string(&arena, some_nan_64.f, 8));
-    expect_string(JKS("-nan"), jk_f64_to_string(&arena, -some_nan_64.f, 8));
-    expect_string(JKS("unprintable"), jk_f64_to_string(&arena, unprintable_64.f, 8));
-    expect_string(JKS("-unprintable"), jk_f64_to_string(&arena, -unprintable_64.f, 8));
+    expect_string(JKS("inf"), jk_f64_to_string(&arena, jk_infinity_f64.f64, 8));
+    expect_string(JKS("-inf"), jk_f64_to_string(&arena, -jk_infinity_f64.f64, 8));
+    expect_string(JKS("nan"), jk_f64_to_string(&arena, some_nan_64.f64, 8));
+    expect_string(JKS("-nan"), jk_f64_to_string(&arena, -some_nan_64.f64, 8));
+    expect_string(JKS("unprintable"), jk_f64_to_string(&arena, unprintable_64.f64, 8));
+    expect_string(JKS("-unprintable"), jk_f64_to_string(&arena, -unprintable_64.f64, 8));
     expect_string(JKS("1.3333333"), jk_f64_to_string(&arena, 4.0 / 3.0, 7));
     expect_string(JKS("2.666667"), jk_f64_to_string(&arena, 8.0 / 3.0, 6));
     expect_string(JKS("60.00"), jk_f64_to_string(&arena, 59.99999, 2));
@@ -339,31 +327,32 @@ int main(void)
 
     JkRandomGeneratorU64 generator = jk_random_generator_new_u64(3523520312864767571);
 
-    printf("\nsome_nan_64: %f\n", (double)some_nan_64.f);
-    printf("infinity_64: %f\n", (double)infinity_64.f);
-    printf("some_nan_32: %f\n", (double)some_nan_32.f);
-    printf("infinity_32: %f\n", (double)infinity_32.f);
+    printf("\nsome_nan_64: %f\n", (double)some_nan_64.f64);
+    printf("infinity_64: %f\n", (double)jk_infinity_f64.f64);
+    printf("some_nan_32: %f\n", (double)some_nan_32.f32);
+    printf("infinity_32: %f\n", (double)jk_infinity_f32.f32);
 
     JK_ASSERT(0.0 == jk_pack_f64(jk_unpack_f64(0.0)));
     JK_ASSERT(-0.0 == jk_pack_f64(jk_unpack_f64(-0.0)));
     JK_ASSERT(1.0 == jk_pack_f64(jk_unpack_f64(1.0)));
     JK_ASSERT(-1.0 == jk_pack_f64(jk_unpack_f64(-1.0)));
-    JK_ASSERT(infinity_64.f == jk_pack_f64(jk_unpack_f64(infinity_64.f)));
-    JK_ASSERT(-infinity_64.f == jk_pack_f64(jk_unpack_f64(-infinity_64.f)));
+    JK_ASSERT(jk_infinity_f64.f64 == jk_pack_f64(jk_unpack_f64(jk_infinity_f64.f64)));
+    JK_ASSERT(-jk_infinity_f64.f64 == jk_pack_f64(jk_unpack_f64(-jk_infinity_f64.f64)));
 
-    DoubleUnion round_trip_nan = {.f = jk_pack_f64(jk_unpack_f64(some_nan_64.f))};
-    JK_ASSERT(some_nan_64.bits == round_trip_nan.bits);
-    DoubleUnion nan_negative = {.f = -some_nan_64.f};
-    DoubleUnion round_trip_nan_negative = {.f = jk_pack_f64(jk_unpack_f64(nan_negative.f))};
-    JK_ASSERT(nan_negative.bits == round_trip_nan_negative.bits);
+    JkConversionUnion round_trip_nan = {.f64 = jk_pack_f64(jk_unpack_f64(some_nan_64.f64))};
+    JK_ASSERT(some_nan_64.uint64_v == round_trip_nan.uint64_v);
+    JkConversionUnion nan_negative = {.f64 = -some_nan_64.f64};
+    JkConversionUnion round_trip_nan_negative = {
+        .f64 = jk_pack_f64(jk_unpack_f64(nan_negative.f64))};
+    JK_ASSERT(nan_negative.uint64_v == round_trip_nan_negative.uint64_v);
 
     for (int64_t i = 0; i < 10000; i++) {
-        DoubleUnion value = {.bits = jk_random_u64(&generator)};
-        if (isnan(value.f)) {
-            DoubleUnion round_trip = {.f = jk_pack_f64(jk_unpack_f64(value.f))};
-            JK_ASSERT(value.bits == round_trip.bits);
+        JkConversionUnion value = {.uint64_v = jk_random_u64(&generator)};
+        if (isnan(value.f64)) {
+            JkConversionUnion round_trip = {.f64 = jk_pack_f64(jk_unpack_f64(value.f64))};
+            JK_ASSERT(value.uint64_v == round_trip.uint64_v);
         } else {
-            JK_ASSERT(value.f == jk_pack_f64(jk_unpack_f64(value.f)));
+            JK_ASSERT(value.f64 == jk_pack_f64(jk_unpack_f64(value.f64)));
         }
     }
 
@@ -373,24 +362,24 @@ int main(void)
     JK_ASSERT(jk_ceil_f32(-0.0f) == ceilf(-0.0f));
     JK_ASSERT(jk_ceil_f32(1.0f) == ceilf(1.0f));
     JK_ASSERT(jk_ceil_f32(-1.0f) == ceilf(-1.0f));
-    JK_ASSERT(jk_ceil_f32(infinity_32.f) == ceilf(infinity_32.f));
-    JK_ASSERT(jk_ceil_f32(-infinity_32.f) == ceilf(-infinity_32.f));
+    JK_ASSERT(jk_ceil_f32(jk_infinity_f32.f32) == ceilf(jk_infinity_f32.f32));
+    JK_ASSERT(jk_ceil_f32(-jk_infinity_f32.f32) == ceilf(-jk_infinity_f32.f32));
 
-    FloatUnion my_nan_ceil = {.f = jk_ceil_f32(some_nan_32.f)};
-    FloatUnion reference_nan_ceil = {.f = ceilf(some_nan_32.f)};
-    JK_ASSERT(my_nan_ceil.bits == reference_nan_ceil.bits);
+    JkConversionUnion my_nan_ceil = {.f32 = jk_ceil_f32(some_nan_32.f32)};
+    JkConversionUnion reference_nan_ceil = {.f32 = ceilf(some_nan_32.f32)};
+    JK_ASSERT(my_nan_ceil.uint32_v == reference_nan_ceil.uint32_v);
 
-    FloatUnion my_nan_ceil_negative = {.f = jk_ceil_f32(-some_nan_32.f)};
-    FloatUnion reference_nan_ceil_negative = {.f = ceilf(-some_nan_32.f)};
-    JK_ASSERT(my_nan_ceil_negative.bits == reference_nan_ceil_negative.bits);
+    JkConversionUnion my_nan_ceil_negative = {.f32 = jk_ceil_f32(-some_nan_32.f32)};
+    JkConversionUnion reference_nan_ceil_negative = {.f32 = ceilf(-some_nan_32.f32)};
+    JK_ASSERT(my_nan_ceil_negative.uint32_v == reference_nan_ceil_negative.uint32_v);
 
     for (int64_t i = 0; i < 10000; i++) {
-        FloatUnion value = {.bits = jk_random_u64(&generator)};
-        double reference = ceilf(value.f);
+        JkConversionUnion value = {.uint32_v = jk_random_u64(&generator)};
+        double reference = ceilf(value.f32);
         if (isnan(reference)) {
-            JK_ASSERT(isnan(jk_ceil_f32(value.f)));
+            JK_ASSERT(isnan(jk_ceil_f32(value.f32)));
         } else {
-            JK_ASSERT(jk_ceil_f32(value.f) == reference);
+            JK_ASSERT(jk_ceil_f32(value.f32) == reference);
         }
     }
 

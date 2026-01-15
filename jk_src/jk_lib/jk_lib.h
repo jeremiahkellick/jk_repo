@@ -1008,8 +1008,14 @@ typedef struct JkInt64Array {
 
 typedef union JkConversionUnion {
     uint64_t uint64_v;
+    uint32_t uint32_v;
     uint8_t uint8_v[8];
+    double f64;
+    float f32;
 } JkConversionUnion;
+
+JK_PUBLIC JkConversionUnion jk_infinity_f64;
+JK_PUBLIC JkConversionUnion jk_infinity_f32;
 
 typedef struct JkColor3 {
     union {
