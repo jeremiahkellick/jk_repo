@@ -669,20 +669,28 @@ JK_PUBLIC JkMat4 jk_transform_to_mat4_inv(JkTransform t);
 
 // ---- Shapes begin -----------------------------------------------------------
 
-typedef union JkSegment {
+typedef union JkSegment2d {
     JkVec2 endpoints[2];
     struct {
+        JkVec2 p0;
         JkVec2 p1;
-        JkVec2 p2;
     };
-} JkSegment;
+} JkSegment2d;
 
-JK_PUBLIC float jk_segment_y_intersection(JkSegment segment, float y);
+typedef union JkSegment3d {
+    JkVec3 endpoints[2];
+    struct {
+        JkVec3 p0;
+        JkVec3 p1;
+    };
+} JkSegment3d;
 
-JK_PUBLIC float jk_segment_x_intersection(JkSegment segment, float x);
+JK_PUBLIC float jk_segment_y_intersection(JkSegment2d segment, float y);
+
+JK_PUBLIC float jk_segment_x_intersection(JkSegment2d segment, float x);
 
 typedef struct JkEdge {
-    JkSegment segment;
+    JkSegment2d segment;
     float direction;
 } JkEdge;
 

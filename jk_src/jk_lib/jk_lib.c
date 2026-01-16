@@ -1853,30 +1853,30 @@ JK_PUBLIC JkMat4 jk_transform_to_mat4_inv(JkTransform t)
 
 // ---- Shapes begin -----------------------------------------------------------
 
-JK_PUBLIC float jk_segment_y_intersection(JkSegment segment, float y)
+JK_PUBLIC float jk_segment_y_intersection(JkSegment2d segment, float y)
 {
-    float delta_y = segment.p2.y - segment.p1.y;
+    float delta_y = segment.p1.y - segment.p0.y;
     JK_ASSERT(delta_y != 0);
-    return ((segment.p2.x - segment.p1.x) / delta_y) * (y - segment.p1.y) + segment.p1.x;
+    return ((segment.p1.x - segment.p0.x) / delta_y) * (y - segment.p0.y) + segment.p0.x;
 }
 
-JK_PUBLIC float jk_segment_x_intersection(JkSegment segment, float x)
+JK_PUBLIC float jk_segment_x_intersection(JkSegment2d segment, float x)
 {
-    float delta_x = segment.p2.x - segment.p1.x;
+    float delta_x = segment.p1.x - segment.p0.x;
     JK_ASSERT(delta_x != 0);
-    return ((segment.p2.y - segment.p1.y) / delta_x) * (x - segment.p1.x) + segment.p1.y;
+    return ((segment.p1.y - segment.p0.y) / delta_x) * (x - segment.p0.x) + segment.p0.y;
 }
 
 JK_PUBLIC JkEdge jk_points_to_edge(JkVec2 a, JkVec2 b)
 {
     JkEdge edge;
     if (a.y < b.y) {
-        edge.segment.p1 = a;
-        edge.segment.p2 = b;
+        edge.segment.p0 = a;
+        edge.segment.p1 = b;
         edge.direction = -1.0f;
     } else {
-        edge.segment.p1 = b;
-        edge.segment.p2 = a;
+        edge.segment.p0 = b;
+        edge.segment.p1 = a;
         edge.direction = 1.0f;
     }
     return edge;

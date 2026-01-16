@@ -507,8 +507,8 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                 float scan_y_top = (float)y;
                 float scan_y_bottom = scan_y_top + 1.0f;
                 for (int64_t i = 0; i < edges.count; i++) {
-                    float y_top = JK_MAX(edges.items[i].segment.p1.y, scan_y_top);
-                    float y_bottom = JK_MIN(edges.items[i].segment.p2.y, scan_y_bottom);
+                    float y_top = JK_MAX(edges.items[i].segment.p0.y, scan_y_top);
+                    float y_bottom = JK_MIN(edges.items[i].segment.p1.y, scan_y_bottom);
                     if (y_top < y_bottom) {
                         float height = y_bottom - y_top;
                         float x_top = jk_segment_y_intersection(edges.items[i].segment, y_top);
@@ -548,8 +548,8 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                         } else {
                             // Edge covers multiple pixels
                             float delta_y =
-                                    (edges.items[i].segment.p2.y - edges.items[i].segment.p1.y)
-                                    / (edges.items[i].segment.p2.x - edges.items[i].segment.p1.x);
+                                    (edges.items[i].segment.p1.y - edges.items[i].segment.p0.y)
+                                    / (edges.items[i].segment.p1.x - edges.items[i].segment.p0.x);
 
                             // Handle first pixel
                             float first_x_intersection = jk_segment_x_intersection(
