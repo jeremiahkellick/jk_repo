@@ -515,7 +515,7 @@ typedef struct JkVec3Array {
     JkVec3 *items;
 } JkVec3Array;
 
-JK_PUBLIC b32 jk_vec3_approx_equal(JkVec3 a, JkVec3 b, float tolerance);
+JK_PUBLIC b32 jk_vec3_equal(JkVec3 a, JkVec3 b, float tolerance);
 
 JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b);
 

@@ -1363,7 +1363,7 @@ JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector
 
 // ---- JkVec3 begin -----------------------------------------------------------
 
-JK_PUBLIC b32 jk_vec3_approx_equal(JkVec3 a, JkVec3 b, float tolerance)
+JK_PUBLIC b32 jk_vec3_equal(JkVec3 a, JkVec3 b, float tolerance)
 {
     return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance)
             && jk_float32_equal(a.z, b.z, tolerance);

@@ -14,7 +14,7 @@ static JkColor fgs[] = {
 };
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
-static JkVec3 camera_translation_init = {0, 0, 1.875};
+static JkVec3 camera_translation_init = {0, 0, 1.75};
 static float camera_rot_angle_init = JK_PI;
 
 static JkTransform camera_transform;
@@ -334,10 +334,19 @@ static void add_textured_vertex(JkArena *arena, JkMat4 pixel_matrix, JkVec4 v, J
     new->t = jk_vec2_mul(new->v.z, t);
 }
 
-static JkSegment3d move_against_box(
-        JkSegment3d move, JkMat4 world_matrix, ObjectId id, JkArena *arena)
+typedef struct Plane {
+    JkVec3 normal;
+    JkVec3 point;
+} Plane;
+
+typedef struct Move {
+    JkSegment3d s;
+    Plane prev_projection_plane;
+} Move;
+
+static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id, JkArena *arena)
 {
-    static float const padding = 0.5;
+    static float const padding = 0.3;
 
     static JkVec3 const local_extents[3] = {
         {0.5, 0, 0},
@@ -348,32 +357,38 @@ static JkSegment3d move_against_box(
     JkVec3 origin = jk_mat4_mul_point(world_matrix, (JkVec3){0, 0, 0});
 
     // Compute all 6 planes
-    JkVec3 normals[6];
-    JkVec3 points[6];
+    Plane planes[6];
     for (int64_t extent = 0; extent < 3; extent++) {
         JkVec3 transformed = jk_mat4_mul_normal(world_matrix, local_extents[extent]);
-        transformed =
+        JkVec3 padded =
                 jk_vec3_add(transformed, jk_vec3_mul(padding, jk_vec3_normalized(transformed)));
         for (int64_t negative = 0; negative < 2; negative++) {
-            JkVec3 signed_extent = jk_vec3_mul(negative ? -1 : 1, transformed);
-            normals[2 * extent + negative] = jk_vec3_normalized(signed_extent);
-            points[2 * extent + negative] = jk_vec3_add(origin, signed_extent);
+            JkVec3 signed_extent = jk_vec3_mul(negative ? -1 : 1, padded);
+            int64_t plane = 2 * extent + negative;
+            planes[plane].normal = jk_vec3_normalized(signed_extent);
+            planes[plane].point = jk_vec3_add(origin, signed_extent);
+            // The origin is centered along X and Y, but it's aligned with the bottom face along the
+            // Z axis, so if we're dealing with the Z axis, we need to add an offset
+            if (extent == 2) {
+                planes[plane].point = jk_vec3_add(planes[plane].point, transformed);
+            }
         }
     }
 
-    JkVec3 move_delta = jk_vec3_sub(move.p1, move.p0);
+    JkVec3 move_delta = jk_vec3_sub(move->s.p1, move->s.p0);
 
     b32 inside = 1;
-    int64_t intersection_plane = -1;
+    int64_t entry_plane = -1;
     float smallest_depenetration = jk_infinity_f32.f32;
-    float p1_depenetration = -1; // If negative, no depenetration necessary
     int64_t depenetration_plane = -1;
     float t_entry = -jk_infinity_f32.f32;
     float t_exit = jk_infinity_f32.f32;
     for (int64_t plane = 0; plane < 6; plane++) {
-        float delta_dot = jk_vec3_dot(normals[plane], move_delta);
-        float p0_dot = jk_vec3_dot(normals[plane], jk_vec3_sub(move.p0, points[plane]));
-        float p1_dot = jk_vec3_dot(normals[plane], jk_vec3_sub(move.p1, points[plane]));
+        float delta_dot = jk_vec3_dot(planes[plane].normal, move_delta);
+        float p0_dot =
+                jk_vec3_dot(planes[plane].normal, jk_vec3_sub(move->s.p0, planes[plane].point));
+        float p1_dot =
+                jk_vec3_dot(planes[plane].normal, jk_vec3_sub(move->s.p1, planes[plane].point));
 
         if (0 < p0_dot) {
             inside = 0;
@@ -382,7 +397,6 @@ static JkSegment3d move_against_box(
         if (inside && -p0_dot < smallest_depenetration) {
             smallest_depenetration = -p0_dot;
             depenetration_plane = plane;
-            p1_depenetration = -p1_dot;
         }
 
         b32 is_entry_plane = delta_dot < 0;
@@ -400,7 +414,6 @@ static JkSegment3d move_against_box(
         } else if (p0_dot < 0 && 0 <= p1_dot) { // there's an intersection
             // Set t to the percentage between p0 and p1 where we encounter the plane
             t = -p0_dot / delta_dot;
-            // JK_PRINT_FMT(arena, jkfn("\nt_intersect: "), jkff(t, 6), jkf_nl);
         } else {
             // We're probably parallel. Set t value such that we're guaranteed to no-op
             t = is_entry_plane ? -jk_infinity_f32.f32 : jk_infinity_f32.f32;
@@ -409,46 +422,64 @@ static JkSegment3d move_against_box(
         if (is_entry_plane) {
             if (t_entry < t) {
                 t_entry = t;
-                intersection_plane = plane;
+                entry_plane = plane;
             }
         } else {
             t_exit = JK_MIN(t_exit, t);
         }
     }
 
+    int64_t projection_plane = -1;
     if (inside) {
-        JK_PRINT_FMT(arena, jkfn("case 1\n"));
-
-        // We're inside the box, depenetrate p0 and, if necessary, p1
-        move.p0 = jk_vec3_add(
-                move.p0, jk_vec3_mul(smallest_depenetration, normals[depenetration_plane]));
-        if (0 < p1_depenetration) {
-            move.p1 = jk_vec3_add(
-                    move.p1, jk_vec3_mul(p1_depenetration, normals[depenetration_plane]));
-        }
-    } else if (t_entry < t_exit) { // Our desired move is blocked by the box
-        JK_PRINT_FMT(arena, jkf_nl);
-
+        // We're inside the box, depenetrate p0 and project p1 to the same plane
+        projection_plane = depenetration_plane;
+        move->s.p0 = jk_vec3_add(move->s.p0,
+                jk_vec3_mul(smallest_depenetration, planes[depenetration_plane].normal));
+    } else if (t_entry < t_exit) {
         // Our path intersects the box. Set p0 to the intersection point and project p1.
-        move.p0 = jk_vec3_lerp(move.p0, move.p1, t_entry);
-        if (0 <= intersection_plane) {
-            JK_PRINT_FMT(arena, jkfn("projecting...\n"));
-            move.p1 = jk_vec3_add(move.p1,
-                    jk_vec3_mul(-jk_vec3_dot(normals[intersection_plane],
-                                        jk_vec3_sub(move.p1, points[intersection_plane])),
-                            normals[intersection_plane]));
-        } else {
-            JK_PRINT_FMT(arena, jkfn("bad case\n"));
-            JK_PRINT_FMT(arena,
-                    jkfn("t_entry: "),
-                    jkff(t_entry, 6),
-                    jkfn("\nt_exit: "),
-                    jkff(t_exit, 6),
-                    jkf_nl);
-        }
+        projection_plane = entry_plane;
+        move->s.p0 = jk_vec3_lerp(move->s.p0, move->s.p1, t_entry);
     }
 
-    return move;
+    if (0 <= projection_plane) {
+        move->s.p1 = jk_vec3_add(move->s.p1,
+                jk_vec3_mul(-jk_vec3_dot(planes[projection_plane].normal,
+                                    jk_vec3_sub(move->s.p1, planes[projection_plane].point)),
+                        planes[projection_plane].normal));
+
+        // If p1 is inside the previous projection plane, we've hit a corner and should project p1
+        // to the line of intersection between the two planes
+        if (jk_vec3_dot(move->prev_projection_plane.normal,
+                    jk_vec3_sub(move->s.p1, move->prev_projection_plane.point))
+                < 0) {
+            Plane a = move->prev_projection_plane;
+            Plane b = planes[projection_plane];
+            JkVec3 intersect_normal = jk_vec3_cross(a.normal, b.normal);
+            float sqr_mag = jk_vec3_magnitude_sqr(intersect_normal);
+            if (0.0001f < JK_ABS(sqr_mag)) {
+                intersect_normal = jk_vec3_mul(1 / jk_sqrt_f32(sqr_mag), intersect_normal);
+                float dot = jk_vec3_dot(a.normal, b.normal);
+                float denom = 1 - dot * dot;
+                if (denom) {
+                    float d_a = jk_vec3_dot(a.normal, a.point);
+                    float d_b = jk_vec3_dot(b.normal, b.point);
+                    JkVec3 a_comp = jk_vec3_mul(d_a - dot * d_b, a.normal);
+                    JkVec3 b_comp = jk_vec3_mul(d_b - dot * d_a, b.normal);
+                    JkVec3 intersect_point = jk_vec3_mul(1 / denom, jk_vec3_add(a_comp, b_comp));
+
+                    for (int64_t i = 0; i < 2; i++) {
+                        JkVec3 delta = jk_vec3_mul(
+                                jk_vec3_dot(intersect_normal,
+                                        jk_vec3_sub(move->s.endpoints[i], intersect_point)),
+                                intersect_normal);
+                        move->s.endpoints[i] = jk_vec3_add(intersect_point, delta);
+                    }
+                }
+            }
+        }
+
+        move->prev_projection_plane = planes[projection_plane];
+    }
 }
 
 void render(Assets *assets, State *state)
@@ -464,6 +495,10 @@ void render(Assets *assets, State *state)
     JK_ARRAY_FROM_SPAN(texcoords, assets, assets->texcoords);
     ObjectArray objects;
     JK_ARRAY_FROM_SPAN(objects, assets, assets->objects);
+
+    if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
+        JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
+    }
 
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
@@ -498,21 +533,26 @@ void render(Assets *assets, State *state)
     camera_move =
             jk_vec3_mul(5 * DELTA_TIME, jk_vec3_normalized(jk_quat_rotate(yaw_quat, camera_move)));
 
-    JkSegment3d move = {
-        camera_transform.translation,
-        jk_vec3_add(camera_transform.translation, camera_move),
+    Move move = {
+        .s = {camera_transform.translation, jk_vec3_add(camera_transform.translation, camera_move)},
+        .prev_projection_plane = {.normal = {0, 0, 1}, .point = {0, 0, -1000}},
     };
-    for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
-        JkMat4 world_matrix = jk_mat4_i;
-        for (ObjectId parent_id = object_id; parent_id.i;
-                parent_id = objects.items[parent_id.i].parent) {
-            Object *parent = objects.items + parent_id.i;
-            world_matrix = jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
-        }
+    JkVec3 prev_p1;
+    do {
+        prev_p1 = move.s.p1;
+        for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
+            JkMat4 world_matrix = jk_mat4_i;
+            for (ObjectId parent_id = object_id; parent_id.i;
+                    parent_id = objects.items[parent_id.i].parent) {
+                Object *parent = objects.items + parent_id.i;
+                world_matrix = jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
+            }
 
-        move = move_against_box(move, world_matrix, object_id, &arena);
-    }
-    camera_transform.translation = move.p1;
+            move_against_box(&move, world_matrix, object_id, &arena);
+        }
+    } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
+    camera_transform.translation = move.s.p1;
+    camera_transform.translation.z = camera_translation_init.z;
 
     state->pixel_count = PIXEL_COUNT / 2;
 
