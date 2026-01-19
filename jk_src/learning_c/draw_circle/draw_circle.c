@@ -1,4 +1,3 @@
-#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -64,13 +63,14 @@ static void print_grid(bool (*grid)[GRID_SIZE], int height, int width)
 int main(void)
 {
     jk_platform_console_utf8_enable();
+    jk_print = jk_platform_print_stdout;
 
     printf("Drawing a circle %d times\n", ITERATION_COUNT);
-    jk_platform_profile_frame_begin();
+    jk_profile_frame_begin();
     for (int i = 0; i < ITERATION_COUNT; i++) {
         draw_circle(screen, RADIUS);
     }
-    jk_platform_profile_frame_end_and_print();
+    jk_platform_profile_end_and_print();
 
     print_grid(screen, GRID_SIZE, GRID_SIZE);
 

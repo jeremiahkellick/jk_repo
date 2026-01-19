@@ -1220,7 +1220,7 @@ static void append_shared_defines(
         append(command, d, "JK_PUBLIC=");
     }
     if (options.no_profile) {
-        append(command, d, "JK_PLATFORM_PROFILE_DISABLE");
+        append(command, d, "JK_PROFILE_DISABLE");
     }
 }
 
@@ -1796,7 +1796,7 @@ int main(int argc, char **argv)
                    "\t--no-profile\n"
                    "\t\tExclude profiler timings from the compilation, except for the\n"
                    "\t\ttotal timing. Equivalent to\n"
-                   "\t\t#define JK_PLATFORM_PROFILE_DISABLE 1\n\n");
+                   "\t\t#define JK_PROFILE_DISABLE 1\n\n");
             exit(usage_error);
         }
     }

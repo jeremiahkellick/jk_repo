@@ -17,6 +17,8 @@ static int int_compare(void *data, void *a, void *b)
 
 int main(void)
 {
+    jk_print = jk_platform_print_stdout;
+
     srand(clock());
 
     for (int i = 0; i < ARRAY_LENGTH; i++) {
@@ -24,7 +26,7 @@ int main(void)
     }
 
     int tmp;
-    jk_platform_profile_frame_begin();
+    jk_profile_frame_begin();
     jk_quicksort(array, ARRAY_LENGTH, JK_SIZEOF(int), &tmp, 0, int_compare);
-    jk_platform_profile_frame_end_and_print();
+    jk_platform_profile_end_and_print();
 }

@@ -27,7 +27,9 @@ JkOptionsParseResult opts_parse = {0};
 
 int main(int argc, char **argv)
 {
-    jk_platform_profile_frame_begin();
+    jk_print = jk_platform_print_stdout;
+
+    jk_profile_frame_begin();
 
     // Parse command line arguments
     {
@@ -35,7 +37,7 @@ int main(int argc, char **argv)
         if ((opts_parse.operand_count < 1 || opts_parse.operand_count > 2)
                 && !opt_results[OPT_HELP].present) {
             fprintf(stderr,
-                    "%s: Expected 1-2 operands, got %zu\n",
+                    "%s: Expected 1-2 operands, got %lld\n",
                     argv[0],
                     opts_parse.operand_count);
             opts_parse.usage_error = 1;
@@ -108,7 +110,7 @@ int main(int argc, char **argv)
     printf("%+.24f Average error\n", diff_total / (double)diff_count);
 
     printf("\n");
-    jk_platform_profile_frame_end_and_print();
+    jk_platform_profile_end_and_print();
 
     return 0;
 }

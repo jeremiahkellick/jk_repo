@@ -18,7 +18,7 @@ int main(int argc, char **argv)
     int64_t os_freq = jk_platform_os_timer_frequency();
     printf("OS frequency: %lld\n", (long long)os_freq);
 
-    uint64_t cpu_start = jk_platform_cpu_timer_get();
+    uint64_t cpu_start = jk_cpu_timer_get();
 
     uint64_t os_start = jk_platform_os_timer_get();
     uint64_t os_end = 0;
@@ -29,7 +29,7 @@ int main(int argc, char **argv)
         os_elapsed = os_end - os_start;
     }
 
-    uint64_t cpu_end = jk_platform_cpu_timer_get();
+    uint64_t cpu_end = jk_cpu_timer_get();
     int64_t cpu_elapsed = cpu_end - cpu_start;
     int64_t cpu_freq = os_freq * cpu_elapsed / os_elapsed;
 

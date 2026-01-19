@@ -156,6 +156,7 @@ typedef enum JkFormatItemType {
     JK_FORMAT_ITEM_FLOAT,
     JK_FORMAT_ITEM_VEC3,
     JK_FORMAT_ITEM_VEC4,
+    JK_FORMAT_ITEM_BYTES,
 
     JK_FORMAT_ITEM_TYPE_COUNT,
 } JkFormatItemType;
@@ -198,6 +199,8 @@ JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places);
 JK_PUBLIC JkFormatItem jkfv(JkVec3 v);
 
 JK_PUBLIC JkFormatItem jkfv4(JkVec4 v);
+
+JK_PUBLIC JkFormatItem jkf_bytes(double byte_count);
 
 JK_PUBLIC JkFormatItem jkf_nl;
 
@@ -990,6 +993,101 @@ JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key);
 
 // ---- JkKeyboard end ---------------------------------------------------------
 
+// ---- Profile begin ----------------------------------------------------------
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void);
+
+#ifndef JK_PROFILE_DISABLE
+#define JK_PROFILE_DISABLE 0
+#endif
+
+typedef enum JkProfileFrameType {
+    JK_PROFILE_FRAME_CURRENT,
+    JK_PROFILE_FRAME_MIN,
+    JK_PROFILE_FRAME_MAX,
+    JK_PROFILE_FRAME_TOTAL,
+    JK_PROFILE_FRAME_TYPE_COUNT,
+} JkProfileFrameType;
+
+#if JK_PROFILE_DISABLE
+
+#define JK_PROFILE_ZONE_BANDWIDTH_BEGIN(...)
+#define JK_PROFILE_ZONE_TIME_BEGIN(...)
+#define JK_PROFILE_ZONE_END(...)
+
+#else
+
+typedef enum JkProfileMetric {
+    JK_PROFILE_METRIC_ELAPSED_EXCLUSIVE,
+    JK_PROFILE_METRIC_ELAPSED_INCLUSIVE,
+    JK_PROFILE_METRIC_HIT_COUNT,
+    JK_PROFILE_METRIC_BYTE_COUNT,
+    JK_PROFILE_METRIC_DEPTH,
+    JK_PROFILE_METRIC_COUNT,
+} JkProfileMetric;
+
+typedef union JkProfileZoneFrame {
+    int64_t a[JK_PROFILE_METRIC_COUNT];
+    struct {
+        int64_t elapsed_exclusive;
+        int64_t elapsed_inclusive;
+        int64_t hit_count;
+        int64_t byte_count;
+        int64_t depth;
+    };
+} JkProfileZoneFrame;
+
+typedef struct JkProfileZone {
+    JkBuffer name;
+    JkProfileZoneFrame frames[JK_PROFILE_FRAME_TYPE_COUNT];
+
+#if JK_BUILD_MODE != JK_RELEASE
+    int64_t active_count;
+#endif
+
+    b32 seen;
+} JkProfileZone;
+
+typedef struct JkProfileTiming {
+    int64_t saved_elapsed_inclusive;
+    JkProfileZone *parent;
+    uint64_t start;
+
+#if JK_BUILD_MODE != JK_RELEASE
+    JkProfileZone *zone;
+    b32 ended;
+#endif
+} JkProfileTiming;
+
+JK_PUBLIC void jk_profile_zone_begin(
+        JkProfileTiming *timing, JkProfileZone *zone, JkBuffer name, int64_t byte_count);
+
+JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing);
+
+#define JK_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, byte_count) \
+    JkProfileTiming jk_profile_timing__##identifier;            \
+    do {                                                        \
+        static JkProfileZone jk_profile_time_begin_zone;        \
+        jk_profile_zone_begin(&jk_profile_timing__##identifier, \
+                &jk_profile_time_begin_zone,                    \
+                JKS(#identifier),                               \
+                byte_count);                                    \
+    } while (0)
+
+#define JK_PROFILE_ZONE_TIME_BEGIN(identifier) JK_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, 0)
+
+#define JK_PROFILE_ZONE_END(identifier) jk_profile_zone_end(&jk_profile_timing__##identifier);
+
+#endif
+
+JK_PUBLIC void jk_profile_frame_begin(void);
+
+JK_PUBLIC void jk_profile_frame_end(void);
+
+JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency);
+
+// ---- Profile end ------------------------------------------------------------
+
 #define JK_KILOBYTE (1ll << 10)
 #define JK_MEGABYTE (1ll << 20)
 #define JK_GIGABYTE (1ll << 30)
@@ -1028,7 +1126,7 @@ JK_PUBLIC JkConversionUnion jk_infinity_f32;
 typedef struct JkColor3 {
     union {
         struct {
-#if defined(__wasm32__)
+#if defined(__wasm__)
             uint8_t r;
             uint8_t g;
             uint8_t b;
@@ -1045,7 +1143,7 @@ typedef struct JkColor3 {
 typedef struct JkColor {
     union {
         struct {
-#if defined(__wasm32__)
+#if defined(__wasm__)
             uint8_t r;
             uint8_t g;
             uint8_t b;

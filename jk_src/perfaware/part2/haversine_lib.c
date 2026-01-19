@@ -136,11 +136,11 @@ JK_PUBLIC HaversineContext haversine_setup(
         answers_buffer = jk_platform_file_read_full(storage, answers_file_name);
     }
 
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);
+    JK_PROFILE_ZONE_TIME_BEGIN(parse_haversine_pairs);
 
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, text.size);
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(parse_json, text.size);
     JkJson *json = jk_json_parse(text, storage);
-    JK_PLATFORM_PROFILE_ZONE_END(parse_json);
+    JK_PROFILE_ZONE_END(parse_json);
 
     if (json == NULL) {
         fprintf(stderr, "haversine_setup: Failed to parse JSON\n");
@@ -169,7 +169,7 @@ JK_PUBLIC HaversineContext haversine_setup(
         context.sum_answer = context.answers[context.pair_count];
     }
 
-    JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
+    JK_PROFILE_ZONE_TIME_BEGIN(lookup_and_convert);
     {
         int64_t i = 0;
         for (JkJson *pair_json = pairs_json->first_child; pair_json;
@@ -188,9 +188,9 @@ JK_PUBLIC HaversineContext haversine_setup(
             }
         }
     }
-    JK_PLATFORM_PROFILE_ZONE_END(lookup_and_convert);
+    JK_PROFILE_ZONE_END(lookup_and_convert);
 
-    JK_PLATFORM_PROFILE_ZONE_END(parse_haversine_pairs);
+    JK_PROFILE_ZONE_END(parse_haversine_pairs);
 
     return context;
 }

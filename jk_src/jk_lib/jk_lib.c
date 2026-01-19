@@ -57,6 +57,11 @@ JK_PUBLIC float jk_sqrt_f32(float value)
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value)));
 }
 
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    _Static_assert(0, "not implemented");
+}
+
 #elif defined(__GNUC__) || defined(__clang__)
 
 JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
@@ -91,6 +96,39 @@ JK_PUBLIC float jk_sqrt_f32(float value)
 #endif
 
 // ---- Compiler-specific implementations end ----------------------------------
+
+// ---- ISA-specific implementations begin -------------------------------------
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+#if defined(_MSC_VER) && !defined(__clang__)
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    _Static_assert(0, "not implemented");
+}
+
+#elif defined(__GNUC__) || defined(__clang__)
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    return __builtin_ia32_rdtsc();
+}
+
+#endif
+
+#elif __arm64__
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    uint64_t timebase;
+    __asm__ volatile("mrs %0, CNTPCT_EL0" : "=r"(timebase));
+    return timebase;
+}
+
+#endif
+
+// ---- ISA-specific implementations end ---------------------------------------
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -515,6 +553,11 @@ JK_PUBLIC JkFormatItem jkfv4(JkVec4 v)
     return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC4, .vec4_value = v};
 }
 
+JK_PUBLIC JkFormatItem jkf_bytes(double byte_count)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_BYTES, .float_value = byte_count};
+}
+
 // JK_FORMAT argument representing a newline
 JK_PUBLIC JkFormatItem jkf_nl = {.type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
 
@@ -576,6 +619,20 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
                     jkfn(", "),
                     jkff(item->vec4_value.w, 6),
                     jkfn(")"));
+        } break;
+
+        case JK_FORMAT_ITEM_BYTES: {
+            double byte_count = item->float_value;
+            double abs = JK_ABS(byte_count);
+            if (abs < 1024.0) {
+                JK_FORMAT(arena, jkff(byte_count, 0), jkfn(" bytes"));
+            } else if (abs < 1024.0 * 1024.0) {
+                JK_FORMAT(arena, jkff(byte_count / 1024.0, 3), jkfn(" KiB"));
+            } else if (abs < 1024.0 * 1024.0 * 1024.0) {
+                JK_FORMAT(arena, jkff(byte_count / (1024.0 * 1024.0), 3), jkfn(" MiB"));
+            } else {
+                JK_FORMAT(arena, jkff(byte_count / (1024.0 * 1024.0 * 1024.0), 3), jkfn(" GiB"));
+            }
         } break;
 
         case JK_FORMAT_ITEM_TYPE_COUNT: {
@@ -1977,6 +2034,223 @@ JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key)
 }
 
 // ---- JkKeyboard end ---------------------------------------------------------
+
+// ---- Profile begin ----------------------------------------------------------
+
+#define JK_PROFILE_MAX_ZONES 1024
+
+typedef struct JkProfile {
+    uint64_t start;
+
+    int64_t frame_count;
+    int64_t frame_elapsed[JK_PROFILE_FRAME_TYPE_COUNT];
+
+#if !JK_PROFILE_DISABLE
+    int64_t zone_count;
+    JkProfileZone *zones[JK_PROFILE_MAX_ZONES];
+    JkProfileZone *zone_current;
+    int64_t zone_depth;
+#endif
+} JkProfile;
+
+static JkProfile jk_profile;
+
+JK_PUBLIC void jk_profile_frame_begin(void)
+{
+    if (!jk_profile.frame_count) {
+        jk_profile.frame_elapsed[JK_PROFILE_FRAME_MIN] = INT64_MAX;
+        jk_profile.frame_elapsed[JK_PROFILE_FRAME_MAX] = INT64_MIN;
+    }
+    jk_profile.frame_count++;
+    jk_profile.start = jk_cpu_timer_get();
+}
+
+JK_PUBLIC void jk_profile_frame_end(void)
+{
+    int64_t elapsed = jk_cpu_timer_get() - jk_profile.start;
+
+    jk_profile.frame_elapsed[JK_PROFILE_FRAME_TOTAL] += elapsed;
+
+    b32 is_min = elapsed < jk_profile.frame_elapsed[JK_PROFILE_FRAME_MIN];
+    if (is_min) {
+        jk_profile.frame_elapsed[JK_PROFILE_FRAME_MIN] = elapsed;
+    }
+
+    b32 is_max = jk_profile.frame_elapsed[JK_PROFILE_FRAME_MAX] < elapsed;
+    if (is_max) {
+        jk_profile.frame_elapsed[JK_PROFILE_FRAME_MAX] = elapsed;
+    }
+
+#if !JK_PROFILE_DISABLE
+    for (int64_t i = 0; i < jk_profile.zone_count; i++) {
+        JkProfileZone *zone = jk_profile.zones[i];
+
+        JkProfileZoneFrame current = zone->frames[JK_PROFILE_FRAME_CURRENT];
+        zone->frames[JK_PROFILE_FRAME_CURRENT] = (JkProfileZoneFrame){0};
+
+        for (JkProfileMetric metric = 0; metric < JK_PROFILE_METRIC_COUNT; metric++) {
+            zone->frames[JK_PROFILE_FRAME_TOTAL].a[metric] += current.a[metric];
+        }
+        if (is_min) {
+            zone->frames[JK_PROFILE_FRAME_MIN] = current;
+        }
+        if (is_max) {
+            zone->frames[JK_PROFILE_FRAME_MAX] = current;
+        }
+    }
+#endif
+}
+
+static void jk_profile_report_frame_build(JkArena *arena,
+        JkBuffer name,
+        JkProfileFrameType frame_index,
+        double frequency,
+        int64_t frame_count)
+{
+    int64_t total = jk_profile.frame_elapsed[frame_index];
+    double total_ms = 1000.0 * (double)total / (frequency * (double)frame_count);
+    JK_FORMAT(arena, jkf_nl, jkfs(name), jkfn(": "), jkff(total_ms, 4), jkfn("ms\n"));
+
+#if !JK_PROFILE_DISABLE
+    for (int64_t i = 0; i < jk_profile.zone_count; i++) {
+        JkProfileZone *zone = jk_profile.zones[i];
+        JkProfileZoneFrame *frame = zone->frames + frame_index;
+
+        JK_DEBUG_ASSERT(zone->active_count == 0
+                && "jk_profile_zone_begin was called without a matching "
+                   "jk_profile_zone_end");
+
+        char *tabs = jk_arena_push(arena, frame->depth);
+        for (int64_t j = 0; j < frame->depth; j++) {
+            tabs[i] = '\t';
+        }
+
+        JK_FORMAT(arena,
+                jkfn("\t"),
+                jkfs(zone->name),
+                jkfn("["),
+                jkfi(frame->hit_count / frame_count),
+                jkfn("]: "),
+                jkfi(frame->elapsed_exclusive / frame_count),
+                jkfn(" ("),
+                jkff(frame->elapsed_exclusive / (double)total * 100.0, 2),
+                jkfn("%"));
+        if (frame->elapsed_inclusive != frame->elapsed_exclusive) {
+            JK_FORMAT(arena,
+                    jkfn(", "),
+                    jkff(frame->elapsed_inclusive / (double)total * 100.0, 2),
+                    jkfn("% w/ children"));
+        }
+        char *close_paren = jk_arena_push(arena, 1);
+        *close_paren = ')';
+
+        if (frame->byte_count) {
+            double seconds = (double)frame->elapsed_inclusive / frequency;
+            JK_FORMAT(arena,
+                    jkfn(" "),
+                    jkf_bytes(frame->byte_count / (double)frame_count),
+                    jkfn(" at "),
+                    jkf_bytes(frame->byte_count / seconds),
+                    jkfn("/s"));
+        }
+
+        JK_FORMAT(arena, jkf_nl);
+    }
+#endif
+}
+
+JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency)
+{
+    JkBuffer result = {.data = jk_arena_pointer_current(arena)};
+
+    JK_FORMAT(arena, jkfn("CPU frequency: "), jkfi(frequency), jkf_nl);
+
+    if (jk_profile.frame_count == 0) {
+        JK_FORMAT(arena, jkfn("\nNo profile data was captured.\n"));
+    } else if (jk_profile.frame_count == 1) {
+        jk_profile_report_frame_build(
+                arena, JKS("Total time"), JK_PROFILE_FRAME_MIN, (double)frequency, 1);
+    } else {
+        jk_profile_report_frame_build(
+                arena, JKS("Min"), JK_PROFILE_FRAME_MIN, (double)frequency, 1);
+        jk_profile_report_frame_build(
+                arena, JKS("Max"), JK_PROFILE_FRAME_MAX, (double)frequency, 1);
+        jk_profile_report_frame_build(arena,
+                JKS("Average"),
+                JK_PROFILE_FRAME_TOTAL,
+                (double)frequency,
+                jk_profile.frame_count);
+    }
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+
+    return result;
+}
+
+#if !JK_PROFILE_DISABLE
+
+JK_PUBLIC void jk_profile_zone_begin(
+        JkProfileTiming *timing, JkProfileZone *zone, JkBuffer name, int64_t byte_count)
+{
+    JkProfileZoneFrame *frame = zone->frames + JK_PROFILE_FRAME_CURRENT;
+
+    if (!zone->seen) {
+        zone->seen = 1;
+        zone->name = name;
+        frame->byte_count += byte_count;
+        frame->depth = jk_profile.zone_depth;
+        jk_profile.zones[jk_profile.zone_count++] = zone;
+        JK_DEBUG_ASSERT(jk_profile.zone_count <= JK_PROFILE_MAX_ZONES);
+    }
+
+    timing->parent = jk_profile.zone_current;
+    jk_profile.zone_current = zone;
+    jk_profile.zone_depth++;
+
+    timing->saved_elapsed_inclusive = frame->elapsed_inclusive;
+
+#if JK_BUILD_MODE != JK_RELEASE
+    zone->active_count++;
+    timing->zone = zone;
+    timing->ended = 0;
+#endif
+
+    timing->start = jk_cpu_timer_get();
+    return;
+}
+
+JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
+{
+    int64_t elapsed = jk_cpu_timer_get() - timing->start;
+    JkProfileZoneFrame *parent_frame = timing->parent->frames + JK_PROFILE_FRAME_CURRENT;
+    JkProfileZoneFrame *current_frame = jk_profile.zone_current->frames + JK_PROFILE_FRAME_CURRENT;
+
+#if JK_BUILD_MODE != JK_RELEASE
+    JK_ASSERT(!timing->ended
+            && "jk_profile_zone_end: Called multiple times for a single timing instance");
+    timing->ended = 1;
+    timing->zone->active_count--;
+    JK_ASSERT(timing->zone->active_count >= 0
+            && "jk_profile_zone_end: Called more times than "
+               "jk_profile_zone_begin for some zone");
+    JK_ASSERT(jk_profile.zone_current == timing->zone
+            && "jk_profile_zone_end: Must end all child timings before ending their "
+               "parent");
+#endif
+
+    if (timing->parent) {
+        parent_frame->elapsed_exclusive -= elapsed;
+    }
+    current_frame->elapsed_exclusive += elapsed;
+    current_frame->elapsed_inclusive = timing->saved_elapsed_inclusive + elapsed;
+    current_frame->hit_count++;
+
+    jk_profile.zone_current = timing->parent;
+    jk_profile.zone_depth--;
+}
+
+#endif
+
+// ---- Profile end ------------------------------------------------------------
 
 JK_PUBLIC JkConversionUnion jk_infinity_f64 = {.uint64_v = 0x7ff0000000000000llu};
 JK_PUBLIC JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};

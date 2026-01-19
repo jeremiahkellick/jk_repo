@@ -330,7 +330,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             MEM_COMMIT,
             PAGE_READWRITE);
     global_bezier.cpu_timer_frequency = jk_platform_cpu_timer_frequency_estimate(100);
-    global_bezier.cpu_timer_get = jk_platform_cpu_timer_get;
+    global_bezier.cpu_timer_get = jk_cpu_timer_get;
     global_bezier.debug_print = debug_print;
 
     JkPlatformArenaVirtualRoot arena_root;

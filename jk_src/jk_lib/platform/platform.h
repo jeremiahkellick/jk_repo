@@ -63,8 +63,6 @@ JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path);
 
 // ---- ISA functions begin ----------------------------------------------------
 
-JK_PUBLIC uint64_t jk_platform_cpu_timer_get(void);
-
 JK_PUBLIC double jk_platform_fma_64(double a, double b, double c);
 
 // ---- ISA functions end ------------------------------------------------------
@@ -82,111 +80,6 @@ JK_PUBLIC JkArena jk_platform_arena_virtual_init(
 JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root);
 
 // ---- Virtual arena end --------------------------------------------------------------
-
-// ---- Profile begin ----------------------------------------------------------
-
-#ifndef JK_PLATFORM_PROFILE_DISABLE
-#define JK_PLATFORM_PROFILE_DISABLE 0
-#endif
-
-typedef enum JkPlatformProfileFrameType {
-    JK_PLATFORM_PROFILE_FRAME_CURRENT,
-    JK_PLATFORM_PROFILE_FRAME_MIN,
-    JK_PLATFORM_PROFILE_FRAME_MAX,
-    JK_PLATFORM_PROFILE_FRAME_TOTAL,
-    JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT,
-} JkPlatformProfileFrameType;
-
-#if JK_PLATFORM_PROFILE_DISABLE
-
-#define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(...)
-#define JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(...)
-#define JK_PLATFORM_PROFILE_ZONE_END(...)
-
-#else
-
-typedef enum JkPlatformProfileMetric {
-    JK_PLATFORM_PROFILE_METRIC_ELAPSED_EXCLUSIVE,
-    JK_PLATFORM_PROFILE_METRIC_ELAPSED_INCLUSIVE,
-    JK_PLATFORM_PROFILE_METRIC_HIT_COUNT,
-    JK_PLATFORM_PROFILE_METRIC_BYTE_COUNT,
-    JK_PLATFORM_PROFILE_METRIC_DEPTH,
-    JK_PLATFORM_PROFILE_METRIC_COUNT,
-} JkPlatformProfileMetric;
-
-typedef union JkPlatformProfileZoneFrame {
-    int64_t a[JK_PLATFORM_PROFILE_METRIC_COUNT];
-    struct {
-        int64_t elapsed_exclusive;
-        int64_t elapsed_inclusive;
-        int64_t hit_count;
-        int64_t byte_count;
-        int64_t depth;
-    };
-} JkPlatformProfileZoneFrame;
-
-typedef struct JkPlatformProfileZone {
-    char *name;
-    JkPlatformProfileZoneFrame frames[JK_PLATFORM_PROFILE_FRAME_TYPE_COUNT];
-
-#if JK_BUILD_MODE != JK_RELEASE
-    int64_t active_count;
-#endif
-
-    b32 seen;
-} JkPlatformProfileZone;
-
-typedef struct JkPlatformProfileTiming {
-    int64_t saved_elapsed_inclusive;
-    JkPlatformProfileZone *parent;
-    uint64_t start;
-
-#if JK_BUILD_MODE != JK_RELEASE
-    JkPlatformProfileZone *zone;
-    b32 ended;
-#endif
-} JkPlatformProfileTiming;
-
-JK_PUBLIC void jk_platform_profile_zone_begin(JkPlatformProfileTiming *timing,
-        JkPlatformProfileZone *zone,
-        char *name,
-        int64_t byte_count);
-
-JK_PUBLIC void jk_platform_profile_zone_end(JkPlatformProfileTiming *timing);
-
-#define JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, byte_count)          \
-    JkPlatformProfileTiming jk_platform_profile_timing__##identifier;             \
-    do {                                                                          \
-        static JkPlatformProfileZone jk_platform_profile_time_begin_zone;         \
-        jk_platform_profile_zone_begin(&jk_platform_profile_timing__##identifier, \
-                &jk_platform_profile_time_begin_zone,                             \
-                #identifier,                                                      \
-                byte_count);                                                      \
-    } while (0)
-
-#define JK_PLATFORM_PROFILE_ZONE_TIME_BEGIN(identifier) \
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(identifier, 0)
-
-#define JK_PLATFORM_PROFILE_ZONE_END(identifier) \
-    jk_platform_profile_zone_end(&jk_platform_profile_timing__##identifier);
-
-#endif
-
-JK_PUBLIC void jk_platform_profile_frame_begin(void);
-
-JK_PUBLIC void jk_platform_profile_frame_end(void);
-
-JK_PUBLIC void jk_platform_profile_print_custom(
-        void (*print)(void *data, char *format, ...), void *data);
-
-JK_PUBLIC void jk_platform_profile_frame_end_and_print_custom(
-        void (*print)(void *data, char *format, ...), void *data);
-
-JK_PUBLIC void jk_platform_profile_print(void);
-
-JK_PUBLIC void jk_platform_profile_frame_end_and_print(void);
-
-// ---- Profile end ------------------------------------------------------------
 
 // ---- Repetition test begin --------------------------------------------------
 
@@ -418,6 +311,8 @@ JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
         JkBuffer buffer, JkBuffer file_path, JkBuffer array_name);
 
 JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait);
+
+JK_PUBLIC void jk_platform_profile_end_and_print(void);
 
 JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count);
 

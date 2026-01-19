@@ -32,7 +32,9 @@ char *program_name = "<program_name global should be overwritten with argv[0]>";
 
 int main(int argc, char **argv)
 {
-    jk_platform_profile_frame_begin();
+    jk_print = jk_platform_print_stdout;
+
+    jk_profile_frame_begin();
 
     program_name = argv[0];
 
@@ -42,7 +44,7 @@ int main(int argc, char **argv)
         if ((opts_parse.operand_count < 1 || opts_parse.operand_count > 2)
                 && !opt_results[OPT_HELP].present) {
             fprintf(stderr,
-                    "%s: Expected 1-2 operands, got %zu\n",
+                    "%s: Expected 1-2 operands, got %lld\n",
                     program_name,
                     opts_parse.operand_count);
             opts_parse.usage_error = 1;
@@ -73,7 +75,7 @@ int main(int argc, char **argv)
 
     HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
 
-    JK_PLATFORM_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * JK_SIZEOF(context.pairs[0]));
+    JK_PROFILE_ZONE_BANDWIDTH_BEGIN(sum, context.pair_count * JK_SIZEOF(context.pairs[0]));
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
@@ -97,7 +99,7 @@ int main(int argc, char **argv)
         sum += distance;
     }
     sum = (2.0 * EARTH_RADIUS * sum) / context.pair_count;
-    JK_PLATFORM_PROFILE_ZONE_END(sum);
+    JK_PROFILE_ZONE_END(sum);
 
     printf("Pair count: %lld\n", (long long)context.pair_count);
     printf("Haversine sum: %.16f\n", sum);
@@ -107,7 +109,7 @@ int main(int argc, char **argv)
         printf("Difference: %.16f\n\n", sum - context.sum_answer);
     }
 
-    jk_platform_profile_frame_end_and_print();
+    jk_platform_profile_end_and_print();
 
     return 0;
 }
