@@ -15,7 +15,7 @@ static JkColor fgs[] = {
 static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
 
 static JkVec3 camera_translation_init = {0, 0, 1.75};
-static float camera_rot_angle_init = JK_PI;
+static float camera_rot_angle_init = 5 * JK_PI / 4;
 
 static JkTransform camera_transform;
 
@@ -503,6 +503,8 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id, JkAre
 
 void render(Assets *assets, State *state)
 {
+    jk_profile_frame_begin();
+
     jk_print = state->print;
 
     JkArenaRoot arena_root;
@@ -595,6 +597,7 @@ void render(Assets *assets, State *state)
             jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
             pixel_matrix);
 
+    JK_PROFILE_ZONE_TIME_BEGIN(triangles);
     for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
         Object *object = objects.items + object_id.i;
         JkArena object_arena = jk_arena_child_get(&arena);
@@ -714,7 +717,9 @@ void render(Assets *assets, State *state)
             }
         }
     }
+    JK_PROFILE_ZONE_END(triangles);
 
+    JK_PROFILE_ZONE_TIME_BEGIN(pixels);
     PixelIndex list[16];
     for (int32_t y = 0; y < state->dimensions.y; y++) {
         for (int32_t x = 0; x < state->dimensions.x; x++) {
@@ -739,5 +744,12 @@ void render(Assets *assets, State *state)
 
             *pixel.color = color;
         }
+    }
+    JK_PROFILE_ZONE_END(pixels);
+
+    jk_profile_frame_end();
+
+    if (jk_key_pressed(&state->keyboard, JK_KEY_P)) {
+        jk_print(jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
     }
 }

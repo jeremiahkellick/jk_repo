@@ -2122,7 +2122,7 @@ static void jk_profile_report_frame_build(JkArena *arena,
 
         char *tabs = jk_arena_push(arena, frame->depth);
         for (int64_t j = 0; j < frame->depth; j++) {
-            tabs[i] = '\t';
+            tabs[j] = '\t';
         }
 
         JK_FORMAT(arena,

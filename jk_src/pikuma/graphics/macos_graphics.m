@@ -159,6 +159,7 @@ int main(void)
 
     g.state.print = jk_print;
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
+    g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
 
     g.running = 1;
 

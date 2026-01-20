@@ -79,6 +79,7 @@ typedef struct State {
     PixelIndex *next_buffer;
     JkBuffer memory;
     int64_t os_timer_frequency;
+    int64_t (*estimate_cpu_frequency)(int64_t);
     void (*print)(JkBuffer string);
 
     JkKeyboard keyboard;
