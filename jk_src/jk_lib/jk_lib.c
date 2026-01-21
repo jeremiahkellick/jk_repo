@@ -2115,13 +2115,18 @@ static void jk_profile_report_frame_build(JkArena *arena,
     for (int64_t i = 0; i < jk_profile.zone_count; i++) {
         JkProfileZone *zone = jk_profile.zones[i];
         JkProfileZoneFrame *frame = zone->frames + frame_index;
+        if (frame->hit_count <= 0) {
+            continue;
+        }
 
-        JK_DEBUG_ASSERT(zone->active_count == 0
+#if JK_BUILD_MODE == JK_DEBUG_SLOW
+        JK_ASSERT(zone->active_count == 0
                 && "jk_profile_zone_begin was called without a matching "
                    "jk_profile_zone_end");
+#endif
 
-        char *tabs = jk_arena_push(arena, frame->depth);
-        for (int64_t j = 0; j < frame->depth; j++) {
+        char *tabs = jk_arena_push(arena, zone->depth);
+        for (int64_t j = 0; j < zone->depth; j++) {
             tabs[j] = '\t';
         }
 
@@ -2186,6 +2191,24 @@ JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency)
     return result;
 }
 
+JK_PUBLIC void jk_profile_reset(void)
+{
+    jk_profile.frame_count = 0;
+    jk_memset(jk_profile.frame_elapsed, 0, sizeof(jk_profile.frame_elapsed));
+
+#if !JK_PROFILE_DISABLE
+    for (int64_t i = 0; i < jk_profile.zone_count; i++) {
+        JkProfileZone *zone = jk_profile.zones[i];
+        jk_memset(zone->frames, 0, sizeof(zone->frames));
+#if JK_BUILD_MODE == JK_DEBUG_SLOW
+        zone->active_count = 0;
+#endif
+    }
+    jk_profile.zone_current = 0;
+    jk_profile.zone_depth = 0;
+#endif
+}
+
 #if !JK_PROFILE_DISABLE
 
 JK_PUBLIC void jk_profile_zone_begin(
@@ -2196,8 +2219,8 @@ JK_PUBLIC void jk_profile_zone_begin(
     if (!zone->seen) {
         zone->seen = 1;
         zone->name = name;
-        frame->byte_count += byte_count;
-        frame->depth = jk_profile.zone_depth;
+        zone->depth = jk_profile.zone_depth;
+        frame->byte_count += byte_count; // TODO: Should this really be in the if (!seen) block?
         jk_profile.zones[jk_profile.zone_count++] = zone;
         JK_DEBUG_ASSERT(jk_profile.zone_count <= JK_PROFILE_MAX_ZONES);
     }
@@ -2208,7 +2231,7 @@ JK_PUBLIC void jk_profile_zone_begin(
 
     timing->saved_elapsed_inclusive = frame->elapsed_inclusive;
 
-#if JK_BUILD_MODE != JK_RELEASE
+#if JK_BUILD_MODE == JK_DEBUG_SLOW
     zone->active_count++;
     timing->zone = zone;
     timing->ended = 0;
@@ -2224,7 +2247,7 @@ JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
     JkProfileZoneFrame *parent_frame = timing->parent->frames + JK_PROFILE_FRAME_CURRENT;
     JkProfileZoneFrame *current_frame = jk_profile.zone_current->frames + JK_PROFILE_FRAME_CURRENT;
 
-#if JK_BUILD_MODE != JK_RELEASE
+#if JK_BUILD_MODE == JK_DEBUG_SLOW
     JK_ASSERT(!timing->ended
             && "jk_profile_zone_end: Called multiple times for a single timing instance");
     timing->ended = 1;

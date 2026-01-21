@@ -1022,7 +1022,6 @@ typedef enum JkProfileMetric {
     JK_PROFILE_METRIC_ELAPSED_INCLUSIVE,
     JK_PROFILE_METRIC_HIT_COUNT,
     JK_PROFILE_METRIC_BYTE_COUNT,
-    JK_PROFILE_METRIC_DEPTH,
     JK_PROFILE_METRIC_COUNT,
 } JkProfileMetric;
 
@@ -1033,19 +1032,18 @@ typedef union JkProfileZoneFrame {
         int64_t elapsed_inclusive;
         int64_t hit_count;
         int64_t byte_count;
-        int64_t depth;
     };
 } JkProfileZoneFrame;
 
 typedef struct JkProfileZone {
+    b32 seen;
     JkBuffer name;
+    int64_t depth;
     JkProfileZoneFrame frames[JK_PROFILE_FRAME_TYPE_COUNT];
 
-#if JK_BUILD_MODE != JK_RELEASE
+#if JK_BUILD_MODE == JK_DEBUG_SLOW
     int64_t active_count;
 #endif
-
-    b32 seen;
 } JkProfileZone;
 
 typedef struct JkProfileTiming {
@@ -1053,7 +1051,7 @@ typedef struct JkProfileTiming {
     JkProfileZone *parent;
     uint64_t start;
 
-#if JK_BUILD_MODE != JK_RELEASE
+#if JK_BUILD_MODE == JK_DEBUG_SLOW
     JkProfileZone *zone;
     b32 ended;
 #endif
@@ -1085,6 +1083,8 @@ JK_PUBLIC void jk_profile_frame_begin(void);
 JK_PUBLIC void jk_profile_frame_end(void);
 
 JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency);
+
+JK_PUBLIC void jk_profile_reset(void);
 
 // ---- Profile end ------------------------------------------------------------
 

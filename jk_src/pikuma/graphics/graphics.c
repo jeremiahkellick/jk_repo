@@ -503,9 +503,19 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id, JkAre
 
 void render(Assets *assets, State *state)
 {
-    jk_profile_frame_begin();
-
     jk_print = state->print;
+
+    if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
+        JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
+
+        camera_transform.translation = camera_translation_init;
+        state->camera_yaw = camera_rot_angle_init;
+        camera_transform.scale = (JkVec3){1, 1, 1};
+
+        jk_profile_reset();
+    }
+
+    jk_profile_frame_begin();
 
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
@@ -519,14 +529,6 @@ void render(Assets *assets, State *state)
 
     if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
-    }
-
-    if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
-        JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
-
-        camera_transform.translation = camera_translation_init;
-        state->camera_yaw = camera_rot_angle_init;
-        camera_transform.scale = (JkVec3){1, 1, 1};
     }
 
     float mouse_sensitivity = 0.4 * DELTA_TIME;
