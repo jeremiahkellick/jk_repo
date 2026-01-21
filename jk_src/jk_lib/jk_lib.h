@@ -507,6 +507,8 @@ JK_PUBLIC JkVec2 jk_vec2_from_int(JkIntVec2 int_vector);
 
 JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector);
 
+JK_PUBLIC JkVec3 jk_vec2_to_3(JkVec2 v, float z);
+
 JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector);
 
 // ---- JkVec2 end -------------------------------------------------------------

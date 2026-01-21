@@ -1408,6 +1408,11 @@ JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector)
     return (JkIntVec2){jk_round(vector.x), jk_round(vector.y)};
 }
 
+JK_PUBLIC JkVec3 jk_vec2_to_3(JkVec2 v, float z)
+{
+    return (JkVec3){v.x, v.y, z};
+}
+
 JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector)
 {
     return (JkVec2){
@@ -2109,7 +2114,14 @@ static void jk_profile_report_frame_build(JkArena *arena,
 {
     int64_t total = jk_profile.frame_elapsed[frame_index];
     double total_ms = 1000.0 * (double)total / (frequency * (double)frame_count);
-    JK_FORMAT(arena, jkf_nl, jkfs(name), jkfn(": "), jkff(total_ms, 4), jkfn("ms\n"));
+    JK_FORMAT(arena,
+            jkf_nl,
+            jkfs(name),
+            jkfn(": "),
+            jkfi(total),
+            jkfn(" ("),
+            jkff(total_ms, 4),
+            jkfn("ms)\n"));
 
 #if !JK_PROFILE_DISABLE
     for (int64_t i = 0; i < jk_profile.zone_count; i++) {

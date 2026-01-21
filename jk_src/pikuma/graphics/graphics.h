@@ -12,9 +12,9 @@
 #define NEXT_BUFFER_SIZE (JK_SIZEOF(PixelIndex) * PIXEL_COUNT)
 #define Z_BUFFER_SIZE (JK_SIZEOF(float) * PIXEL_COUNT)
 
-#define CLEAR_COLOR_R 0x16
-#define CLEAR_COLOR_G 0x20
-#define CLEAR_COLOR_B 0x27
+#define CLEAR_COLOR_R 0x00
+#define CLEAR_COLOR_G 0x00
+#define CLEAR_COLOR_B 0x00
 
 typedef enum Flag {
     FLAG_INITIALIZED,
@@ -82,6 +82,8 @@ typedef struct State {
     int64_t (*estimate_cpu_frequency)(int64_t);
     void (*print)(JkBuffer string);
 
+    uint64_t os_time;
+    JkIntVec2 dimensions;
     JkKeyboard keyboard;
     JkIntVec2 mouse_pos;
     JkVec2 mouse_delta;
@@ -89,9 +91,9 @@ typedef struct State {
     uint64_t flags;
     float camera_yaw;
     float camera_pitch;
+    JkVec2 camera_position;
     int64_t pixel_count;
-    JkIntVec2 dimensions;
-    uint64_t os_time;
+    int64_t test_frames_remaining;
 } State;
 
 typedef void RenderFunction(Assets *assets, State *state);

@@ -12,12 +12,11 @@ static JkColor fgs[] = {
     {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff},
     {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
 };
-static JkColor bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
+static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
+static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 0xff};
 
-static JkVec3 camera_translation_init = {0, 0, 1.75};
+static JkVec3 camera_position_init = {0, 0, 1.75};
 static float camera_rot_angle_init = 5 * JK_PI / 4;
-
-static JkTransform camera_transform;
 
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
@@ -505,12 +504,21 @@ void render(Assets *assets, State *state)
 {
     jk_print = state->print;
 
+    if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
+        JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
+    }
+
+    if (jk_key_pressed(&state->keyboard, JK_KEY_T)) {
+        JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
+        state->test_frames_remaining = 240;
+    }
+
     if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
 
-        camera_transform.translation = camera_translation_init;
+        state->camera_position = jk_vec3_to_2(camera_position_init);
         state->camera_yaw = camera_rot_angle_init;
-        camera_transform.scale = (JkVec3){1, 1, 1};
+        state->camera_pitch = 0;
 
         jk_profile_reset();
     }
@@ -527,55 +535,63 @@ void render(Assets *assets, State *state)
     ObjectArray objects;
     JK_ARRAY_FROM_SPAN(objects, assets, assets->objects);
 
-    if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
-        JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
+    if (state->test_frames_remaining <= 0) {
+        float mouse_sensitivity = 0.4 * DELTA_TIME;
+        state->camera_yaw += jk_remainder_f32(mouse_sensitivity * -state->mouse_delta.x, 2 * JK_PI);
+        state->camera_pitch =
+                JK_CLAMP(state->camera_pitch + mouse_sensitivity * -state->mouse_delta.y,
+                        -JK_PI / 2,
+                        JK_PI / 2);
     }
-
-    float mouse_sensitivity = 0.4 * DELTA_TIME;
-    state->camera_yaw += jk_remainder_f32(mouse_sensitivity * -state->mouse_delta.x, 2 * JK_PI);
-    state->camera_pitch = JK_CLAMP(
-            state->camera_pitch + mouse_sensitivity * -state->mouse_delta.y, -JK_PI / 2, JK_PI / 2);
 
     JkVec4 yaw_quat = jk_quat_angle_axis(state->camera_yaw, (JkVec3){0, 0, 1});
-    camera_transform.rotation =
-            jk_quat_mul(yaw_quat, jk_quat_angle_axis(state->camera_pitch, (JkVec3){1, 0, 0}));
 
-    JkVec3 camera_move = {0};
-    if (jk_key_down(&state->keyboard, JK_KEY_W)) {
-        camera_move.y += 1;
-    }
-    if (jk_key_down(&state->keyboard, JK_KEY_S)) {
-        camera_move.y -= 1;
-    }
-    if (jk_key_down(&state->keyboard, JK_KEY_A)) {
-        camera_move.x -= 1;
-    }
-    if (jk_key_down(&state->keyboard, JK_KEY_D)) {
-        camera_move.x += 1;
-    }
-    camera_move =
-            jk_vec3_mul(5 * DELTA_TIME, jk_vec3_normalized(jk_quat_rotate(yaw_quat, camera_move)));
-
-    Move move = {
-        .s = {camera_transform.translation, jk_vec3_add(camera_transform.translation, camera_move)},
-        .prev_projection_plane = {.normal = {0, 0, 1}, .point = {0, 0, -1000}},
-    };
-    JkVec3 prev_p1;
-    do {
-        prev_p1 = move.s.p1;
-        for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
-            JkMat4 world_matrix = jk_mat4_i;
-            for (ObjectId parent_id = object_id; parent_id.i;
-                    parent_id = objects.items[parent_id.i].parent) {
-                Object *parent = objects.items + parent_id.i;
-                world_matrix = jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
-            }
-
-            move_against_box(&move, world_matrix, object_id, &arena);
+    if (state->test_frames_remaining <= 0) {
+        JkVec3 camera_move = {0};
+        if (jk_key_down(&state->keyboard, JK_KEY_W)) {
+            camera_move.y += 1;
         }
-    } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
-    camera_transform.translation = move.s.p1;
-    camera_transform.translation.z = camera_translation_init.z;
+        if (jk_key_down(&state->keyboard, JK_KEY_S)) {
+            camera_move.y -= 1;
+        }
+        if (jk_key_down(&state->keyboard, JK_KEY_A)) {
+            camera_move.x -= 1;
+        }
+        if (jk_key_down(&state->keyboard, JK_KEY_D)) {
+            camera_move.x += 1;
+        }
+        camera_move = jk_vec3_mul(
+                5 * DELTA_TIME, jk_vec3_normalized(jk_quat_rotate(yaw_quat, camera_move)));
+
+        JkVec3 move_start = jk_vec2_to_3(state->camera_position, camera_position_init.z);
+        Move move = {
+            .s = {move_start, jk_vec3_add(move_start, camera_move)},
+            .prev_projection_plane = {.normal = {0, 0, 1}, .point = {0, 0, -1000}},
+        };
+        JkVec3 prev_p1;
+        do {
+            prev_p1 = move.s.p1;
+            for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
+                JkMat4 world_matrix = jk_mat4_i;
+                for (ObjectId parent_id = object_id; parent_id.i;
+                        parent_id = objects.items[parent_id.i].parent) {
+                    Object *parent = objects.items + parent_id.i;
+                    world_matrix =
+                            jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
+                }
+
+                move_against_box(&move, world_matrix, object_id, &arena);
+            }
+        } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
+        state->camera_position = jk_vec3_to_2(move.s.p1);
+    }
+
+    JkTransform camera_transform = {
+        .translation = jk_vec2_to_3(state->camera_position, camera_position_init.z),
+        .rotation =
+                jk_quat_mul(yaw_quat, jk_quat_angle_axis(state->camera_pitch, (JkVec3){1, 0, 0})),
+        .scale = {1, 1, 1},
+    };
 
     state->pixel_count = PIXEL_COUNT / 2;
 
@@ -721,6 +737,7 @@ void render(Assets *assets, State *state)
     }
     JK_PROFILE_ZONE_END(triangles);
 
+    JkColor bg = 0 < state->test_frames_remaining ? test_bg : normal_bg;
     JK_PROFILE_ZONE_TIME_BEGIN(pixels);
     PixelIndex list[16];
     for (int32_t y = 0; y < state->dimensions.y; y++) {
@@ -753,5 +770,11 @@ void render(Assets *assets, State *state)
 
     if (jk_key_pressed(&state->keyboard, JK_KEY_P)) {
         jk_print(jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+    }
+
+    if (0 < state->test_frames_remaining) {
+        if (--state->test_frames_remaining == 0) {
+            jk_print(jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+        }
     }
 }
