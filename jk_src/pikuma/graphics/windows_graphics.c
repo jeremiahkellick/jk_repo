@@ -25,9 +25,12 @@ typedef struct Global {
     JkIntVec2 window_dimensions;
     b32 running;
     State state;
+
+    _Alignas(64) SRWLOCK keyboard_lock;
+    _Alignas(64) JkKeyboard keyboard;
 } Global;
 
-static Global g;
+static Global g = {.keyboard_lock = SRWLOCK_INIT};
 static JkColor clear_color = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 
 static void debug_print(JkBuffer string)
@@ -93,9 +96,53 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
             SRCCOPY);
 }
 
+uint8_t raw_input_bytes[1024];
+uint8_t print_bytes[4096];
+JkBuffer print_memory = JK_BUFFER_INIT_FROM_BYTE_ARRAY(print_bytes);
+
+// clang-format off
+JkKey make_code_map[] = {
+    0x00, 0x29, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
+    0x24, 0x25, 0x26, 0x27, 0x2d, 0x2e, 0x2a, 0x2b,
+    0x14, 0x1a, 0x08, 0x15, 0x17, 0x1c, 0x18, 0x0c,
+    0x12, 0x13, 0x2f, 0x30, 0x28, 0xe0, 0x04, 0x16,
+    0x07, 0x09, 0x0a, 0x0b, 0x0d, 0x0e, 0x0f, 0x33,
+    0x34, 0x35, 0xe1, 0x31, 0x1d, 0x1b, 0x06, 0x19,
+    0x05, 0x11, 0x10, 0x36, 0x37, 0x38, 0xe5, 0x55,
+    0xe2, 0x2c, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e,
+    0x3f, 0x40, 0x41, 0x42, 0x43, 0x53, 0x47, 0x5f,
+    0x60, 0x61, 0x56, 0x5c, 0x5d, 0x5e, 0x57, 0x59,
+    0x5a, 0x5b, 0x62, 0x63, 0x46, 0x00, 0x64, 0x44,
+    0x45, 0x67, 0x00, 0x00, 0x8c, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x68, 0x69, 0x6a, 0x6b,
+    0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x00,
+    0x88, 0x91, 0x90, 0x87, 0x00, 0x00, 0x73, 0x93,
+    0x92, 0x8a, 0x00, 0x8b, 0x00, 0x89, 0x85,
+};
+
+JkKey make_code_map_e0[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xb6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xb5, 0x00, 0x00, 0x58, 0xe4, 0x00, 0x00,
+    0xe2, 0x00, 0xcd, 0x00, 0xb7, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x00, 0x46,
+    0xe6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x4a,
+    0x52, 0x4b, 0x00, 0x50, 0x00, 0x4f, 0x00, 0x4d,
+    0x51, 0x4e, 0x49, 0x4c, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xe3, 0xe7, 0x65, 0x81, 0x82,
+    0x00, 0x00, 0x00, 0x83,
+};
+// clang-format on
+
 static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     LRESULT result = 0;
+
+    JkArenaRoot arena_root;
+    JkArena arena = jk_arena_fixed_init(&arena_root, print_memory);
 
     switch (message) {
     case WM_DESTROY:
@@ -111,6 +158,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     case WM_SYSKEYUP:
     case WM_KEYDOWN:
     case WM_KEYUP: {
+        JK_PRINT_FMT(&arena, jkfn("KeyEvent\n"));
         switch (wparam) {
         case VK_F4: {
             if ((lparam >> 29) & 1) { // Alt key is down
@@ -120,6 +168,57 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 
         default: {
         } break;
+        }
+    } break;
+
+    case WM_INPUT: {
+        UINT size;
+        GetRawInputData(
+                (HRAWINPUT)lparam, RID_INPUT, raw_input_bytes, &size, sizeof(RAWINPUTHEADER));
+        if (sizeof(raw_input_bytes) < size) {
+            JK_PRINT_FMT(&arena, jkfn("size: "), jkfi(size), jkf_nl);
+            jk_print(JKS("Unexpectedly large data returned from GetRawInputData\n"));
+        }
+        RAWINPUT *input = (RAWINPUT *)raw_input_bytes;
+        if (input->header.dwType == RIM_TYPEKEYBOARD) {
+            jk_print(JKS("\nKEYBOARD\n"));
+
+            USHORT make_code = input->data.keyboard.MakeCode;
+            JkKey key = JK_KEY_NONE;
+            if (input->data.keyboard.Flags & RI_KEY_E1) {
+                if (make_code == 0x45) {
+                    key = JK_KEY_PAUSE;
+                }
+            } else if (input->data.keyboard.Flags & RI_KEY_E0) {
+                if (make_code < JK_ARRAY_COUNT(make_code_map_e0)) {
+                    key = make_code_map_e0[make_code];
+                }
+            } else {
+                if (make_code < JK_ARRAY_COUNT(make_code_map)) {
+                    key = make_code_map[make_code];
+                }
+            }
+
+            if (key) {
+                JK_PRINT_FMT(&arena,
+                        jkfn("key: 0x"),
+                        jkfh(key, 2),
+                        jkf_nl,
+                        jkfn("flags: 0x"),
+                        jkfh(input->data.keyboard.Flags, 2),
+                        jkf_nl);
+
+                int64_t byte = key / 8;
+                uint8_t flag = key % 8;
+                b32 released = input->data.keyboard.Flags & RI_KEY_BREAK;
+
+                AcquireSRWLockExclusive(&g.keyboard_lock);
+                b32 was_down = JK_FLAG_GET(g.keyboard.down[byte], flag);
+                JK_FLAG_SET(g.keyboard.down[byte], flag, !released);
+                JK_FLAG_SET(g.keyboard.pressed[byte], flag, !was_down && !released);
+                JK_FLAG_SET(g.keyboard.released[byte], flag, released);
+                ReleaseSRWLockExclusive(&g.keyboard_lock);
+            }
         }
     } break;
 
@@ -155,6 +254,12 @@ DWORD app_thread(LPVOID param)
     HINSTANCE graphics_library = 0;
     FILETIME graphics_dll_last_modified_time = {0};
 #endif
+
+    AcquireSRWLockExclusive(&g.keyboard_lock);
+    jk_keyboard_clear(&g.keyboard);
+    ReleaseSRWLockExclusive(&g.keyboard_lock);
+
+    jk_print(JKS("START\n"));
 
     uint64_t time = 0;
     int64_t work_time_total = 0;
@@ -198,6 +303,11 @@ DWORD app_thread(LPVOID param)
 
         g.state.os_time = jk_platform_os_timer_get();
         g.state.print = jk_print;
+
+        AcquireSRWLockExclusive(&g.keyboard_lock);
+        g.state.keyboard = g.keyboard;
+        jk_keyboard_clear(&g.keyboard);
+        ReleaseSRWLockExclusive(&g.keyboard_lock);
 
         g.render(g.assets, &g.state);
         time++;
@@ -329,6 +439,20 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             instance,
             0);
     if (window) {
+        RAWINPUTDEVICE raw_input_devices[] = {
+            {
+                .usUsagePage = 0x01,
+                .usUsage = 0x06,
+                .dwFlags = RIDEV_NOLEGACY,
+                .hwndTarget = window,
+            },
+        };
+        if (!RegisterRawInputDevices(raw_input_devices,
+                    JK_ARRAY_COUNT(raw_input_devices),
+                    sizeof(*raw_input_devices))) {
+            jk_print(JKS("Failed to register raw input devices\n"));
+        }
+
         HANDLE app_thread_handle = CreateThread(0, 0, app_thread, window, 0, 0);
         if (app_thread_handle) {
             g.running = 1;
