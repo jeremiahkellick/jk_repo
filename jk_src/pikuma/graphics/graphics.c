@@ -59,9 +59,9 @@ static b32 pixel_index_nil(PixelIndex index)
     return !index.i;
 }
 
-static PixelIndex pixel_index_by_coords(State *state, int32_t x, int32_t y)
+static PixelIndex pixel_index_from_pos(State *state, JkIntVec2 pos)
 {
-    return (PixelIndex){DRAW_BUFFER_SIDE_LENGTH * y + x + 1};
+    return (PixelIndex){DRAW_BUFFER_SIDE_LENGTH * pos.y + pos.x + 1};
 }
 
 static uint8_t color_multiply(uint8_t a, uint8_t b)
@@ -141,13 +141,51 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
     JkIntRect bounds = jk_int_rect_intersect(screen_rect, triangle_bounding_box(tri));
     JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
 
+    if (dimensions.x < 1) {
+        return;
+    }
+
     JkVec2 verts_2d[3];
     for (int64_t i = 0; i < 3; i++) {
         verts_2d[i] = jk_vec3_to_2(tri.v[i]);
     }
 
-    if (dimensions.x < 1) {
-        return;
+    float barycentric_divisor = 0;
+    JkVec2 barycentric_delta[3];
+    float barycentric_init[3];
+    JkVec2 init_pos = {bounds.min.x + 0.5, bounds.min.y + 0.5};
+    for (int64_t i = 0; i < 3; i++) {
+        int64_t a = (i + 1) % 3;
+        int64_t b = (i + 2) % 3;
+        float cross = jk_vec2_cross(verts_2d[a], verts_2d[b]);
+        barycentric_divisor += cross;
+        barycentric_delta[i].x = verts_2d[a].y - verts_2d[b].y;
+        barycentric_delta[i].y = verts_2d[b].x - verts_2d[a].x;
+        barycentric_init[i] =
+                barycentric_delta[i].x * init_pos.x + barycentric_delta[i].y * init_pos.y + cross;
+    }
+    for (int64_t i = 0; i < 3; i++) {
+        barycentric_delta[i].x /= barycentric_divisor;
+        barycentric_delta[i].y /= barycentric_divisor;
+        barycentric_init[i] /= barycentric_divisor;
+    }
+
+    JkVec3 vertex_texcoords[3];
+    for (int64_t i = 0; i < 3; i++) {
+        vertex_texcoords[i] = jk_vec2_to_3(tri.t[i], tri.v[i].z);
+    }
+    JkVec3 texcoord_row = {0};
+    for (int64_t i = 0; i < 3; i++) {
+        texcoord_row =
+                jk_vec3_add(texcoord_row, jk_vec3_mul(barycentric_init[i], vertex_texcoords[i]));
+    }
+    JkVec3 texcoord_deltas[2] = {0};
+    for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
+        for (int64_t vertex_index = 0; vertex_index < 3; vertex_index++) {
+            texcoord_deltas[axis_index] = jk_vec3_add(texcoord_deltas[axis_index],
+                    jk_vec3_mul(barycentric_delta[vertex_index].v[axis_index],
+                            vertex_texcoords[vertex_index]));
+        }
     }
 
     JkEdgeArray edges = {.items = jk_arena_pointer_current(&tmp_arena)};
@@ -160,6 +198,7 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
     }
     edges.count = (JkEdge *)jk_arena_pointer_current(&tmp_arena) - edges.items;
 
+    PixelIndex pixel_index_row = pixel_index_from_pos(state, bounds.min);
     int64_t coverage_size = JK_SIZEOF(float) * (dimensions.x + 1);
     JkBuffer coverage_buf = jk_arena_push_buffer(&tmp_arena, 2 * coverage_size);
     float *coverage = (float *)coverage_buf.data;
@@ -252,6 +291,8 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
 
         // Fill the scanline according to coverage
         float acc = 0.0f;
+        PixelIndex pixel_index = pixel_index_row;
+        JkVec3 texcoord_3d = texcoord_row;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
             acc += fill[x - bounds.min.x];
 
@@ -261,45 +302,32 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
             }
 
             if (0 < alpha) {
-                JkVec2 point = {x + 0.5, y + 0.5};
-                float total_area = jk_vec2_cross(jk_vec2_sub(verts_2d[1], verts_2d[0]),
-                        jk_vec2_sub(verts_2d[2], verts_2d[0]));
-                float weight[3];
-                for (int64_t i = 0; i < 2; i++) {
-                    int64_t a = (i + 1) % 3;
-                    int64_t b = (i + 2) % 3;
-                    float area = jk_vec2_cross(
-                            jk_vec2_sub(verts_2d[a], point), jk_vec2_sub(verts_2d[b], point));
-                    weight[i] = area / total_area;
-                }
-                weight[2] = 1 - weight[0] - weight[1];
-
-                JkVec2 texcoord = {0};
-                float z = 0;
-                for (int64_t i = 0; i < 3; i++) {
-                    texcoord = jk_vec2_add(texcoord, jk_vec2_mul(weight[i], tri.t[i]));
-                    z += weight[i] * tri.v[i].z;
-                }
-                texcoord.x /= z;
-                texcoord.y /= z;
-
-                JkColor pixel_color = texture_lookup(texture, texcoord);
+                JkVec2 texcoord_2d = {
+                    texcoord_3d.x / texcoord_3d.z,
+                    texcoord_3d.y / texcoord_3d.z,
+                };
+                JkColor pixel_color = texture_lookup(texture, texcoord_2d);
                 pixel_color.a = (uint8_t)alpha;
 
-                PixelIndex head_index = pixel_index_by_coords(state, x, y);
-                PixelIndex *head_next = next_get(state, head_index);
+                PixelIndex *head_next = next_get(state, pixel_index);
                 PixelIndex new_pixel_index = pixel_alloc(state);
                 if (!pixel_index_nil(new_pixel_index)) {
                     Pixel new_pixel = pixel_get(state, new_pixel_index);
 
                     *new_pixel.color = pixel_color;
-                    *new_pixel.z = z;
+                    *new_pixel.z = texcoord_3d.z;
                     *new_pixel.next = *head_next;
 
                     *head_next = new_pixel_index;
                 }
             }
+
+            pixel_index.i++;
+            texcoord_3d = jk_vec3_add(texcoord_3d, texcoord_deltas[0]);
         }
+
+        pixel_index_row.i += DRAW_BUFFER_SIDE_LENGTH;
+        texcoord_row = jk_vec3_add(texcoord_row, texcoord_deltas[1]);
     }
 }
 
@@ -342,6 +370,11 @@ typedef struct Move {
     JkSegment3d s;
     Plane prev_projection_plane;
 } Move;
+
+typedef struct EdgeFunction {
+    JkVec2 deltas;
+    float init;
+} EdgeFunction;
 
 static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id, JkArena *arena)
 {
@@ -721,9 +754,11 @@ void render(Assets *assets, State *state)
     JkColor bg = 0 < state->test_frames_remaining ? test_bg : normal_bg;
     JK_PROFILE_ZONE_TIME_BEGIN(pixels);
     PixelIndex list[16];
+    PixelIndex pixel_index_row = {1};
     for (int32_t y = 0; y < state->dimensions.y; y++) {
+        PixelIndex pixel_index = pixel_index_row;
         for (int32_t x = 0; x < state->dimensions.x; x++) {
-            Pixel pixel = pixel_get(state, pixel_index_by_coords(state, x, y));
+            Pixel pixel = pixel_get(state, pixel_index);
             JkColor color = {0};
 
             int64_t list_count = 0;
@@ -743,7 +778,10 @@ void render(Assets *assets, State *state)
             color = jk_color_disjoint_over(color, bg);
 
             *pixel.color = color;
+
+            pixel_index.i++;
         }
+        pixel_index_row.i += DRAW_BUFFER_SIDE_LENGTH;
     }
     JK_PROFILE_ZONE_END(pixels);
 
