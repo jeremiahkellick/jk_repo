@@ -126,30 +126,11 @@ static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
 
 static JkColor texture_lookup(Bitmap texture, JkVec2 texcoord)
 {
-    int32_t coords[2][2]; // Usage: coords[is_v?][larger?] e.g. the larger u coord is coords[0][1]
-    int32_t frac[2];
-    for (int64_t is_v = 0; is_v < 2; is_v++) {
-        float coord = texcoord.v[is_v] * texture.dimensions.v[is_v];
-        float floor_f = jk_floor_f32(coord);
-        frac[is_v] = (int32_t)(255 * (coord - floor_f));
-
-        coords[is_v][0] = (int32_t)floor_f;
-        coords[is_v][1] = coords[is_v][0] + 1;
-
-        coords[is_v][0] = JK_MOD(coords[is_v][0], texture.dimensions.v[is_v]);
-        coords[is_v][1] = JK_MOD(coords[is_v][1], texture.dimensions.v[is_v]);
-    }
-    JkColor vertical_colors[2]; // Usage colors[lower?][right?]
-    for (int64_t y = 0; y < 2; y++) {
-        JkColor horizontal_colors[2];
-        for (int64_t x = 0; x < 2; x++) {
-            horizontal_colors[x] = jk_color3_to_4(
-                    texture.memory[texture.dimensions.x * coords[1][y] + coords[0][x]], 0);
-        }
-        vertical_colors[y] =
-                jk_color_alpha_blend(horizontal_colors[1], horizontal_colors[0], frac[0]);
-    }
-    return jk_color_alpha_blend(vertical_colors[1], vertical_colors[0], frac[1]);
+    int32_t x = texcoord.x * texture.dimensions.x;
+    int32_t y = texcoord.y * texture.dimensions.y;
+    x = JK_MOD(x, texture.dimensions.x);
+    y = JK_MOD(y, texture.dimensions.y);
+    return jk_color3_to_4(texture.memory[texture.dimensions.x * y + x], 0xff);
 }
 
 static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap texture)

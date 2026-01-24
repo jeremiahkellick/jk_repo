@@ -468,11 +468,11 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             uint8_t type = *(node->name + node->name_length);
             if (0 < node->property_count && type == 'L') {
                 int64_t fbx_id = *(int64_t *)(node->name + node->name_length + 1);
-                Thing *thing = thing_new(fbx_id);
-                JK_FLAG_SET(thing->flags, THING_FLAG_MODEL, is_model);
-                thing->vertices_base = c->verts_arena->pos / JK_SIZEOF(JkVec3);
-                thing->texcoords_base = c->texcoords_arena->pos / JK_SIZEOF(JkVec2);
-                process_fbx_nodes(c, file, pos_children, thing);
+                Thing *new_thing = thing_new(fbx_id);
+                JK_FLAG_SET(new_thing->flags, THING_FLAG_MODEL, is_model);
+                new_thing->vertices_base = c->verts_arena->pos / JK_SIZEOF(JkVec3);
+                new_thing->texcoords_base = c->texcoords_arena->pos / JK_SIZEOF(JkVec2);
+                process_fbx_nodes(c, file, pos_children, new_thing);
             } else {
                 fprintf(stderr, "read_doubles: For object ID, expected type 'L', got '%c'\n", type);
             }
@@ -629,8 +629,8 @@ int main(int argc, char **argv)
     assets->texcoords = append_arena(&result_arena, c->texcoords_arena);
 
     // Process faces
-    for (int64_t i = 0; i < thing_count; i++) {
-        Thing *thing = things + i;
+    for (int64_t thing_index = 0; thing_index < thing_count; thing_index++) {
+        Thing *thing = things + thing_index;
         int64_t faces_base = result_arena.pos;
         int64_t i = 0;
         while (i < thing->vertex_indexes.count) {

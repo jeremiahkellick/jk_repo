@@ -57,11 +57,6 @@ JK_PUBLIC float jk_sqrt_f32(float value)
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value)));
 }
 
-JK_PUBLIC uint64_t jk_cpu_timer_get(void)
-{
-    _Static_assert(0, "not implemented");
-}
-
 #elif defined(__GNUC__) || defined(__clang__)
 
 JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
@@ -105,7 +100,7 @@ JK_PUBLIC float jk_sqrt_f32(float value)
 
 JK_PUBLIC uint64_t jk_cpu_timer_get(void)
 {
-    _Static_assert(0, "not implemented");
+    return __rdtsc();
 }
 
 #elif defined(__GNUC__) || defined(__clang__)

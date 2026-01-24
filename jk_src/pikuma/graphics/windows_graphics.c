@@ -96,10 +96,6 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
             SRCCOPY);
 }
 
-uint8_t raw_input_bytes[1024];
-uint8_t print_bytes[4096];
-JkBuffer print_memory = JK_BUFFER_INIT_FROM_BYTE_ARRAY(print_bytes);
-
 // clang-format off
 JkKey make_code_map[] = {
     0x00, 0x29, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
@@ -141,9 +137,6 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 {
     LRESULT result = 0;
 
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root, print_memory);
-
     switch (message) {
     case WM_DESTROY:
     case WM_CLOSE: {
@@ -154,35 +147,17 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         update_dimensions(window);
     } break;
 
-    case WM_SYSKEYDOWN:
-    case WM_SYSKEYUP:
-    case WM_KEYDOWN:
-    case WM_KEYUP: {
-        JK_PRINT_FMT(&arena, jkfn("KeyEvent\n"));
-        switch (wparam) {
-        case VK_F4: {
-            if ((lparam >> 29) & 1) { // Alt key is down
-                g.running = 0;
-            }
-        } break;
-
-        default: {
-        } break;
-        }
-    } break;
-
     case WM_INPUT: {
-        UINT size;
-        GetRawInputData(
+        static _Alignas(32) uint8_t raw_input_bytes[1024];
+        UINT size = sizeof(raw_input_bytes);
+        UINT bytes_written = GetRawInputData(
                 (HRAWINPUT)lparam, RID_INPUT, raw_input_bytes, &size, sizeof(RAWINPUTHEADER));
-        if (sizeof(raw_input_bytes) < size) {
-            JK_PRINT_FMT(&arena, jkfn("size: "), jkfi(size), jkf_nl);
-            jk_print(JKS("Unexpectedly large data returned from GetRawInputData\n"));
-        }
         RAWINPUT *input = (RAWINPUT *)raw_input_bytes;
-        if (input->header.dwType == RIM_TYPEKEYBOARD) {
-            jk_print(JKS("\nKEYBOARD\n"));
-
+        if (bytes_written == (UINT)-1) {
+            jk_print(JKS("GetRawInputData returned an error\n"));
+        } else if (sizeof(raw_input_bytes) < size || sizeof(raw_input_bytes) < bytes_written) {
+            jk_print(JKS("Unexpectedly large data returned from GetRawInputData\n"));
+        } else if (input->header.dwType == RIM_TYPEKEYBOARD) {
             USHORT make_code = input->data.keyboard.MakeCode;
             JkKey key = JK_KEY_NONE;
             if (input->data.keyboard.Flags & RI_KEY_E1) {
@@ -200,14 +175,6 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
             }
 
             if (key) {
-                JK_PRINT_FMT(&arena,
-                        jkfn("key: 0x"),
-                        jkfh(key, 2),
-                        jkf_nl,
-                        jkfn("flags: 0x"),
-                        jkfh(input->data.keyboard.Flags, 2),
-                        jkf_nl);
-
                 int64_t byte = key / 8;
                 uint8_t flag = key % 8;
                 b32 released = input->data.keyboard.Flags & RI_KEY_BREAK;
@@ -259,8 +226,6 @@ DWORD app_thread(LPVOID param)
     jk_keyboard_clear(&g.keyboard);
     ReleaseSRWLockExclusive(&g.keyboard_lock);
 
-    jk_print(JKS("START\n"));
-
     uint64_t time = 0;
     int64_t work_time_total = 0;
     int64_t work_time_min = INT64_MAX;
@@ -302,12 +267,17 @@ DWORD app_thread(LPVOID param)
         g.state.dimensions.y = JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
 
         g.state.os_time = jk_platform_os_timer_get();
-        g.state.print = jk_print;
 
         AcquireSRWLockExclusive(&g.keyboard_lock);
         g.state.keyboard = g.keyboard;
         jk_keyboard_clear(&g.keyboard);
         ReleaseSRWLockExclusive(&g.keyboard_lock);
+
+        if ((jk_key_down(&g.state.keyboard, JK_KEY_LEFTALT)
+                    || jk_key_down(&g.state.keyboard, JK_KEY_RIGHTALT))
+                && jk_key_pressed(&g.state.keyboard, JK_KEY_F4)) {
+            g.running = 0;
+        }
 
         g.render(g.assets, &g.state);
         time++;
@@ -418,6 +388,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
 
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
+    g.state.print = jk_print;
+    g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
 
     WNDCLASSA window_class = {
         .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
