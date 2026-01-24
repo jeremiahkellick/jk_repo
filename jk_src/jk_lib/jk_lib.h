@@ -995,6 +995,28 @@ JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key);
 
 // ---- JkKeyboard end ---------------------------------------------------------
 
+// ---- JkMouse begin ----------------------------------------------------------
+
+typedef enum JkMouseFlag {
+    JK_MOUSE_LEFT_DOWN,
+    JK_MOUSE_LEFT_PRESSED,
+    JK_MOUSE_LEFT_RELEASED,
+    JK_MOUSE_RIGHT_DOWN,
+    JK_MOUSE_RIGHT_PRESSED,
+    JK_MOUSE_RIGHT_RELEASED,
+    JK_MOUSE_FLAG_COUNT,
+} JkMouseFlag;
+
+typedef struct JkMouse {
+    uint32_t flags;
+    JkVec2 delta;
+    JkIntVec2 position;
+} JkMouse;
+
+JK_PUBLIC void jk_mouse_clear(JkMouse *mouse);
+
+// ---- JkMouse end ------------------------------------------------------------
+
 // ---- Profile begin ----------------------------------------------------------
 
 JK_PUBLIC uint64_t jk_cpu_timer_get(void);

@@ -16,6 +16,7 @@
 #endif
 
 #define FRAME_RATE 60
+#define MOUSE_SENSITIVITY 0.6f
 
 typedef struct Global {
     JkPlatformArenaVirtualRoot arena_root;
@@ -24,10 +25,15 @@ typedef struct Global {
     RenderFunction *render;
     JkIntVec2 window_dimensions;
     b32 running;
+    HCURSOR cursor_arrow;
     State state;
 
     _Alignas(64) SRWLOCK keyboard_lock;
     _Alignas(64) JkKeyboard keyboard;
+
+    _Alignas(64) SRWLOCK mouse_lock;
+    _Alignas(64) JkMouse mouse;
+    HCURSOR cursor;
 } Global;
 
 static Global g = {.keyboard_lock = SRWLOCK_INIT};
@@ -148,7 +154,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     } break;
 
     case WM_INPUT: {
-        static _Alignas(32) uint8_t raw_input_bytes[1024];
+        static _Alignas(4) uint8_t raw_input_bytes[1024];
         UINT size = sizeof(raw_input_bytes);
         UINT bytes_written = GetRawInputData(
                 (HRAWINPUT)lparam, RID_INPUT, raw_input_bytes, &size, sizeof(RAWINPUTHEADER));
@@ -182,9 +188,37 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
                 AcquireSRWLockExclusive(&g.keyboard_lock);
                 b32 was_down = JK_FLAG_GET(g.keyboard.down[byte], flag);
                 JK_FLAG_SET(g.keyboard.down[byte], flag, !released);
-                JK_FLAG_SET(g.keyboard.pressed[byte], flag, !was_down && !released);
-                JK_FLAG_SET(g.keyboard.released[byte], flag, released);
+                if (!was_down && !released) {
+                    JK_FLAG_SET(g.keyboard.pressed[byte], flag, 1);
+                }
+                if (was_down && released) {
+                    JK_FLAG_SET(g.keyboard.released[byte], flag, 1);
+                }
                 ReleaseSRWLockExclusive(&g.keyboard_lock);
+            }
+        } else if (input->header.dwType == RIM_TYPEMOUSE) {
+            RAWMOUSE mouse = input->data.mouse;
+            if ((mouse.usFlags & 0x3) == MOUSE_MOVE_RELATIVE) {
+                AcquireSRWLockExclusive(&g.mouse_lock);
+                if (mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN) {
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_LEFT_DOWN, 1);
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_LEFT_PRESSED, 1);
+                }
+                if (mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP) {
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_LEFT_DOWN, 0);
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_LEFT_RELEASED, 1);
+                }
+                if (mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN) {
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_RIGHT_DOWN, 1);
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_RIGHT_PRESSED, 1);
+                }
+                if (mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP) {
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_RIGHT_DOWN, 0);
+                    JK_FLAG_SET(g.mouse.flags, JK_MOUSE_RIGHT_RELEASED, 1);
+                }
+                g.mouse.delta.x += MOUSE_SENSITIVITY * (float)mouse.lLastX;
+                g.mouse.delta.y += MOUSE_SENSITIVITY * (float)mouse.lLastY;
+                ReleaseSRWLockExclusive(&g.mouse_lock);
             }
         }
     } break;
@@ -194,6 +228,16 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         HDC device_context = BeginPaint(window, &paint);
         copy_draw_buffer_to_window(window, device_context);
         EndPaint(window, &paint);
+    } break;
+
+    case WM_SETCURSOR: {
+        if (LOWORD(lparam) == HTCLIENT) {
+            AcquireSRWLockShared(&g.mouse_lock);
+            SetCursor(g.cursor);
+            ReleaseSRWLockShared(&g.mouse_lock);
+        } else {
+            result = DefWindowProcA(window, message, wparam, lparam);
+        }
     } break;
 
     default: {
@@ -226,6 +270,10 @@ DWORD app_thread(LPVOID param)
     jk_keyboard_clear(&g.keyboard);
     ReleaseSRWLockExclusive(&g.keyboard_lock);
 
+    AcquireSRWLockExclusive(&g.mouse_lock);
+    jk_mouse_clear(&g.mouse);
+    ReleaseSRWLockExclusive(&g.mouse_lock);
+
     uint64_t time = 0;
     int64_t work_time_total = 0;
     int64_t work_time_min = INT64_MAX;
@@ -235,6 +283,7 @@ DWORD app_thread(LPVOID param)
     int64_t frame_time_max = INT64_MIN;
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
+    b32 capture_mouse = 0;
     while (g.running) {
 #if JK_BUILD_MODE != JK_RELEASE
         // Hot reloading
@@ -268,15 +317,75 @@ DWORD app_thread(LPVOID param)
 
         g.state.os_time = jk_platform_os_timer_get();
 
+        if (window != GetForegroundWindow()) {
+            capture_mouse = 0;
+            AcquireSRWLockExclusive(&g.keyboard_lock);
+            g.keyboard = (JkKeyboard){0};
+            ReleaseSRWLockExclusive(&g.keyboard_lock);
+            AcquireSRWLockExclusive(&g.mouse_lock);
+            g.mouse = (JkMouse){0};
+            ReleaseSRWLockExclusive(&g.mouse_lock);
+        }
+
         AcquireSRWLockExclusive(&g.keyboard_lock);
         g.state.keyboard = g.keyboard;
         jk_keyboard_clear(&g.keyboard);
         ReleaseSRWLockExclusive(&g.keyboard_lock);
 
+        AcquireSRWLockExclusive(&g.mouse_lock);
+        g.state.mouse = g.mouse;
+        jk_mouse_clear(&g.mouse);
+        ReleaseSRWLockExclusive(&g.mouse_lock);
+
+        { // Mouse position
+            POINT mouse_pos;
+            if (GetCursorPos(&mouse_pos)) {
+                if (ScreenToClient(window, &mouse_pos)) {
+                    g.state.mouse.position.x = mouse_pos.x;
+                    g.state.mouse.position.y = mouse_pos.y;
+                } else {
+                    jk_print(JKS("Failed to get mouse position\n"));
+                }
+            } else {
+                jk_print(JKS("Failed to get mouse position\n"));
+            }
+        }
+
         if ((jk_key_down(&g.state.keyboard, JK_KEY_LEFTALT)
                     || jk_key_down(&g.state.keyboard, JK_KEY_RIGHTALT))
                 && jk_key_pressed(&g.state.keyboard, JK_KEY_F4)) {
             g.running = 0;
+        }
+
+        int32_t deadzone = 10;
+        if (JK_FLAG_GET(g.state.mouse.flags, JK_MOUSE_LEFT_PRESSED)
+                && deadzone <= g.state.mouse.position.x
+                && g.state.mouse.position.x < (g.state.dimensions.x - deadzone)
+                && deadzone <= g.state.mouse.position.y
+                && g.state.mouse.position.y < (g.state.dimensions.y - deadzone)) {
+            capture_mouse = 1;
+        }
+        if (jk_key_pressed(&g.state.keyboard, JK_KEY_ESC)) {
+            capture_mouse = 0;
+        }
+
+        AcquireSRWLockExclusive(&g.mouse_lock);
+        g.cursor = capture_mouse ? 0 : g.cursor_arrow;
+        ReleaseSRWLockExclusive(&g.mouse_lock);
+
+        if (capture_mouse) {
+            RECT rect;
+            GetWindowRect(window, &rect);
+            LONG center_x = (rect.left + rect.right) / 2;
+            LONG center_y = (rect.top + rect.bottom) / 2;
+            rect.left = center_x;
+            rect.right = center_x;
+            rect.top = center_y;
+            rect.bottom = center_y;
+            ClipCursor(&rect);
+        } else {
+            g.state.mouse.delta = (JkVec2){0};
+            ClipCursor(0);
         }
 
         g.render(g.assets, &g.state);
@@ -359,6 +468,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     jk_print = debug_print;
 
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    g.cursor_arrow = LoadCursorA(0, IDC_ARROW);
+    g.cursor = g.cursor_arrow;
 
     g.arena = jk_platform_arena_virtual_init(&g.arena_root, 5ll * 1024 * 1024 * 1024);
     if (!jk_arena_valid(&g.arena)) {
@@ -416,6 +527,11 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 .usUsagePage = 0x01,
                 .usUsage = 0x06,
                 .dwFlags = RIDEV_NOLEGACY,
+                .hwndTarget = window,
+            },
+            {
+                .usUsagePage = 0x01,
+                .usUsage = 0x02,
                 .hwndTarget = window,
             },
         };

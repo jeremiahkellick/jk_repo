@@ -551,9 +551,9 @@ void render(Assets *assets, State *state)
 
     if (state->test_frames_remaining <= 0) {
         float mouse_sensitivity = 0.4 * DELTA_TIME;
-        state->camera_yaw += jk_remainder_f32(mouse_sensitivity * -state->mouse_delta.x, 2 * JK_PI);
+        state->camera_yaw += jk_remainder_f32(mouse_sensitivity * -state->mouse.delta.x, 2 * JK_PI);
         state->camera_pitch =
-                JK_CLAMP(state->camera_pitch + mouse_sensitivity * -state->mouse_delta.y,
+                JK_CLAMP(state->camera_pitch + mouse_sensitivity * -state->mouse.delta.y,
                         -JK_PI / 2,
                         JK_PI / 2);
     }

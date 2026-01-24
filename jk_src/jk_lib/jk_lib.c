@@ -2035,6 +2035,17 @@ JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key)
 
 // ---- JkKeyboard end ---------------------------------------------------------
 
+// ---- JkMouse begin ----------------------------------------------------------
+
+JK_PUBLIC void jk_mouse_clear(JkMouse *mouse)
+{
+    mouse->flags &= ~(JK_MASK(JK_MOUSE_LEFT_PRESSED) | JK_MASK(JK_MOUSE_LEFT_RELEASED)
+            | JK_MASK(JK_MOUSE_RIGHT_PRESSED) | JK_MASK(JK_MOUSE_RIGHT_RELEASED));
+    mouse->delta = (JkVec2){0};
+}
+
+// ---- JkMouse end ------------------------------------------------------------
+
 // ---- Profile begin ----------------------------------------------------------
 
 #define JK_PROFILE_MAX_ZONES 1024
