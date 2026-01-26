@@ -124,15 +124,6 @@ static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
     }
 }
 
-static JkColor texture_lookup(Bitmap texture, JkVec2 texcoord)
-{
-    int32_t x = texcoord.x * texture.dimensions.x;
-    int32_t y = texcoord.y * texture.dimensions.y;
-    x = JK_MOD(x, texture.dimensions.x);
-    y = JK_MOD(y, texture.dimensions.y);
-    return jk_color3_to_4(texture.memory[texture.dimensions.x * y + x], 0xff);
-}
-
 static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap texture)
 {
     JkArena tmp_arena = jk_arena_child_get(arena);
@@ -140,6 +131,9 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
     JkIntRect screen_rect = {.min = (JkIntVec2){0}, .max = state->dimensions};
     JkIntRect bounds = jk_int_rect_intersect(screen_rect, triangle_bounding_box(tri));
     JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
+
+    JkVec2 tex_float_dimensions = jk_vec2_from_int(texture.dimensions);
+    JkIntVec2 tex_half_dimensions = jk_int_vec2_div(2, texture.dimensions);
 
     if (dimensions.x < 1) {
         return;
@@ -306,8 +300,14 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
                     texcoord_3d.x / texcoord_3d.z,
                     texcoord_3d.y / texcoord_3d.z,
                 };
-                JkColor pixel_color = texture_lookup(texture, texcoord_2d);
-                pixel_color.a = (uint8_t)alpha;
+
+                // Texture lookup
+                int32_t tex_x = jk_remainder_f32(texcoord_2d.x, tex_float_dimensions.x);
+                int32_t tex_y = jk_remainder_f32(texcoord_2d.y, tex_float_dimensions.y);
+                tex_x += tex_half_dimensions.x;
+                tex_y += tex_half_dimensions.y;
+                JkColor pixel_color = jk_color3_to_4(
+                        texture.memory[texture.dimensions.x * tex_y + tex_x], (uint8_t)alpha);
 
                 PixelIndex *head_next = next_get(state, pixel_index);
                 PixelIndex new_pixel_index = pixel_alloc(state);
@@ -707,6 +707,14 @@ void render(Assets *assets, State *state)
                 for (int64_t i = 0; i < 3; i++) {
                     uv[i] = texcoords.items[face.t[i]];
                 }
+            }
+
+            for (int64_t i = 0; i < 3; i++) {
+                // Make some adjustments to the uv coordinates now to save some per-pixel texture
+                // lookup math
+                uv[i] = jk_vec2_sub(uv[i], (JkVec2){0.5, 0.5});
+                uv[i].x *= texture.dimensions.x;
+                uv[i].y *= texture.dimensions.y;
             }
 
             // Apply near clipping and projection
