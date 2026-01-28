@@ -375,7 +375,7 @@ JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t
     return result;
 }
 
-JK_PUBLIC uint8_t jk_hex_char[16] = {
+JK_GLOBAL_DEFINE JK_READONLY uint8_t const jk_hex_char[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
@@ -554,7 +554,8 @@ JK_PUBLIC JkFormatItem jkf_bytes(double byte_count)
 }
 
 // JK_FORMAT argument representing a newline
-JK_PUBLIC JkFormatItem jkf_nl = {.type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
+JK_GLOBAL_DEFINE JK_READONLY JkFormatItem const jkf_nl = {
+    .type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
 
 JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
 {
@@ -642,7 +643,7 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
 
 static void jk_print_stub(JkBuffer string) {}
 
-JK_PUBLIC void (*jk_print)(JkBuffer string) = jk_print_stub;
+JK_GLOBAL_DEFINE void (*jk_print)(JkBuffer string) = jk_print_stub;
 
 JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items)
 {
@@ -1571,7 +1572,7 @@ JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v)
 
 // ---- JkMat4 begin -----------------------------------------------------------
 
-JK_PUBLIC JkMat4 jk_mat4_i = {{
+JK_GLOBAL_DEFINE JK_READONLY JkMat4 const jk_mat4_i = {{
     {1, 0, 0, 0},
     {0, 1, 0, 0},
     {0, 0, 1, 0},
@@ -2293,8 +2294,9 @@ JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
 
 // ---- Profile end ------------------------------------------------------------
 
-JK_PUBLIC JkConversionUnion jk_infinity_f64 = {.uint64_v = 0x7ff0000000000000llu};
-JK_PUBLIC JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};
+JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion const jk_infinity_f64 = {
+    .uint64_v = 0x7ff0000000000000llu};
+JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion const jk_infinity_f32 = {.uint32_v = 0x7f800000};
 
 JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha)
 {
@@ -2427,7 +2429,7 @@ JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x)
 }
 
 // clang-format off
-JK_PUBLIC uint8_t jk_bit_reverse_table[256] = {
+JK_GLOBAL_DEFINE JK_READONLY uint8_t const jk_bit_reverse_table[256] = {
     0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
     0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
     0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,
