@@ -1218,6 +1218,8 @@ static void append_shared_defines(
     append(command, d, "_CRT_SECURE_NO_WARNINGS");
     if (!JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
         append(command, d, "JK_PUBLIC=");
+        append(command, d, "JK_GLOBAL_DECLARE=extern");
+        append(command, d, "JK_GLOBAL_DEFINE=");
     }
     if (options.no_profile) {
         append(command, d, "JK_PROFILE_DISABLE");
@@ -1348,6 +1350,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&command, "/W4");
         append(&command, "/w44062");
         append(&command, "/wd4100");
+        append(&command, "/wd4132");
         append(&command, "/wd4200");
         append(&command, "/wd4244");
         append(&command, "/wd4305");
@@ -1536,6 +1539,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         }
 
         fprintf(stu_file, "#define JK_PUBLIC static\n");
+        fprintf(stu_file, "#define JK_GLOBAL_DECLARE static\n");
+        fprintf(stu_file, "#define JK_GLOBAL_DEFINE static\n");
         JkBuffer source_file_path_relative = {
             .size = paths.source_file.size - paths.repo_root.size,
             .data = paths.source_file.data + paths.repo_root.size,

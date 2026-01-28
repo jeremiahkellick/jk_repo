@@ -13,10 +13,14 @@ typedef uint32_t b32;
 #define JK_SIZEOF(type) ((int64_t)sizeof(type))
 
 #if defined(_WIN32)
+#pragma section("jk_readonly", read)
+#define JK_READONLY __declspec(allocate("jk_readonly"))
 #define JK_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
+#define JK_READONLY __attribute__((section(".rodata")))
 #define JK_NOINLINE __attribute__((noinline))
 #else
+#define JK_READONLY
 #define JK_NOINLINE
 #endif
 
@@ -137,7 +141,7 @@ JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
 
 JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
 
-JK_PUBLIC uint8_t jk_hex_char[16];
+JK_GLOBAL_DECLARE uint8_t const jk_hex_char[16];
 
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
         JkArena *arena, uint64_t value, int16_t min_width);
@@ -202,7 +206,7 @@ JK_PUBLIC JkFormatItem jkfv4(JkVec4 v);
 
 JK_PUBLIC JkFormatItem jkf_bytes(double byte_count);
 
-JK_PUBLIC JkFormatItem jkf_nl;
+JK_GLOBAL_DECLARE JkFormatItem const jkf_nl;
 
 JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
 
@@ -212,7 +216,7 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
                 .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
                 .items = (JkFormatItem[]){__VA_ARGS__}})
 
-JK_PUBLIC void (*jk_print)(JkBuffer string);
+JK_GLOBAL_DECLARE void (*jk_print)(JkBuffer string);
 
 JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
 
@@ -589,7 +593,7 @@ typedef struct JkMat4 {
     float e[4][4];
 } JkMat4;
 
-JK_PUBLIC JkMat4 jk_mat4_i;
+JK_GLOBAL_DECLARE JkMat4 const jk_mat4_i;
 
 JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m);
 
@@ -1144,8 +1148,8 @@ typedef union JkConversionUnion {
     float f32;
 } JkConversionUnion;
 
-JK_PUBLIC JkConversionUnion jk_infinity_f64;
-JK_PUBLIC JkConversionUnion jk_infinity_f32;
+JK_GLOBAL_DECLARE JkConversionUnion const jk_infinity_f64;
+JK_GLOBAL_DECLARE JkConversionUnion const jk_infinity_f32;
 
 typedef struct JkColor3 {
     union {
@@ -1263,7 +1267,7 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x);
 
-JK_PUBLIC uint8_t jk_bit_reverse_table[256];
+JK_GLOBAL_DECLARE uint8_t const jk_bit_reverse_table[256];
 
 JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value);
 

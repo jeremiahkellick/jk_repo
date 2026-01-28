@@ -202,7 +202,7 @@ JK_PUBLIC b32 approximately_equal(double a, double b)
     return diff > -epsilon && diff < epsilon;
 }
 
-JK_PUBLIC char *coordinate_names[COORDINATE_COUNT] = {
+JK_GLOBAL_DEFINE JK_READONLY char const *const coordinate_names[COORDINATE_COUNT] = {
     "x0",
     "y0",
     "x1",

@@ -50,6 +50,6 @@ JK_PUBLIC HaversineContext haversine_setup(
 
 JK_PUBLIC b32 approximately_equal(double a, double b);
 
-JK_PUBLIC char *coordinate_names[COORDINATE_COUNT];
+JK_GLOBAL_DECLARE char const *const coordinate_names[COORDINATE_COUNT];
 
 #endif
