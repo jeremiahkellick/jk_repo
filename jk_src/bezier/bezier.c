@@ -84,7 +84,7 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
     jk_shapes_renderer_init(&renderer,
             (float)bezier->draw_square_side_length / canvas_size,
             assets,
-            (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes},
+            (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .e = assets->shapes},
             &arena);
 
     {
@@ -108,23 +108,23 @@ void bezier_render(ChessAssets *assets, Bezier *bezier)
         int32_t cs = 0;
         int32_t ce = 0;
         for (pos.y = 0; pos.y < bezier->draw_square_side_length; pos.y++) {
-            while (ce < draw_commands.count && draw_commands.items[ce].rect.min.y <= pos.y) {
+            while (ce < draw_commands.count && draw_commands.e[ce].rect.min.y <= pos.y) {
                 ce++;
             }
-            while (cs < draw_commands.count && !(pos.y < draw_commands.items[cs].rect.max.y)) {
+            while (cs < draw_commands.count && !(pos.y < draw_commands.e[cs].rect.max.y)) {
                 cs++;
             }
 
             for (pos.x = 0; pos.x < bezier->draw_square_side_length; pos.x++) {
                 JkColor color = color_dark_squares;
                 for (int32_t i = cs; i < ce; i++) {
-                    JkShapesDrawCommand *command = draw_commands.items + i;
+                    JkShapesDrawCommand *command = draw_commands.e + i;
                     if (command->rect.min.x <= pos.x && pos.x < command->rect.max.x
                             && pos.y < command->rect.max.y) {
                         uint8_t alpha;
                         if (command->alpha_map) {
                             JkIntVec2 bitmap_pos =
-                                    jk_int_vec2_sub(pos, draw_commands.items[i].rect.min);
+                                    jk_int_vec2_sub(pos, draw_commands.e[i].rect.min);
                             int32_t width = command->rect.max.x - command->rect.min.x;
                             int32_t index = bitmap_pos.y * width + bitmap_pos.x;
                             alpha = command->alpha_map[index];

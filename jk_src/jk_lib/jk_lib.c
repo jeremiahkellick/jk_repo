@@ -563,7 +563,7 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
     result.data = jk_arena_pointer_current(arena);
 
     for (int64_t i = 0; i < items.count; i++) {
-        JkFormatItem *item = items.items + i;
+        JkFormatItem *item = items.e + i;
         switch (item->type) {
         case JK_FORMAT_ITEM_NULL_TERMINATED: {
             jk_buffer_copy(arena, jk_buffer_from_null_terminated(item->null_terminated));
@@ -2559,19 +2559,19 @@ JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
 #endif
 
 raddbg_type_view(JkBuffer, text(data, size = size));
-raddbg_type_view(JkBufferArray, array(items, count));
-raddbg_type_view(JkFormatItemArray, array(items, count));
+raddbg_type_view(JkBufferArray, array(e, count));
+raddbg_type_view(JkFormatItemArray, array(e, count));
 raddbg_type_view(JkIntVec2, omit($, v));
-raddbg_type_view(JkIntVec2Array, array(items, count));
+raddbg_type_view(JkIntVec2Array, array(e, count));
 raddbg_type_view(JkVec2, omit($, v));
-raddbg_type_view(JkVec2Array, array(items, count));
+raddbg_type_view(JkVec2Array, array(e, count));
 raddbg_type_view(JkVec3, omit($, v));
-raddbg_type_view(JkVec3Array, array(items, count));
-raddbg_type_view(JkEdgeArray, array(items, count));
-raddbg_type_view(JkFloatArray, array(items, count));
-raddbg_type_view(JkDoubleArray, array(items, count));
-raddbg_type_view(JkInt32Array, array(items, count));
-raddbg_type_view(JkInt64Array, array(items, count));
+raddbg_type_view(JkVec3Array, array(e, count));
+raddbg_type_view(JkEdgeArray, array(e, count));
+raddbg_type_view(JkFloatArray, array(e, count));
+raddbg_type_view(JkDoubleArray, array(e, count));
+raddbg_type_view(JkInt32Array, array(e, count));
+raddbg_type_view(JkInt64Array, array(e, count));
 raddbg_type_view(JkColor3, omit($, v));
 raddbg_type_view(JkColor, omit($, v));
 

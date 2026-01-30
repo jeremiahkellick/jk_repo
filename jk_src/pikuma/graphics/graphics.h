@@ -27,7 +27,7 @@ typedef struct Face {
 
 typedef struct FaceArray {
     int64_t count;
-    Face *items;
+    Face *e;
 } FaceArray;
 
 typedef struct Bitmap {
@@ -54,7 +54,7 @@ typedef struct Object {
 
 typedef struct ObjectArray {
     int64_t count;
-    Object *items;
+    Object *e;
 } ObjectArray;
 
 typedef struct Assets {

@@ -165,8 +165,7 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
             return r;
         }
         r.dimensions.v[i] = JK_ABS(a.dimensions.v[i]);
-        lambda += (point_prime.v[i] * point_prime.v[i])
-                / (r.dimensions.v[i] * r.dimensions.v[i]);
+        lambda += (point_prime.v[i] * point_prime.v[i]) / (r.dimensions.v[i] * r.dimensions.v[i]);
     }
     if (1.0f < lambda) {
         r.dimensions = jk_vec2_mul(jk_sqrt_f32(lambda), r.dimensions);
@@ -300,7 +299,7 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
     JkShapesPointListNode *current_node = start_node;
 
     for (int64_t i = 0; i < commands.count; i++) {
-        JkShapesPenCommand *command = commands.items + i;
+        JkShapesPenCommand *command = commands.e + i;
 
         switch (command->type) {
         case JK_SHAPES_PEN_COMMAND_MOVE: {
@@ -365,14 +364,14 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
     }
 
     // The linearization is finished. Create an array of edges from the point list.
-    JkEdgeArray edges = {.items = jk_arena_pointer_current(arena)};
+    JkEdgeArray edges = {.e = jk_arena_pointer_current(arena)};
     for (JkShapesPointListNode *node = start_node; node && node->next; node = node->next) {
         if (!node->next->is_cursor_movement && node->point.y != node->next->point.y) {
             JkEdge *new_edge = jk_arena_push(arena, JK_SIZEOF(*new_edge));
             *new_edge = jk_points_to_edge(node->point, node->next->point);
         }
     }
-    edges.count = (JkEdge *)jk_arena_pointer_current(arena) - edges.items;
+    edges.count = (JkEdge *)jk_arena_pointer_current(arena) - edges.e;
 
     return edges;
 }
@@ -469,7 +468,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
     JkShapesBitmap bitmap = {0};
     float pixel_scale = scale * renderer->pixels_per_unit;
 
-    JkShape shape = renderer->shapes.items[shape_index];
+    JkShape shape = renderer->shapes.e[shape_index];
     if (shape.dimensions.x && shape.dimensions.y) {
         int64_t bitmap_key = jk_shapes_bitmap_key_get(shape_index, pixel_scale);
         JkShapesHashTableSlot *bitmap_slot =
@@ -496,8 +495,8 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
             float *fill = jk_arena_push(&arena, coverage_size);
 
             JkShapesPenCommandArray commands;
-            commands.count = shape.commands.size / JK_SIZEOF(commands.items[0]);
-            commands.items = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
+            commands.count = shape.commands.size / JK_SIZEOF(commands.e[0]);
+            commands.e = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
             JkEdgeArray edges =
                     jk_shapes_edges_get(&arena, commands, negative_offset_ceil, pixel_scale, 0.25f);
 
@@ -507,13 +506,12 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                 float scan_y_top = (float)y;
                 float scan_y_bottom = scan_y_top + 1.0f;
                 for (int64_t i = 0; i < edges.count; i++) {
-                    float y_top = JK_MAX(edges.items[i].segment.p0.y, scan_y_top);
-                    float y_bottom = JK_MIN(edges.items[i].segment.p1.y, scan_y_bottom);
+                    float y_top = JK_MAX(edges.e[i].segment.p0.y, scan_y_top);
+                    float y_bottom = JK_MIN(edges.e[i].segment.p1.y, scan_y_bottom);
                     if (y_top < y_bottom) {
                         float height = y_bottom - y_top;
-                        float x_top = jk_segment_y_intersection(edges.items[i].segment, y_top);
-                        float x_bottom =
-                                jk_segment_y_intersection(edges.items[i].segment, y_bottom);
+                        float x_top = jk_segment_y_intersection(edges.e[i].segment, y_top);
+                        float x_bottom = jk_segment_y_intersection(edges.e[i].segment, y_bottom);
 
                         float y_start;
                         float y_end;
@@ -541,31 +539,29 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                             float top_width = first_pixel_right - x_top;
                             float bottom_width = first_pixel_right - x_bottom;
                             float area = (top_width + bottom_width) / 2.0f * height;
-                            coverage[first_pixel_index] += edges.items[i].direction * area;
+                            coverage[first_pixel_index] += edges.e[i].direction * area;
 
                             // Fill everything to the right with height
-                            fill[first_pixel_index + 1] += edges.items[i].direction * height;
+                            fill[first_pixel_index + 1] += edges.e[i].direction * height;
                         } else {
                             // Edge covers multiple pixels
-                            float delta_y =
-                                    (edges.items[i].segment.p1.y - edges.items[i].segment.p0.y)
-                                    / (edges.items[i].segment.p1.x - edges.items[i].segment.p0.x);
+                            float delta_y = (edges.e[i].segment.p1.y - edges.e[i].segment.p0.y)
+                                    / (edges.e[i].segment.p1.x - edges.e[i].segment.p0.x);
 
                             // Handle first pixel
                             float first_x_intersection = jk_segment_x_intersection(
-                                    edges.items[i].segment, first_pixel_right);
+                                    edges.e[i].segment, first_pixel_right);
                             float first_pixel_y_offset = first_x_intersection - y_start;
                             float first_pixel_area = (first_pixel_right - x_start)
                                     * JK_ABS(first_pixel_y_offset) / 2.0f;
-                            coverage[first_pixel_index] +=
-                                    edges.items[i].direction * first_pixel_area;
+                            coverage[first_pixel_index] += edges.e[i].direction * first_pixel_area;
 
                             // Handle middle pixels (if there are any)
                             float y_offset = first_pixel_y_offset;
                             int32_t pixel_index = first_pixel_index + 1;
                             for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
-                                coverage[pixel_index] += edges.items[i].direction
-                                        * JK_ABS(y_offset + delta_y / 2.0f);
+                                coverage[pixel_index] +=
+                                        edges.e[i].direction * JK_ABS(y_offset + delta_y / 2.0f);
                                 y_offset += delta_y;
                             }
 
@@ -574,10 +570,10 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                             float uncovered_triangle = JK_ABS(y_end - last_x_intersection)
                                     * (x_end - (float)pixel_index) / 2.0f;
                             coverage[pixel_index] +=
-                                    edges.items[i].direction * (height - uncovered_triangle);
+                                    edges.e[i].direction * (height - uncovered_triangle);
 
                             // Fill everything to the right with height
-                            fill[pixel_index + 1] += edges.items[i].direction * height;
+                            fill[pixel_index + 1] += edges.e[i].direction * height;
                         }
                     }
                 }
@@ -606,7 +602,7 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         float scale,
         JkColor color)
 {
-    JkShape shape = renderer->shapes.items[shape_index];
+    JkShape shape = renderer->shapes.e[shape_index];
 
     if (shape.dimensions.x && shape.dimensions.y) {
         JkShapesBitmap bitmap = jk_shapes_bitmap_get(renderer, shape_index, scale);
@@ -634,9 +630,9 @@ static int jk_shapes_draw_command_compare(void *data, void *a, void *b)
 static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands)
 {
     JkShapesDrawCommand tmp;
-    jk_quicksort(commands.items,
+    jk_quicksort(commands.e,
             commands.count,
-            JK_SIZEOF(commands.items[0]),
+            JK_SIZEOF(commands.e[0]),
             &tmp,
             0,
             jk_shapes_draw_command_compare);
@@ -645,13 +641,13 @@ static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands)
 JK_PUBLIC JkShapesDrawCommandArray jk_shapes_draw_commands_get(JkShapesRenderer *renderer)
 {
     JkShapesDrawCommandArray result;
-    result.items = jk_arena_pointer_current(renderer->arena);
+    result.e = jk_arena_pointer_current(renderer->arena);
     for (JkShapesDrawCommandListNode *node = renderer->draw_commands_head; node;
             node = node->next) {
         JkShapesDrawCommand *new_command = jk_arena_push(renderer->arena, JK_SIZEOF(*new_command));
         *new_command = node->command;
     }
-    result.count = (JkShapesDrawCommand *)jk_arena_pointer_current(renderer->arena) - result.items;
+    result.count = (JkShapesDrawCommand *)jk_arena_pointer_current(renderer->arena) - result.e;
 
     jk_shapes_draw_commands_quicksort(result);
 

@@ -35,7 +35,7 @@ int main(int argc, char **argv)
             file_name,
             url,
         };
-        JkBufferArray command = {.count = JK_ARRAY_COUNT(arguments), .items = arguments};
+        JkBufferArray command = {.count = JK_ARRAY_COUNT(arguments), .e = arguments};
 
         jk_platform_exec(command);
 

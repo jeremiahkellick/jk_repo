@@ -127,7 +127,7 @@ static uint16_t jk_deflate_unpad(uint16_t padded_code, uint8_t code_length)
 
 typedef struct JkDeflateU16Array {
     int64_t count;
-    uint16_t *items;
+    uint16_t *e;
 } JkDeflateU16Array;
 
 typedef struct JkDeflateHuffmanDecoderBucket {
@@ -163,7 +163,7 @@ static void jk_deflate_huffman_decoder_init(
     // Allocate buckets
     for (uint8_t code_length = 1; code_length <= decoder->max_code_length; code_length++) {
         JkDeflateU16Array *values = &decoder->buckets[code_length].values;
-        values->items = jk_arena_push(arena, values->count * JK_SIZEOF(*values->items));
+        values->e = jk_arena_push(arena, values->count * JK_SIZEOF(*values->e));
     }
 
     // Fill buckets with values
@@ -171,7 +171,7 @@ static void jk_deflate_huffman_decoder_init(
     for (int64_t value = 0; value < code_lengths.size; value++) {
         uint8_t code_length = code_lengths.data[value];
         if (code_length) {
-            decoder->buckets[code_length].values.items[cursors[code_length]++] = value;
+            decoder->buckets[code_length].values.e[cursors[code_length]++] = value;
         }
     }
 
@@ -198,7 +198,7 @@ static uint16_t jk_deflate_huffman_decode(
             uint16_t index = jk_deflate_unpad(padded_code, code_length)
                     - jk_deflate_unpad(decoder->buckets[code_length].padded_code, code_length);
             if (index < decoder->buckets[code_length].values.count) {
-                value = decoder->buckets[code_length].values.items[index];
+                value = decoder->buckets[code_length].values.e[index];
             } else {
                 jk_print(JKS("DEFLATE compressed data contained an invalid Huffman code\n"));
             }

@@ -63,7 +63,7 @@ typedef struct JkArena {
 
 typedef struct JkBufferArray {
     int64_t count;
-    JkBuffer *items;
+    JkBuffer *e;
 } JkBufferArray;
 
 typedef struct JkSpan {
@@ -181,7 +181,7 @@ typedef struct JkFormatItem {
 
 typedef struct JkFormatItemArray {
     int64_t count;
-    JkFormatItem *items;
+    JkFormatItem *e;
 } JkFormatItemArray;
 
 JK_PUBLIC JkFormatItem jkfn(char *null_termianted);
@@ -214,7 +214,7 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
     jk_format(arena,                                                                           \
             (JkFormatItemArray){                                                               \
                 .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
-                .items = (JkFormatItem[]){__VA_ARGS__}})
+                .e = (JkFormatItem[]){__VA_ARGS__}})
 
 JK_GLOBAL_DECLARE void (*jk_print)(JkBuffer string);
 
@@ -224,7 +224,7 @@ JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
     jk_print_fmt(arena,                                                                        \
             (JkFormatItemArray){                                                               \
                 .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
-                .items = (JkFormatItem[]){__VA_ARGS__}})
+                .e = (JkFormatItem[]){__VA_ARGS__}})
 
 JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
@@ -379,10 +379,10 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size);
 
 JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena);
 
-#define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                                   \
-    do {                                                                                \
-        (array).count = item_count;                                                     \
-        (array).items = jk_arena_push(arena, (item_count) * JK_SIZEOF(*(array).items)); \
+#define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                           \
+    do {                                                                        \
+        (array).count = item_count;                                             \
+        (array).e = jk_arena_push(arena, (item_count) * JK_SIZEOF(*(array).e)); \
     } while (0)
 
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size);
@@ -447,7 +447,7 @@ typedef union JkIntVec2 {
 
 typedef struct JkIntVec2Array {
     int64_t count;
-    JkIntVec2 *items;
+    JkIntVec2 *e;
 } JkIntVec2Array;
 
 JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b);
@@ -476,7 +476,7 @@ typedef union JkVec2 {
 
 typedef struct JkVec2Array {
     int64_t count;
-    JkVec2 *items;
+    JkVec2 *e;
 } JkVec2Array;
 
 JK_PUBLIC b32 jk_vec2_approx_equal(JkVec2 a, JkVec2 b, float tolerance);
@@ -521,7 +521,7 @@ JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector
 
 typedef struct JkVec3Array {
     int64_t count;
-    JkVec3 *items;
+    JkVec3 *e;
 } JkVec3Array;
 
 JK_PUBLIC b32 jk_vec3_equal(JkVec3 a, JkVec3 b, float tolerance);
@@ -562,7 +562,7 @@ JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
 
 typedef struct JkVec4Array {
     int64_t count;
-    JkVec4 *items;
+    JkVec4 *e;
 } JkVec4Array;
 
 JK_PUBLIC JkVec4 jk_vec4_add(JkVec4 a, JkVec4 b);
@@ -705,7 +705,7 @@ typedef struct JkEdge {
 
 typedef struct JkEdgeArray {
     int64_t count;
-    JkEdge *items;
+    JkEdge *e;
 } JkEdgeArray;
 
 JK_PUBLIC JkEdge jk_points_to_edge(JkVec2 a, JkVec2 b);
@@ -1122,22 +1122,22 @@ JK_PUBLIC void jk_profile_reset(void);
 
 typedef struct JkFloatArray {
     int64_t count;
-    float *items;
+    float *e;
 } JkFloatArray;
 
 typedef struct JkDoubleArray {
     int64_t count;
-    double *items;
+    double *e;
 } JkDoubleArray;
 
 typedef struct JkInt32Array {
     int64_t count;
-    int32_t *items;
+    int32_t *e;
 } JkInt32Array;
 
 typedef struct JkInt64Array {
     int64_t count;
-    int64_t *items;
+    int64_t *e;
 } JkInt64Array;
 
 typedef union JkConversionUnion {
@@ -1213,10 +1213,10 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
         .size = JK_ARRAY_COUNT(array), .data = (array) \
     }
 
-#define JK_ARRAY_FROM_SPAN(array, base, span)                        \
-    do {                                                             \
-        (array).count = (span).size / JK_SIZEOF(*(array).items);     \
-        (array).items = (void *)((uint8_t *)(base) + (span).offset); \
+#define JK_ARRAY_FROM_SPAN(array, base, span)                    \
+    do {                                                         \
+        (array).count = (span).size / JK_SIZEOF(*(array).e);     \
+        (array).e = (void *)((uint8_t *)(base) + (span).offset); \
     } while (0)
 
 #define JK_DATA_GET(pointer, index, type) \

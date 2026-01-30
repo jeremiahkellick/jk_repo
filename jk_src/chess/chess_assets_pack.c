@@ -1,5 +1,4 @@
 #include <ctype.h>
-#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +25,7 @@ char *sound_file_paths[SOUND_COUNT] = {
 
 static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
 {
-    JkFloatArray result = {.items = jk_arena_pointer_current(arena)};
+    JkFloatArray result = {.e = jk_arena_pointer_current(arena)};
     int c;
     while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
             && (isdigit(c) || isspace(c) || c == ',')) {
@@ -43,7 +42,7 @@ static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t
             *new_number = (float)jk_parse_double(number_string);
         }
     }
-    result.count = (float *)jk_arena_pointer_current(arena) - result.items;
+    result.count = (float *)jk_arena_pointer_current(arena) - result.e;
     if (c != EOF) {
         (*pos)--;
     }
@@ -71,7 +70,7 @@ int main(int argc, char **argv)
         JK_ASSERT(piece_strings.count == PIECE_TYPE_COUNT - 1);
 
         for (int32_t piece_index = 1; piece_index < PIECE_TYPE_COUNT; piece_index++) {
-            JkBuffer piece_string = piece_strings.items[piece_index - 1];
+            JkBuffer piece_string = piece_strings.e[piece_index - 1];
 
             assets->shapes[piece_index].dimensions.x = 64.0f;
             assets->shapes[piece_index].dimensions.y = 64.0f;
@@ -95,7 +94,7 @@ int main(int argc, char **argv)
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type =
                                 c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->v[0] = (JkVec2){numbers.items[i], numbers.items[i + 1]};
+                        new_command->v[0] = (JkVec2){numbers.e[i], numbers.e[i + 1]};
                         prev_pos = new_command->v[0];
 
                         if (c == 'M') {
@@ -112,8 +111,8 @@ int main(int argc, char **argv)
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
-                        new_command->v[0] = c == 'H' ? (JkVec2){numbers.items[i], prev_pos.y}
-                                                          : (JkVec2){prev_pos.x, numbers.items[i]};
+                        new_command->v[0] = c == 'H' ? (JkVec2){numbers.e[i], prev_pos.y}
+                                                     : (JkVec2){prev_pos.x, numbers.e[i]};
                         prev_pos = new_command->v[0];
                     }
                 } break;
@@ -126,8 +125,8 @@ int main(int argc, char **argv)
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
                         for (int32_t j = 0; j < 2; j++) {
-                            new_command->v[j] = (JkVec2){
-                                numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
+                            new_command->v[j] =
+                                    (JkVec2){numbers.e[i + (j * 2)], numbers.e[i + (j * 2) + 1]};
                         }
                         prev_pos = new_command->v[1];
                     }
@@ -141,8 +140,8 @@ int main(int argc, char **argv)
                                 jk_arena_push(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                         for (int32_t j = 0; j < 3; j++) {
-                            new_command->v[j] = (JkVec2){
-                                numbers.items[i + (j * 2)], numbers.items[i + (j * 2) + 1]};
+                            new_command->v[j] =
+                                    (JkVec2){numbers.e[i + (j * 2)], numbers.e[i + (j * 2) + 1]};
                         }
                         prev_pos = new_command->v[2];
                     }
@@ -155,17 +154,17 @@ int main(int argc, char **argv)
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
-                        new_command->arc.dimensions.x = numbers.items[i];
-                        new_command->arc.dimensions.y = numbers.items[i + 1];
-                        new_command->arc.rotation = numbers.items[i + 2] * (float)JK_PI / 180.0f;
-                        if (numbers.items[i + 3]) {
+                        new_command->arc.dimensions.x = numbers.e[i];
+                        new_command->arc.dimensions.y = numbers.e[i + 1];
+                        new_command->arc.rotation = numbers.e[i + 2] * (float)JK_PI / 180.0f;
+                        if (numbers.e[i + 3]) {
                             new_command->arc.flags |= JK_SHAPES_ARC_FLAG_LARGE;
                         }
-                        if (numbers.items[i + 4]) {
+                        if (numbers.e[i + 4]) {
                             new_command->arc.flags |= JK_SHAPES_ARC_FLAG_SWEEP;
                         }
-                        new_command->arc.point_end.x = numbers.items[i + 5];
-                        new_command->arc.point_end.y = numbers.items[i + 6];
+                        new_command->arc.point_end.x = numbers.e[i + 5];
+                        new_command->arc.point_end.y = numbers.e[i + 6];
                         prev_pos = new_command->arc.point_end;
                     }
                 } break;

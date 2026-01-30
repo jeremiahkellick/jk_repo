@@ -65,7 +65,7 @@ typedef struct JkShapesPenCommand {
 
 typedef struct JkShapesPenCommandArray {
     int64_t count;
-    JkShapesPenCommand *items;
+    JkShapesPenCommand *e;
 } JkShapesPenCommandArray;
 
 typedef struct JkShape {
@@ -77,7 +77,7 @@ typedef struct JkShape {
 
 typedef struct JkShapeArray {
     int64_t count;
-    JkShape *items;
+    JkShape *e;
 } JkShapeArray;
 
 typedef struct JkShapesDrawCommand {
@@ -93,7 +93,7 @@ typedef struct JkShapesDrawCommandListNode {
 
 typedef struct JkShapesDrawCommandArray {
     int64_t count;
-    JkShapesDrawCommand *items;
+    JkShapesDrawCommand *e;
 } JkShapesDrawCommandArray;
 
 typedef struct JkShapesRenderer {

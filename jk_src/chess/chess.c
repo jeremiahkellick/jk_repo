@@ -1902,7 +1902,7 @@ void render(ChessAssets *assets, Chess *chess)
     // Do vector drawing
     JkShapesRenderer renderer;
     JkShapeArray shapes =
-            (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .items = assets->shapes};
+            (JkShapeArray){.count = JK_ARRAY_COUNT(assets->shapes), .e = assets->shapes};
     float square_size = 64.0f;
     float pixels_per_unit = (float)state.square_side_length / square_size;
     jk_shapes_renderer_init(&renderer, pixels_per_unit, assets, shapes, &arena);
@@ -1970,7 +1970,7 @@ void render(ChessAssets *assets, Chess *chess)
         for (int32_t x = 0; x < 8; x++) {
             int64_t shape_id = 'a' + apply_perspective(state.perspective, (JkIntVec2){x, 0}).x
                     + CHARACTER_SHAPE_OFFSET;
-            JkShape *shape = shapes.items + shape_id;
+            JkShape *shape = shapes.e + shape_id;
             float width = coords_scale * shape->dimensions.x;
             float x_offset = coords_scale * shape->offset.x;
             float padding_top = square_size * 0.12f;
@@ -1993,7 +1993,7 @@ void render(ChessAssets *assets, Chess *chess)
         for (int32_t y = 0; y < 8; y++) {
             int64_t shape_id = '1' + apply_perspective(state.perspective, (JkIntVec2){0, y}).y
                     + CHARACTER_SHAPE_OFFSET;
-            JkShape *shape = shapes.items + shape_id;
+            JkShape *shape = shapes.e + shape_id;
             JkVec2 dimensions = jk_vec2_mul(coords_scale, shape->dimensions);
             JkVec2 offset = jk_vec2_mul(coords_scale, shape->offset);
             float padding = square_size * 0.15f;
@@ -2355,10 +2355,10 @@ void render(ChessAssets *assets, Chess *chess)
     JkIntVec2 mouse_square_pos = jk_int_vec2_div(state.square_side_length, state.mouse_pos);
     for (pos.y = 0, pos_in_square.y = 0, square_pos.y = 0; pos.y < state.square_side_length * 10;
             pos.y++) {
-        while (ce < draw_commands.count && draw_commands.items[ce].rect.min.y <= pos.y) {
+        while (ce < draw_commands.count && draw_commands.e[ce].rect.min.y <= pos.y) {
             ce++;
         }
-        while (cs < draw_commands.count && !(pos.y < draw_commands.items[cs].rect.max.y)) {
+        while (cs < draw_commands.count && !(pos.y < draw_commands.e[cs].rect.max.y)) {
             cs++;
         }
 
@@ -2384,7 +2384,7 @@ void render(ChessAssets *assets, Chess *chess)
             }
 
             for (int64_t i = cs; i < ce; i++) {
-                JkShapesDrawCommand *command = draw_commands.items + i;
+                JkShapesDrawCommand *command = draw_commands.e + i;
                 if (command->rect.min.x <= pos.x && pos.x < command->rect.max.x
                         && pos.y < command->rect.max.y) {
                     uint8_t alpha;

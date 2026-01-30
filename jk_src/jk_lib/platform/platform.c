@@ -214,10 +214,10 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
     for (int64_t args_i = 0; args_i < command.count; args_i++) {
         string_i += snprintf(&command_buffer[string_i],
                 JK_ARRAY_COUNT(command_buffer) - string_i,
-                jk_string_contains_whitespace(command.items[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
+                jk_string_contains_whitespace(command.e[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
                 args_i == 0 ? "" : " ",
-                (int)command.items[args_i].size,
-                command.items[args_i].data);
+                (int)command.e[args_i].size,
+                command.e[args_i].data);
         if (string_i >= JK_ARRAY_COUNT(command_buffer)) {
             fprintf(stderr, "jk_platform_exec: Insufficient buffer size\n");
             return 1;
@@ -229,8 +229,8 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
     if (!CreateProcessA(NULL, command_buffer, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
         fprintf(stderr,
                 "jk_platform_exec: Could not run '%.*s': ",
-                (int)command.items[0].size,
-                command.items[0].data);
+                (int)command.e[0].size,
+                command.e[0].data);
         jk_windows_print_last_error();
         return 1;
     }
@@ -240,8 +240,8 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
     if (!GetExitCodeProcess(pi.hProcess, &exit_status)) {
         fprintf(stderr,
                 "jk_platform_exec: Could not get exit status of '%.*s': ",
-                (int)command.items[0].size,
-                command.items[0].data);
+                (int)command.e[0].size,
+                command.e[0].data);
         jk_windows_print_last_error();
         exit_status = 1;
     }
@@ -1057,7 +1057,7 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
 JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name)
 {
     JkBuffer file = jk_platform_file_read_full(arena, file_name);
-    JkBufferArray lines = {.items = jk_arena_pointer_current(arena)};
+    JkBufferArray lines = {.e = jk_arena_pointer_current(arena)};
 
     int64_t start = 0;
     int64_t i = 0;
@@ -1082,7 +1082,7 @@ JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_n
     }
 
 end:
-    lines.count = (JkBuffer *)jk_arena_pointer_current(arena) - lines.items;
+    lines.count = (JkBuffer *)jk_arena_pointer_current(arena) - lines.e;
     return lines;
 }
 

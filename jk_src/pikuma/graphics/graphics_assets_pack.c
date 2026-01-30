@@ -267,22 +267,22 @@ static JkDoubleArray read_doubles(Context *c, JkFbxNode *node)
     uint8_t type = *(node->name + node->name_length);
     if (0 < node->property_count && type == 'd') {
         JkFbxArray *array = (JkFbxArray *)(node->name + node->name_length + 1);
-        int64_t byte_count = array->length * JK_SIZEOF(*result.items);
+        int64_t byte_count = array->length * JK_SIZEOF(*result.e);
         if (array->encoding == 0) {
-            result.items = (double *)array->contents;
+            result.e = (double *)array->contents;
         } else if (array->encoding == 1) {
             JkBuffer compressed_data = {.size = array->compressed_length, .data = array->contents};
             JkBuffer decompressed_data =
                     jk_zlib_decompress(c->scratch_arena, compressed_data, byte_count);
             if (decompressed_data.size == byte_count) {
-                result.items = (double *)decompressed_data.data;
+                result.e = (double *)decompressed_data.data;
             } else {
                 fprintf(stderr, "read_doubles: Failed to decompress\n");
             }
         } else {
             fprintf(stderr, "read_doubles: Unrecognized array encoding\n");
         }
-        if (result.items) {
+        if (result.e) {
             result.count = array->length;
         }
     } else {
@@ -297,22 +297,22 @@ static JkInt32Array read_ints(Context *c, JkFbxNode *node)
     uint8_t type = *(node->name + node->name_length);
     if (0 < node->property_count && type == 'i') {
         JkFbxArray *array = (JkFbxArray *)(node->name + node->name_length + 1);
-        int64_t byte_count = array->length * JK_SIZEOF(*result.items);
+        int64_t byte_count = array->length * JK_SIZEOF(*result.e);
         if (array->encoding == 0) {
-            result.items = (int32_t *)array->contents;
+            result.e = (int32_t *)array->contents;
         } else if (array->encoding == 1) {
             JkBuffer compressed_data = {.size = array->compressed_length, .data = array->contents};
             JkBuffer decompressed_data =
                     jk_zlib_decompress(c->scratch_arena, compressed_data, byte_count);
             if (decompressed_data.size == byte_count) {
-                result.items = (int32_t *)decompressed_data.data;
+                result.e = (int32_t *)decompressed_data.data;
             } else {
                 fprintf(stderr, "read_ints: Failed to decompress\n");
             }
         } else {
             fprintf(stderr, "read_ints: Unrecognized array encoding\n");
         }
-        if (result.items) {
+        if (result.e) {
             result.count = array->length;
         }
     } else {
@@ -340,7 +340,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             for (int64_t vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
                 for (int64_t coord_index = 0; coord_index < 3; coord_index++) {
                     vertices[vertex_index].v[coord_index] =
-                            coords.items[vertex_index * 3 + coord_index];
+                            coords.e[vertex_index * 3 + coord_index];
                 }
                 vertices[vertex_index] =
                         jk_mat4_mul_point(conversion_matrix, vertices[vertex_index]);
@@ -353,7 +353,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             for (int64_t texcoord_index = 0; texcoord_index < texcoord_count; texcoord_index++) {
                 for (int64_t coord_index = 0; coord_index < 2; coord_index++) {
                     texcoords[texcoord_index].v[coord_index] =
-                            coords.items[texcoord_index * 2 + coord_index];
+                            coords.e[texcoord_index * 2 + coord_index];
                 }
             }
         } else if (is_vertex_indexes || is_texcoord_indexes) {
@@ -638,7 +638,7 @@ int main(int argc, char **argv)
             int64_t point_index = 0;
             b32 end_of_polygon = 0;
             while (i < thing->vertex_indexes.count && !end_of_polygon) {
-                int32_t vertex_index = thing->vertex_indexes.items[i];
+                int32_t vertex_index = thing->vertex_indexes.e[i];
                 if (vertex_index < 0) {
                     if (point_index != 2) {
                         fprintf(stderr,
@@ -651,8 +651,7 @@ int main(int argc, char **argv)
                 if (point_index < JK_ARRAY_COUNT(face->v)) {
                     face->v[point_index] = thing->vertices_base + vertex_index;
                     if (i < thing->texcoord_indexes.count) {
-                        face->t[point_index] =
-                                thing->texcoords_base + thing->texcoord_indexes.items[i];
+                        face->t[point_index] = thing->texcoords_base + thing->texcoord_indexes.e[i];
                     }
                     point_index++;
                 } else {

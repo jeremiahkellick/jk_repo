@@ -51,7 +51,7 @@ typedef struct JkBuffer {
 
 typedef struct JkBufferArray {
     int64_t count;
-    JkBuffer *items;
+    JkBuffer *e;
 } JkBufferArray;
 
 #define JK_STRING(string_literal) \
@@ -301,10 +301,10 @@ static int jk_platform_exec(JkBufferArray command)
     for (int args_i = 0; args_i < command.count; args_i++) {
         string_i += snprintf(&command_buffer[string_i],
                 JK_ARRAY_COUNT(command_buffer) - string_i,
-                jk_string_contains_whitespace(command.items[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
+                jk_string_contains_whitespace(command.e[args_i]) ? "%s\"%.*s\"" : "%s%.*s",
                 args_i == 0 ? "" : " ",
-                (int)command.items[args_i].size,
-                command.items[args_i].data);
+                (int)command.e[args_i].size,
+                command.e[args_i].data);
         if (string_i >= JK_ARRAY_COUNT(command_buffer)) {
             fprintf(stderr, "jk_platform_exec: Insufficient buffer size\n");
             return 1;
@@ -316,8 +316,8 @@ static int jk_platform_exec(JkBufferArray command)
     if (!CreateProcessA(NULL, command_buffer, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
         fprintf(stderr,
                 "jk_platform_exec: Could not run '%.*s': ",
-                (int)command.items[0].size,
-                command.items[0].data);
+                (int)command.e[0].size,
+                command.e[0].data);
         jk_windows_print_last_error();
         return 1;
     }
@@ -327,8 +327,8 @@ static int jk_platform_exec(JkBufferArray command)
     if (!GetExitCodeProcess(pi.hProcess, &exit_status)) {
         fprintf(stderr,
                 "jk_platform_exec: Could not get exit status of '%.*s': ",
-                (int)command.items[0].size,
-                command.items[0].data);
+                (int)command.e[0].size,
+                command.e[0].data);
         jk_windows_print_last_error();
         exit_status = 1;
     }
@@ -425,10 +425,10 @@ static int jk_platform_exec(JkBufferArray command)
         if (i != 0) {
             printf(" ");
         }
-        if (jk_string_contains_whitespace(command.items[i])) {
-            printf("\"%.*s\"", (int)command.items[i].size, command.items[i].data);
+        if (jk_string_contains_whitespace(command.e[i])) {
+            printf("\"%.*s\"", (int)command.e[i].size, command.e[i].data);
         } else {
-            printf("%.*s", (int)command.items[i].size, command.items[i].data);
+            printf("%.*s", (int)command.e[i].size, command.e[i].data);
         }
     }
     printf("\n");
@@ -440,13 +440,13 @@ static int jk_platform_exec(JkBufferArray command)
 
     char **argv = jk_arena_push(&arena, (command.count + 1) * JK_SIZEOF(char *));
     for (int64_t i = 0; i < command.count; i++) {
-        argv[i] = jk_arena_push(&arena, command.items[i].size + 1);
+        argv[i] = jk_arena_push(&arena, command.e[i].size + 1);
         if (!argv[i]) {
             fprintf(stderr, "jk_platform_exec: Command too large for buffer\n");
             return 1;
         }
-        argv[i][command.items[i].size] = '\0';
-        memcpy(argv[i], command.items[i].data, command.items[i].size);
+        argv[i][command.e[i].size] = '\0';
+        memcpy(argv[i], command.e[i].data, command.e[i].size);
     }
     argv[command.count] = 0;
 
@@ -595,7 +595,7 @@ static void string_array_builder_push(StringArrayBuilder *b, JkBuffer string)
 static void string_array_builder_push_multiple(StringArrayBuilder *b, JkBufferArray strings)
 {
     for (int64_t i = 0; i < strings.count; i++) {
-        string_array_builder_push(b, strings.items[i]);
+        string_array_builder_push(b, strings.e[i]);
     }
 }
 
@@ -627,11 +627,11 @@ static JkBufferArray string_array_builder_build(StringArrayBuilder *b)
 {
     JkBufferArray result = {
         .count = b->count,
-        .items = jk_arena_push(b->arena, b->count * JK_SIZEOF(result.items[0])),
+        .e = jk_arena_push(b->arena, b->count * JK_SIZEOF(result.e[0])),
     };
     int64_t i = result.count;
     for (StringNode *node = b->tail.previous; node; node = node->previous) {
-        result.items[--i] = node->string;
+        result.e[--i] = node->string;
     }
     return result;
 }
@@ -1049,7 +1049,7 @@ static int64_t parse_files(JkArena *storage,
                         JkBuffer program_path = concat_strings(&file_arena,
                                 concat_strings(&file_arena, paths.build, JKS("/")),
                                 basename(file_path_absolute));
-                        jk_platform_exec((JkBufferArray){.count = 1, .items = &program_path});
+                        jk_platform_exec((JkBufferArray){.count = 1, .e = &program_path});
                     }
 
                     printf("\n");
@@ -1326,7 +1326,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         append(&nasm_command, "-f", "elf64");
 #endif
 
-        string_array_builder_push(&nasm_command, nasm_files_array.items[i]);
+        string_array_builder_push(&nasm_command, nasm_files_array.e[i]);
 
         jk_platform_exec(string_array_builder_build(&nasm_command));
 
@@ -1553,8 +1553,8 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         for (int64_t i = 0; i < dependencies_array.count; i++) {
             fprintf(stu_file,
                     "#include <%.*s>\n",
-                    (int)dependencies_array.items[i].size,
-                    dependencies_array.items[i].data);
+                    (int)dependencies_array.e[i].size,
+                    dependencies_array.e[i].data);
         }
 
         fclose(stu_file);
