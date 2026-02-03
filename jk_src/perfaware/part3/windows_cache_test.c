@@ -17,11 +17,11 @@ static JkPlatformRepetitionTest tests[17];
 #define STARTING_SIZE (16 * 1024)
 #define MAX_SIZE (STARTING_SIZE << (JK_ARRAY_COUNT(tests) - 1))
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    void *data = jk_platform_memory_alloc(MAX_SIZE);
+    JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, MAX_SIZE);
 
     for (;;) {
         int64_t size = STARTING_SIZE;
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
             jk_platform_repetition_test_run_wave(test, MAX_SIZE, frequency, 10);
             while (jk_platform_repetition_test_running(test)) {
                 jk_platform_repetition_test_time_begin(test);
-                read_asm(MAX_SIZE, size, data);
+                read_asm(MAX_SIZE, size, buffer.data);
                 jk_platform_repetition_test_time_end(test);
                 jk_platform_repetition_test_count_bytes(test, MAX_SIZE);
             }
@@ -49,4 +49,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

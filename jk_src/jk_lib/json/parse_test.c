@@ -10,12 +10,9 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    (void)argc;
-
     jk_platform_set_working_directory_to_executable_directory();
-    jk_platform_console_utf8_enable();
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
@@ -24,7 +21,7 @@ int main(int argc, char **argv)
 
     JkJson *json = jk_json_parse(text, &storage);
     if (json) {
-        jk_json_print(stdout, json, 0, &storage);
+        jk_platform_print(jk_json_to_string(&storage, json, 0));
         printf("\n");
         assert(json->type == JK_JSON_OBJECT);
         JkJson *smokes = jk_json_member_get(json, "smokes");

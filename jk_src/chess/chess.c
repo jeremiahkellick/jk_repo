@@ -1,7 +1,7 @@
 // clang-format off
 
 // #jk_build library
-// #jk_build export update audio board_equal render ai_init ai_running print_set
+// #jk_build export update audio board_equal render ai_init ai_running
 
 // #jk_build single_translation_unit
 
@@ -65,8 +65,6 @@ static PieceCounts piece_counts = {.a = {0, 1, 1, 2, 2, 2, 8}};
 static Chess debug_chess;
 
 static uint8_t debug_render_memory[2 * JK_MEGABYTE];
-
-static uint8_t debug_misc_memory[16 * JK_KILOBYTE];
 
 static ChessAssets *debug_assets;
 
@@ -935,8 +933,10 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_fr
     }
 }
 
-b32 ai_running(Ai *ai)
+b32 ai_running(JkContext *context, Ai *ai)
 {
+    jk_context = context;
+
     if (!ai->root->first_child->next_sibling) {
         // If there's only one legal move, take it
         ai->response.move = move_unpack(ai->root->first_child->move);
@@ -951,10 +951,10 @@ b32 ai_running(Ai *ai)
         if (result.errors) {
             running = 0;
             if (JK_FLAG_GET(result.errors, EXPAND_ERROR_OUT_OF_MEMORY)) {
-                jk_print(JKS("AI hit the memory limit\n"));
+                jk_log(JK_LOG_INFO, JKS("AI hit the memory limit\n"));
             }
             if (JK_FLAG_GET(result.errors, EXPAND_ERROR_DEAD_END)) {
-                jk_print(JKS("AI hit a dead end\n"));
+                jk_log(JK_LOG_INFO, JKS("AI hit a dead end\n"));
             }
         }
     }
@@ -976,9 +976,7 @@ b32 ai_running(Ai *ai)
         ai->response.move = move_unpack(favorite_child->move);
 
 #if JK_BUILD_MODE != JK_RELEASE
-        JkArenaRoot debug_arena_root;
-        JkArena debug_arena = jk_arena_fixed_init(&debug_arena_root,
-                (JkBuffer){.size = JK_SIZEOF(debug_misc_memory), .data = debug_misc_memory});
+        JkArena debug_arena = jk_arena_scratch_get();
 
         uint64_t time_elapsed = ai->time - ai->time_started;
         double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
@@ -995,7 +993,7 @@ b32 ai_running(Ai *ai)
         double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
 
         // clang-format off
-        JK_PRINT_FMT(&debug_arena,
+        JK_LOGF(JK_LOG_INFO,
                 jkfn("elder_count: "), jkfu(stats.elder_count), jkf_nl,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
@@ -1011,8 +1009,8 @@ b32 ai_running(Ai *ai)
                 while (node) {
                     max_score_depth++;
                     board = board_move_perform(board, node->move);
-                    JK_PRINT_FMT(&debug_arena, jkfn("age: "), jkfu(node_age_get(node)), jkf_nl);
-                    JK_PRINT_FMT(&debug_arena,
+                    JK_LOGF(JK_LOG_INFO, jkfn("age: "), jkfu(node_age_get(node)), jkf_nl);
+                    JK_LOGF(JK_LOG_INFO,
                             jkfn("board_score: "),
                             jkfi(board_score(board, max_score_depth, (MoveCounts){0})),
                             jkf_nl);
@@ -1032,7 +1030,7 @@ b32 ai_running(Ai *ai)
             }
 
             // clang-format off
-            JK_PRINT_FMT(&debug_arena,
+            JK_LOGF(JK_LOG_INFO,
                     jkfn("node_count\t"), jkfu(stats.node_count), jkf_nl,
                     jkfn("leaf_count\t"), jkfu(stats.leaf_count), jkf_nl,
                     jkfn("min_depth\t"), jkfu(stats.min_depth), jkf_nl,
@@ -1041,10 +1039,10 @@ b32 ai_running(Ai *ai)
                     jkfn("max_score_depth\t"), jkfu(max_score_depth), jkf_nl);
             // clang-format on
 
-            jk_print(JKS("max_line:\n"));
+            jk_log(JK_LOG_INFO, JKS("max_line:\n"));
             for (int64_t i = 0; i < stats.max_depth; i++) {
                 uint16_t move_bits = stats.max_line[i].bits;
-                JK_PRINT_FMT(&debug_arena, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
+                JK_LOGF(JK_LOG_INFO, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
             }
 
             {
@@ -1059,7 +1057,7 @@ b32 ai_running(Ai *ai)
                 Board board = ai->response.board;
                 for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
                     board = board_move_perform(board, stats.max_line[i]);
-                    JK_PRINT_FMT(&debug_arena,
+                    JK_LOGF(JK_LOG_INFO,
                             jkfn("score: "),
                             jkfi(board_score(board, stats.max_depth - 1 - i, (MoveCounts){0})),
                             jkf_nl);
@@ -1206,8 +1204,10 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-void update(ChessAssets *assets, Chess *chess)
+void update(JkContext *context, ChessAssets *assets, Chess *chess)
 {
+    jk_context = context;
+
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
 
@@ -1278,7 +1278,7 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        jk_print(JKS("Invalid chess->screen value\n"));
+        jk_log(JK_LOG_ERROR, JKS("Invalid chess->screen value\n"));
     } break;
     }
 
@@ -1472,7 +1472,7 @@ void update(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        jk_print(JKS("Invalid chess->screen value\n"));
+        jk_log(JK_LOG_ERROR, JKS("Invalid chess->screen value\n"));
     } break;
     }
 
@@ -2342,7 +2342,7 @@ void render(ChessAssets *assets, Chess *chess)
     } break;
 
     case SCREEN_COUNT: {
-        jk_print(JKS("Invalid screen value\n"));
+        jk_log(JK_LOG_ERROR, JKS("Invalid screen value\n"));
     } break;
     }
 
@@ -2486,11 +2486,6 @@ void render(ChessAssets *assets, Chess *chess)
             }
         }
     }
-}
-
-void print_set(void (*print)(JkBuffer string))
-{
-    jk_print = print;
 }
 
 b32 is_draggable(Chess *chess, JkIntVec2 pos)

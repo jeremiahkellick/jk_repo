@@ -112,8 +112,7 @@ static MyRect draw_rect_get(JkIntVec2 window_dimensions)
 
     int32_t max_dimension_index = window_dimensions.x < window_dimensions.y ? 1 : 0;
     result.pos.v[max_dimension_index] =
-            (window_dimensions.v[max_dimension_index]
-                    - result.dimensions.v[max_dimension_index])
+            (window_dimensions.v[max_dimension_index] - result.dimensions.v[max_dimension_index])
             / 2;
 
     return result;
@@ -223,6 +222,7 @@ static char const *const shaders_code =
 
 int main(void)
 {
+    jk_platform_init();
     jk_platform_set_working_directory_to_executable_directory();
 
     print_set(print_stdout);

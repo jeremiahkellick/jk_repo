@@ -13,26 +13,11 @@
 static SRWLOCK jk_stack_trace_lock = SRWLOCK_INIT;
 static uint8_t jk_stack_trace_module_buffer[1024];
 
-static void jk_stack_trace_null_terminated(int64_t max_size, JkBuffer *result, char *string)
-{
-    for (; result->size < max_size && *string; string++) {
-        result->data[result->size++] = *string;
-    }
-}
-
-static void jk_stack_trace_append_buffer(int64_t max_size, JkBuffer *result, JkBuffer buffer)
-{
-    int64_t length = JK_MIN(buffer.size, max_size - result->size);
-    for (int64_t i = 0; i < length; i++) {
-        result->data[result->size++] = buffer.data[i];
-    }
-}
-
-JK_NOINLINE JkBuffer stack_trace(JkBuffer result_buffer, int64_t skip)
+JK_NOINLINE JkBuffer stack_trace(JkBuffer buffer, int64_t skip, int64_t indent)
 {
     AcquireSRWLockExclusive(&jk_stack_trace_lock);
 
-    JkBuffer result = {.size = 0, .data = result_buffer.data};
+    JkBuffer result = {.size = 0, .data = buffer.data};
 
     HANDLE process = GetCurrentProcess();
     HANDLE thread = GetCurrentThread();
@@ -52,7 +37,7 @@ JK_NOINLINE JkBuffer stack_trace(JkBuffer result_buffer, int64_t skip)
         frame.AddrStack.Offset = context.Rsp;
         frame.AddrStack.Mode = AddrModeFlat;
 
-        for (int64_t frame_num = 0; result.size < result_buffer.size
+        for (int64_t frame_num = 0; result.size < buffer.size
                 && StackWalk(IMAGE_FILE_MACHINE_AMD64,
                         process,
                         thread,
@@ -109,47 +94,31 @@ JK_NOINLINE JkBuffer stack_trace(JkBuffer result_buffer, int64_t skip)
                 line = line_data.LineNumber;
             }
 
-            { // Write program counter in hexadecimal
-                jk_stack_trace_null_terminated(result_buffer.size, &result, "    0x");
-                int64_t start_pos = result.size;
-                int64_t width_remaining = 16;
-                while (result.size < result_buffer.size && (0 < width_remaining || offset)) {
-                    result.data[result.size++] = jk_hex_char[offset & 0xf];
-                    offset >>= 4;
-                    width_remaining--;
-                }
-                for (int64_t i = 0; i < (result.size - start_pos) / 2; i++) {
-                    JK_SWAP(result.data[start_pos + i], result.data[result.size - 1 - i], uint8_t);
-                }
+            // Indent
+            for (int64_t i = 0; i < indent && result.size < buffer.size; i++, result.size++) {
+                result.data[result.size] = ' ';
             }
 
-            jk_stack_trace_null_terminated(result_buffer.size, &result, " in ");
-            jk_stack_trace_append_buffer(result_buffer.size, &result, function_name);
-
+            result.size += snprintf((char *)(result.data + result.size),
+                    buffer.size - result.size,
+                    "0x%012llx in %.*s",
+                    offset,
+                    (int)function_name.size,
+                    function_name.data);
             if (file_name.size) {
-                jk_stack_trace_null_terminated(result_buffer.size, &result, " at ");
-                jk_stack_trace_append_buffer(result_buffer.size, &result, file_name);
-                jk_stack_trace_null_terminated(result_buffer.size, &result, ":");
-
-                { // Write line number in decimal
-                    int64_t start_pos = result.size;
-                    int64_t width_remaining = 1;
-                    while (result.size < result_buffer.size && (0 < width_remaining || line)) {
-                        result.data[result.size++] = '0' + (line % 10);
-                        line /= 10;
-                        width_remaining--;
-                    }
-                    for (int64_t i = 0; i < (result.size - start_pos) / 2; i++) {
-                        JK_SWAP(result.data[start_pos + i],
-                                result.data[result.size - 1 - i],
-                                uint8_t);
-                    }
-                }
-            } else if (module_name.size) {
-                jk_stack_trace_null_terminated(result_buffer.size, &result, " from ");
-                jk_stack_trace_append_buffer(result_buffer.size, &result, module_name);
+                result.size += snprintf((char *)(result.data + result.size),
+                        buffer.size - result.size,
+                        " at %.*s:%lld\n",
+                        (int)file_name.size,
+                        file_name.data,
+                        line);
+            } else {
+                result.size += snprintf((char *)(result.data + result.size),
+                        buffer.size - result.size,
+                        " from %.*s\n",
+                        (int)module_name.size,
+                        module_name.data);
             }
-            jk_stack_trace_null_terminated(result_buffer.size, &result, "\n");
 
             if (jk_buffer_compare(function_name, JKS("main")) == 0
                     || jk_buffer_compare(function_name, JKS("WinMain")) == 0) {
@@ -168,7 +137,7 @@ JkBuffer stack_trace_buffer = JK_BUFFER_INIT_FROM_BYTE_ARRAY(stack_trace_byte_ar
 
 void foo(void)
 {
-    jk_platform_print_stdout(stack_trace(stack_trace_buffer, 1));
+    jk_platform_print(stack_trace(stack_trace_buffer, 1, 2));
 }
 
 void bar(void)
@@ -181,7 +150,7 @@ void baz(void)
     bar();
 }
 
-int main(void)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     baz();
 

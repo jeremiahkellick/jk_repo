@@ -4,6 +4,13 @@
 #include <jk_src/jk_lib/jk_lib.h>
 #include <stdio.h>
 
+// USER DEFINED
+JK_PUBLIC int32_t jk_platform_entry_point(int32_t argc, char **argv);
+
+#if _WIN32 && JK_PLATFORM_DESKTOP_APP
+JK_GLOBAL_DECLARE HINSTANCE jk_platform_hinstance;
+#endif
+
 // ---- Copy-paste from windows headers to avoid importing windows.h begin -----
 
 #ifndef GUID_DEFINED
@@ -33,15 +40,17 @@ JK_PUBLIC int64_t jk_platform_file_size(char *file_name);
 
 JK_PUBLIC int64_t jk_platform_page_size(void);
 
-JK_PUBLIC void *jk_platform_memory_reserve(int64_t size);
+typedef enum JkAllocType {
+    JK_ALLOC_RESERVE,
+    JK_ALLOC_COMMIT,
+    JK_ALLOC_TYPE_COUNT,
+} JkAllocType;
+
+JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size);
 
 JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size);
 
-JK_PUBLIC void *jk_platform_memory_alloc(int64_t size);
-
-JK_PUBLIC void jk_platform_memory_free(void *address, int64_t size);
-
-JK_PUBLIC void jk_platform_console_utf8_enable(void);
+JK_PUBLIC void jk_platform_memory_free(JkBuffer memory);
 
 JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void);
 
@@ -58,6 +67,10 @@ JK_PUBLIC void jk_platform_sleep(int64_t milliseconds);
 JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path);
 
 JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path);
+
+JK_PUBLIC JkBuffer jk_platform_stack_trace(JkBuffer buffer, int64_t skip, int64_t indent);
+
+JK_PUBLIC void jk_platform_print(JkBuffer string);
 
 // ---- OS functions end -------------------------------------------------------
 
@@ -297,7 +310,9 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk);
 
 // ---- File formats end -------------------------------------------------------
 
-JK_PUBLIC void jk_platform_print_stdout(JkBuffer string);
+JK_PUBLIC void jk_platform_thread_init(void);
+
+JK_PUBLIC JkLog *jk_platform_log_create(int64_t size);
 
 JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n);
 

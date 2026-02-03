@@ -133,7 +133,7 @@ static TestCandidate candidates[] = {
 // tests[alloc][i]
 static JkPlatformRepetitionTest tests[2][JK_ARRAY_COUNT(candidates)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr, "%s: Expected 1 file argument, got %d\n", argv[0], argc - 1);
@@ -165,4 +165,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

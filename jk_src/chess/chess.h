@@ -310,7 +310,7 @@ typedef void AiInitFunction(
         JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_frequency);
 AiInitFunction ai_init;
 
-typedef b32 AiRunningFunction(Ai *ai);
+typedef b32 AiRunningFunction(JkContext *context, Ai *ai);
 AiRunningFunction ai_running;
 
 typedef void AudioFunction(ChessAssets *assets,
@@ -323,14 +323,11 @@ AudioFunction audio;
 typedef b32 BoardEqualFunction(Board *a, Board *b);
 BoardEqualFunction board_equal;
 
-typedef void UpdateFunction(ChessAssets *assets, Chess *chess);
+typedef void UpdateFunction(JkContext *context, ChessAssets *assets, Chess *chess);
 UpdateFunction update;
 
 typedef void RenderFunction(ChessAssets *assets, Chess *chess);
 RenderFunction render;
-
-typedef void PrintSetFunction(void (*print)(JkBuffer string));
-PrintSetFunction print_set;
 
 typedef b32 IsDraggableFunction(Chess *chess, JkIntVec2 pos);
 IsDraggableFunction is_draggable;

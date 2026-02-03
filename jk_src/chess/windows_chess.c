@@ -1,3 +1,5 @@
+#define JK_PLATFORM_DESKTOP_APP 1
+
 // #jk_build link User32 Gdi32 Winmm
 
 #include <dsound.h>
@@ -143,8 +145,7 @@ static Rect draw_rect_get(void)
 
     int32_t max_dimension_index = g_window_dimensions.x < g_window_dimensions.y ? 1 : 0;
     result.pos.v[max_dimension_index] =
-            (g_window_dimensions.v[max_dimension_index]
-                    - result.dimensions.v[max_dimension_index])
+            (g_window_dimensions.v[max_dimension_index] - result.dimensions.v[max_dimension_index])
             / 2;
 
     return result;
@@ -295,6 +296,8 @@ static Chess g_recorded_game_state;
 
 DWORD game_thread(LPVOID param)
 {
+    jk_platform_thread_init();
+
     HWND window = (HWND)param;
 
     int64_t frequency = jk_platform_os_timer_frequency();
@@ -416,10 +419,6 @@ DWORD game_thread(LPVOID param)
                     g_update = (UpdateFunction *)GetProcAddress(chess_library, "update");
                     g_audio = (AudioFunction *)GetProcAddress(chess_library, "audio");
                     g_render = (RenderFunction *)GetProcAddress(chess_library, "render");
-
-                    PrintSetFunction *dll_print_set =
-                            (PrintSetFunction *)GetProcAddress(chess_library, "print_set");
-                    dll_print_set(debug_print);
                 } else {
                     OutputDebugStringA("Failed to load chess_tmp.dll\n");
                 }
@@ -547,7 +546,7 @@ DWORD game_thread(LPVOID param)
 
         g_chess.os_time = jk_platform_os_timer_get();
 
-        g_update(g_assets, &g_chess);
+        g_update(jk_context, g_assets, &g_chess);
 
         if (!g_shared.ai_request.wants_ai_move
                         != !JK_FLAG_GET(g_chess.flags, CHESS_FLAG_WANTS_AI_MOVE)
@@ -681,6 +680,8 @@ DWORD game_thread(LPVOID param)
 
 DWORD ai_thread(LPVOID param)
 {
+    jk_platform_thread_init();
+
     while (g_running) {
         AcquireSRWLockShared(&g_shared.ai_request_lock);
         while (!(g_shared.ai_request.wants_ai_move
@@ -702,7 +703,7 @@ DWORD ai_thread(LPVOID param)
         Ai ai;
         g_ai_init(&arena, &ai, board, jk_platform_os_timer_get(), jk_platform_os_timer_frequency());
 
-        while (g_ai_running(&ai)) {
+        while (g_ai_running(jk_context, &ai)) {
             AcquireSRWLockShared(&g_shared.ai_request_lock);
             b32 cancel = !g_shared.ai_request.wants_ai_move
                     || memcmp(&g_shared.ai_request.board, &ai.response.board, JK_SIZEOF(Board))
@@ -727,14 +728,8 @@ DWORD ai_thread(LPVOID param)
     return 0;
 }
 
-int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-#if JK_BUILD_MODE != JK_RELEASE
-    jk_platform_set_working_directory_to_executable_directory();
-#endif
-
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-
     g_cursor = LoadCursorA(0, IDC_ARROW);
 
     g_audio_buffer_size =
@@ -775,7 +770,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         WNDCLASSA window_class = {
             .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
             .lpfnWndProc = window_proc,
-            .hInstance = instance,
+            .hInstance = jk_platform_hinstance,
             .lpszClassName = "jk_chess_window_class",
         };
 
@@ -790,7 +785,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 CW_USEDEFAULT,
                 0,
                 0,
-                instance,
+                jk_platform_hinstance,
                 0);
         if (window) {
             HANDLE ai_thread_handle = CreateThread(0, 0, ai_thread, 0, 0, 0);

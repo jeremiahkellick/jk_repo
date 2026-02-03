@@ -32,11 +32,11 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(sizes)][JK_ARRAY_COUNT(offs
 
 #define BUFFER_SIZE (sizes[JK_ARRAY_COUNT(sizes) - 1])
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    void *data = jk_platform_memory_alloc(BUFFER_SIZE + 4096);
+    JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, BUFFER_SIZE + 4096);
 
     for (;;) {
         for (int i = 0; i < JK_ARRAY_COUNT(tests); i++) {
@@ -58,9 +58,8 @@ int main(int argc, char **argv)
                 jk_platform_repetition_test_run_wave(test, byte_count, frequency, 10);
                 while (jk_platform_repetition_test_running(test)) {
                     jk_platform_repetition_test_time_begin(test);
-                    read_asm_custom(outer_loop_iterations,
-                            inner_loop_iterations,
-                            (char *)data + offsets[j]);
+                    read_asm_custom(
+                            outer_loop_iterations, inner_loop_iterations, buffer.data + offsets[j]);
                     jk_platform_repetition_test_time_end(test);
                     jk_platform_repetition_test_count_bytes(test, byte_count);
                 }
@@ -71,4 +70,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

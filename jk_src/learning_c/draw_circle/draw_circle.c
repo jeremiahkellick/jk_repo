@@ -60,11 +60,8 @@ static void print_grid(bool (*grid)[GRID_SIZE], int height, int width)
     }
 }
 
-int main(void)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_platform_console_utf8_enable();
-    jk_print = jk_platform_print_stdout;
-
     printf("Drawing a circle %d times\n", ITERATION_COUNT);
     jk_profile_frame_begin();
     for (int i = 0; i < ITERATION_COUNT; i++) {

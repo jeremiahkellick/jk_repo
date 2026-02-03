@@ -80,7 +80,6 @@ typedef struct State {
     JkBuffer memory;
     int64_t os_timer_frequency;
     int64_t (*estimate_cpu_frequency)(int64_t);
-    void (*print)(JkBuffer string);
 
     uint64_t os_time;
     JkIntVec2 dimensions;
@@ -95,7 +94,7 @@ typedef struct State {
     int64_t test_frames_remaining;
 } State;
 
-typedef void RenderFunction(Assets *assets, State *state);
+typedef void RenderFunction(JkContext *context, Assets *assets, State *state);
 RenderFunction render;
 
 #endif

@@ -126,11 +126,8 @@ JkConversionUnion unprintable_64 = {.uint64_v = 0x7feb83f05b73e306llu};
 
 JkConversionUnion some_nan_32 = {.uint32_v = 0x7fE9605C};
 
-int main(void)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_print = jk_platform_print_stdout;
-    jk_platform_console_utf8_enable();
-
     // ---- Arena begin --------------------------------------------------------
     printf("Arena\n");
 
@@ -243,56 +240,44 @@ int main(void)
 
     // ---- Logging begin ------------------------------------------------------
 
-    JkLog *log;
-    JkBuffer log_memory;
-    log_memory.size = JK_SIZEOF(log->scratch_buffer) + 768;
-    log_memory.data = jk_platform_memory_alloc(log_memory.size);
-    log = jk_log_init(jk_platform_print_stdout, log_memory);
-    jk_log(log, JK_LOG_INFO, JKS("Whose woods these are I think I know."));
-    jk_log(log, JK_LOG_ERROR, JKS("Soon may the Wellerman come"));
-    jk_log(log, JK_LOG_INFO, JKS("His house is in the village though;"));
+    JkContext context = {0};
+    jk_context = &context;
 
-    jk_print(JKS("\n"));
+    JkBuffer log_memory = jk_platform_memory_alloc(JK_ALLOC_COMMIT, 768);
+    jk_context->log = jk_log_init(jk_platform_print, log_memory);
 
-    JK_LOG_ITER(log, e)
+    jk_log(JK_LOG_INFO, JKS("Whose woods these are I think I know."));
+    jk_log(JK_LOG_ERROR, JKS("Soon may the Wellerman come"));
+    jk_log(JK_LOG_INFO, JKS("His house is in the village though;"));
+
+    printf("\n");
+    JK_LOG_ITER(e)
     {
-        if (jk_log_entry_type(log, e) == JK_LOG_ERROR) {
-            jk_log_entry_remove(log, e);
-        } else {
-            jk_log_entry_print(log, e);
+        if (jk_log_entry_type(e) == JK_LOG_ERROR) {
+            jk_log_entry_remove(e);
         }
     }
-
-    jk_print(JKS("\n"));
-
-    JK_LOG_ITER(log, e)
+    JK_LOG_ITER(e)
     {
-        jk_log_entry_print(log, e);
+        jk_log_entry_print(e);
     }
 
-    jk_print(JKS("\n"));
+    printf("\n");
+    jk_log(JK_LOG_INFO, JKS("He will not see me stopping here"));
+    jk_log(JK_LOG_INFO, JKS("To watch his woods fill up with snow."));
+    jk_log(JK_LOG_INFO, JKS("My little horse must think it queer"));
 
-    jk_log(log, JK_LOG_INFO, JKS("He will not see me stopping here"));
-    jk_log(log, JK_LOG_INFO, JKS("To watch his woods fill up with snow."));
-    jk_log(log, JK_LOG_INFO, JKS("My little horse must think it queer"));
-
-    jk_print(JKS("\n"));
-
-    JK_LOG_ITER(log, e)
+    printf("\n");
+    JK_LOG_ITER(e)
     {
-        jk_log_entry_print(log, e);
+        jk_log_entry_print(e);
     }
 
-    jk_print(JKS("\n"));
-
-    log = jk_log_init(jk_platform_print_stdout, log_memory);
-
-    JK_LOG_ITER(log, e)
+    jk_context->log = jk_log_init(jk_platform_print, log_memory);
+    JK_LOG_ITER(e)
     {
-        jk_log_entry_print(log, e);
+        jk_log_entry_print(e);
     }
-
-    jk_print(JKS("\n"));
 
     // Fill the circular buffer to test wraparound
     uint8_t x_byte_array[176];
@@ -310,15 +295,16 @@ int main(void)
         z_byte_array[i] = 'z';
     }
     JkBuffer zs = JK_BUFFER_INIT_FROM_BYTE_ARRAY(z_byte_array);
-    jk_log(log, JK_LOG_WARNING, xs);
-    jk_log(log, JK_LOG_WARNING, ys);
-    jk_log(log, JK_LOG_WARNING, zs);
+    printf("\n");
+    jk_log(JK_LOG_WARNING, xs);
+    jk_log(JK_LOG_WARNING, ys);
+    jk_log(JK_LOG_WARNING, zs);
 
-    jk_print(JKS("\n"));
+    printf("\n");
 
-    JK_LOG_ITER(log, entry)
+    JK_LOG_ITER(entry)
     {
-        jk_log_entry_print(log, entry);
+        jk_log_entry_print(entry);
     }
 
     // ---- Logging end --------------------------------------------------------

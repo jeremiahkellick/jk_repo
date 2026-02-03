@@ -57,10 +57,8 @@ static uint8_t gzip_bytes[] = {
 
 static JkBuffer gzip_buffer = {.size = JK_SIZEOF(gzip_bytes), .data = gzip_bytes};
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_print = jk_platform_print_stdout;
-
     b32 pass = 1;
 
     uint32_t crc = crc32(expected_result.contents);
@@ -87,16 +85,17 @@ int main(int argc, char **argv)
     for (int64_t i = 0; i < JK_ARRAY_COUNT(result.buffers); i++) {
         if (jk_buffer_compare(expected_result.buffers[i], result.buffers[i]) != 0) {
             pass = 0;
-            JK_PRINT_FMT(&arena,
+            JK_LOGF(JK_LOG_ERROR,
                     jkfn("Incorrect "),
                     jkfs(jk_gzip_buffer_names[i]),
                     jkfn(": Expected '"),
                     jkfs(expected_result.buffers[i]),
                     jkfn("', got '"),
-                    jkfs(result.buffers[i]),
-                    jkfn("'\n"));
+                    jkfs(result.buffers[i]));
         }
     }
 
     printf(pass ? "PASS\n" : "FAIL\n");
+
+    return 0;
 }

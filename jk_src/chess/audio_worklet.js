@@ -11,7 +11,8 @@ class ChessAudioWorklet extends AudioWorkletProcessor {
                         // messages from wasm, we'd have to use do postMessage or something.
                         // However, since I don't currently (and haven't ever?) print anything from
                         // the audio function, I'll just let this be an empty stub.
-                    }
+                    },
+                    performance_now: () => 0,
                 }
             };
             this.wasm_exports =

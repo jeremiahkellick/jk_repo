@@ -127,10 +127,9 @@ static void print_stdout(JkBuffer string)
 - (instancetype)initWithScaleFactor:(CGFloat)scale_factor;
 @end
 
-int main(void)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
-    jk_print = print_stdout;
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, 8 * JK_GIGABYTE);

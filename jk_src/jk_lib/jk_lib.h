@@ -24,10 +24,26 @@ typedef uint32_t b32;
 #define JK_NOINLINE
 #endif
 
+// define JK_THREAD_LOCAL
+#if 202311L <= __STDC_VERSION__
+#define JK_THREAD_LOCAL thread_local
+#elif defined(_MSC_VER) && !defined(__clang__)
+#define JK_THREAD_LOCAL __declspec(thread)
+#elif 201112L <= __STDC_VERSION__
+#define JK_THREAD_LOCAL _Thread_local
+#elif defined(__GNUC__)
+#define JK_THREAD_LOCAL __thread
+#endif
+
 typedef struct JkBuffer {
     int64_t size;
     uint8_t *data;
 } JkBuffer;
+
+typedef struct JkSpan {
+    int64_t size;
+    int64_t offset;
+} JkSpan;
 
 typedef union JkVec3 {
     float v[3];
@@ -48,16 +64,33 @@ typedef union JkVec4 {
     };
 } JkVec4;
 
+typedef struct JkArena JkArena;
+
 typedef struct JkArenaRoot {
     JkBuffer memory;
+    b32 (*grow)(JkArena *arena, int64_t new_size);
 } JkArenaRoot;
 
-typedef struct JkArena {
+struct JkArena {
     int64_t base;
     int64_t pos;
     JkArenaRoot *root;
-    b32 (*grow)(struct JkArena *arena, int64_t new_size);
-} JkArena;
+};
+
+typedef struct JkLog JkLog;
+
+// ---- Context begin ----------------------------------------------------------
+
+typedef struct JkContext {
+    JkArena scratch_arenas[2];
+    JkLog *log;
+} JkContext;
+
+JK_GLOBAL_DECLARE JkContext jk_context_nil;
+
+JK_GLOBAL_DECLARE JK_THREAD_LOCAL JkContext *jk_context;
+
+// ---- Context end ------------------------------------------------------------
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -65,11 +98,6 @@ typedef struct JkBufferArray {
     int64_t count;
     JkBuffer *e;
 } JkBufferArray;
-
-typedef struct JkSpan {
-    int64_t size;
-    int64_t offset;
-} JkSpan;
 
 #define JK_STRING(string_literal) \
     ((JkBuffer){JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal})
@@ -141,7 +169,7 @@ JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
 
 JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
 
-JK_GLOBAL_DECLARE uint8_t const jk_hex_char[16];
+JK_GLOBAL_DECLARE uint8_t jk_hex_char[16];
 
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
         JkArena *arena, uint64_t value, int16_t min_width);
@@ -206,22 +234,12 @@ JK_PUBLIC JkFormatItem jkfv4(JkVec4 v);
 
 JK_PUBLIC JkFormatItem jkf_bytes(double byte_count);
 
-JK_GLOBAL_DECLARE JkFormatItem const jkf_nl;
+JK_GLOBAL_DECLARE JkFormatItem jkf_nl;
 
 JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
 
 #define JK_FORMAT(arena, ...)                                                                  \
     jk_format(arena,                                                                           \
-            (JkFormatItemArray){                                                               \
-                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
-                .e = (JkFormatItem[]){__VA_ARGS__}})
-
-JK_GLOBAL_DECLARE void (*jk_print)(JkBuffer string);
-
-JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items);
-
-#define JK_PRINT_FMT(arena, ...)                                                               \
-    jk_print_fmt(arena,                                                                        \
             (JkFormatItemArray){                                                               \
                 .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
                 .e = (JkFormatItem[]){__VA_ARGS__}})
@@ -255,7 +273,7 @@ typedef struct JkLogEntryData {
     JkSpan message;
 } JkLogEntryData;
 
-typedef struct JkLog {
+struct JkLog {
     void (*print)(JkBuffer string);
 
     int64_t entry_slot_next;
@@ -264,38 +282,42 @@ typedef struct JkLog {
     int64_t string_buffer_capacity;
     int64_t string_offset_next;
 
-    uint8_t scratch_buffer[4096];
-
     // Array of size max_entry_count. entries[0] is the log sentinel node. entries[1] is the free
     // list sentinel node.
     JkLogEntryData entries[2];
-} JkLog;
+};
 
 JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory);
 
-JK_PUBLIC b32 jk_log_valid(JkLog *l);
+JK_PUBLIC void jk_log(JkLogType type, JkBuffer message);
 
-JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message);
+JK_PUBLIC void jk_logf(JkLogType type, JkFormatItemArray items);
+
+#define JK_LOGF(type, ...)                                                                     \
+    jk_logf(type,                                                                              \
+            (JkFormatItemArray){                                                               \
+                .count = JK_SIZEOF(((JkFormatItem[]){__VA_ARGS__})) / JK_SIZEOF(JkFormatItem), \
+                .e = (JkFormatItem[]){__VA_ARGS__}})
 
 JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b);
 
 JK_PUBLIC b32 jk_log_entry_valid(JkLogEntry entry);
 
-JK_PUBLIC JkLogType jk_log_entry_type(JkLog *l, JkLogEntry entry);
+JK_PUBLIC JkLogType jk_log_entry_type(JkLogEntry entry);
 
-JK_PUBLIC JkBuffer jk_log_entry_message(JkLog *l, JkLogEntry entry);
+JK_PUBLIC JkBuffer jk_log_entry_message(JkLogEntry entry);
 
-JK_PUBLIC JkLogEntry jk_log_entry_first(JkLog *l);
+JK_PUBLIC JkLogEntry jk_log_entry_first(void);
 
-JK_PUBLIC JkLogEntry jk_log_entry_next(JkLog *l, JkLogEntry entry);
+JK_PUBLIC JkLogEntry jk_log_entry_next(JkLogEntry entry);
 
-JK_PUBLIC void jk_log_entry_print(JkLog *l, JkLogEntry entry);
+JK_PUBLIC void jk_log_entry_print(JkLogEntry entry);
 
-JK_PUBLIC void jk_log_entry_remove(JkLog *l, JkLogEntry entry);
+JK_PUBLIC void jk_log_entry_remove(JkLogEntry entry);
 
-#define JK_LOG_ITER(log, entry_field_name)                                                         \
-    for (JkLogEntry next, entry_field_name = jk_log_entry_first(log);                              \
-            next = jk_log_entry_next(log, entry_field_name), jk_log_entry_valid(entry_field_name); \
+#define JK_LOG_ITER(entry_field_name)                                                         \
+    for (JkLogEntry next, entry_field_name = jk_log_entry_first();                            \
+            next = jk_log_entry_next(entry_field_name), jk_log_entry_valid(entry_field_name); \
             entry_field_name = next)
 
 // ---- Logging end ------------------------------------------------------------
@@ -392,6 +414,10 @@ JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
 JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child);
 
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
+
+JK_PUBLIC JkArena jk_arena_scratch_get(void);
+
+JK_PUBLIC JkArena jk_arena_scratch_get_not(JkArena *not_this_arena);
 
 // ---- Arena end --------------------------------------------------------------
 
@@ -593,7 +619,7 @@ typedef struct JkMat4 {
     float e[4][4];
 } JkMat4;
 
-JK_GLOBAL_DECLARE JkMat4 const jk_mat4_i;
+JK_GLOBAL_DECLARE JkMat4 jk_mat4_i;
 
 JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m);
 
@@ -1148,8 +1174,8 @@ typedef union JkConversionUnion {
     float f32;
 } JkConversionUnion;
 
-JK_GLOBAL_DECLARE JkConversionUnion const jk_infinity_f64;
-JK_GLOBAL_DECLARE JkConversionUnion const jk_infinity_f32;
+JK_GLOBAL_DECLARE JkConversionUnion jk_infinity_f64;
+JK_GLOBAL_DECLARE JkConversionUnion jk_infinity_f32;
 
 typedef struct JkColor3 {
     union {
@@ -1198,6 +1224,12 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line);
 
 #define JK_ASSERT(expression) \
     (void)((!!(expression)) || (jk_assert_failed(#expression, __FILE__, (int64_t)(__LINE__)), 0))
+
+JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line);
+
+#define JK_SOFT_ASSERT(expression) \
+    (void)((!!(expression))        \
+            || (jk_soft_assert_failed(#expression, __FILE__, (int64_t)(__LINE__)), 0))
 
 #if JK_BUILD_MODE == JK_RELEASE
 #define JK_DEBUG_ASSERT(...)
@@ -1267,7 +1299,7 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x);
 
 JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x);
 
-JK_GLOBAL_DECLARE uint8_t const jk_bit_reverse_table[256];
+JK_GLOBAL_DECLARE uint8_t jk_bit_reverse_table[256];
 
 JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value);
 

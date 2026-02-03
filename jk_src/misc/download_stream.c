@@ -9,7 +9,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr, "%s: Expected 1 argument, got %d\n", argv[0], argc - 1);

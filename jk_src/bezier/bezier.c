@@ -57,8 +57,10 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
     return result;
 }
 
-void bezier_render(ChessAssets *assets, Bezier *bezier)
+void bezier_render(JkContext *context, ChessAssets *assets, Bezier *bezier)
 {
+    jk_context = context;
+
     float const canvas_size = 640.0f;
 
     JkBuffer display_string = JKS("Hello, world!");

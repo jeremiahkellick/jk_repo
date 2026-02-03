@@ -37,11 +37,11 @@ static TestCandidate candidates[] = {
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    void *data = jk_platform_memory_alloc(jk_platform_page_size());
+    JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, jk_platform_page_size());
     int64_t mov_count = 1024 * 1024 * 1024;
 
     for (;;) {
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
             jk_platform_repetition_test_run_wave(test, mov_count, frequency, 10);
             while (jk_platform_repetition_test_running(test)) {
                 jk_platform_repetition_test_time_begin(test);
-                candidates[i].function(mov_count, data);
+                candidates[i].function(mov_count, buffer.data);
                 jk_platform_repetition_test_time_end(test);
                 jk_platform_repetition_test_count_bytes(test, mov_count);
             }
@@ -63,4 +63,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

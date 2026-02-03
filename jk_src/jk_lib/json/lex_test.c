@@ -9,12 +9,9 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    (void)argc;
-
     jk_platform_set_working_directory_to_executable_directory();
-    jk_platform_console_utf8_enable();
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 36);
@@ -29,7 +26,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "%s: Invalid JSON\n", argv[0]);
             exit(1);
         }
-        jk_json_print_token(stdout, &token, &storage);
+        jk_platform_print(jk_json_token_to_string(&storage, &token));
         printf(" ");
     } while (token.type != JK_JSON_TOKEN_EOF);
 

@@ -51,14 +51,12 @@ static void swap(int64_t *a, int64_t *b)
     *b = tmp;
 }
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr, "%s: Expected 1 text file argument, got %d\n", argv[0], argc - 1);
         exit(1);
     }
-
-    jk_platform_console_utf8_enable();
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
@@ -182,4 +180,6 @@ int main(int argc, char **argv)
     }
 
     fclose(incorrect);
+
+    return 0;
 }

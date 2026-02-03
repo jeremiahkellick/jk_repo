@@ -16,15 +16,15 @@ static int64_t just_read(
 {
     FILE *file = fopen(file_name, "rb");
     if (file) {
-        uint8_t *buffer = jk_platform_memory_alloc(buffer_size);
-        if (buffer) {
+        JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, buffer_size);
+        if (buffer.size == buffer_size) {
             int64_t remaining_size = file_size;
             while (remaining_size) {
                 int64_t read_size = buffer_size;
                 if (read_size > remaining_size) {
                     read_size = remaining_size;
                 }
-                if (fread(buffer, read_size, 1, file) == 1) {
+                if (fread(buffer.data, read_size, 1, file) == 1) {
                     jk_platform_repetition_test_count_bytes(test, read_size);
                 } else {
                     jk_platform_repetition_test_error(test, "Failed to read file");
@@ -32,7 +32,7 @@ static int64_t just_read(
                 remaining_size -= read_size;
             }
 
-            jk_platform_memory_free(buffer, buffer_size);
+            jk_platform_memory_free(buffer);
         } else {
             jk_platform_repetition_test_error(test, "Failed to allocate memory");
         }
@@ -70,16 +70,16 @@ static int64_t read_and_sum(
 
     FILE *file = fopen(file_name, "rb");
     if (file) {
-        uint8_t *buffer = jk_platform_memory_alloc(buffer_size);
-        if (buffer) {
+        JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, buffer_size);
+        if (buffer.size == buffer_size) {
             int64_t remaining_size = file_size;
             while (remaining_size) {
                 int64_t read_size = buffer_size;
                 if (read_size > remaining_size) {
                     read_size = remaining_size;
                 }
-                if (fread(buffer, read_size, 1, file) == 1) {
-                    result += sum((JkBuffer){.size = read_size, .data = buffer});
+                if (fread(buffer.data, read_size, 1, file) == 1) {
+                    result += sum((JkBuffer){.size = read_size, .data = buffer.data});
                     jk_platform_repetition_test_count_bytes(test, read_size);
                 } else {
                     jk_platform_repetition_test_error(test, "Failed to read file");
@@ -87,7 +87,7 @@ static int64_t read_and_sum(
                 remaining_size -= read_size;
             }
 
-            jk_platform_memory_free(buffer, buffer_size);
+            jk_platform_memory_free(buffer);
         } else {
             jk_platform_repetition_test_error(test, "Failed to allocate memory");
         }
@@ -154,8 +154,8 @@ static int64_t read_and_sum_threads(
 
     FILE *file = fopen(file_name, "rb");
     if (file) {
-        uint8_t *buffer = jk_platform_memory_alloc(buffer_size);
-        if (buffer) {
+        JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, buffer_size);
+        if (buffer.size == buffer_size) {
             for (int i = 0; i < JK_ARRAY_COUNT(thread_data.locks); i++) {
                 thread_data.locks[i].sem_write = CreateSemaphore(NULL, 1, 1, NULL);
                 thread_data.locks[i].sem_read = CreateSemaphore(NULL, 0, 1, NULL);
@@ -176,7 +176,7 @@ static int64_t read_and_sum_threads(
                     WaitForSingleObject(lock->sem_write, ULONG_MAX);
 
                     lock->buffer.size = half_size;
-                    lock->buffer.data = i ? buffer + half_size : buffer;
+                    lock->buffer.data = i ? buffer.data + half_size : buffer.data;
                     if (lock->buffer.size > remaining_size) {
                         lock->buffer.size = remaining_size;
                     }
@@ -208,7 +208,7 @@ static int64_t read_and_sum_threads(
                 }
             }
 
-            jk_platform_memory_free(buffer, buffer_size);
+            jk_platform_memory_free(buffer);
         } else {
             jk_platform_repetition_test_error(test, "Failed to allocate memory");
         }
@@ -223,8 +223,10 @@ static int64_t read_and_sum_threads(
 
 typedef struct Function {
     char *name;
-    int64_t (*ptr)(
-            JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size);
+    int64_t (*ptr)(JkPlatformRepetitionTest *test,
+            char *file_name,
+            int64_t file_size,
+            int64_t buffer_size);
 } Function;
 
 static Function functions[] = {
@@ -235,7 +237,7 @@ static Function functions[] = {
 
 static JkPlatformRepetitionTest tests[13][JK_ARRAY_COUNT(functions)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     program_name = argv[0];
 
@@ -292,4 +294,6 @@ int main(int argc, char **argv)
         }
         printf("\n");
     }
+
+    return 0;
 }

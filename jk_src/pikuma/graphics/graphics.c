@@ -513,9 +513,9 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id, JkAre
     }
 }
 
-void render(Assets *assets, State *state)
+void render(JkContext *context, Assets *assets, State *state)
 {
-    jk_print = state->print;
+    jk_context = context;
 
     if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
         JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
@@ -794,12 +794,12 @@ void render(Assets *assets, State *state)
     jk_profile_frame_end();
 
     if (jk_key_pressed(&state->keyboard, JK_KEY_P)) {
-        jk_print(jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+        jk_log(JK_LOG_INFO, jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
     }
 
     if (0 < state->test_frames_remaining) {
         if (--state->test_frames_remaining == 0) {
-            jk_print(jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+            jk_log(JK_LOG_INFO, jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
         }
     }
 }

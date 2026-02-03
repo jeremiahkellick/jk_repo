@@ -15,10 +15,8 @@ static int int_compare(void *data, void *a, void *b)
     return *(int *)a - *(int *)b;
 }
 
-int main(void)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_print = jk_platform_print_stdout;
-
     srand(clock());
 
     for (int i = 0; i < ARRAY_LENGTH; i++) {
@@ -29,4 +27,6 @@ int main(void)
     jk_profile_frame_begin();
     jk_quicksort(array, ARRAY_LENGTH, JK_SIZEOF(int), &tmp, 0, int_compare);
     jk_platform_profile_end_and_print();
+
+    return 0;
 }

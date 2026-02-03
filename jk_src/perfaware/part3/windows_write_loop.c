@@ -32,7 +32,7 @@ static TestCandidate candidates[] = {
 // tests[malloc][i]
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t size = 1024 * 1024 * 1024;
     void *data = malloc(size);
@@ -62,4 +62,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

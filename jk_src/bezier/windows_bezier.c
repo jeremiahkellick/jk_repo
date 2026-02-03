@@ -1,3 +1,5 @@
+#define JK_PLATFORM_DESKTOP_APP 1
+
 // #jk_build link User32 Gdi32 Winmm
 
 #include <stdarg.h>
@@ -91,9 +93,8 @@ static Rect draw_rect_get(void)
     };
 
     int32_t max_dimension_index = global_window_dimensions.x < global_window_dimensions.y ? 1 : 0;
-    result.pos.v[max_dimension_index] =
-            (global_window_dimensions.v[max_dimension_index]
-                    - result.dimensions.v[max_dimension_index])
+    result.pos.v[max_dimension_index] = (global_window_dimensions.v[max_dimension_index]
+                                                - result.dimensions.v[max_dimension_index])
             / 2;
 
     return result;
@@ -199,6 +200,8 @@ static void debug_print(char *string)
 
 DWORD game_thread(LPVOID param)
 {
+    jk_platform_thread_init();
+
     HWND window = (HWND)param;
 
     int64_t frequency = jk_platform_os_timer_frequency();
@@ -255,7 +258,7 @@ DWORD game_thread(LPVOID param)
                     DRAW_BUFFER_SIDE_LENGTH});
         Rect draw_rect = draw_rect_get();
 
-        global_bezier_render(global_assets, &global_bezier);
+        global_bezier_render(jk_context, global_assets, &global_bezier);
         global_bezier.time++;
 
         uint64_t counter_work = jk_platform_os_timer_get();
@@ -321,10 +324,8 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_platform_set_working_directory_to_executable_directory();
-
     global_bezier.draw_buffer = VirtualAlloc(0,
             JK_SIZEOF(JkColor) * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH,
             MEM_COMMIT,
@@ -342,7 +343,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         WNDCLASSA window_class = {
             .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
             .lpfnWndProc = window_proc,
-            .hInstance = instance,
+            .hInstance = jk_platform_hinstance,
             .lpszClassName = "jk_bezier_window_class",
         };
 
@@ -357,7 +358,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
                 CW_USEDEFAULT,
                 0,
                 0,
-                instance,
+                jk_platform_hinstance,
                 0);
         if (window) {
             HANDLE game_thread_handle = CreateThread(0, 0, game_thread, window, 0, 0);

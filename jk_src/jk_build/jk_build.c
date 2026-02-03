@@ -140,16 +140,18 @@ static int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
 
 // ---- Arena begin ------------------------------------------------------------
 
+typedef struct JkArena JkArena;
+
 typedef struct JkArenaRoot {
     JkBuffer memory;
+    b32 (*grow)(struct JkArena *arena, int64_t new_size);
 } JkArenaRoot;
 
-typedef struct JkArena {
+struct JkArena {
     int64_t base;
     int64_t pos;
     JkArenaRoot *root;
-    b32 (*grow)(struct JkArena *arena, int64_t new_size);
-} JkArena;
+};
 
 static b32 jk_arena_fixed_grow(JkArena *arena, int64_t new_size)
 {
@@ -159,7 +161,7 @@ static b32 jk_arena_fixed_grow(JkArena *arena, int64_t new_size)
 static JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory)
 {
     root->memory = memory;
-    return (JkArena){.root = root, .grow = jk_arena_fixed_grow};
+    return (JkArena){.root = root};
 }
 
 static b32 jk_arena_valid(JkArena *arena)
@@ -171,7 +173,7 @@ static void *jk_arena_push(JkArena *arena, int64_t size)
 {
     int64_t new_pos = arena->pos + size;
     if (arena->root->memory.size < new_pos) {
-        if (!arena->grow(arena, new_pos)) {
+        if (!arena->root->grow(arena, new_pos)) {
             return NULL;
         }
     }
@@ -198,7 +200,6 @@ static JkArena jk_arena_child_get(JkArena *parent)
         .base = parent->pos,
         .pos = parent->pos,
         .root = parent->root,
-        .grow = parent->grow,
     };
 }
 
@@ -223,6 +224,12 @@ static char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
     memcpy(result, buffer.data, buffer.size);
     return result;
 }
+
+typedef enum JkAllocType {
+    JK_ALLOC_RESERVE,
+    JK_ALLOC_COMMIT,
+    JK_ALLOC_TYPE_COUNT,
+} JkAllocType;
 
 #ifdef _WIN32
 
@@ -252,20 +259,48 @@ static int64_t jk_platform_page_size(void)
     return 4096;
 }
 
-static void *jk_platform_memory_reserve(int64_t size)
+static JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
 {
-    return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+    static DWORD flAllocationType[JK_ALLOC_TYPE_COUNT] = {
+        /* JK_ALLOC_RESERVE = */ MEM_RESERVE,
+        /* JK_ALLOC_COMMIT = */ MEM_COMMIT | MEM_RESERVE,
+    };
+    static DWORD flProtect[JK_ALLOC_TYPE_COUNT] = {
+        /* JK_ALLOC_RESERVE = */ PAGE_NOACCESS,
+        /* JK_ALLOC_COMMIT = */ PAGE_READWRITE,
+    };
+
+    JkBuffer result = {.size = size};
+    if (0 < size) {
+        result.data = VirtualAlloc(NULL, size, flAllocationType[type], flProtect[type]);
+        if (!result.data) {
+            fprintf(stderr, "Failed to allocate memory\n");
+            result.size = -1;
+        }
+    }
+    return result;
 }
 
 static b32 jk_platform_memory_commit(void *address, int64_t size)
 {
-    return VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
+    if (0 < size) {
+        if (VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE)) {
+            return 1;
+        } else {
+            fprintf(stderr, "Failed to commit memory\n");
+            return 0;
+        }
+    } else {
+        return 1;
+    }
 }
 
-static void jk_platform_memory_free(void *address, int64_t size)
+static void jk_platform_memory_free(JkBuffer memory)
 {
-    // TODO: Consider how to deal with different freeing behavior between Windows and Unix
-    VirtualFree(address, 0, MEM_RELEASE);
+    if (0 < memory.size) {
+        // TODO: Consider how to deal with different freeing behavior between Windows and Unix
+        VirtualFree(memory.data, 0, MEM_RELEASE);
+    }
 }
 
 static void jk_windows_print_last_error(void)
@@ -391,28 +426,43 @@ static int64_t jk_platform_page_size(void)
     return page_size;
 }
 
-static void *jk_platform_memory_reserve(int64_t size)
+static JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
 {
-    if (0 <= size) {
-        return mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    } else {
-        return 0;
+    static int prot[JK_ALLOC_TYPE_COUNT] = {
+        /* JK_ALLOC_RESERVE = */ PROT_NONE,
+        /* JK_ALLOC_COMMIT = */ PROT_READ | PROT_WRITE,
+    };
+
+    JkBuffer result = {.size = size};
+    if (0 < size) {
+        result.data = mmap(NULL, size, prot[type], MAP_PRIVATE | MAP_ANON, -1, 0);
+        if (!result.data) {
+            fprintf(stderr, "Failed to allocate memory\n");
+            result.size = -1;
+        }
     }
+    return result;
 }
 
 static b32 jk_platform_memory_commit(void *address, int64_t size)
 {
-    if (0 <= size) {
-        return !mprotect(address, size, PROT_READ | PROT_WRITE);
+    if (0 < size) {
+        if (mprotect(address, size, PROT_READ | PROT_WRITE)) {
+            jk_log(JK_LOG_ERROR, JKS("Failed to commit memory"));
+            return 0;
+        } else {
+            return 1;
+        }
     } else {
-        return 0;
+        return 1;
     }
 }
 
-static void jk_platform_memory_free(void *address, int64_t size)
+static void jk_platform_memory_free(JkBuffer memory)
 {
-    if (0 < size) {
-        munmap(address, size);
+    if (0 < memory.size) {
+        // TODO: Consider how to deal with different freeing behavior between Windows and Unix
+        munmap(memory.data, memory.size);
     }
 }
 
@@ -516,9 +566,6 @@ typedef struct JkPlatformArenaVirtualRoot {
     int64_t virtual_size;
 } JkPlatformArenaVirtualRoot;
 
-static JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, int64_t virtual_size);
-
 static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
 {
     JkPlatformArenaVirtualRoot *root = (JkPlatformArenaVirtualRoot *)arena->root;
@@ -540,27 +587,30 @@ static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
 static JkArena jk_platform_arena_virtual_init(
         JkPlatformArenaVirtualRoot *root, int64_t virtual_size)
 {
-    int64_t page_size = jk_platform_page_size();
+    JkArena result = {0};
+    memset(root, 0, sizeof(*root));
 
-    root->virtual_size = virtual_size;
-    root->generic.memory.size = page_size;
-    root->generic.memory.data = jk_platform_memory_reserve(virtual_size);
-    if (!root->generic.memory.data) {
-        return (JkArena){0};
-    }
-    if (!jk_platform_memory_commit(root->generic.memory.data, page_size)) {
-        return (JkArena){0};
+    JkBuffer reserved = jk_platform_memory_alloc(JK_ALLOC_RESERVE, virtual_size);
+    if (reserved.size == virtual_size) {
+        int64_t page_size = jk_platform_page_size();
+        if (jk_platform_memory_commit(reserved.data, page_size)) {
+            root->generic.memory.size = page_size;
+            root->generic.memory.data = reserved.data;
+            root->generic.grow = jk_platform_arena_virtual_grow;
+            root->virtual_size = virtual_size;
+            result.root = &root->generic;
+        } else {
+            jk_platform_memory_free(reserved);
+        }
     }
 
-    return (JkArena){
-        .root = &root->generic,
-        .grow = jk_platform_arena_virtual_grow,
-    };
+    return result;
 }
 
 static void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root)
 {
-    jk_platform_memory_free(root->generic.memory.data, root->generic.memory.size);
+    jk_platform_memory_free(
+            (JkBuffer){.size = root->virtual_size, .data = root->generic.memory.data});
 }
 
 // ---- Virtual arena end --------------------------------------------------------------

@@ -3,7 +3,7 @@
 // clang-format off
 
 // #jk_build single_translation_unit
-// #jk_build compiler_arguments -o chess.wasm --target=wasm32 --no-standard-libraries
+// #jk_build compiler_arguments -o chess.wasm --target=wasm32 --no-standard-libraries -mbulk-memory
 // #jk_build linker_arguments -Wl,--no-entry,--allow-undefined,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick,--export=web_is_draggable
 
 // clang-format on
@@ -18,25 +18,6 @@
 #define AI_MEMORY_SIZE (1 * JK_GIGABYTE)
 
 extern uint8_t __heap_base[];
-
-__attribute__((no_builtin("memset"))) void *memset(void *address, int value, size_t size)
-{
-    uint8_t *bytes = address;
-    for (int64_t i = 0; i < (int64_t)size; i++) {
-        bytes[i] = value;
-    }
-    return address;
-}
-
-__attribute__((no_builtin("memcpy"))) void *memcpy(void *dest, void const *src, size_t size)
-{
-    uint8_t *dest_bytes = dest;
-    uint8_t const *src_bytes = src;
-    for (int64_t i = 0; i < (int64_t)size; i++) {
-        dest_bytes[i] = src_bytes[i];
-    }
-    return dest;
-}
 
 #define PAGE_SIZE (64 * JK_KILOBYTE)
 
@@ -56,11 +37,24 @@ typedef union FloatConvert {
 
 static FloatConvert g_started_time;
 
+// ---- Imported functions begin -----------------------------------------------
+
 void console_log(int32_t size, uint8_t *data);
+
+double performance_now(void);
+
+// ---- Imported functions end -------------------------------------------------
 
 static void debug_print(JkBuffer string)
 {
-    console_log(string.size, string.data);
+    if (0 < string.size) {
+        console_log(string.size, string.data);
+    }
+}
+
+JK_PUBLIC uint64_t jk_cpu_timer_get(void)
+{
+    return performance_now() * 10.0;
 }
 
 static b32 ensure_memory(int64_t required_memory)
@@ -79,13 +73,19 @@ static b32 ensure_memory(int64_t required_memory)
 
 uint8_t *init_main(void)
 {
-    jk_print = debug_print;
-
     g_chess.render_memory.size = 2 * JK_MEGABYTE;
-    if (ensure_memory(DRAW_BUFFER_SIZE + g_chess.render_memory.size)) {
+    JkBuffer log_memory = {.size = 1 * JK_MEGABYTE};
+    if (ensure_memory(DRAW_BUFFER_SIZE + g_chess.render_memory.size + log_memory.size)) {
         g_chess.draw_buffer = (JkColor *)__heap_base;
         g_chess.render_memory.data = __heap_base + DRAW_BUFFER_SIZE;
         g_chess.os_timer_frequency = 1000;
+
+        // Setup context
+        log_memory.data = __heap_base + DRAW_BUFFER_SIZE + g_chess.render_memory.size;
+        static JkContext c;
+        c.log = jk_log_init(debug_print, log_memory);
+        jk_context = &c;
+
         return __heap_base;
     } else {
         return 0;
@@ -107,7 +107,7 @@ b32 tick(int32_t square_side_length,
     g_chess.os_time = os_time;
     g_chess.audio_time = audio_time;
 
-    update(g_assets, &g_chess);
+    update(jk_context, g_assets, &g_chess);
     render(g_assets, &g_chess);
 
     g_started_time.f64 = (double)g_chess.audio_state.started_time;
@@ -155,8 +155,6 @@ static AudioSample *audio_buffer;
 
 AudioSample *init_audio(void)
 {
-    jk_print = debug_print;
-
     if (ensure_memory(WEB_AUDIO_BUFFER_SIZE)) {
         audio_buffer = (AudioSample *)__heap_base;
         return audio_buffer;
@@ -177,9 +175,24 @@ void fill_audio_buffer(SoundIndex sound,
 
 b32 ai_alloc_memory(void)
 {
-    jk_print = debug_print;
+    static JkContext c;
+    static JkArenaRoot scratch_arena_roots[JK_ARRAY_COUNT(c.scratch_arenas)];
 
-    if (ensure_memory(AI_MEMORY_SIZE)) {
+    int64_t scratch_arena_size = 16 * JK_KILOBYTE;
+    JkBuffer log_memory = {.size = 1 * JK_MEGABYTE};
+    if (ensure_memory(AI_MEMORY_SIZE + JK_ARRAY_COUNT(c.scratch_arenas) * scratch_arena_size
+                + log_memory.size)) {
+        for (int64_t i = 0; i < JK_ARRAY_COUNT(c.scratch_arenas); i++) {
+            JkBuffer memory = {
+                .size = scratch_arena_size,
+                .data = __heap_base + AI_MEMORY_SIZE + i * scratch_arena_size,
+            };
+            c.scratch_arenas[i] = jk_arena_fixed_init(scratch_arena_roots + i, memory);
+        }
+        log_memory.data = __heap_base + AI_MEMORY_SIZE
+                + JK_ARRAY_COUNT(c.scratch_arenas) * scratch_arena_size;
+        c.log = jk_log_init(debug_print, log_memory);
+        jk_context = &c;
         return 1;
     } else {
         return 0;
@@ -201,7 +214,7 @@ b32 ai_begin_request(double os_time)
 b32 ai_tick(double os_time)
 {
     g_ai.time = os_time;
-    return ai_running(&g_ai);
+    return ai_running(jk_context, &g_ai);
 }
 
 b32 web_is_draggable(int32_t x, int32_t y)

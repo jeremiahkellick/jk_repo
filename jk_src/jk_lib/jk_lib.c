@@ -125,6 +125,14 @@ JK_PUBLIC uint64_t jk_cpu_timer_get(void)
 
 // ---- ISA-specific implementations end ---------------------------------------
 
+// ---- Context begin ----------------------------------------------------------
+
+JK_GLOBAL_DEFINE JK_READONLY JkContext jk_context_nil;
+
+JK_GLOBAL_DEFINE JK_THREAD_LOCAL JkContext *jk_context = (JkContext *)&jk_context_nil;
+
+// ---- Context end ------------------------------------------------------------
+
 // ---- Buffer begin -----------------------------------------------------------
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer)
@@ -375,7 +383,7 @@ JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t
     return result;
 }
 
-JK_GLOBAL_DEFINE JK_READONLY uint8_t const jk_hex_char[16] = {
+JK_GLOBAL_DEFINE JK_READONLY uint8_t jk_hex_char[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
 JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
@@ -554,7 +562,7 @@ JK_PUBLIC JkFormatItem jkf_bytes(double byte_count)
 }
 
 // JK_FORMAT argument representing a newline
-JK_GLOBAL_DEFINE JK_READONLY JkFormatItem const jkf_nl = {
+JK_GLOBAL_DEFINE JK_READONLY JkFormatItem jkf_nl = {
     .type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
 
 JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
@@ -641,17 +649,6 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
     return result;
 }
 
-static void jk_print_stub(JkBuffer string) {}
-
-JK_GLOBAL_DEFINE void (*jk_print)(JkBuffer string) = jk_print_stub;
-
-JK_PUBLIC void jk_print_fmt(JkArena *arena, JkFormatItemArray items)
-{
-    JkArena tmp_arena = jk_arena_child_get(arena);
-    JkBuffer string = jk_format(&tmp_arena, items);
-    jk_print(string);
-}
-
 JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path)
 {
     // Truncate path at last component to convert it the containing directory name
@@ -684,33 +681,48 @@ JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path)
 
 // ---- Logging begin ----------------------------------------------------------
 
-JK_PUBLIC JkLogEntry jk_log_sentinel = {0};
-JK_PUBLIC JkLogEntry jk_log_free_list_sentinel = {1};
+static JkLogEntry jk_log_sentinel = {0};
+static JkLogEntry jk_log_free_list_sentinel = {1};
+static JK_READONLY JkLogEntryData jk_log_entry_data_nil;
 
 static JkBuffer jk_log_type_prefixes[JK_LOG_TYPE_COUNT] = {
     JKSI("[NIL??  ]: "),
-    JKSI("[INFO   ]: "),
+    JKSI(""),
     JKSI("[WARNING]: "),
     JKSI("[ERROR  ]: "),
     JKSI("[FATAL  ]: "),
 };
 
-static JkLogEntryData *jk_log_entry_data(JkLog *l, JkLogEntry handle)
+static b32 jk_log_valid(JkLog *l)
+{
+    return l && l->print;
+}
+
+static JkLogEntryData *jk_log_entry_data_raw(JkLog *l, JkLogEntry handle)
 {
     return l->entries + handle.i;
 }
 
+static JkLogEntryData *jk_log_entry_data(JkLogEntry handle)
+{
+    if (jk_log_valid(jk_context->log)) {
+        return jk_log_entry_data_raw(jk_context->log, handle);
+    } else {
+        return &jk_log_entry_data_nil;
+    }
+}
+
 static int64_t jk_log_list_empty(JkLog *l, JkLogEntry sentinel)
 {
-    return jk_log_entry_equal(jk_log_entry_next(l, sentinel), sentinel);
+    return jk_log_entry_equal(jk_log_entry_next(sentinel), sentinel);
 }
 
 static void jk_log_list_push(JkLog *l, JkLogEntry sentinel, JkLogEntry entry)
 {
-    JkLogEntryData *sentinel_data = jk_log_entry_data(l, sentinel);
-    JkLogEntryData *entry_data = jk_log_entry_data(l, entry);
+    JkLogEntryData *sentinel_data = jk_log_entry_data_raw(l, sentinel);
+    JkLogEntryData *entry_data = jk_log_entry_data_raw(l, entry);
 
-    jk_log_entry_data(l, sentinel_data->prev)->next = entry;
+    jk_log_entry_data_raw(l, sentinel_data->prev)->next = entry;
     entry_data->prev = sentinel_data->prev;
     entry_data->next = sentinel;
     sentinel_data->prev = entry;
@@ -718,9 +730,9 @@ static void jk_log_list_push(JkLog *l, JkLogEntry sentinel, JkLogEntry entry)
 
 static void jk_log_list_remove(JkLog *l, JkLogEntry entry)
 {
-    JkLogEntryData *data = jk_log_entry_data(l, entry);
-    jk_log_entry_data(l, data->prev)->next = data->next;
-    jk_log_entry_data(l, data->next)->prev = data->prev;
+    JkLogEntryData *data = jk_log_entry_data_raw(l, entry);
+    jk_log_entry_data_raw(l, data->prev)->next = data->next;
+    jk_log_entry_data_raw(l, data->next)->prev = data->prev;
 }
 
 static uint8_t *jk_log_string_offset_to_ptr(JkLog *l, int64_t offset)
@@ -732,54 +744,53 @@ JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory)
 {
     JkLog *l = 0;
 
-    int64_t entry_slot_max = (memory.size - JK_SIZEOF(*l)) / (4 * JK_SIZEOF(*l->entries))
-            + JK_ARRAY_COUNT(l->entries);
-    if (print && memory.data && 4 <= entry_slot_max) {
-        l = (JkLog *)memory.data;
-        jk_memset(l, 0, JK_SIZEOF(*l));
+    if (print) {
+        int64_t entry_slot_max = (memory.size - JK_SIZEOF(*l)) / (4 * JK_SIZEOF(*l->entries))
+                + JK_ARRAY_COUNT(l->entries);
+        if (memory.data && 4 <= entry_slot_max) {
+            l = (JkLog *)memory.data;
+            jk_memset(l, 0, JK_SIZEOF(*l));
 
-        l->print = print;
-        l->entry_slot_next = JK_ARRAY_COUNT(l->entries);
-        l->entry_slot_max = entry_slot_max;
-        int64_t entires_array_offset = (uint8_t *)l->entries - memory.data;
-        l->string_buffer_start = entires_array_offset + l->entry_slot_max * sizeof(*l->entries);
-        l->string_buffer_capacity = memory.size - l->string_buffer_start;
+            l->print = print;
+            l->entry_slot_next = JK_ARRAY_COUNT(l->entries);
+            l->entry_slot_max = entry_slot_max;
+            int64_t entires_array_offset = (uint8_t *)l->entries - memory.data;
+            l->string_buffer_start = entires_array_offset + l->entry_slot_max * sizeof(*l->entries);
+            l->string_buffer_capacity = memory.size - l->string_buffer_start;
 
-        JkLogEntryData *sentinel_data = jk_log_entry_data(l, jk_log_sentinel);
-        sentinel_data->next = jk_log_sentinel;
-        sentinel_data->prev = jk_log_sentinel;
+            JkLogEntryData *sentinel_data = jk_log_entry_data_raw(l, jk_log_sentinel);
+            sentinel_data->next = jk_log_sentinel;
+            sentinel_data->prev = jk_log_sentinel;
 
-        JkLogEntryData *free_list_sentinel_data = jk_log_entry_data(l, jk_log_free_list_sentinel);
-        free_list_sentinel_data->next = jk_log_free_list_sentinel;
-        free_list_sentinel_data->prev = jk_log_free_list_sentinel;
-    } else {
-        print(JKS("[ERROR  ]: The given memory buffer is too small for a log\n"));
+            JkLogEntryData *free_list_sentinel_data =
+                    jk_log_entry_data_raw(l, jk_log_free_list_sentinel);
+            free_list_sentinel_data->next = jk_log_free_list_sentinel;
+            free_list_sentinel_data->prev = jk_log_free_list_sentinel;
+        } else {
+            print(JKS("[ERROR  ]: The given memory buffer is too small for a log\n"));
+        }
     }
 
     return l;
 }
 
-JK_PUBLIC b32 jk_log_valid(JkLog *l)
+JK_PUBLIC void jk_log(JkLogType type, JkBuffer message)
 {
-    return l && l->print;
-}
-
-JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message)
-{
-    if (!jk_log_valid(l)) {
+    if (!jk_log_valid(jk_context->log)) {
         return;
     }
+    JkLog *l = jk_context->log;
     if (l->string_buffer_capacity < message.size) {
         l->print(JKS("[ERROR  ]: Message too large for the log\n"));
         return;
     }
 
-    JkLogEntryData *sentinel_data = jk_log_entry_data(l, jk_log_sentinel);
+    JkLogEntryData *sentinel_data = jk_log_entry_data_raw(l, jk_log_sentinel);
 
     // Get an entry slot
     JkLogEntry entry;
     if (!jk_log_list_empty(l, jk_log_free_list_sentinel)) {
-        entry = jk_log_entry_data(l, jk_log_free_list_sentinel)->next;
+        entry = jk_log_entry_data_raw(l, jk_log_free_list_sentinel)->next;
         jk_log_list_remove(l, entry);
     } else if (l->entry_slot_next < l->entry_slot_max) {
         entry.i = l->entry_slot_next++;
@@ -787,7 +798,7 @@ JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message)
         entry = sentinel_data->next;
         jk_log_list_remove(l, entry);
     }
-    JkLogEntryData *data = jk_log_entry_data(l, entry);
+    JkLogEntryData *data = jk_log_entry_data_raw(l, entry);
 
     // Fill out the entry
     data->type = type;
@@ -805,7 +816,7 @@ JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message)
     // Some number of the oldest log entries might point to messages that were overwritten by this
     // latest one. Let's remove those.
     int64_t largest_valid_offset = l->string_offset_next - l->string_buffer_capacity;
-    while (jk_log_entry_data(l, sentinel_data->next)->message.offset < largest_valid_offset
+    while (jk_log_entry_data_raw(l, sentinel_data->next)->message.offset < largest_valid_offset
             && !jk_log_entry_equal(sentinel_data->next, jk_log_sentinel)) {
         jk_log_list_remove(l, sentinel_data->next);
     }
@@ -813,7 +824,13 @@ JK_PUBLIC void jk_log(JkLog *l, JkLogType type, JkBuffer message)
     // Append the entry to the end of the log
     jk_log_list_push(l, jk_log_sentinel, entry);
 
-    jk_log_entry_print(l, entry);
+    jk_log_entry_print(entry);
+}
+
+JK_PUBLIC void jk_logf(JkLogType type, JkFormatItemArray items)
+{
+    JkArena scratch = jk_arena_scratch_get();
+    jk_log(type, jk_format(&scratch, items));
 }
 
 JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b)
@@ -823,53 +840,48 @@ JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b)
 
 JK_PUBLIC b32 jk_log_entry_valid(JkLogEntry entry)
 {
-    return entry.i != jk_log_sentinel.i;
+    return 2 <= entry.i;
 }
 
-JK_PUBLIC JkLogType jk_log_entry_type(JkLog *l, JkLogEntry entry)
+JK_PUBLIC JkLogType jk_log_entry_type(JkLogEntry entry)
 {
-    return jk_log_entry_data(l, entry)->type;
+    return jk_log_entry_data(entry)->type;
 }
 
-JK_PUBLIC JkBuffer jk_log_entry_message(JkLog *l, JkLogEntry entry)
+JK_PUBLIC JkBuffer jk_log_entry_message(JkLogEntry entry)
 {
-    JkLogEntryData *data = jk_log_entry_data(l, entry);
+    JkLogEntryData *data = jk_log_entry_data(entry);
     return (JkBuffer){
         .size = data->message.size,
-        .data = jk_log_string_offset_to_ptr(l, data->message.offset),
+        .data = jk_log_string_offset_to_ptr(jk_context->log, data->message.offset),
     };
 }
 
-JK_PUBLIC JkLogEntry jk_log_entry_first(JkLog *l)
+JK_PUBLIC JkLogEntry jk_log_entry_first(void)
 {
-    if (l && l->print) {
-        return jk_log_entry_next(l, jk_log_sentinel);
-    } else {
-        return jk_log_sentinel;
-    }
+    return jk_log_entry_next(jk_log_sentinel);
 }
 
-JK_PUBLIC JkLogEntry jk_log_entry_next(JkLog *l, JkLogEntry entry)
+JK_PUBLIC JkLogEntry jk_log_entry_next(JkLogEntry entry)
 {
-    if (l && l->print) {
-        return jk_log_entry_data(l, entry)->next;
-    } else {
-        return jk_log_sentinel;
-    }
+    return jk_log_entry_data(entry)->next;
 }
 
-JK_PUBLIC void jk_log_entry_print(JkLog *l, JkLogEntry entry)
+JK_PUBLIC void jk_log_entry_print(JkLogEntry entry)
 {
-    JkLogEntryData *data = jk_log_entry_data(l, entry);
+    JkLog *l = jk_context->log;
+    JkLogEntryData *data = jk_log_entry_data(entry);
     l->print(jk_log_type_prefixes[data->type]);
-    l->print(jk_log_entry_message(l, entry));
+    l->print(jk_log_entry_message(entry));
     l->print(JKS("\n"));
 }
 
-JK_PUBLIC void jk_log_entry_remove(JkLog *l, JkLogEntry entry)
+JK_PUBLIC void jk_log_entry_remove(JkLogEntry entry)
 {
-    jk_log_list_remove(l, entry);
-    jk_log_list_push(l, jk_log_free_list_sentinel, entry);
+    if (jk_log_valid(jk_context->log)) {
+        jk_log_list_remove(jk_context->log, entry);
+        jk_log_list_push(jk_context->log, jk_log_free_list_sentinel, entry);
+    }
 }
 
 // ---- Logging end ------------------------------------------------------------
@@ -1022,7 +1034,8 @@ static b32 jk_arena_fixed_grow(JkArena *arena, int64_t new_size)
 JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory)
 {
     root->memory = memory;
-    return (JkArena){.root = root, .grow = jk_arena_fixed_grow};
+    root->grow = jk_arena_fixed_grow;
+    return (JkArena){.root = root};
 }
 
 JK_PUBLIC b32 jk_arena_valid(JkArena *arena)
@@ -1035,7 +1048,7 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
     JK_DEBUG_ASSERT(0 <= size);
     int64_t new_pos = arena->pos + size;
     if (arena->root->memory.size < new_pos) {
-        if (!arena->grow(arena, new_pos)) {
+        if (!arena->root->grow(arena, new_pos)) {
             return 0;
         }
     }
@@ -1047,7 +1060,9 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
 JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, int64_t size)
 {
     void *address = jk_arena_push(arena, size);
-    jk_memset(address, 0, size);
+    if (address) {
+        jk_memset(address, 0, size);
+    }
     return address;
 }
 
@@ -1081,7 +1096,6 @@ JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent)
         .base = parent->pos,
         .pos = parent->pos,
         .root = parent->root,
-        .grow = parent->grow,
     };
 }
 
@@ -1093,6 +1107,20 @@ JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child)
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena)
 {
     return arena->root->memory.data + arena->pos;
+}
+
+JK_PUBLIC JkArena jk_arena_scratch_get(void)
+{
+    return jk_arena_child_get(jk_context->scratch_arenas + 0);
+}
+
+JK_PUBLIC JkArena jk_arena_scratch_get_not(JkArena *not_this_arena)
+{
+    if (jk_context->scratch_arenas[0].root == not_this_arena->root) {
+        return jk_arena_child_get(jk_context->scratch_arenas + 1);
+    } else {
+        return jk_arena_child_get(jk_context->scratch_arenas + 0);
+    }
 }
 
 // ---- Arena end --------------------------------------------------------------
@@ -1572,7 +1600,7 @@ JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v)
 
 // ---- JkMat4 begin -----------------------------------------------------------
 
-JK_GLOBAL_DEFINE JK_READONLY JkMat4 const jk_mat4_i = {{
+JK_GLOBAL_DEFINE JK_READONLY JkMat4 jk_mat4_i = {{
     {1, 0, 0, 0},
     {0, 1, 0, 0},
     {0, 0, 1, 0},
@@ -2294,9 +2322,9 @@ JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
 
 // ---- Profile end ------------------------------------------------------------
 
-JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion const jk_infinity_f64 = {
+JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f64 = {
     .uint64_v = 0x7ff0000000000000llu};
-JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion const jk_infinity_f32 = {.uint32_v = 0x7f800000};
+JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};
 
 JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha)
 {
@@ -2347,19 +2375,20 @@ JK_NOINLINE JK_PUBLIC void jk_panic(void)
 
 JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
 {
-    static uint8_t jk_assert_msg_buf[4096];
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root,
-            (JkBuffer){.size = JK_SIZEOF(jk_assert_msg_buf), .data = jk_assert_msg_buf});
-    jk_print(JK_FORMAT(&arena,
+    JK_LOGF(JK_LOG_FATAL,
             jkfn("Assertion failed: "),
             jkfn(message),
             jkfn(", "),
             jkfn(file),
             jkfn(":"),
             jkfu(line),
-            jkf_nl));
+            jkf_nl);
     jk_panic();
+}
+
+JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line)
+{
+    JK_LOGF(JK_LOG_WARNING, jkfn(message), jkfn(", "), jkfn(file), jkfn(":"), jkfu(line), jkf_nl);
 }
 
 /**
@@ -2429,7 +2458,7 @@ JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x)
 }
 
 // clang-format off
-JK_GLOBAL_DEFINE JK_READONLY uint8_t const jk_bit_reverse_table[256] = {
+JK_GLOBAL_DEFINE JK_READONLY uint8_t jk_bit_reverse_table[256] = {
     0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
     0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
     0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,

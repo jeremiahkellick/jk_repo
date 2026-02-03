@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,6 +11,12 @@
 
 #include "platform.h"
 
+static int32_t jk_platform_init_common(int32_t argc, char **argv)
+{
+    jk_platform_thread_init();
+    return jk_platform_entry_point(argc, argv);
+}
+
 // ---- OS functions begin -----------------------------------------------------
 
 #ifdef _WIN32
@@ -17,30 +24,47 @@
 #include <windows.h>
 
 #define INITGUID // Causes definition of SystemTraceControlGuid in evntrace.h
-#include <evntcons.h>
-#include <evntrace.h>
-#include <stdio.h>
+#include <dbghelp.h>
 #include <sys/stat.h>
 
-typedef struct JkPlatformData {
-    b32 initialized;
-    HANDLE process;
-} JkPlatformData;
+typedef BOOL JkPlatformWindowsDpiFunction(DPI_AWARENESS_CONTEXT value);
 
-static JkPlatformData jk_platform_globals;
+#if JK_PLATFORM_DESKTOP_APP
 
-static void jk_platform_globals_init(void)
+JK_GLOBAL_DEFINE HINSTANCE jk_platform_hinstance;
+
+int32_t WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-    jk_platform_globals.initialized = 1;
-    jk_platform_globals.process = OpenProcess(PROCESS_QUERY_INFORMATION, 0, GetCurrentProcessId());
+    jk_platform_hinstance = instance;
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    jk_platform_set_working_directory_to_executable_directory();
+    return jk_platform_init_common(__argc, __argv);
 }
 
-#define JK_PLATFORMS_ENSURE_GLOBALS_INIT()      \
-    do {                                        \
-        if (!jk_platform_globals.initialized) { \
-            jk_platform_globals_init();         \
-        }                                       \
-    } while (0)
+JK_PUBLIC void jk_platform_print(JkBuffer string)
+{
+    if (0 < string.size) {
+        JkArena scratch = jk_arena_scratch_get();
+        OutputDebugStringA(jk_buffer_to_null_terminated(&scratch, string));
+    }
+}
+
+#else
+
+int32_t main(int32_t argc, char **argv)
+{
+    SetConsoleOutputCP(CP_UTF8);
+    return jk_platform_init_common(argc, argv);
+}
+
+JK_PUBLIC void jk_platform_print(JkBuffer string)
+{
+    if (0 < string.size) {
+        fwrite(string.data, 1, string.size, stdout);
+    }
+}
+
+#endif
 
 JK_PUBLIC int64_t jk_platform_file_size(char *file_name)
 {
@@ -57,40 +81,48 @@ JK_PUBLIC int64_t jk_platform_page_size(void)
     return 4096;
 }
 
-JK_PUBLIC void *jk_platform_memory_reserve(int64_t size)
+JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size);
-    return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+    static DWORD flAllocationType[JK_ALLOC_TYPE_COUNT] = {
+        /* JK_ALLOC_RESERVE = */ MEM_RESERVE,
+        /* JK_ALLOC_COMMIT = */ MEM_COMMIT | MEM_RESERVE,
+    };
+    static DWORD flProtect[JK_ALLOC_TYPE_COUNT] = {
+        /* JK_ALLOC_RESERVE = */ PAGE_NOACCESS,
+        /* JK_ALLOC_COMMIT = */ PAGE_READWRITE,
+    };
+
+    JkBuffer result = {.size = size};
+    if (0 < size) {
+        result.data = VirtualAlloc(NULL, size, flAllocationType[type], flProtect[type]);
+        if (!result.data) {
+            jk_log(JK_LOG_ERROR, JKS("Failed to allocate memory"));
+            result.size = -1;
+        }
+    }
+    return result;
 }
 
 JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size);
-    return VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
+    if (0 < size) {
+        if (VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE)) {
+            return 1;
+        } else {
+            jk_log(JK_LOG_ERROR, JKS("Failed to commit memory"));
+            return 0;
+        }
+    } else {
+        return 1;
+    }
 }
 
-JK_PUBLIC void *jk_platform_memory_alloc(int64_t size)
+JK_PUBLIC void jk_platform_memory_free(JkBuffer memory)
 {
-    JK_DEBUG_ASSERT(0 <= size);
-    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-}
-
-JK_PUBLIC void *jk_platform_memory_alloc_large(int64_t size)
-{
-    JK_DEBUG_ASSERT(0 <= size);
-    return VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE | MEM_LARGE_PAGES, PAGE_READWRITE);
-}
-
-JK_PUBLIC void jk_platform_memory_free(void *address, int64_t size)
-{
-    JK_DEBUG_ASSERT(0 <= size);
-    // TODO: Consider how to deal with different freeing behavior between Windows and Unix
-    VirtualFree(address, 0, MEM_RELEASE);
-}
-
-JK_PUBLIC void jk_platform_console_utf8_enable(void)
-{
-    SetConsoleOutputCP(CP_UTF8);
+    if (0 < memory.size) {
+        // TODO: Consider how to deal with different freeing behavior between Windows and Unix
+        VirtualFree(memory.data, 0, MEM_RELEASE);
+    }
 }
 
 typedef struct _PROCESS_MEMORY_COUNTERS {
@@ -110,13 +142,13 @@ typedef BOOL (*GetProcessMemoryInfoPointer)(HANDLE, PROCESS_MEMORY_COUNTERS *, D
 
 static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
 {
-    JK_PLATFORMS_ENSURE_GLOBALS_INIT();
-
     static uint8_t initialized;
+    static HANDLE process;
     static HINSTANCE library;
     static GetProcessMemoryInfoPointer GetProcessMemoryInfo;
     if (!initialized) {
         initialized = TRUE;
+        process = OpenProcess(PROCESS_QUERY_INFORMATION, 0, GetCurrentProcessId());
         library = LoadLibraryA("psapi.dll");
         if (library) {
             GetProcessMemoryInfo =
@@ -128,8 +160,7 @@ static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
 
     PROCESS_MEMORY_COUNTERS memory_counters = {.cb = JK_SIZEOF(memory_counters)};
     if (GetProcessMemoryInfo) {
-        if (!GetProcessMemoryInfo(
-                    jk_platform_globals.process, &memory_counters, JK_SIZEOF(memory_counters))) {
+        if (!GetProcessMemoryInfo(process, &memory_counters, JK_SIZEOF(memory_counters))) {
             // TODO: log error
         }
     } else {
@@ -305,6 +336,130 @@ JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
     return 1;
 }
 
+JK_PUBLIC JK_NOINLINE JkBuffer jk_platform_stack_trace(
+        JkBuffer buffer, int64_t skip, int64_t indent)
+{
+    static SRWLOCK lock = SRWLOCK_INIT;
+    static uint8_t module_buffer[1024];
+
+    AcquireSRWLockExclusive(&lock);
+
+    JkBuffer result = {.size = 0, .data = buffer.data};
+
+    HANDLE process = GetCurrentProcess();
+    HANDLE thread = GetCurrentThread();
+
+    if (SymInitialize(process, NULL, TRUE)) {
+        SymSetOptions(SYMOPT_LOAD_LINES);
+
+        CONTEXT context = {0};
+        context.ContextFlags = CONTEXT_FULL;
+        RtlCaptureContext(&context);
+
+        STACKFRAME frame = {0};
+        frame.AddrPC.Offset = context.Rip;
+        frame.AddrPC.Mode = AddrModeFlat;
+        frame.AddrFrame.Offset = context.Rbp;
+        frame.AddrFrame.Mode = AddrModeFlat;
+        frame.AddrStack.Offset = context.Rsp;
+        frame.AddrStack.Mode = AddrModeFlat;
+
+        for (int64_t frame_num = 0; result.size < buffer.size
+                && StackWalk(IMAGE_FILE_MACHINE_AMD64,
+                        process,
+                        thread,
+                        &frame,
+                        &context,
+                        NULL,
+                        SymFunctionTableAccess,
+                        SymGetModuleBase,
+                        NULL);
+                frame_num++) {
+            if (frame_num < skip) {
+                continue;
+            }
+            uint64_t offset = frame.AddrPC.Offset;
+
+            JkBuffer module_name = {0};
+            uint64_t module_base = SymGetModuleBase(process, offset);
+            if (module_base) {
+                uint64_t length = GetModuleFileNameA((HINSTANCE)module_base,
+                        (char *)module_buffer,
+                        JK_ARRAY_COUNT(module_buffer));
+                if (length) {
+                    module_name = jk_path_basename(
+                            (JkBuffer){.size = (int64_t)length, .data = module_buffer});
+                }
+            }
+
+            JkBuffer function_name = JKSI("Unknown function");
+            char symbolBuffer[sizeof(IMAGEHLP_SYMBOL) + 255];
+            PIMAGEHLP_SYMBOL symbol = (PIMAGEHLP_SYMBOL)symbolBuffer;
+            symbol->SizeOfStruct = sizeof(IMAGEHLP_SYMBOL) + 255;
+            symbol->MaxNameLength = 254;
+            DWORD64 not_used_0;
+            if (SymGetSymFromAddr(process, offset, &not_used_0, symbol)) {
+                function_name.size = 0;
+                while (symbol->Name[function_name.size]
+                        && function_name.size < symbol->MaxNameLength) {
+                    function_name.size++;
+                }
+                function_name.data = (uint8_t *)symbol->Name;
+            }
+
+            IMAGEHLP_LINE line_data;
+            line_data.SizeOfStruct = sizeof(IMAGEHLP_LINE);
+
+            JkBuffer file_name = {0};
+            uint64_t line = 0;
+            DWORD not_used_1;
+            if (SymGetLineFromAddr(process, offset, &not_used_1, &line_data)) {
+                while (line_data.FileName[file_name.size] && file_name.size < 1024) {
+                    file_name.size++;
+                }
+                file_name.data = (uint8_t *)line_data.FileName;
+                line = line_data.LineNumber;
+            }
+
+            // Indent
+            for (int64_t i = 0; i < indent && result.size < buffer.size; i++, result.size++) {
+                result.data[result.size] = ' ';
+            }
+
+            result.size += snprintf((char *)(result.data + result.size),
+                    buffer.size - result.size,
+                    "0x%012llx in %.*s",
+                    offset,
+                    (int)function_name.size,
+                    function_name.data);
+            if (file_name.size) {
+                result.size += snprintf((char *)(result.data + result.size),
+                        buffer.size - result.size,
+                        " at %.*s:%lld\n",
+                        (int)file_name.size,
+                        file_name.data,
+                        line);
+            } else {
+                result.size += snprintf((char *)(result.data + result.size),
+                        buffer.size - result.size,
+                        " from %.*s\n",
+                        (int)module_name.size,
+                        module_name.data);
+            }
+
+            if (jk_buffer_compare(function_name, JKS("main")) == 0
+                    || jk_buffer_compare(function_name, JKS("WinMain")) == 0) {
+                break;
+            }
+        }
+        SymCleanup(process);
+    }
+
+    ReleaseSRWLockExclusive(&lock);
+
+    return result;
+}
+
 #else
 
 #include <limits.h>
@@ -343,30 +498,45 @@ JK_PUBLIC int64_t jk_platform_page_size(void)
     return page_size;
 }
 
-JK_PUBLIC void *jk_platform_memory_reserve(int64_t size)
+JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size);
-    return mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    static int prot[JK_ALLOC_TYPE_COUNT] = {
+        /* JK_ALLOC_RESERVE = */ PROT_NONE,
+        /* JK_ALLOC_COMMIT = */ PROT_READ | PROT_WRITE,
+    };
+
+    JkBuffer result = {.size = size};
+    if (0 < size) {
+        result.data = mmap(NULL, size, prot[type], MAP_PRIVATE | MAP_ANON, -1, 0);
+        if (!result.data) {
+            jk_log(JK_LOG_ERROR, JKS("Failed to allocate memory"));
+            result.size = -1;
+        }
+    }
+    return result;
 }
 
 JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size);
-    return !mprotect(address, size, PROT_READ | PROT_WRITE);
+    if (0 < size) {
+        if (mprotect(address, size, PROT_READ | PROT_WRITE)) {
+            jk_log(JK_LOG_ERROR, JKS("Failed to commit memory"));
+            return 0;
+        } else {
+            return 1;
+        }
+    } else {
+        return 1;
+    }
 }
 
-JK_PUBLIC void *jk_platform_memory_alloc(int64_t size)
+JK_PUBLIC void jk_platform_memory_free(JkBuffer memory)
 {
-    JK_DEBUG_ASSERT(0 <= size);
-    return mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (0 < memory.size) {
+        // TODO: Consider how to deal with different freeing behavior between Windows and Unix
+        munmap(memory.data, memory.size);
+    }
 }
-
-JK_PUBLIC void jk_platform_memory_free(void *address, int64_t size)
-{
-    munmap(address, size);
-}
-
-JK_PUBLIC void jk_platform_console_utf8_enable(void) {}
 
 typedef struct JkPlatformOsMetrics {
     b32 initialized;
@@ -521,6 +691,18 @@ JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
     return 1;
 }
 
+JK_PUBLIC JkBuffer jk_platform_stack_trace(JkBuffer buffer, int64_t skip, int64_t indent)
+{
+    return (JkBuffer){0};
+}
+
+JK_PUBLIC void jk_platform_print(JkBuffer string)
+{
+    if (0 < string.size) {
+        fwrite(string.data, 1, string.size, stdout);
+    }
+}
+
 #endif
 
 // ---- OS functions end -------------------------------------------------------
@@ -569,29 +751,30 @@ static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
 JK_PUBLIC JkArena jk_platform_arena_virtual_init(
         JkPlatformArenaVirtualRoot *root, int64_t virtual_size)
 {
-    JK_DEBUG_ASSERT(0 <= virtual_size);
+    JkArena result = {0};
+    jk_memset(root, 0, sizeof(*root));
 
-    int64_t page_size = jk_platform_page_size();
-
-    root->virtual_size = virtual_size;
-    root->generic.memory.size = page_size;
-    root->generic.memory.data = jk_platform_memory_reserve(virtual_size);
-    if (!root->generic.memory.data) {
-        return (JkArena){0};
+    JkBuffer reserved = jk_platform_memory_alloc(JK_ALLOC_RESERVE, virtual_size);
+    if (reserved.size == virtual_size) {
+        int64_t page_size = jk_platform_page_size();
+        if (jk_platform_memory_commit(reserved.data, page_size)) {
+            root->generic.memory.size = page_size;
+            root->generic.memory.data = reserved.data;
+            root->generic.grow = jk_platform_arena_virtual_grow;
+            root->virtual_size = virtual_size;
+            result.root = &root->generic;
+        } else {
+            jk_platform_memory_free(reserved);
+        }
     }
-    if (!jk_platform_memory_commit(root->generic.memory.data, page_size)) {
-        return (JkArena){0};
-    }
 
-    return (JkArena){
-        .root = &root->generic,
-        .grow = jk_platform_arena_virtual_grow,
-    };
+    return result;
 }
 
 JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root)
 {
-    jk_platform_memory_free(root->generic.memory.data, root->generic.memory.size);
+    jk_platform_memory_free(
+            (JkBuffer){.size = root->virtual_size, .data = root->generic.memory.data});
 }
 
 // ---- Virtual arena end --------------------------------------------------------------
@@ -999,9 +1182,18 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
 
 // ---- File formats end -------------------------------------------------------
 
-JK_PUBLIC void jk_platform_print_stdout(JkBuffer string)
+JK_PUBLIC void jk_platform_thread_init(void)
 {
-    fwrite(string.data, 1, string.size, stdout);
+    static JK_THREAD_LOCAL JkContext context;
+    static JK_THREAD_LOCAL JkPlatformArenaVirtualRoot
+            scratch_arena_roots[JK_ARRAY_COUNT(context.scratch_arenas)];
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(context.scratch_arenas); i++) {
+        context.scratch_arenas[i] =
+                jk_platform_arena_virtual_init(scratch_arena_roots + i, 8 * JK_GIGABYTE);
+    }
+    JkBuffer log_memory = jk_platform_memory_alloc(JK_ALLOC_COMMIT, 16 * JK_MEGABYTE);
+    context.log = jk_log_init(jk_platform_print, log_memory);
+    jk_context = &context;
 }
 
 JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n)
@@ -1090,29 +1282,27 @@ JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
         JkBuffer buffer, JkBuffer file_path, JkBuffer array_name)
 {
     if (!jk_platform_create_directory(jk_path_directory(file_path))) {
-        jk_print(JKS("jk_platform_write_as_c_byte_array: Failed to create directory\n"));
+        jk_log(JK_LOG_ERROR, JKS("Failed to create directory\n"));
         return 0;
     }
 
-    uint8_t stack_memory_byte_array[4096];
-    JkBuffer stack_memory = JK_BUFFER_INIT_FROM_BYTE_ARRAY(stack_memory_byte_array);
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root, stack_memory);
+    JkArena arena = jk_arena_scratch_get();
 
     char *file_path_nt = jk_buffer_to_null_terminated(&arena, file_path);
     char *array_name_nt = jk_buffer_to_null_terminated(&arena, array_name);
     if (!file_path_nt || !array_name_nt) {
-        jk_print(JKS("jk_platform_write_as_c_byte_array: String memory limit exceeded\n"));
+        jk_log(JK_LOG_ERROR, JKS("String memory limit exceeded\n"));
         return 0;
     }
 
     FILE *file = fopen(file_path_nt, "wb");
     if (!file) {
-        jk_print(JKS("jk_platform_write_as_c_byte_array: Failed to open file '"));
-        jk_print(file_path);
-        jk_print(JKS("': "));
-        jk_print(jk_buffer_from_null_terminated(strerror(errno)));
-        jk_print(JKS("\n"));
+        JK_LOGF(JK_LOG_ERROR,
+                jkfn("Failed to open file '"),
+                jkfs(file_path),
+                jkfn("': "),
+                jkfn(strerror(errno)),
+                jkf_nl);
         return 0;
     }
 
@@ -1161,7 +1351,7 @@ JK_PUBLIC void jk_platform_profile_end_and_print(void)
     JkBuffer print_memory = JK_BUFFER_INIT_FROM_BYTE_ARRAY(print_bytes);
     JkArenaRoot arena_root;
     JkArena arena = jk_arena_fixed_init(&arena_root, print_memory);
-    jk_print(jk_profile_report(&arena, frequency));
+    jk_log(JK_LOG_INFO, jk_profile_report(&arena, frequency));
 }
 
 JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count)

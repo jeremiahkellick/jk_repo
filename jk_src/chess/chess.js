@@ -100,7 +100,8 @@ async function main() {
                 } else {
                     console.error('wasm_exports not yet available');
                 }
-            }
+            },
+            performance_now: performance.now,
         }
     };
     wasm_exports = (await WebAssembly.instantiate(wasm_buffer, imports)).instance.exports;

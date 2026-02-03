@@ -71,7 +71,7 @@ static double s10e5_to_double(uint16_t value)
     return sign * mantissa * pow(2.0, (double)exponent);
 }
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, JK_GIGABYTE);
@@ -115,4 +115,6 @@ int main(int argc, char **argv)
     } else {
         fprintf(stderr, "%s: Failed to open '%s': %s", argv[0], file_name, strerror(errno));
     }
+
+    return 0;
 }

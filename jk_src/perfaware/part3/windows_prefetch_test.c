@@ -33,20 +33,19 @@ Function functions[] = {
 // Usage: tests[rep_count_index][function_index]
 static JkPlatformRepetitionTest tests[32][JK_ARRAY_COUNT(functions)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     assert(JK_SIZEOF(Node) == 64);
 
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    void *memory = jk_platform_memory_alloc(
-            NODE_COUNT * JK_SIZEOF(int64_t) + NODE_COUNT * JK_SIZEOF(Node));
-    if (!memory) {
-        fprintf(stderr, "%s: Could not allocate memory\n", argv[0]);
+    JkBuffer memory = jk_platform_memory_alloc(
+            JK_ALLOC_COMMIT, NODE_COUNT * JK_SIZEOF(int64_t) + NODE_COUNT * JK_SIZEOF(Node));
+    if (memory.size < 0) {
         exit(1);
     }
-    int64_t *indicies = memory;
-    Node *nodes = (Node *)((char *)memory + NODE_COUNT * JK_SIZEOF(int64_t));
+    int64_t *indicies = (int64_t *)memory.data;
+    Node *nodes = (Node *)(memory.data + NODE_COUNT * JK_SIZEOF(int64_t));
 
     srand(1598977331u);
 

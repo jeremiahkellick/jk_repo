@@ -22,7 +22,7 @@ typedef struct Bezier {
     uint8_t memory[512ll * 1024 * 1024];
 } Bezier;
 
-typedef void BezierRenderFunction(ChessAssets *assets, Bezier *bezier);
+typedef void BezierRenderFunction(JkContext *context, ChessAssets *assets, Bezier *bezier);
 BezierRenderFunction bezier_render;
 
 #endif

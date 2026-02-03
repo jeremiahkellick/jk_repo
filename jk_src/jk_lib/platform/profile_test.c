@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t milliseconds_to_wait = 1000;
     if (argc == 2) {

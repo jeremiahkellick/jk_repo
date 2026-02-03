@@ -9,76 +9,91 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-static char *jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
-    "INVALID",
-    "OBJECT",
-    "ARRAY",
-    "STRING",
-    "NUMBER",
-    "true",
-    "false",
-    "null",
+static JkBuffer jk_json_type_strings[JK_JSON_TYPE_COUNT] = {
+    JKSI("INVALID"),
+    JKSI("OBJECT"),
+    JKSI("ARRAY"),
+    JKSI("STRING"),
+    JKSI("NUMBER"),
+    JKSI("true"),
+    JKSI("false"),
+    JKSI("null"),
 };
 
-char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
-    "INVALID",
-    "VALUE",
-    ",",
-    ":",
-    "{",
-    "}",
-    "[",
-    "]",
-    "EOF",
+JK_GLOBAL_DEFINE JkBuffer jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
+    JKSI("INVALID"),
+    JKSI("VALUE"),
+    JKSI(","),
+    JKSI(":"),
+    JKSI("{"),
+    JKSI("}"),
+    JKSI("["),
+    JKSI("]"),
+    JKSI("EOF"),
 };
 
-JK_PUBLIC b32 jk_json_is_whitespace(int byte)
+JK_PUBLIC b32 jk_json_is_whitespace(int64_t byte)
 {
     return byte == ' ' || byte == '\n' || byte == '\r' || byte == '\t';
 }
 
-JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *storage)
+JK_PUBLIC JkBuffer jk_json_token_to_string(JkArena *arena, JkJsonToken *token)
 {
     if (token->type == JK_JSON_TOKEN_VALUE) {
-        jk_json_print(file, token->value, 0, storage);
+        return jk_json_to_string(arena, token->value, 0);
     } else {
-        fprintf(file, "%s", jk_json_token_strings[token->type]);
+        return jk_json_token_strings[token->type];
     }
 }
 
-JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage)
+static void jk_json_to_string_internal(JkArena *arena, JkJson *json, int64_t indent_level)
 {
     if (json->type == JK_JSON_ARRAY || json->type == JK_JSON_OBJECT) {
         b32 is_object = json->type == JK_JSON_OBJECT;
         if (!json->first_child) {
-            fprintf(file, is_object ? "{}" : "[]");
+            JK_FORMAT(arena, jkfn(is_object ? "{}" : "[]"));
             return;
         }
-        fprintf(file, is_object ? "{\n" : "[\n");
+        JK_FORMAT(arena, jkfn(is_object ? "{\n" : "[\n"));
         for (JkJson *child = json->first_child; child != NULL; child = child->sibling) {
-            for (int i = 0; i < indent_level + 1; i++) {
-                fprintf(file, "\t");
+            {
+                uint8_t *tabs = jk_arena_push(arena, indent_level + 1);
+                for (int64_t i = 0; i < indent_level + 1; i++) {
+                    tabs[i] = '\t';
+                }
             }
             if (is_object) {
-                fprintf(file, "\"%.*s\": ", (int)child->name.size, (char const *)child->name.data);
+                JK_FORMAT(arena, jkfn("\""), jkfs(child->name), jkfn("\": "));
             }
-            jk_json_print(file, child, indent_level + 1, storage);
-            fprintf(file, "%s", child->sibling ? ",\n" : "\n");
+            jk_json_to_string_internal(arena, child, indent_level + 1);
+            JK_FORMAT(arena, jkfn(child->sibling ? ",\n" : "\n"));
         }
-        for (int i = 0; i < indent_level; i++) {
-            fprintf(file, "\t");
+        {
+            uint8_t *tabs = jk_arena_push(arena, indent_level);
+            for (int64_t i = 0; i < indent_level; i++) {
+                tabs[i] = '\t';
+            }
         }
-        fprintf(file, is_object ? "}" : "]");
+        JK_FORMAT(arena, jkfn(is_object ? "}" : "]"));
         return;
     } else if (json->type == JK_JSON_STRING) {
-        JkBuffer string = jk_json_parse_string(json->value, storage);
-        fprintf(file, "\"%.*s\"", (int)string.size, (char const *)string.data);
+        JK_FORMAT(arena, jkfn("\""));
+        jk_json_parse_string(json->value, arena);
+        JK_FORMAT(arena, jkfn("\""));
         return;
     } else if (json->type == JK_JSON_NUMBER) {
-        fprintf(file, "%f", jk_parse_double(json->value));
+        JK_FORMAT(arena, jkff(jk_parse_double(json->value), 8));
         return;
     }
-    fprintf(file, "%s", jk_json_type_strings[json->type]);
+    JK_FORMAT(arena, jkfs(jk_json_type_strings[json->type]));
+}
+
+JK_PUBLIC JkBuffer jk_json_to_string(JkArena *arena, JkJson *json, int64_t indent_level)
+{
+    JkBuffer result = {.data = jk_arena_pointer_current(arena)};
+    jk_json_to_string_internal(arena, json, indent_level);
+    result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
+    return result;
 }
 
 typedef struct JkJsonExactMatch {
@@ -107,7 +122,7 @@ static JkJsonExactMatch jk_json_exact_matches[] = {
 
 JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage)
 {
-    int c;
+    int64_t c;
     JkJsonToken token = {0};
 
     while (jk_json_is_whitespace((c = jk_buffer_character_get(text, *pos)))) {
@@ -159,7 +174,7 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage)
         }
 
         // Advance past exponent if there is one
-        int peek = jk_buffer_character_get(text, *pos);
+        int64_t peek = jk_buffer_character_get(text, *pos);
         if (peek == 'e' || peek == 'E') {
             (*pos)++;
             peek = jk_buffer_character_get(text, *pos);
@@ -319,7 +334,7 @@ JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
 
 JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage)
 {
-    int c;
+    int64_t c;
     int64_t pos = 0;
     JkBuffer string = {0};
     char *storage_pointer = jk_arena_push(storage, 1);
@@ -356,10 +371,10 @@ JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *sto
 
             case 'u': {
                 uint32_t unicode32 = 0;
-                for (int i = 0; i < 4; i++) {
-                    int digit_value;
+                for (int64_t i = 0; i < 4; i++) {
+                    int64_t digit_value;
                     c = jk_buffer_character_next(json_string_value, &pos);
-                    int lowered = tolower(c);
+                    int64_t lowered = tolower(c);
                     if (lowered >= 'a' && lowered <= 'f') {
                         digit_value = 10 + (lowered - 'a');
                     } else if (c >= '0' && c <= '9') {
@@ -371,7 +386,7 @@ JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *sto
                 }
                 JkUtf8Codepoint utf8 = jk_utf8_codepoint_encode(unicode32);
                 *storage_pointer = utf8.b[0];
-                for (int i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
+                for (int64_t i = 1; i < 4 && jk_utf8_byte_is_continuation(utf8.b[i]); i++) {
                     storage_pointer = jk_arena_push(storage, 1);
                     *storage_pointer = utf8.b[i];
                 }

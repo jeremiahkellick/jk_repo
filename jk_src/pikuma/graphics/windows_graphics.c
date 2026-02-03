@@ -1,3 +1,5 @@
+#define JK_PLATFORM_DESKTOP_APP 1
+
 // #jk_build link User32 Gdi32 Winmm
 
 #include <windows.h>
@@ -38,12 +40,6 @@ typedef struct Global {
 
 static Global g = {.keyboard_lock = SRWLOCK_INIT};
 static JkColor clear_color = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
-
-static void debug_print(JkBuffer string)
-{
-    JkArena tmp_arena = jk_arena_child_get(&g.arena);
-    OutputDebugStringA(jk_buffer_to_null_terminated(&tmp_arena, string));
-}
 
 static void update_dimensions(HWND window)
 {
@@ -160,9 +156,9 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
                 (HRAWINPUT)lparam, RID_INPUT, raw_input_bytes, &size, sizeof(RAWINPUTHEADER));
         RAWINPUT *input = (RAWINPUT *)raw_input_bytes;
         if (bytes_written == (UINT)-1) {
-            jk_print(JKS("GetRawInputData returned an error\n"));
+            jk_log(JK_LOG_ERROR, JKS("GetRawInputData returned an error\n"));
         } else if (sizeof(raw_input_bytes) < size || sizeof(raw_input_bytes) < bytes_written) {
-            jk_print(JKS("Unexpectedly large data returned from GetRawInputData\n"));
+            jk_log(JK_LOG_ERROR, JKS("Unexpectedly large data returned from GetRawInputData\n"));
         } else if (input->header.dwType == RIM_TYPEKEYBOARD) {
             USHORT make_code = input->data.keyboard.MakeCode;
             JkKey key = JK_KEY_NONE;
@@ -250,6 +246,8 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 
 DWORD app_thread(LPVOID param)
 {
+    jk_platform_thread_init();
+
     HWND window = (HWND)param;
 
     int64_t frequency = g.state.os_timer_frequency;
@@ -344,10 +342,10 @@ DWORD app_thread(LPVOID param)
                     g.state.mouse.position.x = mouse_pos.x;
                     g.state.mouse.position.y = mouse_pos.y;
                 } else {
-                    jk_print(JKS("Failed to get mouse position\n"));
+                    jk_log(JK_LOG_ERROR, JKS("Failed to get mouse position\n"));
                 }
             } else {
-                jk_print(JKS("Failed to get mouse position\n"));
+                jk_log(JK_LOG_ERROR, JKS("Failed to get mouse position\n"));
             }
         }
 
@@ -388,7 +386,7 @@ DWORD app_thread(LPVOID param)
             ClipCursor(0);
         }
 
-        g.render(g.assets, &g.state);
+        g.render(jk_context, g.assets, &g.state);
         time++;
 
         uint64_t counter_work = jk_platform_os_timer_get();
@@ -438,7 +436,7 @@ DWORD app_thread(LPVOID param)
         target_flip_time += ticks_per_frame;
     }
 
-    JK_PRINT_FMT(&g.arena,
+    JK_LOGF(JK_LOG_INFO,
             jkfn("Work Time\nMin: "),
             jkff((double)work_time_min / (double)frequency * 1000.0, 2),
             jkfn("\nMax: "),
@@ -462,18 +460,14 @@ DWORD app_thread(LPVOID param)
     return 0;
 }
 
-int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_platform_set_working_directory_to_executable_directory();
-    jk_print = debug_print;
-
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     g.cursor_arrow = LoadCursorA(0, IDC_ARROW);
     g.cursor = g.cursor_arrow;
 
     g.arena = jk_platform_arena_virtual_init(&g.arena_root, 5ll * 1024 * 1024 * 1024);
     if (!jk_arena_valid(&g.arena)) {
-        jk_print(JKS("Failed to initialize virtual memory arena\n"));
+        jk_log(JK_LOG_FATAL, JKS("Failed to initialize virtual memory arena\n"));
         exit(1);
     }
 
@@ -490,7 +484,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             MEM_COMMIT,
             PAGE_READWRITE);
     if (!memory) {
-        jk_print(JKS("Failed to allocate memory\n"));
+        jk_log(JK_LOG_FATAL, JKS("Failed to allocate memory\n"));
         exit(1);
     }
     g.state.draw_buffer = (JkColor *)memory;
@@ -499,13 +493,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
     g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
 
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
-    g.state.print = jk_print;
     g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
 
     WNDCLASSA window_class = {
         .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
         .lpfnWndProc = window_proc,
-        .hInstance = instance,
+        .hInstance = jk_platform_hinstance,
         .lpszClassName = "jk_graphics_window_class",
     };
     RegisterClassA(&window_class);
@@ -519,7 +512,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             CW_USEDEFAULT,
             0,
             0,
-            instance,
+            jk_platform_hinstance,
             0);
     if (window) {
         RAWINPUTDEVICE raw_input_devices[] = {
@@ -538,7 +531,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
         if (!RegisterRawInputDevices(raw_input_devices,
                     JK_ARRAY_COUNT(raw_input_devices),
                     sizeof(*raw_input_devices))) {
-            jk_print(JKS("Failed to register raw input devices\n"));
+            jk_log(JK_LOG_WARNING, JKS("Failed to register raw input devices\n"));
         }
 
         HANDLE app_thread_handle = CreateThread(0, 0, app_thread, window, 0, 0);
@@ -556,10 +549,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int
             }
             WaitForSingleObject(app_thread_handle, INFINITE);
         } else {
-            jk_print(JKS("Failed to launch app thread\n"));
+            jk_log(JK_LOG_FATAL, JKS("Failed to launch app thread\n"));
         }
     } else {
-        jk_print(JKS("CreateWindowExA failed\n"));
+        jk_log(JK_LOG_FATAL, JKS("CreateWindowExA failed\n"));
     }
 
     return 0;

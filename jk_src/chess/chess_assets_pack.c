@@ -49,9 +49,8 @@ static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t
     return result;
 }
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_print = jk_platform_print_stdout;
     jk_platform_set_working_directory_to_executable_directory();
 
     JkPlatformArenaVirtualRoot scratch_arena_root;

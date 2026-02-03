@@ -1,7 +1,7 @@
 #ifndef JK_JSON_H
 #define JK_JSON_H
 
-#include <jk_src/jk_lib/platform/platform.h>
+#include <jk_src/jk_lib/jk_lib.h>
 
 typedef enum JkJsonType {
     JK_JSON_INVALID,
@@ -42,13 +42,13 @@ typedef struct JkJsonToken {
     JkJson *value;
 } JkJsonToken;
 
-extern char *jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT];
+JK_GLOBAL_DECLARE JkBuffer jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT];
 
-JK_PUBLIC b32 jk_json_is_whitespace(int byte);
+JK_PUBLIC b32 jk_json_is_whitespace(int64_t byte);
 
-JK_PUBLIC void jk_json_print_token(FILE *file, JkJsonToken *token, JkArena *storage);
+JK_PUBLIC JkBuffer jk_json_token_to_string(JkArena *arena, JkJsonToken *token);
 
-JK_PUBLIC void jk_json_print(FILE *file, JkJson *json, int indent_level, JkArena *storage);
+JK_PUBLIC JkBuffer jk_json_to_string(JkArena *arena, JkJson *json, int64_t indent_level);
 
 JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage);
 

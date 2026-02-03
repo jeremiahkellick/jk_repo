@@ -7,15 +7,13 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     if (argc != 2) {
         fprintf(stderr, "%s: Usage error\n", argv[0]);
         fprintf(stderr, "%s FILE_NAME\n", argv[0]);
         return 1;
     }
-
-    jk_print = jk_platform_print_stdout;
 
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, 64 * JK_GIGABYTE);

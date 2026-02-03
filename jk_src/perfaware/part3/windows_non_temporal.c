@@ -31,7 +31,7 @@ static Function functions[] = {
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
@@ -40,7 +40,7 @@ int main(int argc, char **argv)
     int64_t outer_loop_iterations = input_size / 0x80;
     int64_t inner_loop_iterations = output_size / input_size;
 
-    void *input_data = jk_platform_memory_alloc(input_size + output_size);
+    void *input_data = jk_platform_memory_alloc(JK_ALLOC_COMMIT, input_size + output_size).data;
     void *output_data = (char *)input_data + input_size;
 
     for (int64_t i = 0; i < input_size / JK_SIZEOF(int64_t); i++) {
@@ -68,4 +68,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

@@ -6,7 +6,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int main(void)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, JK_GIGABYTE);

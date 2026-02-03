@@ -260,7 +260,7 @@ static TestCandidate candidates[] = {
 // tests[malloc][i]
 static JkPlatformRepetitionTest tests[ALLOC_COUNT][JK_ARRAY_COUNT(candidates)];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     HANDLE process_token;
     if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &process_token)) {
@@ -323,4 +323,6 @@ int main(int argc, char **argv)
             }
         }
     }
+
+    return 0;
 }

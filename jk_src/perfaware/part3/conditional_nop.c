@@ -70,7 +70,7 @@ static void fill_with_pattern(JkBuffer buffer, Pattern pattern)
 
 static JkPlatformRepetitionTest tests[PATTERN_COUNT];
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     srand((unsigned)time(NULL));
 

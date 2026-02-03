@@ -55,7 +55,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int page_count = 0;
     jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
@@ -86,9 +86,8 @@ int main(int argc, char **argv)
     }
 
     int64_t page_size = jk_platform_page_size();
-    JkBuffer buffer = {.size = page_count * page_size};
     for (int64_t touch_page_count = 0; touch_page_count < page_count; touch_page_count++) {
-        buffer.data = jk_platform_memory_alloc(buffer.size);
+        JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, page_count * page_size);
         if (!buffer.data) {
             continue;
         }
@@ -121,6 +120,8 @@ int main(int argc, char **argv)
                 (unsigned long long)paging_counts.v[DIRECTORY],
                 (unsigned long long)paging_counts.v[DIRECTORY_POINTER]);
 
-        jk_platform_memory_free(buffer.data, buffer.size);
+        jk_platform_memory_free(buffer);
     }
+
+    return 0;
 }

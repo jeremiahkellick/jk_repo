@@ -903,7 +903,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     program_name = argv[0];
 

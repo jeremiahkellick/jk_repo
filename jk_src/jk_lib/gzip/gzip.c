@@ -200,7 +200,8 @@ static uint16_t jk_deflate_huffman_decode(
             if (index < decoder->buckets[code_length].values.count) {
                 value = decoder->buckets[code_length].values.e[index];
             } else {
-                jk_print(JKS("DEFLATE compressed data contained an invalid Huffman code\n"));
+                jk_log(JK_LOG_ERROR,
+                        JKS("DEFLATE compressed data contained an invalid Huffman code\n"));
             }
             break;
         }
@@ -230,7 +231,7 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
             uint16_t length = jk_buffer_bits_read(data, &bit_cursor, 16);
             uint16_t length_check = ~(uint16_t)jk_buffer_bits_read(data, &bit_cursor, 16);
             if (length != length_check) {
-                jk_print(JKS("DEFLATE uncompressed block length check failed\n"));
+                jk_log(JK_LOG_ERROR, JKS("DEFLATE uncompressed block length check failed\n"));
             }
             jk_memcpy(result.data + result.size, data.data + (bit_cursor / 8), length);
             result.size += length;
@@ -285,9 +286,10 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
                                         i++;
                                     }
                                 } else {
-                                    jk_print(JKS(
-                                            "DEFLATE block tried to repeat a code length before a "
-                                            "previous code length was established.\n"));
+                                    jk_log(JK_LOG_ERROR,
+                                            JKS("DEFLATE block tried to repeat a code length "
+                                                "before a previous code length was "
+                                                "established.\n"));
                                 }
                             } else if (code == 17) {
                                 i += 3 + jk_buffer_bits_read(data, &bit_cursor, 3);
@@ -338,7 +340,7 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
                 }
             }
         } else {
-            jk_print(JKS("DELFATE data contained an invalid block header\n"));
+            jk_log(JK_LOG_ERROR, JKS("DELFATE data contained an invalid block header\n"));
         }
     }
 
@@ -372,7 +374,7 @@ JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, int64_t unc
                 (JkBuffer){.size = data.size - pos, .data = data.data + pos},
                 uncompressed_size);
     } else {
-        jk_print(JKS("jk_zlib_decompress: Invalid or unsupported format\n"));
+        jk_log(JK_LOG_ERROR, JKS("jk_zlib_decompress: Invalid or unsupported format\n"));
     }
 
     return result;
@@ -422,7 +424,8 @@ JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer)
 
     if (jk_buffer_compare(JK_BUFFER_FROM_ARRAY(header.magic), JK_BUFFER_FROM_ARRAY(jk_gzip_magic))
             != 0) {
-        jk_print(JKS("jk_gzip_decompress: buffer did not start with the expected magic bytes\n"));
+        jk_log(JK_LOG_ERROR,
+                JKS("jk_gzip_decompress: buffer did not start with the expected magic bytes\n"));
     }
     if (JK_FLAG_GET(header.flags, JK_GZIP_FLAG_EXTRA)) {
         extra_data.size = JK_BUFFER_FIELD_READ(buffer, &byte_cursor, uint16_t, 0);

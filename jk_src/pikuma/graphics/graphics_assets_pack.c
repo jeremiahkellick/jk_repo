@@ -579,9 +579,8 @@ JkSpan append_arena(JkArena *dest, JkArena *src)
     return result;
 }
 
-int main(int argc, char **argv)
+int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    jk_print = jk_platform_print_stdout;
     jk_platform_set_working_directory_to_executable_directory();
 
     conversion_matrix = jk_mat4_conversion_from(coordinate_system);
