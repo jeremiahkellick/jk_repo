@@ -21,6 +21,16 @@ static float camera_rot_angle_init = 5 * JK_PI / 4;
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
 
+#define SAMPLE_COUNT 5
+
+static JkVec2 sample_offsets[SAMPLE_COUNT] = {
+    {0x0.6p0f, 0x0.2p0f},
+    {0x0.ep0f, 0x0.6p0f},
+    {0x0.2p0f, 0x0.ap0f},
+    {0x0.ap0f, 0x0.ep0f},
+    {0.5f, 0.5f},
+};
+
 static Pixel pixel_get(State *state, PixelIndex index)
 {
     return (Pixel){
@@ -124,10 +134,13 @@ static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
     }
 }
 
-static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap texture)
-{
-    JkArena tmp_arena = jk_arena_child_get(arena);
+typedef union Weight {
+    float v;
+    uint32_t bits;
+} Weight;
 
+static void triangle_fill(State *state, Triangle tri, Bitmap texture)
+{
     JkIntRect screen_rect = {.min = (JkIntVec2){0}, .max = state->dimensions};
     JkIntRect bounds = jk_int_rect_intersect(screen_rect, triangle_bounding_box(tri));
     JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
@@ -146,8 +159,12 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
 
     float barycentric_divisor = 0;
     JkVec2 barycentric_delta[3];
-    float barycentric_init[3];
-    JkVec2 init_pos = {bounds.min.x + 0.5, bounds.min.y + 0.5};
+    float barycentric_row[SAMPLE_COUNT][3];
+    JkVec2 bounds_min = jk_vec2_from_int(bounds.min);
+    JkVec2 init_pos[SAMPLE_COUNT];
+    for (int64_t i = 0; i < SAMPLE_COUNT; i++) {
+        init_pos[i] = jk_vec2_add(bounds_min, sample_offsets[i]);
+    }
     for (int64_t i = 0; i < 3; i++) {
         int64_t a = (i + 1) % 3;
         int64_t b = (i + 2) % 3;
@@ -155,13 +172,17 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
         barycentric_divisor += cross;
         barycentric_delta[i].x = verts_2d[a].y - verts_2d[b].y;
         barycentric_delta[i].y = verts_2d[b].x - verts_2d[a].x;
-        barycentric_init[i] =
-                barycentric_delta[i].x * init_pos.x + barycentric_delta[i].y * init_pos.y + cross;
+        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+            barycentric_row[sample_index][i] = barycentric_delta[i].x * init_pos[sample_index].x
+                    + barycentric_delta[i].y * init_pos[sample_index].y + cross;
+        }
     }
     for (int64_t i = 0; i < 3; i++) {
         barycentric_delta[i].x /= barycentric_divisor;
         barycentric_delta[i].y /= barycentric_divisor;
-        barycentric_init[i] /= barycentric_divisor;
+        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+            barycentric_row[sample_index][i] /= barycentric_divisor;
+        }
     }
 
     JkVec3 vertex_texcoords[3];
@@ -171,7 +192,7 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
     JkVec3 texcoord_row = {0};
     for (int64_t i = 0; i < 3; i++) {
         texcoord_row =
-                jk_vec3_add(texcoord_row, jk_vec3_mul(barycentric_init[i], vertex_texcoords[i]));
+                jk_vec3_add(texcoord_row, jk_vec3_mul(barycentric_row[4][i], vertex_texcoords[i]));
     }
     JkVec3 texcoord_deltas[2] = {0};
     for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
@@ -182,119 +203,25 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
         }
     }
 
-    JkEdgeArray edges = {.e = jk_arena_pointer_current(&tmp_arena)};
-    for (int64_t i = 0; i < 3; i++) {
-        int64_t next = (i + 1) % 3;
-        if (verts_2d[i].y != verts_2d[next].y) {
-            JkEdge *edge = jk_arena_push(&tmp_arena, JK_SIZEOF(*edge));
-            *edge = jk_points_to_edge(verts_2d[i], verts_2d[next]);
-        }
-    }
-    edges.count = (JkEdge *)jk_arena_pointer_current(&tmp_arena) - edges.e;
-
     PixelIndex pixel_index_row = pixel_index_from_pos(state, bounds.min);
-    int64_t coverage_size = JK_SIZEOF(float) * (dimensions.x + 1);
-    JkBuffer coverage_buf = jk_arena_push_buffer(&tmp_arena, 2 * coverage_size);
-    float *coverage = (float *)coverage_buf.data;
-    float *fill = (float *)(coverage_buf.data + coverage_size);
     for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
-        jk_buffer_zero(coverage_buf);
-
-        float scan_y_top = (float)y;
-        float scan_y_bottom = scan_y_top + 1.0f;
-        for (int64_t i = 0; i < edges.count; i++) {
-            float y_top = JK_MAX(edges.e[i].segment.p0.y, scan_y_top);
-            float y_bottom = JK_MIN(edges.e[i].segment.p1.y, scan_y_bottom);
-            if (y_top < y_bottom) {
-                float height = y_bottom - y_top;
-                float x_top = jk_segment_y_intersection(edges.e[i].segment, y_top);
-                float x_bottom = jk_segment_y_intersection(edges.e[i].segment, y_bottom);
-
-                float y_start;
-                float y_end;
-                float x_start;
-                float x_end;
-                if (x_top < x_bottom) {
-                    y_start = y_top;
-                    y_end = y_bottom;
-                    x_start = x_top;
-                    x_end = x_bottom;
-                } else {
-                    y_start = y_bottom;
-                    y_end = y_top;
-                    x_start = x_bottom;
-                    x_end = x_top;
-                }
-
-                int32_t first_pixel_index = (int32_t)x_start;
-                float first_pixel_right = (float)(first_pixel_index + 1);
-
-                if (first_pixel_index == (int32_t)x_end) {
-                    // Edge only covers one pixel
-
-                    // Compute trapezoid area
-                    float top_width = first_pixel_right - x_top;
-                    float bottom_width = first_pixel_right - x_bottom;
-                    float area = (top_width + bottom_width) / 2.0f * height;
-                    add_cover(coverage, bounds, first_pixel_index, edges.e[i].direction * area);
-
-                    // Fill everything to the right with height
-                    add_fill(fill, bounds, first_pixel_index + 1, edges.e[i].direction * height);
-                } else {
-                    // Edge covers multiple pixels
-                    float delta_y = (edges.e[i].segment.p1.y - edges.e[i].segment.p0.y)
-                            / (edges.e[i].segment.p1.x - edges.e[i].segment.p0.x);
-
-                    // Handle first pixel
-                    float first_x_intersection =
-                            jk_segment_x_intersection(edges.e[i].segment, first_pixel_right);
-                    float first_pixel_y_offset = first_x_intersection - y_start;
-                    float first_pixel_area =
-                            (first_pixel_right - x_start) * JK_ABS(first_pixel_y_offset) / 2.0f;
-                    add_cover(coverage,
-                            bounds,
-                            first_pixel_index,
-                            edges.e[i].direction * first_pixel_area);
-
-                    // Handle middle pixels (if there are any)
-                    float y_offset = first_pixel_y_offset;
-                    int32_t pixel_index = first_pixel_index + 1;
-                    for (; (float)(pixel_index + 1) < x_end; pixel_index++) {
-                        add_cover(coverage,
-                                bounds,
-                                pixel_index,
-                                edges.e[i].direction * JK_ABS(y_offset + delta_y / 2.0f));
-                        y_offset += delta_y;
-                    }
-
-                    // Handle last pixel
-                    float last_x_intersection = y_start + y_offset;
-                    float uncovered_triangle = JK_ABS(y_end - last_x_intersection)
-                            * (x_end - (float)pixel_index) / 2.0f;
-                    add_cover(coverage,
-                            bounds,
-                            pixel_index,
-                            edges.e[i].direction * (height - uncovered_triangle));
-
-                    // Fill everything to the right with height
-                    add_fill(fill, bounds, pixel_index + 1, edges.e[i].direction * height);
-                }
-            }
-        }
-
-        // Fill the scanline according to coverage
-        float acc = 0.0f;
+        Weight barycentric_coords[4][3];
+        jk_memcpy(barycentric_coords, barycentric_row, 4 * 3 * sizeof(float));
         PixelIndex pixel_index = pixel_index_row;
         JkVec3 texcoord_3d = texcoord_row;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
-            acc += fill[x - bounds.min.x];
-
-            int32_t alpha = (int32_t)(JK_ABS((coverage[x - bounds.min.x] + acc) * 255.0f));
-            if (255 < alpha) {
-                alpha = 255;
+            int32_t alpha = 0;
+            for (int64_t sample_index = 0; sample_index < 4; sample_index++) {
+                if (!((barycentric_coords[sample_index][0].bits
+                              | barycentric_coords[sample_index][1].bits
+                              | barycentric_coords[sample_index][2].bits)
+                            & 0x80000000)) {
+                    alpha += 64;
+                }
             }
 
             if (0 < alpha) {
+                alpha -= 1;
                 JkVec2 texcoord_2d = {
                     texcoord_3d.x / texcoord_3d.z,
                     texcoord_3d.y / texcoord_3d.z,
@@ -321,10 +248,20 @@ static void triangle_fill(JkArena *arena, State *state, Triangle tri, Bitmap tex
                 }
             }
 
+            for (int64_t sample_index = 0; sample_index < 4; sample_index++) {
+                for (int64_t i = 0; i < 3; i++) {
+                    barycentric_coords[sample_index][i].v += barycentric_delta[i].x;
+                }
+            }
             pixel_index.i++;
             texcoord_3d = jk_vec3_add(texcoord_3d, texcoord_deltas[0]);
         }
 
+        for (int64_t sample_index = 0; sample_index < 4; sample_index++) {
+            for (int64_t i = 0; i < 3; i++) {
+                barycentric_row[sample_index][i] += barycentric_delta[i].y;
+            }
+        }
         pixel_index_row.i += DRAW_BUFFER_SIDE_LENGTH;
         texcoord_row = jk_vec3_add(texcoord_row, texcoord_deltas[1]);
     }
@@ -750,7 +687,7 @@ void render(JkContext *context, Assets *assets, State *state)
 
             for (int64_t i = 0; i < tris.count; i++) {
                 if (clockwise(tris.e[i])) {
-                    triangle_fill(&face_arena, state, tris.e[i], texture);
+                    triangle_fill(state, tris.e[i], texture);
                 }
             }
         }
