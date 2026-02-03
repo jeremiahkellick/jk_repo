@@ -45,6 +45,14 @@ typedef struct JkSpan {
     int64_t offset;
 } JkSpan;
 
+typedef union JkVec2 {
+    float v[2];
+    struct {
+        float x;
+        float y;
+    };
+} JkVec2;
+
 typedef union JkVec3 {
     float v[3];
     struct {
@@ -186,6 +194,7 @@ typedef enum JkFormatItemType {
     JK_FORMAT_ITEM_HEX,
     JK_FORMAT_ITEM_BINARY,
     JK_FORMAT_ITEM_FLOAT,
+    JK_FORMAT_ITEM_VEC2,
     JK_FORMAT_ITEM_VEC3,
     JK_FORMAT_ITEM_VEC4,
     JK_FORMAT_ITEM_BYTES,
@@ -201,6 +210,7 @@ typedef struct JkFormatItem {
         int64_t signed_value;
         uint64_t unsigned_value;
         double float_value;
+        JkVec2 vec2_value;
         JkVec3 vec3_value;
         JkVec4 vec4_value;
     };
@@ -227,6 +237,8 @@ JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width);
 JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width);
 
 JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places);
+
+JK_PUBLIC JkFormatItem jkfv2(JkVec2 v);
 
 JK_PUBLIC JkFormatItem jkfv(JkVec3 v);
 
@@ -491,14 +503,6 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector);
 // ---- JkIntVec2 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------
-
-typedef union JkVec2 {
-    float v[2];
-    struct {
-        float x;
-        float y;
-    };
-} JkVec2;
 
 typedef struct JkVec2Array {
     int64_t count;

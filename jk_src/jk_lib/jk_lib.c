@@ -544,6 +544,12 @@ JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places)
         .type = JK_FORMAT_ITEM_FLOAT, .float_value = float_value, .param = decimal_places};
 }
 
+// Include a JkVec2 value in JK_FORMAT
+JK_PUBLIC JkFormatItem jkfv2(JkVec2 v)
+{
+    return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC2, .vec2_value = v};
+}
+
 // Include a JkVec3 value in JK_FORMAT
 JK_PUBLIC JkFormatItem jkfv(JkVec3 v)
 {
@@ -599,6 +605,15 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
 
         case JK_FORMAT_ITEM_FLOAT: {
             jk_f64_to_string(arena, item->float_value, item->param);
+        } break;
+
+        case JK_FORMAT_ITEM_VEC2: {
+            JK_FORMAT(arena,
+                    jkfn("("),
+                    jkff(item->vec2_value.x, 6),
+                    jkfn(", "),
+                    jkff(item->vec2_value.y, 6),
+                    jkfn(")"));
         } break;
 
         case JK_FORMAT_ITEM_VEC3: {
