@@ -21,14 +21,13 @@ static float camera_rot_angle_init = 5 * JK_PI / 4;
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
 
-#define SAMPLE_COUNT 5
+#define SAMPLE_COUNT 4
 
 static JkVec2 sample_offsets[SAMPLE_COUNT] = {
     {0x0.6p0f, 0x0.2p0f},
     {0x0.ep0f, 0x0.6p0f},
     {0x0.2p0f, 0x0.ap0f},
     {0x0.ap0f, 0x0.ep0f},
-    {0.5f, 0.5f},
 };
 
 static Pixel pixel_get(State *state, PixelIndex index)
@@ -189,10 +188,12 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
     for (int64_t i = 0; i < 3; i++) {
         vertex_texcoords[i] = jk_vec2_to_3(tri.t[i], tri.v[i].z);
     }
-    JkVec3 texcoord_row = {0};
-    for (int64_t i = 0; i < 3; i++) {
-        texcoord_row =
-                jk_vec3_add(texcoord_row, jk_vec3_mul(barycentric_row[4][i], vertex_texcoords[i]));
+    JkVec3 texcoord_row[SAMPLE_COUNT] = {0};
+    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+        for (int64_t i = 0; i < 3; i++) {
+            texcoord_row[sample_index] = jk_vec3_add(texcoord_row[sample_index],
+                    jk_vec3_mul(barycentric_row[sample_index][i], vertex_texcoords[i]));
+        }
     }
     JkVec3 texcoord_deltas[2] = {0};
     for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
@@ -205,13 +206,14 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
 
     PixelIndex pixel_index_row = pixel_index_from_pos(state, bounds.min);
     for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
-        Weight barycentric_coords[4][3];
-        jk_memcpy(barycentric_coords, barycentric_row, 4 * 3 * sizeof(float));
+        Weight barycentric_coords[SAMPLE_COUNT][3];
+        jk_memcpy(barycentric_coords, barycentric_row, SAMPLE_COUNT * 3 * sizeof(float));
+        JkVec3 texcoord_3d[SAMPLE_COUNT];
+        jk_memcpy(texcoord_3d, texcoord_row, SAMPLE_COUNT * sizeof(JkVec3));
         PixelIndex pixel_index = pixel_index_row;
-        JkVec3 texcoord_3d = texcoord_row;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
-            int32_t alpha = 0;
-            for (int64_t sample_index = 0; sample_index < 4; sample_index++) {
+            int32_t alpha = -1;
+            for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
                 if (!((barycentric_coords[sample_index][0].bits
                               | barycentric_coords[sample_index][1].bits
                               | barycentric_coords[sample_index][2].bits)
@@ -221,19 +223,30 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
             }
 
             if (0 < alpha) {
-                alpha -= 1;
-                JkVec2 texcoord_2d = {
-                    texcoord_3d.x / texcoord_3d.z,
-                    texcoord_3d.y / texcoord_3d.z,
-                };
+                int32_t color_channels[3] = {0};
+                for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+                    JkVec2 texcoord_2d = {
+                        texcoord_3d[sample_index].x / texcoord_3d[sample_index].z,
+                        texcoord_3d[sample_index].y / texcoord_3d[sample_index].z,
+                    };
 
-                // Texture lookup
-                int32_t tex_x = jk_remainder_f32(texcoord_2d.x, tex_float_dimensions.x);
-                int32_t tex_y = jk_remainder_f32(texcoord_2d.y, tex_float_dimensions.y);
-                tex_x += tex_half_dimensions.x;
-                tex_y += tex_half_dimensions.y;
-                JkColor pixel_color = jk_color3_to_4(
-                        texture.memory[texture.dimensions.x * tex_y + tex_x], (uint8_t)alpha);
+                    // Texture lookup
+                    int32_t tex_x = jk_remainder_f32(texcoord_2d.x, tex_float_dimensions.x);
+                    int32_t tex_y = jk_remainder_f32(texcoord_2d.y, tex_float_dimensions.y);
+                    tex_x += tex_half_dimensions.x;
+                    tex_y += tex_half_dimensions.y;
+                    JkColor sample_color = jk_color3_to_4(
+                            texture.memory[texture.dimensions.x * tex_y + tex_x], (uint8_t)alpha);
+
+                    for (int64_t i = 0; i < JK_ARRAY_COUNT(color_channels); i++) {
+                        color_channels[i] += sample_color.v[i];
+                    }
+                }
+                JkColor pixel_color;
+                for (int64_t i = 0; i < 3; i++) {
+                    pixel_color.v[i] = (uint8_t)(color_channels[i] / SAMPLE_COUNT);
+                }
+                pixel_color.a = alpha;
 
                 PixelIndex *head_next = next_get(state, pixel_index);
                 PixelIndex new_pixel_index = pixel_alloc(state);
@@ -241,29 +254,31 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
                     Pixel new_pixel = pixel_get(state, new_pixel_index);
 
                     *new_pixel.color = pixel_color;
-                    *new_pixel.z = texcoord_3d.z;
+                    *new_pixel.z = texcoord_3d[0].z;
                     *new_pixel.next = *head_next;
 
                     *head_next = new_pixel_index;
                 }
             }
 
-            for (int64_t sample_index = 0; sample_index < 4; sample_index++) {
+            for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
                 for (int64_t i = 0; i < 3; i++) {
                     barycentric_coords[sample_index][i].v += barycentric_delta[i].x;
                 }
+                texcoord_3d[sample_index] =
+                        jk_vec3_add(texcoord_3d[sample_index], texcoord_deltas[0]);
             }
             pixel_index.i++;
-            texcoord_3d = jk_vec3_add(texcoord_3d, texcoord_deltas[0]);
         }
 
-        for (int64_t sample_index = 0; sample_index < 4; sample_index++) {
+        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
             for (int64_t i = 0; i < 3; i++) {
                 barycentric_row[sample_index][i] += barycentric_delta[i].y;
             }
+            texcoord_row[sample_index] =
+                    jk_vec3_add(texcoord_row[sample_index], texcoord_deltas[1]);
         }
         pixel_index_row.i += DRAW_BUFFER_SIDE_LENGTH;
-        texcoord_row = jk_vec3_add(texcoord_row, texcoord_deltas[1]);
     }
 }
 
