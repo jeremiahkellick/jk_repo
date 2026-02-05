@@ -8,12 +8,8 @@
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
-static JkColor fgs[] = {
-    {.r = 0x2b, .g = 0x41, .b = 0x50, .a = 0xff},
-    {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
-};
-static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 0xff};
-static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 0xff};
+static JkColor3 normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B};
+static JkColor3 test_bg = {.r = 0x27, .g = 0x27, .b = 0x16};
 
 static JkVec3 camera_position_init = {0, 0, 1.75};
 static float camera_rot_angle_init = 5 * JK_PI / 4;
@@ -21,73 +17,12 @@ static float camera_rot_angle_init = 5 * JK_PI / 4;
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
 
-#define SAMPLE_COUNT 4
-
 static JkVec2 sample_offsets[SAMPLE_COUNT] = {
     {0x0.6p0f, 0x0.2p0f},
     {0x0.ep0f, 0x0.6p0f},
     {0x0.2p0f, 0x0.ap0f},
     {0x0.ap0f, 0x0.ep0f},
 };
-
-static Pixel pixel_get(State *state, PixelIndex index)
-{
-    return (Pixel){
-        .color = state->draw_buffer + index.i,
-        .z = state->z_buffer + index.i,
-        .next = state->next_buffer + index.i,
-    };
-}
-
-static JkColor color_get(State *state, PixelIndex index)
-{
-    return state->draw_buffer[index.i];
-}
-
-static float z_get(State *state, PixelIndex index)
-{
-    return state->z_buffer[index.i];
-}
-
-static PixelIndex *next_get(State *state, PixelIndex index)
-{
-    return state->next_buffer + index.i;
-}
-
-static PixelIndex pixel_alloc(State *state)
-{
-    if (state->pixel_count < PIXEL_COUNT) {
-        return (PixelIndex){state->pixel_count++};
-    } else {
-        return (PixelIndex){0};
-    }
-}
-
-static b32 pixel_index_nil(PixelIndex index)
-{
-    return !index.i;
-}
-
-static PixelIndex pixel_index_from_pos(State *state, JkIntVec2 pos)
-{
-    return (PixelIndex){DRAW_BUFFER_SIDE_LENGTH * pos.y + pos.x + 1};
-}
-
-static uint8_t color_multiply(uint8_t a, uint8_t b)
-{
-    return ((uint32_t)a * (uint32_t)b) / 255;
-}
-
-static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
-{
-    JkColor result = {0, 0, 0, 255};
-    for (uint8_t i = 0; i < 3; i++) {
-        result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
-                              + background.v[i] * (255 - (int32_t)alpha))
-                / 255;
-    }
-    return result;
-}
 
 typedef struct Triangle {
     JkVec3 v[3];
@@ -119,24 +54,10 @@ static JkIntRect triangle_bounding_box(Triangle t)
     };
 }
 
-static void add_cover(float *coverage, JkIntRect bounds, int32_t x, float value)
-{
-    if (bounds.min.x <= x && x < bounds.max.x) {
-        coverage[x - bounds.min.x] += value;
-    }
-}
-
-static void add_fill(float *fill, JkIntRect bounds, int32_t x, float value)
-{
-    if (x < bounds.max.x) {
-        fill[JK_MAX(0, x - bounds.min.x)] += value;
-    }
-}
-
-typedef union Weight {
-    float v;
-    uint32_t bits;
-} Weight;
+typedef union BarycentricCoords {
+    JkVec3 value;
+    uint32_t bits[3];
+} BarycentricCoords;
 
 static void triangle_fill(State *state, Triangle tri, Bitmap texture)
 {
@@ -145,7 +66,6 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
     JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
 
     JkVec2 tex_float_dimensions = jk_vec2_from_int(texture.dimensions);
-    JkIntVec2 tex_half_dimensions = jk_int_vec2_div(2, texture.dimensions);
 
     if (dimensions.x < 1) {
         return;
@@ -157,30 +77,31 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
     }
 
     float barycentric_divisor = 0;
-    JkVec2 barycentric_delta[3];
-    float barycentric_row[SAMPLE_COUNT][3];
+    JkVec3 barycentric_delta[2];
+    JkVec3 barycentric_row[SAMPLE_COUNT];
     JkVec2 bounds_min = jk_vec2_from_int(bounds.min);
     JkVec2 init_pos[SAMPLE_COUNT];
-    for (int64_t i = 0; i < SAMPLE_COUNT; i++) {
-        init_pos[i] = jk_vec2_add(bounds_min, sample_offsets[i]);
+    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+        init_pos[sample_index] = jk_vec2_add(bounds_min, sample_offsets[sample_index]);
     }
     for (int64_t i = 0; i < 3; i++) {
         int64_t a = (i + 1) % 3;
         int64_t b = (i + 2) % 3;
         float cross = jk_vec2_cross(verts_2d[a], verts_2d[b]);
         barycentric_divisor += cross;
-        barycentric_delta[i].x = verts_2d[a].y - verts_2d[b].y;
-        barycentric_delta[i].y = verts_2d[b].x - verts_2d[a].x;
+        barycentric_delta[0].v[i] = verts_2d[a].y - verts_2d[b].y;
+        barycentric_delta[1].v[i] = verts_2d[b].x - verts_2d[a].x;
         for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            barycentric_row[sample_index][i] = barycentric_delta[i].x * init_pos[sample_index].x
-                    + barycentric_delta[i].y * init_pos[sample_index].y + cross;
+            barycentric_row[sample_index].v[i] =
+                    barycentric_delta[0].v[i] * init_pos[sample_index].x
+                    + barycentric_delta[1].v[i] * init_pos[sample_index].y + cross;
         }
     }
     for (int64_t i = 0; i < 3; i++) {
-        barycentric_delta[i].x /= barycentric_divisor;
-        barycentric_delta[i].y /= barycentric_divisor;
+        barycentric_delta[0].v[i] /= barycentric_divisor;
+        barycentric_delta[1].v[i] /= barycentric_divisor;
         for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            barycentric_row[sample_index][i] /= barycentric_divisor;
+            barycentric_row[sample_index].v[i] /= barycentric_divisor;
         }
     }
 
@@ -192,93 +113,69 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
     for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
         for (int64_t i = 0; i < 3; i++) {
             texcoord_row[sample_index] = jk_vec3_add(texcoord_row[sample_index],
-                    jk_vec3_mul(barycentric_row[sample_index][i], vertex_texcoords[i]));
+                    jk_vec3_mul(barycentric_row[sample_index].v[i], vertex_texcoords[i]));
         }
     }
     JkVec3 texcoord_deltas[2] = {0};
     for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
         for (int64_t vertex_index = 0; vertex_index < 3; vertex_index++) {
             texcoord_deltas[axis_index] = jk_vec3_add(texcoord_deltas[axis_index],
-                    jk_vec3_mul(barycentric_delta[vertex_index].v[axis_index],
+                    jk_vec3_mul(barycentric_delta[axis_index].v[vertex_index],
                             vertex_texcoords[vertex_index]));
         }
     }
 
-    PixelIndex pixel_index_row = pixel_index_from_pos(state, bounds.min);
+    int32_t pixel_index_row = bounds.min.y * DRAW_BUFFER_SIDE_LENGTH + bounds.min.x;
     for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
-        Weight barycentric_coords[SAMPLE_COUNT][3];
-        jk_memcpy(barycentric_coords, barycentric_row, SAMPLE_COUNT * 3 * sizeof(float));
+        BarycentricCoords barycentric_coords[SAMPLE_COUNT];
+        jk_memcpy(barycentric_coords, barycentric_row, SAMPLE_COUNT * sizeof(barycentric_row[0]));
         JkVec3 texcoord_3d[SAMPLE_COUNT];
-        jk_memcpy(texcoord_3d, texcoord_row, SAMPLE_COUNT * sizeof(JkVec3));
-        PixelIndex pixel_index = pixel_index_row;
+        jk_memcpy(texcoord_3d, texcoord_row, SAMPLE_COUNT * sizeof(texcoord_row[0]));
+        int32_t pixel_index = pixel_index_row;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
-            int32_t alpha = -1;
             for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                if (!((barycentric_coords[sample_index][0].bits
-                              | barycentric_coords[sample_index][1].bits
-                              | barycentric_coords[sample_index][2].bits)
-                            & 0x80000000)) {
-                    alpha += 64;
-                }
-            }
 
-            if (0 < alpha) {
-                int32_t color_channels[3] = {0};
-                for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+                b32 in_front = state->z_buffer[PIXEL_COUNT * sample_index + pixel_index]
+                        < texcoord_3d[sample_index].z;
+                b32 outside_triangle = (barycentric_coords[sample_index].bits[0]
+                                               | barycentric_coords[sample_index].bits[1]
+                                               | barycentric_coords[sample_index].bits[2])
+                        & 0x80000000;
+                if (in_front && !outside_triangle) {
+                    state->z_buffer[PIXEL_COUNT * sample_index + pixel_index] =
+                            texcoord_3d[sample_index].z;
+
                     JkVec2 texcoord_2d = {
                         texcoord_3d[sample_index].x / texcoord_3d[sample_index].z,
                         texcoord_3d[sample_index].y / texcoord_3d[sample_index].z,
                     };
 
                     // Texture lookup
-                    int32_t tex_x = jk_remainder_f32(texcoord_2d.x, tex_float_dimensions.x);
-                    int32_t tex_y = jk_remainder_f32(texcoord_2d.y, tex_float_dimensions.y);
-                    tex_x += tex_half_dimensions.x;
-                    tex_y += tex_half_dimensions.y;
-                    JkColor sample_color = jk_color3_to_4(
-                            texture.memory[texture.dimensions.x * tex_y + tex_x], (uint8_t)alpha);
-
-                    for (int64_t i = 0; i < JK_ARRAY_COUNT(color_channels); i++) {
-                        color_channels[i] += sample_color.v[i];
-                    }
-                }
-                JkColor pixel_color;
-                for (int64_t i = 0; i < 3; i++) {
-                    pixel_color.v[i] = (uint8_t)(color_channels[i] / SAMPLE_COUNT);
-                }
-                pixel_color.a = alpha;
-
-                PixelIndex *head_next = next_get(state, pixel_index);
-                PixelIndex new_pixel_index = pixel_alloc(state);
-                if (!pixel_index_nil(new_pixel_index)) {
-                    Pixel new_pixel = pixel_get(state, new_pixel_index);
-
-                    *new_pixel.color = pixel_color;
-                    *new_pixel.z = texcoord_3d[0].z;
-                    *new_pixel.next = *head_next;
-
-                    *head_next = new_pixel_index;
+                    int32_t tex_x =
+                            tex_float_dimensions.x * (texcoord_2d.x - jk_floor_f32(texcoord_2d.x));
+                    int32_t tex_y =
+                            tex_float_dimensions.y * (texcoord_2d.y - jk_floor_f32(texcoord_2d.y));
+                    state->draw_buffer[PIXEL_COUNT * sample_index + pixel_index] =
+                            texture.memory[texture.dimensions.x * tex_y + tex_x];
                 }
             }
 
+            pixel_index++;
             for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                for (int64_t i = 0; i < 3; i++) {
-                    barycentric_coords[sample_index][i].v += barycentric_delta[i].x;
-                }
+                barycentric_coords[sample_index].value =
+                        jk_vec3_add(barycentric_coords[sample_index].value, barycentric_delta[0]);
                 texcoord_3d[sample_index] =
                         jk_vec3_add(texcoord_3d[sample_index], texcoord_deltas[0]);
             }
-            pixel_index.i++;
         }
 
+        pixel_index_row += DRAW_BUFFER_SIDE_LENGTH;
         for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            for (int64_t i = 0; i < 3; i++) {
-                barycentric_row[sample_index][i] += barycentric_delta[i].y;
-            }
+            barycentric_row[sample_index] =
+                    jk_vec3_add(barycentric_row[sample_index], barycentric_delta[1]);
             texcoord_row[sample_index] =
                     jk_vec3_add(texcoord_row[sample_index], texcoord_deltas[1]);
         }
-        pixel_index_row.i += DRAW_BUFFER_SIDE_LENGTH;
     }
 }
 
@@ -558,13 +455,18 @@ void render(JkContext *context, Assets *assets, State *state)
         .scale = {1, 1, 1},
     };
 
-    state->pixel_count = PIXEL_COUNT / 2;
-
-    // Clear next links
+    // Clear
+    JkColor3 bg = 0 < state->test_frames_remaining ? test_bg : normal_bg;
     for (int32_t y = 0; y < state->dimensions.y; y++) {
-        jk_memset(state->next_buffer + (y * DRAW_BUFFER_SIDE_LENGTH),
-                0,
-                JK_SIZEOF(PixelIndex) * state->dimensions.x + 1);
+        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+            int32_t row_index = (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y);
+            for (int32_t x = 0; x < state->dimensions.x; x++) {
+                state->draw_buffer[row_index + x] = bg;
+            }
+            jk_memset(state->z_buffer + row_index,
+                    0,
+                    state->dimensions.x * JK_SIZEOF(*state->z_buffer));
+        }
     }
 
     float near_clip = 0.2f;
@@ -659,14 +561,6 @@ void render(JkContext *context, Assets *assets, State *state)
                 }
             }
 
-            for (int64_t i = 0; i < 3; i++) {
-                // Make some adjustments to the uv coordinates now to save some per-pixel texture
-                // lookup math
-                uv[i] = jk_vec2_sub(uv[i], (JkVec2){0.5, 0.5});
-                uv[i].x *= texture.dimensions.x;
-                uv[i].y *= texture.dimensions.y;
-            }
-
             // Apply near clipping and projection
             TexturedVertexArray vs = {.e = jk_arena_pointer_current(&face_arena)};
             for (int64_t i = 0; i < 3; i++) {
@@ -709,37 +603,29 @@ void render(JkContext *context, Assets *assets, State *state)
     }
     JK_PROFILE_ZONE_END(triangles);
 
-    JkColor bg = 0 < state->test_frames_remaining ? test_bg : normal_bg;
     JK_PROFILE_ZONE_TIME_BEGIN(pixels);
-    PixelIndex list[16];
-    PixelIndex pixel_index_row = {1};
+    int32_t pixel_index_row = 0;
     for (int32_t y = 0; y < state->dimensions.y; y++) {
-        PixelIndex pixel_index = pixel_index_row;
+        int32_t pixel_index = pixel_index_row;
         for (int32_t x = 0; x < state->dimensions.x; x++) {
-            Pixel pixel = pixel_get(state, pixel_index);
-            JkColor color = {0};
-
-            int64_t list_count = 0;
-            for (PixelIndex new = *pixel.next;
-                    !pixel_index_nil(new) && list_count < JK_ARRAY_COUNT(list);
-                    new = *next_get(state, new)) {
-                int64_t j = list_count++;
-                list[j] = new;
-                for (; 0 < j && z_get(state, list[j - 1]) < z_get(state, list[j]); j--) {
-                    JK_SWAP(list[j - 1], list[j], PixelIndex);
+            int32_t color_channels[3] = {0};
+            for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+                JkColor3 sample_color =
+                        state->draw_buffer[PIXEL_COUNT * sample_index + pixel_index];
+                for (int64_t channel_index = 0; channel_index < 3; channel_index++) {
+                    color_channels[channel_index] += sample_color.v[channel_index];
                 }
             }
-
-            for (int64_t i = 0; i < list_count; i++) {
-                color = jk_color_disjoint_over(color, color_get(state, list[i]));
+            JkColor3 pixel_color;
+            for (int64_t channel_index = 0; channel_index < 3; channel_index++) {
+                pixel_color.v[channel_index] = color_channels[channel_index] / 4;
             }
-            color = jk_color_disjoint_over(color, bg);
+            state->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = pixel_color;
 
-            *pixel.color = color;
-
-            pixel_index.i++;
+            pixel_index++;
         }
-        pixel_index_row.i += DRAW_BUFFER_SIDE_LENGTH;
+
+        pixel_index_row += DRAW_BUFFER_SIDE_LENGTH;
     }
     JK_PROFILE_ZONE_END(pixels);
 

@@ -79,7 +79,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
                     .biWidth = DRAW_BUFFER_SIDE_LENGTH,
                     .biHeight = -DRAW_BUFFER_SIDE_LENGTH,
                     .biPlanes = 1,
-                    .biBitCount = 32,
+                    .biBitCount = 24,
                     .biCompression = BI_RGB,
                 },
     };
@@ -479,18 +479,15 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 #endif
 
     g.state.memory.size = 2 * JK_MEGABYTE;
-    uint8_t *memory = VirtualAlloc(0,
-            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE + g.state.memory.size,
-            MEM_COMMIT,
-            PAGE_READWRITE);
+    uint8_t *memory = VirtualAlloc(
+            0, DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + g.state.memory.size, MEM_COMMIT, PAGE_READWRITE);
     if (!memory) {
         jk_log(JK_LOG_FATAL, JKS("Failed to allocate memory\n"));
         exit(1);
     }
-    g.state.draw_buffer = (JkColor *)memory;
+    g.state.draw_buffer = (JkColor3 *)memory;
     g.state.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
-    g.state.next_buffer = (PixelIndex *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
-    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
+    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE;
 
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
     g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;

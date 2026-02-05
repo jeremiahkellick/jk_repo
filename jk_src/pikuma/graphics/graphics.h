@@ -6,11 +6,12 @@
 #define FPS 60
 #define DELTA_TIME (1.0f / FPS)
 
+#define SAMPLE_COUNT 4
+
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
-#define PIXEL_COUNT (2 * DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH + 1)
-#define DRAW_BUFFER_SIZE (JK_SIZEOF(JkColor) * PIXEL_COUNT)
-#define NEXT_BUFFER_SIZE (JK_SIZEOF(PixelIndex) * PIXEL_COUNT)
-#define Z_BUFFER_SIZE (JK_SIZEOF(float) * PIXEL_COUNT)
+#define PIXEL_COUNT (DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
+#define DRAW_BUFFER_SIZE (SAMPLE_COUNT * PIXEL_COUNT * JK_SIZEOF(JkColor3))
+#define Z_BUFFER_SIZE (SAMPLE_COUNT * PIXEL_COUNT * JK_SIZEOF(float))
 
 #define CLEAR_COLOR_R 0x00
 #define CLEAR_COLOR_G 0x00
@@ -74,9 +75,8 @@ typedef struct Pixel {
 } Pixel;
 
 typedef struct State {
-    JkColor *draw_buffer;
+    JkColor3 *draw_buffer;
     float *z_buffer;
-    PixelIndex *next_buffer;
     JkBuffer memory;
     int64_t os_timer_frequency;
     int64_t (*estimate_cpu_frequency)(int64_t);
@@ -90,7 +90,6 @@ typedef struct State {
     float camera_yaw;
     float camera_pitch;
     JkVec2 camera_position;
-    int64_t pixel_count;
     int64_t test_frames_remaining;
 } State;
 
