@@ -1,0 +1,199 @@
+xchg eax, eax
+mov r12, [rsi+0x08]
+lea rdi, [r12+r11*1]
+vucomiss xmm2, dword ptr [rdi+rbp*4]
+jbe 0x00007FF8130AD020 (render)
+vmovd xmm0, dword ptr [rsp+0x70]
+vmovd edi, xmm0
+vmovshdup xmm0, xmm8
+vorps xmm0, xmm8, xmm0
+vmovd r15d, xmm0
+or r15d, edi
+vmovdqa xmm3, xmm10
+js 0x00007FF8130ACDD2 (render)
+xchg r9d, r9d
+mov rdi, [rsi+0x08]
+add rdi, r11
+vmovss [rdi+rbp*4], xmm2
+vmovss xmm0, dword ptr [rsp+0x110]
+vdivss xmm0, xmm0, xmm2
+vroundss xmm13, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm13
+vmulss xmm0, xmm0, dword ptr [rsp+0xF0]
+vcvttss2si edi, xmm0
+vmovss xmm0, dword ptr [rsp+0x100]
+vdivss xmm0, xmm0, xmm2
+vroundss xmm13, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm13
+vmulss xmm0, xmm0, dword ptr [rsp+0x2B0]
+vcvttss2si r15d, xmm0
+mov r12, [rsi]
+imul r15d, ebx
+add r15d, edi
+movsxd rdi, r15d
+lea rdi, [rdi+rdi*2]
+movzx r15d, byte ptr [r13+rdi*1+0x02]
+mov [r12+r14*1+0x02], r15b
+movzx edi, word ptr [r13+rdi*1]
+mov [r12+r14*1], di
+mov r12, [rsi+0x08]
+lea rdi, [r12+r11*1]
+vucomiss xmm9, dword ptr [rdi+rbp*4+0x4000000]
+vmovdqa xmm10, xmm4
+jbe 0x00007FF8130ACE95 (render)
+vmovd edi, xmm10
+vmovshdup xmm0, xmm15
+vorps xmm0, xmm15, xmm0
+vmovd r15d, xmm0
+or r15d, edi
+js 0x00007FF8130ACE95 (render)
+xchg r9d, r9d
+mov rdi, [rsi+0x08]
+add rdi, r11
+vmovss [rdi+rbp*4+0x4000000], xmm9
+vmovss xmm0, dword ptr [rsp+0xE0]
+vdivss xmm0, xmm0, xmm9
+vroundss xmm13, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm13
+vmulss xmm0, xmm0, dword ptr [rsp+0xF0]
+vcvttss2si edi, xmm0
+vmovss xmm0, dword ptr [rsp+0x1D0]
+vdivss xmm0, xmm0, xmm9
+vroundss xmm13, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm13
+vmulss xmm0, xmm0, dword ptr [rsp+0x2B0]
+vcvttss2si r15d, xmm0
+mov r12, [rsi]
+imul r15d, ebx
+add r15d, edi
+movsxd rdi, r15d
+lea rdi, [rdi+rdi*2]
+movzx r15d, byte ptr [r13+rdi*1+0x02]
+mov [r12+r14*1+0x3000002], r15b
+movzx edi, word ptr [r13+rdi*1]
+mov [r12+r14*1+0x3000000], di
+mov r12, [rsi+0x08]
+lea rdi, [r12+r11*1]
+vucomiss xmm14, dword ptr [rdi+rbp*4+0x8000000]
+jbe 0x00007FF8130ACF54 (render)
+vmovd edi, xmm3
+vmovshdup xmm0, xmm12
+vorps xmm0, xmm12, xmm0
+vmovd r15d, xmm0
+or r15d, edi
+js 0x00007FF8130ACF54 (render)
+xchg r9d, r9d
+mov rdi, [rsi+0x08]
+add rdi, r11
+vmovss [rdi+rbp*4+0x8000000], xmm14
+vmovss xmm0, dword ptr [rsp+0x170]
+vdivss xmm0, xmm0, xmm14
+vroundss xmm13, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm13
+vmulss xmm0, xmm0, dword ptr [rsp+0xF0]
+vcvttss2si edi, xmm0
+vmovss xmm0, dword ptr [rsp+0xA0]
+vdivss xmm0, xmm0, xmm14
+vroundss xmm13, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm13
+vmulss xmm0, xmm0, dword ptr [rsp+0x2B0]
+vcvttss2si r15d, xmm0
+mov r12, [rsi]
+imul r15d, ebx
+add r15d, edi
+movsxd rdi, r15d
+lea rdi, [rdi+rdi*2]
+movzx r15d, byte ptr [r13+rdi*1+0x02]
+mov [r12+r14*1+0x6000002], r15b
+movzx edi, word ptr [r13+rdi*1]
+mov [r12+r14*1+0x6000000], di
+mov r12, [rsi+0x08]
+add r12, r11
+vucomiss xmm7, dword ptr [r12+rbp*4+0xC000000]
+jbe 0x00007FF8130ACBC0 (render)
+vmovd xmm0, dword ptr [rsp+0x50]
+vmovd edi, xmm0
+vmovshdup xmm0, xmm6
+vorps xmm0, xmm0, xmm6
+vmovd r15d, xmm0
+or r15d, edi
+js 0x00007FF8130ACBC0 (render)
+xchg r9d, r9d
+mov rdi, [rsi+0x08]
+add rdi, r11
+vmovss [rdi+rbp*4+0xC000000], xmm7
+vmovss xmm0, dword ptr [rsp+0x90]
+vdivss xmm0, xmm0, xmm7
+vmovss xmm1, dword ptr [rsp+0xC0]
+vdivss xmm13, xmm1, xmm7
+vroundss xmm1, xmm0, xmm0, 0x09
+vsubss xmm0, xmm0, xmm1
+vmulss xmm0, xmm0, dword ptr [rsp+0xF0]
+vcvttss2si edi, xmm0
+vroundss xmm0, xmm13, xmm13, 0x09
+vsubss xmm0, xmm13, xmm0
+vmulss xmm0, xmm0, dword ptr [rsp+0x2B0]
+vcvttss2si r15d, xmm0
+mov r12, [rsi]
+imul r15d, ebx
+add r15d, edi
+movsxd rdi, r15d
+lea rdi, [rdi+rdi*2]
+movzx r15d, byte ptr [r13+rdi*1+0x02]
+mov [r12+r14*1+0x9000002], r15b
+movzx edi, word ptr [r13+rdi*1]
+mov [r12+r14*1+0x9000000], di
+jmp 0x00007FF8130ACBC0 (render)
+vmovss xmm0, dword ptr [rsp+0x320]
+vmovss xmm1, dword ptr [rsp+0x70]
+vaddss xmm1, xmm0, xmm1
+vmovss [rsp+0x70], xmm1
+vmovaps xmm13, [rsp+0x3A0]
+vaddps xmm8, xmm13, xmm8
+vmovss xmm1, dword ptr [rsp+0x380]
+vmovss xmm4, dword ptr [rsp+0x110]
+vaddss xmm4, xmm1, xmm4
+vmovss [rsp+0x110], xmm4
+vmovss xmm11, dword ptr [rsp+0x4C]
+vmovss xmm4, dword ptr [rsp+0x100]
+vaddss xmm4, xmm11, xmm4
+vmovss [rsp+0x100], xmm4
+vmovss xmm5, dword ptr [rsp+0x1C0]
+vaddss xmm2, xmm5, xmm2
+vaddss xmm4, xmm10, xmm0
+vaddps xmm15, xmm13, xmm15
+vmovss xmm10, dword ptr [rsp+0xE0]
+vaddss xmm10, xmm10, xmm1
+vmovss [rsp+0xE0], xmm10
+vmovss xmm10, dword ptr [rsp+0x1D0]
+vaddss xmm10, xmm11, xmm10
+vmovss [rsp+0x1D0], xmm10
+vaddss xmm9, xmm9, xmm5
+vaddss xmm10, xmm0, xmm3
+vaddps xmm12, xmm13, xmm12
+vmovss xmm3, dword ptr [rsp+0x170]
+vaddss xmm3, xmm1, xmm3
+vmovss [rsp+0x170], xmm3
+vmovss xmm3, dword ptr [rsp+0xA0]
+vaddss xmm3, xmm11, xmm3
+vmovss [rsp+0xA0], xmm3
+vaddss xmm14, xmm14, xmm5
+vmovss xmm3, dword ptr [rsp+0x50]
+vaddss xmm3, xmm0, xmm3
+vmovss [rsp+0x50], xmm3
+vaddps xmm6, xmm13, xmm6
+vmovss xmm0, dword ptr [rsp+0x90]
+vaddss xmm0, xmm1, xmm0
+vmovss [rsp+0x90], xmm0
+vmovss xmm0, dword ptr [rsp+0xC0]
+vaddss xmm0, xmm11, xmm0
+vmovss [rsp+0xC0], xmm0
+vaddss xmm7, xmm5, xmm7
+xchg r10d, r10d
+add r14, 0x03
+inc rbp
+cmp r8d, ebp
+vmovss xmm5, dword ptr [rsp+0x210]
+vmovss xmm11, dword ptr [rsp+0x230]
+vmovaps xmm3, [rsp+0x280]
+jz 0x00007FF8130AC930 (render)

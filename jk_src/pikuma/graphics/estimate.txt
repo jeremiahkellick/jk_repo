@@ -1,0 +1,51 @@
+measured_cycles: 104,211,868
+estimated_cycles_memory: 7,649,873
+
+resolution: 1902x970
+pixels: 1,844,940
+samples: 7,379,760
+samples_inside: 4,809,205
+samples_written: 4,803,880
+
+iterations: 4,089,570
+bytes_written_total < (3+4)*samples_written = 33,627,160
+
+bytes_read_total:
+texture: 512*512 = 2^9 * 2^9 = 2^18 = 262,144 pixels * 3 bytes_per_pixel = 786,432
+z_buffer < 4samples_inside = 19,236,820
+
+WORKLOAD
+
+If inside:
+address_gen: ?
+integer_arithmetic: 11
+integer_multiplies: 4
+float_rounds: 8
+` Since vpmulld and vroundps have the same characteristics, call them group1
+group1: integer_multiplies + float_rounds ` = 12
+float_adds: 24
+float_subs: 8
+float_multiplies: 8
+float_arith: float_adds + float_subs + float_multiplies ` = 40
+float_divides: 8
+
+If outside:
+integer_arithmetic: 2
+float_arith: 24
+
+OP          TP      PORT_TP PORTS
+int_arith   0.25    0.25    1*p0156
+float_arith 0.50    0.50    1*p01
+group1      1.00    1.00    2*p01
+vdivps      5.00    1.00    1*p0
+
+PORT    WORKLOAD            CYCLES
+0            20 +  8 + 8    max(20 + 8 + 8, 8 * 5) = 40
+1            20 + 16        20 + 16                = 36
+5       6                   6                      =  6
+6       5                   5                      =  5
+
+40 cycles / 8 lanes = 5 cycles per pixel
+
+Target speedup: 12x
+Target milliseconds: 2.38

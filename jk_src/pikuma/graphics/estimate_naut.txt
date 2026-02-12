@@ -1,0 +1,28 @@
+run: 113951852
+fake_run: 9673092
+measured_cycles: run - fake_run ` = 104,278,760
+
+width: 1902
+height: 970
+pixels: width*height
+samples: 4pixels
+samples_inside: 4809205
+samples_written: 4803880
+
+iterations: 4089570
+
+bytes_written: (3+4)samples_written
+write_bytes_per_second: 14.738 * (1024 * 1024 * 1024)
+write_bytes_per_ms: write_bytes_per_second/1000
+ms_to_write: bytes_written/write_bytes_per_ms
+write_bytes_per_cycle: write_bytes_per_second/3600000000
+cycles_to_write: bytes_written/write_bytes_per_cycle
+
+outside_cycles: 12/8
+inside_cycles: 40/8
+
+backend_cycles: ((outside_cycles/4)(samples-samples_inside) + (inside_cycles/4)samples_inside)
+
+cycles: max(backend_cycles, cycles_to_write)
+
+measured_cycles/cycles, cycles/3600000 ` Target speedup, target ms
