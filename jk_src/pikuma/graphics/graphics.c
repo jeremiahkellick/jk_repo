@@ -1,15 +1,18 @@
 #include "graphics.h"
 
+#include <intrin.h>
+
 // #jk_build library
 // #jk_build export render
 // #jk_build single_translation_unit
+// #jk_build compiler_arguments -mavx2
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 // #jk_build dependencies_end
 
-static JkColor3 normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B};
-static JkColor3 test_bg = {.r = 0x27, .g = 0x27, .b = 0x16};
+static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
+static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 255};
 
 static JkVec3 camera_position_init = {0, 0, 1.75};
 static float camera_rot_angle_init = 5 * JK_PI / 4;
@@ -17,11 +20,9 @@ static float camera_rot_angle_init = 5 * JK_PI / 4;
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
 
-static JkVec2 sample_offsets[SAMPLE_COUNT] = {
-    {0x0.6p0f, 0x0.2p0f},
-    {0x0.ep0f, 0x0.6p0f},
-    {0x0.2p0f, 0x0.ap0f},
-    {0x0.ap0f, 0x0.ep0f},
+_Alignas(32) static float sample_offsets[2][LANE_COUNT] = {
+    {0x0.6p0f, 0x0.ep0f, 0x0.2p0f, 0x0.ap0f, 0x1.6p0f, 0x1.ep0f, 0x1.2p0f, 0x1.ap0f},
+    {0x0.2p0f, 0x0.6p0f, 0x0.ap0f, 0x0.ep0f, 0x0.2p0f, 0x0.6p0f, 0x0.ap0f, 0x0.ep0f},
 };
 
 typedef struct Triangle {
@@ -54,127 +55,129 @@ static JkIntRect triangle_bounding_box(Triangle t)
     };
 }
 
-typedef union BarycentricCoords {
-    JkVec3 value;
-    uint32_t bits[3];
-} BarycentricCoords;
+typedef enum Interpolant {
+    I_BARYCENTRIC_0,
+    I_BARYCENTRIC_1,
+    I_BARYCENTRIC_2,
+    I_U,
+    I_V,
+    I_Z,
+    INTERPOLANT_COUNT,
+} Interpolant;
+
+typedef struct Interpolants {
+    __m256 e[INTERPOLANT_COUNT];
+} Interpolants;
+
+__m256 sign_bit_set(__m256 x)
+{
+    return _mm256_castsi256_ps(_mm256_srai_epi32(_mm256_castps_si256(x), 31));
+}
+
+__m256 floor_f32w8(__m256 x)
+{
+    return _mm256_round_ps(x, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+}
 
 static void triangle_fill(State *state, Triangle tri, Bitmap texture)
 {
     JkIntRect screen_rect = {.min = (JkIntVec2){0}, .max = state->dimensions};
     JkIntRect bounds = jk_int_rect_intersect(screen_rect, triangle_bounding_box(tri));
-    JkIntVec2 dimensions = jk_int_rect_dimensions(bounds);
-
-    JkVec2 tex_float_dimensions = jk_vec2_from_int(texture.dimensions);
-
-    if (dimensions.x < 1) {
+    if (!(bounds.min.x < bounds.max.x && bounds.min.y < bounds.max.y)) {
         return;
     }
+    bounds.min.x &= ~1; // round min x down to nearest even
+    bounds.max.x = (bounds.max.x + 1) & ~1; // round max x up to nearest even
+    JkVec2 tex_float_dimensions = jk_vec2_from_int(texture.dimensions);
 
     JkVec2 verts_2d[3];
     for (int64_t i = 0; i < 3; i++) {
         verts_2d[i] = jk_vec3_to_2(tri.v[i]);
     }
 
+    Interpolants interpolants_row = {0};
+    float deltas[2][INTERPOLANT_COUNT] = {0};
+
     float barycentric_divisor = 0;
-    JkVec3 barycentric_delta[2];
-    JkVec3 barycentric_row[SAMPLE_COUNT];
     JkVec2 bounds_min = jk_vec2_from_int(bounds.min);
-    JkVec2 init_pos[SAMPLE_COUNT];
-    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-        init_pos[sample_index] = jk_vec2_add(bounds_min, sample_offsets[sample_index]);
+    __m256 init_pos[2];
+    for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
+        init_pos[axis_index] = _mm256_add_ps(_mm256_set1_ps(bounds_min.v[axis_index]),
+                _mm256_loadu_ps(sample_offsets[axis_index]));
     }
     for (int64_t i = 0; i < 3; i++) {
         int64_t a = (i + 1) % 3;
         int64_t b = (i + 2) % 3;
         float cross = jk_vec2_cross(verts_2d[a], verts_2d[b]);
         barycentric_divisor += cross;
-        barycentric_delta[0].v[i] = verts_2d[a].y - verts_2d[b].y;
-        barycentric_delta[1].v[i] = verts_2d[b].x - verts_2d[a].x;
-        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            barycentric_row[sample_index].v[i] =
-                    barycentric_delta[0].v[i] * init_pos[sample_index].x
-                    + barycentric_delta[1].v[i] * init_pos[sample_index].y + cross;
-        }
+        float x_delta = verts_2d[a].y - verts_2d[b].y;
+        float y_delta = verts_2d[b].x - verts_2d[a].x;
+        deltas[0][I_BARYCENTRIC_0 + i] = 2 * x_delta;
+        deltas[1][I_BARYCENTRIC_0 + i] = y_delta;
+        __m256 coord = _mm256_set1_ps(cross);
+        coord = _mm256_add_ps(coord, _mm256_mul_ps(_mm256_set1_ps(x_delta), init_pos[0]));
+        coord = _mm256_add_ps(coord, _mm256_mul_ps(_mm256_set1_ps(y_delta), init_pos[1]));
+        interpolants_row.e[I_BARYCENTRIC_0 + i] = coord;
     }
     for (int64_t i = 0; i < 3; i++) {
-        barycentric_delta[0].v[i] /= barycentric_divisor;
-        barycentric_delta[1].v[i] /= barycentric_divisor;
-        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            barycentric_row[sample_index].v[i] /= barycentric_divisor;
+        for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
+            deltas[axis_index][I_BARYCENTRIC_0 + i] /= barycentric_divisor;
+            deltas[axis_index][I_U] += deltas[axis_index][I_BARYCENTRIC_0 + i] * tri.t[i].x;
+            deltas[axis_index][I_V] += deltas[axis_index][I_BARYCENTRIC_0 + i] * tri.t[i].y;
+            deltas[axis_index][I_Z] += deltas[axis_index][I_BARYCENTRIC_0 + i] * tri.v[i].z;
         }
+        interpolants_row.e[I_BARYCENTRIC_0 + i] = _mm256_div_ps(
+                interpolants_row.e[I_BARYCENTRIC_0 + i], _mm256_set1_ps(barycentric_divisor));
+        interpolants_row.e[I_U] = _mm256_add_ps(interpolants_row.e[I_U],
+                _mm256_mul_ps(interpolants_row.e[I_BARYCENTRIC_0 + i], _mm256_set1_ps(tri.t[i].x)));
+        interpolants_row.e[I_V] = _mm256_add_ps(interpolants_row.e[I_V],
+                _mm256_mul_ps(interpolants_row.e[I_BARYCENTRIC_0 + i], _mm256_set1_ps(tri.t[i].y)));
+        interpolants_row.e[I_Z] = _mm256_add_ps(interpolants_row.e[I_Z],
+                _mm256_mul_ps(interpolants_row.e[I_BARYCENTRIC_0 + i], _mm256_set1_ps(tri.v[i].z)));
     }
 
-    JkVec3 vertex_texcoords[3];
-    for (int64_t i = 0; i < 3; i++) {
-        vertex_texcoords[i] = jk_vec2_to_3(tri.t[i], tri.v[i].z);
-    }
-    JkVec3 texcoord_row[SAMPLE_COUNT] = {0};
-    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-        for (int64_t i = 0; i < 3; i++) {
-            texcoord_row[sample_index] = jk_vec3_add(texcoord_row[sample_index],
-                    jk_vec3_mul(barycentric_row[sample_index].v[i], vertex_texcoords[i]));
-        }
-    }
-    JkVec3 texcoord_deltas[2] = {0};
-    for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
-        for (int64_t vertex_index = 0; vertex_index < 3; vertex_index++) {
-            texcoord_deltas[axis_index] = jk_vec3_add(texcoord_deltas[axis_index],
-                    jk_vec3_mul(barycentric_delta[axis_index].v[vertex_index],
-                            vertex_texcoords[vertex_index]));
-        }
-    }
-
-    int32_t pixel_index_row = bounds.min.y * DRAW_BUFFER_SIDE_LENGTH + bounds.min.x;
     for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
-        BarycentricCoords barycentric_coords[SAMPLE_COUNT];
-        jk_memcpy(barycentric_coords, barycentric_row, SAMPLE_COUNT * sizeof(barycentric_row[0]));
-        JkVec3 texcoord_3d[SAMPLE_COUNT];
-        jk_memcpy(texcoord_3d, texcoord_row, SAMPLE_COUNT * sizeof(texcoord_row[0]));
-        int32_t pixel_index = pixel_index_row;
-        for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
-            for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+        Interpolants interpolants = interpolants_row;
+        for (int32_t x = bounds.min.x; x < bounds.max.x; x += 2) {
+            int32_t sample_index = DRAW_BUFFER_SIDE_LENGTH * 4 * y + 4 * x;
+            __m256 outside_triangle = _mm256_setzero_ps();
+            for (int64_t i = 0; i < 3; i++) {
+                outside_triangle = _mm256_or_ps(
+                        outside_triangle, sign_bit_set(interpolants.e[I_BARYCENTRIC_0 + i]));
+            }
+            __m256 z_buffer = _mm256_loadu_ps(state->z_buffer + sample_index);
+            __m256 in_front = _mm256_cmp_ps(z_buffer, interpolants.e[I_Z], _CMP_LT_OQ);
+            __m256 visible = _mm256_andnot_ps(outside_triangle, in_front);
+            if (!_mm256_testz_ps(visible, visible)) {
+                _mm256_storeu_ps(state->z_buffer + sample_index,
+                        _mm256_blendv_ps(z_buffer, interpolants.e[I_Z], visible));
+                __m256 u = _mm256_div_ps(interpolants.e[I_U], interpolants.e[I_Z]);
+                __m256 v = _mm256_div_ps(interpolants.e[I_V], interpolants.e[I_Z]);
+                __m256 tex_x = _mm256_mul_ps(
+                        _mm256_set1_ps(tex_float_dimensions.x), _mm256_sub_ps(u, floor_f32w8(u)));
+                __m256 tex_y = _mm256_mul_ps(
+                        _mm256_set1_ps(tex_float_dimensions.y), _mm256_sub_ps(v, floor_f32w8(v)));
 
-                b32 in_front = state->z_buffer[PIXEL_COUNT * sample_index + pixel_index]
-                        < texcoord_3d[sample_index].z;
-                b32 outside_triangle = (barycentric_coords[sample_index].bits[0]
-                                               | barycentric_coords[sample_index].bits[1]
-                                               | barycentric_coords[sample_index].bits[2])
-                        & 0x80000000;
-                if (in_front && !outside_triangle) {
-                    state->z_buffer[PIXEL_COUNT * sample_index + pixel_index] =
-                            texcoord_3d[sample_index].z;
+                __m256 index =
+                        _mm256_mul_ps(_mm256_set1_ps(tex_float_dimensions.x), floor_f32w8(tex_y));
+                index = floor_f32w8(_mm256_add_ps(index, tex_x));
+                __m256i offset = _mm256_cvttps_epi32(_mm256_mul_ps(_mm256_set1_ps(3), index));
 
-                    JkVec2 texcoord_2d = {
-                        texcoord_3d[sample_index].x / texcoord_3d[sample_index].z,
-                        texcoord_3d[sample_index].y / texcoord_3d[sample_index].z,
-                    };
-
-                    // Texture lookup
-                    int32_t tex_x =
-                            tex_float_dimensions.x * (texcoord_2d.x - jk_floor_f32(texcoord_2d.x));
-                    int32_t tex_y =
-                            tex_float_dimensions.y * (texcoord_2d.y - jk_floor_f32(texcoord_2d.y));
-                    state->draw_buffer[PIXEL_COUNT * sample_index + pixel_index] =
-                            texture.memory[texture.dimensions.x * tex_y + tex_x];
-                }
+                __m256i color_buffer =
+                        _mm256_loadu_si256((__m256i *)(state->draw_buffer + sample_index));
+                __m256i color = _mm256_i32gather_epi32(texture.memory, offset, 1);
+                _mm256_storeu_si256((__m256i *)(state->draw_buffer + sample_index),
+                        _mm256_blendv_epi8(color_buffer, color, _mm256_castps_si256(visible)));
             }
 
-            pixel_index++;
-            for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                barycentric_coords[sample_index].value =
-                        jk_vec3_add(barycentric_coords[sample_index].value, barycentric_delta[0]);
-                texcoord_3d[sample_index] =
-                        jk_vec3_add(texcoord_3d[sample_index], texcoord_deltas[0]);
+            for (int64_t i = 0; i < INTERPOLANT_COUNT; i++) {
+                interpolants.e[i] = _mm256_add_ps(interpolants.e[i], _mm256_set1_ps(deltas[0][i]));
             }
         }
 
-        pixel_index_row += DRAW_BUFFER_SIDE_LENGTH;
-        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            barycentric_row[sample_index] =
-                    jk_vec3_add(barycentric_row[sample_index], barycentric_delta[1]);
-            texcoord_row[sample_index] =
-                    jk_vec3_add(texcoord_row[sample_index], texcoord_deltas[1]);
+        for (int64_t i = 0; i < INTERPOLANT_COUNT; i++) {
+            interpolants_row.e[i] =
+                    _mm256_add_ps(interpolants_row.e[i], _mm256_set1_ps(deltas[1][i]));
         }
     }
 }
@@ -184,14 +187,6 @@ static b32 clockwise(Triangle t)
     return (t.v[1].x - t.v[0].x) * (t.v[2].y - t.v[0].y)
             - (t.v[1].y - t.v[0].y) * (t.v[2].x - t.v[0].x)
             < 0;
-}
-
-static JkColor color_scalar_mul(float s, JkColor c)
-{
-    for (int64_t i = 0; i < 3; i++) {
-        c.v[i] = JK_MIN(255.0f, c.v[i] * s);
-    }
-    return c;
 }
 
 static Bitmap bitmap_from_span(Assets *assets, BitmapSpan span)
@@ -456,17 +451,15 @@ void render(JkContext *context, Assets *assets, State *state)
     };
 
     // Clear
-    JkColor3 bg = 0 < state->test_frames_remaining ? test_bg : normal_bg;
+    JkColor bg = 0 < state->test_frames_remaining ? test_bg : normal_bg;
     for (int32_t y = 0; y < state->dimensions.y; y++) {
-        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            int32_t row_index = (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y);
-            for (int32_t x = 0; x < state->dimensions.x; x++) {
-                state->draw_buffer[row_index + x] = bg;
-            }
-            jk_memset(state->z_buffer + row_index,
-                    0,
-                    state->dimensions.x * JK_SIZEOF(*state->z_buffer));
+        int32_t row_index = DRAW_BUFFER_SIDE_LENGTH * 4 * y;
+        for (int32_t x = 0; x < 4 * state->dimensions.x; x++) {
+            state->draw_buffer[row_index + x] = bg;
         }
+        jk_memset(state->z_buffer + row_index,
+                0,
+                4 * state->dimensions.x * JK_SIZEOF(*state->z_buffer));
     }
 
     float near_clip = 0.2f;
@@ -604,28 +597,23 @@ void render(JkContext *context, Assets *assets, State *state)
     JK_PROFILE_ZONE_END(triangles);
 
     JK_PROFILE_ZONE_TIME_BEGIN(pixels);
-    int32_t pixel_index_row = 0;
     for (int32_t y = 0; y < state->dimensions.y; y++) {
-        int32_t pixel_index = pixel_index_row;
         for (int32_t x = 0; x < state->dimensions.x; x++) {
             int32_t color_channels[3] = {0};
             for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                JkColor3 sample_color =
-                        state->draw_buffer[PIXEL_COUNT * sample_index + pixel_index];
+                JkColor sample_color =
+                        state->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * 4 * y + 4 * x + sample_index];
                 for (int64_t channel_index = 0; channel_index < 3; channel_index++) {
                     color_channels[channel_index] += sample_color.v[channel_index];
                 }
             }
-            JkColor3 pixel_color;
+            JkColor pixel_color;
             for (int64_t channel_index = 0; channel_index < 3; channel_index++) {
                 pixel_color.v[channel_index] = color_channels[channel_index] / 4;
             }
+            pixel_color.a = 255;
             state->draw_buffer[y * DRAW_BUFFER_SIDE_LENGTH + x] = pixel_color;
-
-            pixel_index++;
         }
-
-        pixel_index_row += DRAW_BUFFER_SIDE_LENGTH;
     }
     JK_PROFILE_ZONE_END(pixels);
 

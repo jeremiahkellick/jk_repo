@@ -10,8 +10,9 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
-#include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
+
+#include <jk_src/pikuma/graphics/graphics.h>
 
 #if JK_BUILD_MODE == JK_RELEASE
 #include <jk_gen/pikuma/graphics/assets.c>
@@ -39,7 +40,6 @@ typedef struct Global {
 } Global;
 
 static Global g = {.keyboard_lock = SRWLOCK_INIT};
-static JkColor clear_color = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 
 static void update_dimensions(HWND window)
 {
@@ -79,7 +79,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
                     .biWidth = DRAW_BUFFER_SIDE_LENGTH,
                     .biHeight = -DRAW_BUFFER_SIDE_LENGTH,
                     .biPlanes = 1,
-                    .biBitCount = 24,
+                    .biBitCount = 32,
                     .biCompression = BI_RGB,
                 },
     };
@@ -485,7 +485,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         jk_log(JK_LOG_FATAL, JKS("Failed to allocate memory\n"));
         exit(1);
     }
-    g.state.draw_buffer = (JkColor3 *)memory;
+    g.state.draw_buffer = (JkColor *)memory;
     g.state.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
     g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE;
 

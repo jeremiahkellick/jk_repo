@@ -7,10 +7,11 @@
 #define DELTA_TIME (1.0f / FPS)
 
 #define SAMPLE_COUNT 4
+#define LANE_COUNT 8
 
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
 #define PIXEL_COUNT (DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
-#define DRAW_BUFFER_SIZE (SAMPLE_COUNT * PIXEL_COUNT * JK_SIZEOF(JkColor3))
+#define DRAW_BUFFER_SIZE (SAMPLE_COUNT * PIXEL_COUNT * JK_SIZEOF(JkColor))
 #define Z_BUFFER_SIZE (SAMPLE_COUNT * PIXEL_COUNT * JK_SIZEOF(float))
 
 #define CLEAR_COLOR_R 0x00
@@ -75,7 +76,7 @@ typedef struct Pixel {
 } Pixel;
 
 typedef struct State {
-    JkColor3 *draw_buffer;
+    JkColor *draw_buffer;
     float *z_buffer;
     JkBuffer memory;
     int64_t os_timer_frequency;
