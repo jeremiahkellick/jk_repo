@@ -69,9 +69,14 @@ typedef struct Interpolants {
     __m256 e[INTERPOLANT_COUNT];
 } Interpolants;
 
-__m256 sign_bit_set(__m256 x)
+b32 any_sign_bit_set(__m256 x)
 {
-    return _mm256_castsi256_ps(_mm256_srai_epi32(_mm256_castps_si256(x), 31));
+    return !_mm256_testz_ps(x, x);
+}
+
+b32 any_sign_bit_unset(__m256 x)
+{
+    return !_mm256_testc_ps(x, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
 }
 
 __m256 floor_f32w8(__m256 x)
@@ -140,34 +145,34 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
         Interpolants interpolants = interpolants_row;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x += 2) {
             int32_t sample_index = DRAW_BUFFER_SIDE_LENGTH * 4 * y + 4 * x;
-            __m256 outside_triangle = _mm256_setzero_ps();
-            for (int64_t i = 0; i < 3; i++) {
-                outside_triangle = _mm256_or_ps(
-                        outside_triangle, sign_bit_set(interpolants.e[I_BARYCENTRIC_0 + i]));
-            }
-            __m256 z_buffer = _mm256_loadu_ps(state->z_buffer + sample_index);
-            __m256 in_front = _mm256_cmp_ps(z_buffer, interpolants.e[I_Z], _CMP_LT_OQ);
-            __m256 visible = _mm256_andnot_ps(outside_triangle, in_front);
-            if (!_mm256_testz_ps(visible, visible)) {
-                _mm256_storeu_ps(state->z_buffer + sample_index,
-                        _mm256_blendv_ps(z_buffer, interpolants.e[I_Z], visible));
-                __m256 u = _mm256_div_ps(interpolants.e[I_U], interpolants.e[I_Z]);
-                __m256 v = _mm256_div_ps(interpolants.e[I_V], interpolants.e[I_Z]);
-                __m256 tex_x = _mm256_mul_ps(
-                        _mm256_set1_ps(tex_float_dimensions.x), _mm256_sub_ps(u, floor_f32w8(u)));
-                __m256 tex_y = _mm256_mul_ps(
-                        _mm256_set1_ps(tex_float_dimensions.y), _mm256_sub_ps(v, floor_f32w8(v)));
+            __m256 outside_triangle = _mm256_or_ps(
+                    _mm256_or_ps(interpolants.e[I_BARYCENTRIC_0], interpolants.e[I_BARYCENTRIC_1]),
+                    interpolants.e[I_BARYCENTRIC_2]);
+            if (any_sign_bit_unset(outside_triangle)) {
+                __m256 z_buffer = _mm256_loadu_ps(state->z_buffer + sample_index);
+                __m256 in_front = _mm256_cmp_ps(z_buffer, interpolants.e[I_Z], _CMP_LT_OQ);
+                __m256 visible = _mm256_andnot_ps(outside_triangle, in_front);
+                if (any_sign_bit_set(visible)) {
+                    _mm256_storeu_ps(state->z_buffer + sample_index,
+                            _mm256_blendv_ps(z_buffer, interpolants.e[I_Z], visible));
+                    __m256 u = _mm256_div_ps(interpolants.e[I_U], interpolants.e[I_Z]);
+                    __m256 v = _mm256_div_ps(interpolants.e[I_V], interpolants.e[I_Z]);
+                    __m256 tex_x = _mm256_mul_ps(_mm256_set1_ps(tex_float_dimensions.x),
+                            _mm256_sub_ps(u, floor_f32w8(u)));
+                    __m256 tex_y = _mm256_mul_ps(_mm256_set1_ps(tex_float_dimensions.y),
+                            _mm256_sub_ps(v, floor_f32w8(v)));
 
-                __m256 index =
-                        _mm256_mul_ps(_mm256_set1_ps(tex_float_dimensions.x), floor_f32w8(tex_y));
-                index = floor_f32w8(_mm256_add_ps(index, tex_x));
-                __m256i offset = _mm256_cvttps_epi32(_mm256_mul_ps(_mm256_set1_ps(3), index));
+                    __m256 index = _mm256_mul_ps(
+                            _mm256_set1_ps(tex_float_dimensions.x), floor_f32w8(tex_y));
+                    index = floor_f32w8(_mm256_add_ps(index, tex_x));
+                    __m256i offset = _mm256_cvttps_epi32(_mm256_mul_ps(_mm256_set1_ps(3), index));
 
-                __m256i color_buffer =
-                        _mm256_loadu_si256((__m256i *)(state->draw_buffer + sample_index));
-                __m256i color = _mm256_i32gather_epi32(texture.memory, offset, 1);
-                _mm256_storeu_si256((__m256i *)(state->draw_buffer + sample_index),
-                        _mm256_blendv_epi8(color_buffer, color, _mm256_castps_si256(visible)));
+                    __m256 color_buffer =
+                            _mm256_loadu_ps((float *)(state->draw_buffer + sample_index));
+                    __m256i color = _mm256_i32gather_epi32(texture.memory, offset, 1);
+                    _mm256_storeu_ps((float *)(state->draw_buffer + sample_index),
+                            _mm256_blendv_ps(color_buffer, _mm256_castsi256_ps(color), visible));
+                }
             }
 
             for (int64_t i = 0; i < INTERPOLANT_COUNT; i++) {

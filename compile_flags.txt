@@ -1,4 +1,5 @@
 -mfma
+-mavx2
 -I.
 -D JK_PUBLIC=
 -D JK_GLOBAL_DECLARE=extern

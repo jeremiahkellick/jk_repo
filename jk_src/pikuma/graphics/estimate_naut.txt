@@ -2,7 +2,7 @@ run: 113951852
 fake_run: 9673092
 measured_cycles: run - fake_run ` = 104,278,760
 
-simd_run: 30939784
+simd_run: 24136914
 simd_fake_run: 1662564
 measured_cycles_simd: simd_run - simd_fake_run
 
@@ -15,6 +15,11 @@ samples_written: 4803880
 
 iterations: 4089570
 
+simd_iterations: 2045700
+simd_iterations_in: 603616
+simd_iterations_out: simd_iterations - simd_iterations_in
+simd_est_backend_cycles: 15simd_iterations_in + 5simd_iterations_out
+
 bytes_written: (4+4)samples_written
 write_bytes_per_second: 14.738 * (1024 * 1024 * 1024)
 write_bytes_per_ms: write_bytes_per_second/1000
@@ -22,11 +27,6 @@ ms_to_write: bytes_written/write_bytes_per_ms
 write_bytes_per_cycle: write_bytes_per_second/3600000000
 cycles_to_write: bytes_written/write_bytes_per_cycle
 
-outside_cycles: 12/8
-inside_cycles: 40/8
-
-backend_cycles: ((outside_cycles/4)(samples-samples_inside) + (inside_cycles/4)samples_inside)
-
-cycles: max(backend_cycles, cycles_to_write)
+cycles: max(simd_est_backend_cycles, cycles_to_write)
 
 measured_cycles/measured_cycles_simd, measured_cycles_simd/cycles ` Speedup, Factor of target
