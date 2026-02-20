@@ -4,33 +4,6 @@
 
 #if defined(_MSC_VER) && !defined(__clang__)
 
-// copied from intrin.h
-#ifndef __INTRIN_H_
-uint64_t __lzcnt64(uint64_t);
-typedef union __declspec(intrin_type) __declspec(align(16)) __m128 {
-    float m128_f32[4];
-    unsigned __int64 m128_u64[2];
-    __int8 m128_i8[16];
-    __int16 m128_i16[8];
-    __int32 m128_i32[4];
-    __int64 m128_i64[2];
-    unsigned __int8 m128_u8[16];
-    unsigned __int16 m128_u16[8];
-    unsigned __int32 m128_u32[4];
-} __m128;
-extern __m128 _mm_setzero_ps(void);
-extern __m128 _mm_set_ss(float _A);
-extern __m128 _mm_sqrt_ss(__m128 _A);
-extern float _mm_cvtss_f32(__m128 _A);
-#define _MM_FROUND_TO_NEAREST_INT 0x00
-#define _MM_FROUND_TO_NEG_INF 0x01
-#define _MM_FROUND_TO_POS_INF 0x02
-#define _MM_FROUND_RAISE_EXC 0x00
-#define _MM_FROUND_FLOOR _MM_FROUND_TO_NEG_INF | _MM_FROUND_RAISE_EXC
-#define _MM_FROUND_CEIL _MM_FROUND_TO_POS_INF | _MM_FROUND_RAISE_EXC
-extern __m128 _mm_round_ss(__m128, __m128, int);
-#endif
-
 JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
 {
     return __lzcnt64(value);
@@ -95,6 +68,88 @@ JK_PUBLIC float jk_sqrt_f32(float value)
 // ---- ISA-specific implementations begin -------------------------------------
 
 #if defined(__x86_64__) || defined(_M_X64)
+
+JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value)
+{
+    return (JkF32x8){_mm256_set1_ps(value)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer)
+{
+    return (JkF32x8){_mm256_loadu_ps(pointer)};
+}
+
+JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
+{
+    _mm256_storeu_ps(pointer, x.v);
+}
+
+// Truncates offset
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkF32x8 offset)
+{
+    return (JkF32x8){_mm256_i32gather_ps(pointer, _mm256_cvttps_epi32(offset.v), 1)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_add_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_sub_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_mul_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_div_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x)
+{
+    return (JkF32x8){_mm256_round_ps(x.v, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_and_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_or_ps(a.v, b.v)};
+}
+
+// ~a & b
+JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_andnot_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_cmp_ps(a.v, b.v, _CMP_LT_OQ)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
+{
+    return (JkF32x8){_mm256_blendv_ps(false_value.v, true_value.v, mask.v)};
+}
+
+JK_PUBLIC b32 jk_f32x8_any_sign_bit_set(JkF32x8 x)
+{
+    return !_mm256_testz_ps(x.v, x.v);
+}
+
+JK_PUBLIC b32 jk_f32x8_any_sign_bit_unset(JkF32x8 x)
+{
+    return !_mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
+}
 
 #if defined(_MSC_VER) && !defined(__clang__)
 

@@ -35,6 +35,26 @@ typedef uint32_t b32;
 #define JK_THREAD_LOCAL __thread
 #endif
 
+// ---- ISA-specific definitions begin -----------------------------------------
+
+#if defined(__x86_64__) || defined(_M_X64)
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
+
+typedef struct JkF32x8 {
+    __m256 v;
+} JkF32x8;
+
+#else
+
+#endif
+
+// ---- ISA-specific definitions end -------------------------------------------
+
 typedef struct JkBuffer {
     int64_t size;
     uint8_t *data;
@@ -396,6 +416,44 @@ JK_PUBLIC float jk_acos_core_f32(float value);
 JK_PUBLIC float jk_acos_f32(float value);
 
 // ---- Math end ---------------------------------------------------------------
+
+// ---- Simd begin -------------------------------------------------------------
+
+JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value);
+
+JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer);
+
+JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x);
+
+// Truncates offset
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkF32x8 offset);
+
+JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x);
+
+JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b);
+
+// ~a & b
+JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask);
+
+JK_PUBLIC b32 jk_f32x8_any_sign_bit_set(JkF32x8 x);
+
+JK_PUBLIC b32 jk_f32x8_any_sign_bit_unset(JkF32x8 x);
+
+// ---- Simd end ---------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
