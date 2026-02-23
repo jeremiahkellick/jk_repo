@@ -45,6 +45,10 @@ typedef uint32_t b32;
 #include <x86intrin.h>
 #endif
 
+typedef struct JkI256 {
+    __m256i v;
+} JkI256;
+
 typedef struct JkF32x8 {
     __m256 v;
 } JkF32x8;
@@ -417,7 +421,31 @@ JK_PUBLIC float jk_acos_f32(float value);
 
 // ---- Math end ---------------------------------------------------------------
 
-// ---- Simd begin -------------------------------------------------------------
+// ---- SIMD begin -------------------------------------------------------------
+
+JK_PUBLIC JkI256 jk_i256_zero(void);
+
+JK_PUBLIC JkI256 jk_i256_load(void *pointer);
+
+JK_PUBLIC void jk_i256_store(void *pointer, JkI256 value);
+
+JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b);
+
+JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b);
+
+JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value);
+
+JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b);
+
+JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b);
+
+JK_PUBLIC JkI256 jk_i256_shift_left_i32(JkI256 x, int32_t bit_count);
+
+JK_PUBLIC JkI256 jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count);
+
+JK_PUBLIC JkI256 jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count);
+
+JK_PUBLIC JkF32x8 jk_f32x8_zero(void);
 
 JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value);
 
@@ -451,9 +479,9 @@ JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x
 
 JK_PUBLIC b32 jk_f32x8_any_sign_bit_set(JkF32x8 x);
 
-JK_PUBLIC b32 jk_f32x8_any_sign_bit_unset(JkF32x8 x);
+JK_PUBLIC b32 jk_f32x8_any_sign_bit_clear(JkF32x8 x);
 
-// ---- Simd end ---------------------------------------------------------------
+// ---- SIMD end ---------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 

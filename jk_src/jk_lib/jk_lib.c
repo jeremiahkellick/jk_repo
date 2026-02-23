@@ -69,6 +69,66 @@ JK_PUBLIC float jk_sqrt_f32(float value)
 
 #if defined(__x86_64__) || defined(_M_X64)
 
+JK_PUBLIC JkI256 jk_i256_zero(void)
+{
+    return (JkI256){_mm256_setzero_si256()};
+}
+
+JK_PUBLIC JkI256 jk_i256_load(void *pointer)
+{
+    return (JkI256){_mm256_loadu_si256(pointer)};
+}
+
+JK_PUBLIC void jk_i256_store(void *pointer, JkI256 x)
+{
+    _mm256_storeu_si256(pointer, x.v);
+}
+
+JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b)
+{
+    return (JkI256){_mm256_and_si256(a.v, b.v)};
+}
+
+JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b)
+{
+    return (JkI256){_mm256_or_si256(a.v, b.v)};
+}
+
+JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value)
+{
+    return (JkI256){_mm256_set1_epi32(value)};
+}
+
+JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b)
+{
+    return (JkI256){_mm256_add_epi32(a.v, b.v)};
+}
+
+JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b)
+{
+    return (JkI256){_mm256_sub_epi32(a.v, b.v)};
+}
+
+JK_PUBLIC JkI256 jk_i256_shift_left_i32(JkI256 x, int32_t bit_count)
+{
+    return (JkI256){_mm256_slli_epi32(x.v, bit_count)};
+}
+
+JK_PUBLIC JkI256 jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count)
+{
+    return (JkI256){_mm256_srli_epi32(x.v, bit_count)};
+}
+
+JK_PUBLIC JkI256 jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count)
+{
+    return (JkI256){_mm256_srai_epi32(x.v, bit_count)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_zero(void)
+{
+    return (JkF32x8){_mm256_setzero_ps()};
+}
+
 JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value)
 {
     return (JkF32x8){_mm256_set1_ps(value)};
@@ -146,7 +206,7 @@ JK_PUBLIC b32 jk_f32x8_any_sign_bit_set(JkF32x8 x)
     return !_mm256_testz_ps(x.v, x.v);
 }
 
-JK_PUBLIC b32 jk_f32x8_any_sign_bit_unset(JkF32x8 x)
+JK_PUBLIC b32 jk_f32x8_any_sign_bit_clear(JkF32x8 x)
 {
     return !_mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
 }
@@ -2223,7 +2283,7 @@ static void jk_profile_report_frame_build(JkArena *arena,
             jkf_nl,
             jkfs(name),
             jkfn(": "),
-            jkfi(total),
+            jkfi(total / frame_count),
             jkfn(" ("),
             jkff(total_ms, 4),
             jkfn("ms)\n"));

@@ -79,10 +79,7 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
     if (!(bounds.min.x < bounds.max.x && bounds.min.y < bounds.max.y)) {
         return;
     }
-    bounds.min.y &= ~(2 - 1);
-    bounds.max.y = (bounds.max.y + (2 - 1)) & ~(2 - 1);
     bounds.min.x &= ~(8 - 1);
-    bounds.max.x = (bounds.max.x + (8 - 1)) & ~(8 - 1);
     JkVec2 tex_float_dimensions = jk_vec2_from_int(texture.dimensions);
 
     JkVec2 verts_2d[3];
@@ -158,7 +155,7 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
                 JkF32x8 outside_triangle = jk_f32x8_or(interpolants.e[I_BARYCENTRIC_0],
                         jk_f32x8_or(
                                 interpolants.e[I_BARYCENTRIC_1], interpolants.e[I_BARYCENTRIC_2]));
-                if (jk_f32x8_any_sign_bit_unset(outside_triangle)) {
+                if (jk_f32x8_any_sign_bit_clear(outside_triangle)) {
                     int32_t index = PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x;
                     JkF32x8 z_buffer = jk_f32x8_load(state->z_buffer + index);
                     JkF32x8 in_front = jk_f32x8_less_than(z_buffer, interpolants.e[I_Z]);
@@ -618,26 +615,25 @@ void render(JkContext *context, Assets *assets, State *state)
     JK_PROFILE_ZONE_TIME_BEGIN(pixels);
     for (int32_t y = 0; y < state->dimensions.y; y++) {
         for (int32_t x = 0; x < state->dimensions.x; x += 8) {
-            __m256i channels[3] = {
-                _mm256_setzero_si256(), _mm256_setzero_si256(), _mm256_setzero_si256()};
+            JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
             for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                __m256i sample = _mm256_loadu_si256((__m256i *)(state->draw_buffer
-                        + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x)));
+                JkI256 sample = jk_i256_load(state->draw_buffer
+                        + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
                 for (int64_t channel_index = 0; channel_index < 3; channel_index++) {
-                    channels[channel_index] = _mm256_add_epi32(channels[channel_index],
-                            _mm256_and_si256(_mm256_srli_epi32(sample, 8 * channel_index),
-                                    _mm256_set1_epi32(0xff)));
+                    channels[channel_index] = jk_i256_add_i32(channels[channel_index],
+                            jk_i256_and(
+                                    jk_i256_shift_right_zero_fill_i32(sample, 8 * channel_index),
+                                    jk_i256_broadcast_i32(0xff)));
                 }
             }
 
-            __m256i color = _mm256_setzero_si256();
+            JkI256 color = jk_i256_zero();
             for (int64_t channel_index = 0; channel_index < 3; channel_index++) {
-                __m256i avg = _mm256_srli_epi32(channels[channel_index], 2);
-                color = _mm256_or_si256(color, _mm256_slli_epi32(avg, 8 * channel_index));
+                JkI256 avg = jk_i256_shift_right_zero_fill_i32(channels[channel_index], 2);
+                color = jk_i256_or(color, jk_i256_shift_left_i32(avg, 8 * channel_index));
             }
 
-            _mm256_storeu_si256(
-                    (__m256i *)(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x)), color);
+            jk_i256_store(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
         }
     }
     JK_PROFILE_ZONE_END(pixels);
