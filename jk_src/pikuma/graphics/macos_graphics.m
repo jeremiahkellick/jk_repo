@@ -134,7 +134,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     JkPlatformArenaVirtualRoot arena_root;
     JkArena arena = jk_platform_arena_virtual_init(&arena_root, 8 * JK_GIGABYTE);
     if (!jk_arena_valid(&arena)) {
-        jk_print(JKS("Failed to initialize virtual memory arena\n"));
+        jk_log(JK_LOG_ERROR, JKS("Failed to initialize virtual memory arena\n"));
         exit(1);
     }
 
@@ -142,7 +142,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
     g.state.memory.size = 2 * JK_MEGABYTE;
     uint8_t *memory = mmap(NULL,
-            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE + g.state.memory.size,
+            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + g.state.memory.size,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANON,
             -1,
@@ -153,10 +153,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
     g.state.draw_buffer = (JkColor *)memory;
     g.state.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
-    g.state.next_buffer = (PixelIndex *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
-    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + NEXT_BUFFER_SIZE;
+    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE;
 
-    g.state.print = jk_print;
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
     g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
 
@@ -176,6 +174,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
 
     g.running = 0;
+
+    return 0;
 }
 
 static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
@@ -401,8 +401,8 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
         NSRect window_rect = [self.window contentRectForFrameRect:self.window.frame];
         CGFloat x = mouse_location.x - window_rect.origin.x;
         CGFloat y = window_rect.size.height - (mouse_location.y - window_rect.origin.y);
-        g.state.mouse_pos.x = x * self.scale_factor;
-        g.state.mouse_pos.y = y * self.scale_factor;
+        g.state.mouse.position.x = x * self.scale_factor;
+        g.state.mouse.position.y = y * self.scale_factor;
     }
 
     pthread_mutex_lock(&g.keyboard_lock);
@@ -420,10 +420,10 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     int32_t deadzone = 10;
 
     if (JK_FLAG_GET(mouse_flags, MOUSE_LEFT_PRESSED) && !g.capture_mouse
-            && deadzone <= g.state.mouse_pos.x
-            && g.state.mouse_pos.x < (g.state.dimensions.x - deadzone)
-            && deadzone <= g.state.mouse_pos.y
-            && g.state.mouse_pos.y < (g.state.dimensions.y - deadzone)) {
+            && deadzone <= g.state.mouse.position.x
+            && g.state.mouse.position.x < (g.state.dimensions.x - deadzone)
+            && deadzone <= g.state.mouse.position.y
+            && g.state.mouse.position.y < (g.state.dimensions.y - deadzone)) {
         g.capture_mouse = 1;
         CGDisplayHideCursor(CVDisplayLinkGetCurrentCGDisplay(self.display_link));
     }
@@ -435,9 +435,9 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     }
     CGAssociateMouseAndMouseCursorPosition(!g.capture_mouse);
 
-    g.state.mouse_delta = g.capture_mouse ? mouse_delta : (JkVec2){0};
+    g.state.mouse.delta = g.capture_mouse ? mouse_delta : (JkVec2){0};
 
-    render(g.assets, &g.state);
+    render(jk_context, g.assets, &g.state);
 
     // Copy bitmap buffer into texture
     [self.texture replaceRegion:MTLRegionMake2D(0, 0, g.state.dimensions.x, g.state.dimensions.y)

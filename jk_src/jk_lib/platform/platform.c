@@ -479,6 +479,11 @@ JK_PUBLIC JK_NOINLINE JkBuffer jk_platform_stack_trace(
 #include <time.h>
 #endif
 
+int32_t main(int32_t argc, char **argv)
+{
+    return jk_platform_init_common(argc, argv);
+}
+
 JK_PUBLIC int64_t jk_platform_file_size(char *file_name)
 {
     struct stat stat_struct = {0};

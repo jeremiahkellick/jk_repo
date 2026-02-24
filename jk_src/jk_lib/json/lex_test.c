@@ -22,7 +22,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     JkJsonToken token;
     do {
         token = jk_json_lex(text, &pos, &storage);
-        if (token.type == JK_JSON_INVALID) {
+        if (token.type == JK_JSON_TOKEN_INVALID) {
             fprintf(stderr, "%s: Invalid JSON\n", argv[0]);
             exit(1);
         }

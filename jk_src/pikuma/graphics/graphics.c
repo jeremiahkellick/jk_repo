@@ -394,6 +394,11 @@ void render(JkContext *context, Assets *assets, State *state)
         jk_profile_reset();
     }
 
+    if (0 < state->test_frames_remaining) {
+        state->dimensions.x = 1902;
+        state->dimensions.y = 970;
+    }
+
     jk_profile_frame_begin();
 
     JkArenaRoot arena_root;
