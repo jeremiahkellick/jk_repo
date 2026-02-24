@@ -17,7 +17,11 @@ typedef uint32_t b32;
 #define JK_READONLY __declspec(allocate("jk_readonly"))
 #define JK_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
+#ifdef __MACH__
+#define JK_READONLY __attribute__((section("__DATA_CONST,jk_readonly")))
+#else
 #define JK_READONLY __attribute__((section(".rodata")))
+#endif
 #define JK_NOINLINE __attribute__((noinline))
 #else
 #define JK_READONLY
@@ -53,7 +57,17 @@ typedef struct JkF32x8 {
     __m256 v;
 } JkF32x8;
 
-#else
+#elif defined(__arm64__)
+
+#if __MACH__
+
+#include <simd/simd.h>
+
+typedef simd_int8 JkI256;
+
+typedef simd_float8 JkF32x8;
+
+#endif
 
 #endif
 
