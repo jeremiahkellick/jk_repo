@@ -59,15 +59,27 @@ typedef struct JkF32x8 {
 
 #elif defined(__arm64__)
 
-#if __MACH__
+#include <arm_neon.h>
 
-#include <simd/simd.h>
+typedef int32x4x2_t JkI256;
 
-typedef simd_int8 JkI256;
+typedef float32x4x2_t JkF32x8;
 
-typedef simd_float8 JkF32x8;
+// clang-format off
 
-#endif
+#define JK_I256_SHIFT_LEFT_I32(x, bit_count) \
+    (int32x4x2_t){vshlq_n_s32((x).val[0], bit_count), vshlq_n_s32((x).val[1], bit_count)}
+
+#define JK_I256_SHIFT_RIGHT_ZERO_FILL_I32(x, bit_count)                                   \
+    (int32x4x2_t){                                                                        \
+        vreinterpretq_s32_u32(vshrq_n_u32(vreinterpretq_u32_s32((x).val[0]), bit_count)), \
+        vreinterpretq_s32_u32(vshrq_n_u32(vreinterpretq_u32_s32((x).val[1]), bit_count)), \
+    }
+
+#define JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(x, bit_count) \
+    (int32x4x2_t){vshrq_n_s32((x).val[0], bit_count), vshrq_n_s32((x).val[1], bit_count)}
+
+// clang-format on
 
 #endif
 
@@ -453,12 +465,6 @@ JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b);
 
 JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b);
 
-JK_PUBLIC JkI256 jk_i256_shift_left_i32(JkI256 x, int32_t bit_count);
-
-JK_PUBLIC JkI256 jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count);
-
-JK_PUBLIC JkI256 jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count);
-
 JK_PUBLIC JkF32x8 jk_f32x8_zero(void);
 
 JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value);
@@ -491,9 +497,13 @@ JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b);
 
 JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask);
 
-JK_PUBLIC b32 jk_f32x8_any_sign_bit_set(JkF32x8 x);
+JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x);
 
-JK_PUBLIC b32 jk_f32x8_any_sign_bit_clear(JkF32x8 x);
+JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x);
+
+JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x);
+
+JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x);
 
 // ---- SIMD end ---------------------------------------------------------------
 

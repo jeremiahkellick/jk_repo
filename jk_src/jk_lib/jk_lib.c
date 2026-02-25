@@ -236,6 +236,174 @@ JK_PUBLIC uint64_t jk_cpu_timer_get(void)
     return timebase;
 }
 
+JK_PUBLIC JkI256 jk_i256_zero(void)
+{
+    return (int32x4x2_t){vdupq_n_s32(0), vdupq_n_s32(0)};
+}
+
+JK_PUBLIC JkI256 jk_i256_load(void *pointer)
+{
+    return vld1q_s32_x2(pointer);
+}
+
+JK_PUBLIC void jk_i256_store(void *pointer, JkI256 value)
+{
+    vst1q_s32_x2(pointer, value);
+}
+
+JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b)
+{
+    return (int32x4x2_t){vandq_s32(a.val[0], b.val[0]), vandq_s32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b)
+{
+    return (int32x4x2_t){vorrq_s32(a.val[0], b.val[0]), vorrq_s32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value)
+{
+    return (int32x4x2_t){vdupq_n_s32(value), vdupq_n_s32(value)};
+}
+
+JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b)
+{
+    return (int32x4x2_t){vaddq_s32(a.val[0], b.val[0]), vaddq_s32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b)
+{
+    return (int32x4x2_t){vsubq_s32(a.val[0], b.val[0]), vsubq_s32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_zero(void)
+{
+    return (float32x4x2_t){vdupq_n_f32(0), vdupq_n_f32(0)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value)
+{
+    return (float32x4x2_t){vdupq_n_f32(value), vdupq_n_f32(value)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer)
+{
+    return vld1q_f32_x2(pointer);
+}
+
+JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
+{
+    vst1q_f32_x2(pointer, x);
+}
+
+// Truncates offset
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkF32x8 offset)
+{
+    uint8_t *ptr = pointer;
+    int32x4x2_t off = {vcvtq_s32_f32(offset.val[0]), vcvtq_s32_f32(offset.val[1])};
+    float32x4x2_t r = jk_f32x8_zero();
+
+    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 0)), r.val[0], 0);
+    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 1)), r.val[0], 1);
+    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 2)), r.val[0], 2);
+    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 3)), r.val[0], 3);
+
+    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 0)), r.val[1], 0);
+    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 1)), r.val[1], 1);
+    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 2)), r.val[1], 2);
+    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 3)), r.val[1], 3);
+
+    return r;
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
+{
+    return (float32x4x2_t){vaddq_f32(a.val[0], b.val[0]), vaddq_f32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b)
+{
+    return (float32x4x2_t){vsubq_f32(a.val[0], b.val[0]), vsubq_f32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b)
+{
+    return (float32x4x2_t){vmulq_f32(a.val[0], b.val[0]), vmulq_f32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b)
+{
+    return (float32x4x2_t){vdivq_f32(a.val[0], b.val[0]), vdivq_f32(a.val[1], b.val[1])};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x)
+{
+    return (float32x4x2_t){vrndmq_f32(x.val[0]), vrndmq_f32(x.val[1])};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b)
+{
+    return jk_reinterpret_i256_as_f32x8(
+            jk_i256_and(jk_reinterpret_f32x8_as_i256(a), jk_reinterpret_f32x8_as_i256(b)));
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b)
+{
+    return jk_reinterpret_i256_as_f32x8(
+            jk_i256_or(jk_reinterpret_f32x8_as_i256(a), jk_reinterpret_f32x8_as_i256(b)));
+}
+
+// ~a & b
+JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b)
+{
+    int32x4x2_t ai = jk_reinterpret_f32x8_as_i256(a);
+    int32x4x2_t not_a = {vmvnq_s32(ai.val[0]), vmvnq_s32(ai.val[1])};
+    return jk_reinterpret_i256_as_f32x8(jk_i256_and(not_a, jk_reinterpret_f32x8_as_i256(b)));
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
+{
+    return (float32x4x2_t){
+        vreinterpretq_f32_u32(vcltq_f32(a.val[0], b.val[0])),
+        vreinterpretq_f32_u32(vcltq_f32(a.val[1], b.val[1])),
+    };
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
+{
+    int32x4x2_t smeared_mask =
+            JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_reinterpret_f32x8_as_i256(mask), 31);
+    return (float32x4x2_t){
+        vbslq_f32(
+                vreinterpretq_u32_s32(smeared_mask.val[0]), true_value.val[0], false_value.val[0]),
+        vbslq_f32(
+                vreinterpretq_u32_s32(smeared_mask.val[1]), true_value.val[1], false_value.val[1]),
+    };
+}
+
+JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x)
+{
+    return vmaxvq_u32(vreinterpretq_u32_f32(x.val[0]))
+            | vmaxvq_u32(vreinterpretq_u32_f32(x.val[1]));
+}
+
+JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
+{
+    int32x4x2_t smeared = JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_reinterpret_f32x8_as_i256(x), 31);
+    return vminvq_u32(vreinterpretq_u32_s32(smeared.val[0]))
+            && vminvq_u32(vreinterpretq_u32_s32(smeared.val[1]));
+}
+
+JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x)
+{
+    return (float32x4x2_t){vreinterpretq_f32_s32(x.val[0]), vreinterpretq_f32_s32(x.val[1])};
+}
+
+JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x)
+{
+    return (int32x4x2_t){vreinterpretq_s32_f32(x.val[0]), vreinterpretq_s32_f32(x.val[1])};
+}
+
 #endif
 
 // ---- ISA-specific implementations end ---------------------------------------
