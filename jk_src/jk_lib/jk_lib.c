@@ -109,17 +109,17 @@ JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b)
     return (JkI256){_mm256_sub_epi32(a.v, b.v)};
 }
 
-JK_PUBLIC JkI256 jk_i256_shift_left_i32(JkI256 x, int32_t bit_count)
+JK_PUBLIC JkI256 __jk_i256_shift_left_i32(JkI256 x, int32_t bit_count)
 {
     return (JkI256){_mm256_slli_epi32(x.v, bit_count)};
 }
 
-JK_PUBLIC JkI256 jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count)
+JK_PUBLIC JkI256 __jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count)
 {
     return (JkI256){_mm256_srli_epi32(x.v, bit_count)};
 }
 
-JK_PUBLIC JkI256 jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count)
+JK_PUBLIC JkI256 __jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count)
 {
     return (JkI256){_mm256_srai_epi32(x.v, bit_count)};
 }
@@ -201,14 +201,14 @@ JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x
     return (JkF32x8){_mm256_blendv_ps(false_value.v, true_value.v, mask.v)};
 }
 
-JK_PUBLIC b32 jk_f32x8_any_sign_bit_set(JkF32x8 x)
+JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x)
 {
     return !_mm256_testz_ps(x.v, x.v);
 }
 
-JK_PUBLIC b32 jk_f32x8_any_sign_bit_clear(JkF32x8 x)
+JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
 {
-    return !_mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
+    return _mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
 }
 
 #if defined(_MSC_VER) && !defined(__clang__)

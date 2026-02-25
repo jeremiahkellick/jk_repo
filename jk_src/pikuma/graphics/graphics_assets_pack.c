@@ -4,6 +4,7 @@
 #include <string.h>
 
 // #jk_build single_translation_unit
+// #jk_build compiler_arguments -mavx2
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/gzip/gzip.h>

@@ -57,6 +57,20 @@ typedef struct JkF32x8 {
     __m256 v;
 } JkF32x8;
 
+JK_PUBLIC JkI256 __jk_i256_shift_left_i32(JkI256 x, int32_t bit_count);
+
+JK_PUBLIC JkI256 __jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count);
+
+JK_PUBLIC JkI256 __jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count);
+
+#define JK_I256_SHIFT_LEFT_I32(x, bit_count) __jk_i256_shift_left_i32(x, bit_count)
+
+#define JK_I256_SHIFT_RIGHT_ZERO_FILL_I32(x, bit_count) \
+    __jk_i256_shift_right_zero_fill_i32(x, bit_count)
+
+#define JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(x, bit_count) \
+    __jk_i256_shift_right_sign_fill_i32(x, bit_count)
+
 #elif defined(__arm64__)
 
 #include <arm_neon.h>

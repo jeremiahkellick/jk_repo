@@ -7,6 +7,7 @@
 // #jk_build run jk_src/pikuma/graphics/graphics_assets_pack.c
 // #jk_build build jk_src/pikuma/graphics/graphics.c
 // #jk_build single_translation_unit
+// #jk_build compiler_arguments -mavx2
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
