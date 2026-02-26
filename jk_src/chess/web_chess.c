@@ -2,9 +2,9 @@
 
 // clang-format off
 
+// #jk_build isa wasm
 // #jk_build single_translation_unit
-// #jk_build compiler_arguments -o chess.wasm --target=wasm32 --no-standard-libraries -mbulk-memory
-// #jk_build linker_arguments -Wl,--no-entry,--allow-undefined,--export=init_main,--export=tick,--export=get_sound,--export=get_started_time_0,--export=get_started_time_1,--export=get_ai_request,--export=get_ai_response_ai_thread,--export=get_ai_response_main_thread,--export=init_audio,--export=fill_audio_buffer,--export=ai_alloc_memory,--export=ai_begin_request,--export=ai_tick,--export=web_is_draggable
+// #jk_build export init_main tick get_sound get_started_time_0 get_started_time_1 get_ai_request get_ai_response_ai_thread get_ai_response_main_thread init_audio fill_audio_buffer ai_alloc_memory ai_begin_request ai_tick web_is_draggable
 
 // clang-format on
 

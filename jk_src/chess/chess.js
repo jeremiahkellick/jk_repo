@@ -88,7 +88,7 @@ function on_resize(entries) {
 }
 
 async function main() {
-    const wasm_buffer = await (await fetch('/build/chess.wasm')).arrayBuffer();
+    const wasm_buffer = await (await fetch('/build/web_chess.wasm')).arrayBuffer();
 
     let wasm_exports;
     const imports = {

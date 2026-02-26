@@ -7,13 +7,11 @@
 // #jk_build run jk_src/pikuma/graphics/graphics_assets_pack.c
 // #jk_build build jk_src/pikuma/graphics/graphics.c
 // #jk_build single_translation_unit
-// #jk_build compiler_arguments -mavx2
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
-// #jk_build dependencies_end
-
 #include <jk_src/pikuma/graphics/graphics.h>
+// #jk_build dependencies_end
 
 #if JK_BUILD_MODE == JK_RELEASE
 #include <jk_gen/pikuma/graphics/assets.c>

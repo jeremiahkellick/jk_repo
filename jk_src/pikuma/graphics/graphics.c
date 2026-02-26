@@ -3,7 +3,6 @@
 // #jk_build library
 // #jk_build export render
 // #jk_build single_translation_unit
-// #jk_build compiler_arguments -mavx2
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
