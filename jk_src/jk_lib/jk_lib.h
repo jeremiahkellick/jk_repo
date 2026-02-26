@@ -95,6 +95,16 @@ typedef float32x4x2_t JkF32x8;
 
 // clang-format on
 
+#else
+
+typedef struct JkI256 {
+    int32_t v[8];
+} JkI256;
+
+typedef struct JkF32x8 {
+    float v[8];
+} JkF32x8;
+
 #endif
 
 // ---- ISA-specific definitions end -------------------------------------------
@@ -323,6 +333,8 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items);
 JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
 JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path);
+
+JK_PUBLIC JkBuffer jk_path_extension(JkBuffer path);
 
 // ---- Buffer end -------------------------------------------------------------
 

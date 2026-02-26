@@ -4,15 +4,13 @@
 #include <string.h>
 
 // #jk_build single_translation_unit
-// #jk_build compiler_arguments -mavx2
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/gzip/gzip.h>
 #include <jk_src/jk_lib/hash_table/hash_table.h>
 #include <jk_src/jk_lib/platform/platform.h>
-// #jk_build dependencies_end
-
 #include <jk_src/pikuma/graphics/graphics.h>
+// #jk_build dependencies_end
 
 static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/scene.fbx");
 static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};

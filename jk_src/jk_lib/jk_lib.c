@@ -975,6 +975,20 @@ JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path)
     return result;
 }
 
+JK_PUBLIC JkBuffer jk_path_extension(JkBuffer path)
+{
+    for (int64_t i = path.size - 1; 0 <= i && path.data[i] != '/' && path.data[i] != '\\'; i--) {
+        if (path.data[i] == '.') {
+            return (JkBuffer){
+                .size = path.size - (i + 1),
+                .data = path.data + (i + 1),
+            };
+        }
+    }
+
+    return (JkBuffer){0};
+}
+
 // ---- Buffer end -------------------------------------------------------------
 
 // ---- Logging begin ----------------------------------------------------------

@@ -323,7 +323,7 @@ static void jk_windows_print_last_error(void)
 
 static int jk_platform_exec(JkBufferArray command)
 {
-    static char command_buffer[4096];
+    static char command_buffer[8192];
 
     if (!command.count) {
         fprintf(stderr, "jk_platform_exec: Received an empty command\n");
@@ -340,8 +340,11 @@ static int jk_platform_exec(JkBufferArray command)
                 args_i == 0 ? "" : " ",
                 (int)command.e[args_i].size,
                 command.e[args_i].data);
-        if (string_i >= JK_ARRAY_COUNT(command_buffer)) {
-            fprintf(stderr, "jk_platform_exec: Insufficient buffer size\n");
+        if (JK_ARRAY_COUNT(command_buffer) < string_i) {
+            fprintf(stderr,
+                    "jk_platform_exec: Insufficient buffer size, %lld < %d\n",
+                    JK_ARRAY_COUNT(command_buffer),
+                    string_i);
             return 1;
         }
     }
@@ -742,6 +745,21 @@ typedef enum Compiler {
     COMPILER_CLANG,
 } Compiler;
 
+typedef enum Isa {
+    ISA_UNKNOWN,
+    ISA_X86_64,
+    ISA_ARM64,
+    ISA_WASM,
+    ISA_COUNT,
+} Isa;
+
+static char *isa_strings[ISA_COUNT] = {
+    "unknown",
+    "x86_64",
+    "arm64",
+    "wasm",
+};
+
 typedef enum JkBuildMode {
     JK_BUILD_DEBUG,
     JK_BUILD_OPTIMIZED,
@@ -751,6 +769,7 @@ typedef enum JkBuildMode {
 typedef struct Paths {
     JkBuffer source_file;
     JkBuffer basename;
+    JkBuffer extension;
     JkBuffer repo_root;
     JkBuffer build;
 } Paths;
@@ -785,6 +804,20 @@ static JkBuffer basename(JkBuffer path)
     return result;
 }
 
+static JkBuffer jk_path_extension(JkBuffer path)
+{
+    for (int64_t i = path.size - 1; 0 <= i && path.data[i] != '/' && path.data[i] != '\\'; i--) {
+        if (path.data[i] == '.') {
+            return (JkBuffer){
+                .size = path.size - (i + 1),
+                .data = path.data + (i + 1),
+            };
+        }
+    }
+
+    return (JkBuffer){0};
+}
+
 /** Populates globals source_file_path, basename, root_path, and build_path */
 static Paths paths_get(JkArena *arena, JkArena *scratch_arena, JkBuffer source_file_relative_path)
 {
@@ -815,6 +848,7 @@ static Paths paths_get(JkArena *arena, JkArena *scratch_arena, JkBuffer source_f
                 source_file_relative_path.data);
         exit(1);
     }
+    paths.extension = jk_path_extension(paths.source_file);
 
     // Find repository root path
     int64_t jk_src_offset = jk_string_find(paths.source_file, JKS("jk_src"));
@@ -919,6 +953,7 @@ static JkBuffer jk_gen_string = JKSI(JK_GEN_STRING_LITERAL);
 
 typedef struct Options {
     Compiler compiler;
+    Isa isa;
     Mode mode;
     b32 no_profile;
 } Options;
@@ -927,7 +962,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path);
 
 static int64_t parse_files(JkArena *storage,
         JkArena *scratch_arena,
-        Options options,
+        Options *options,
         Paths paths,
         StringArrayBuilder *dependencies,
         StringArrayBuilder *nasm_files,
@@ -1039,22 +1074,25 @@ static int64_t parse_files(JkArena *storage,
                                 argument.data = file.data + start;
                             }
                             if (cmd_link) {
-                                if (options.compiler == COMPILER_MSVC) {
-                                    argument = concat_strings(scratch_arena, argument, JKS(".lib"));
+                                if (options->compiler == COMPILER_MSVC) {
+                                    argument = concat_strings(&file_arena, argument, JKS(".lib"));
                                 } else {
-                                    argument = concat_strings(scratch_arena, JKS("-l"), argument);
+                                    argument = concat_strings(&file_arena, JKS("-l"), argument);
                                 }
                             } else if (cmd_export) {
-                                if (options.compiler == COMPILER_MSVC) {
-                                    argument = concat_strings(
-                                            scratch_arena, JKS("/EXPORT:"), argument);
+                                JkBuffer prefix = {0};
+                                if (options->compiler == COMPILER_MSVC) {
+                                    prefix = JKS("/EXPORT:");
                                 } else {
 #ifdef _WIN32
-                                    JkBuffer prefix = JKSI("-Wl,/EXPORT:");
+                                    prefix = options->isa == ISA_X86_64 ? JKS("-Wl,/EXPORT:")
+                                                                        : JKS("-Wl,--export=");
 #else
-                                    JkBuffer prefix = JKSI("-Wl,--export=");
+                                    prefix = JKS("-Wl,--export=");
 #endif
-                                    argument = concat_strings(scratch_arena, prefix, argument);
+                                }
+                                if (prefix.size) {
+                                    argument = concat_strings(&file_arena, prefix, argument);
                                 }
                             }
                             string_array_builder_push(
@@ -1093,7 +1131,7 @@ static int64_t parse_files(JkArena *storage,
                     JkBuffer file_path_absolute =
                             concat_strings(&file_arena, paths.repo_root, file_path_relative);
 
-                    jk_build(options, file_path_absolute);
+                    jk_build(*options, file_path_absolute);
 
                     if (cmd_run) {
                         JkBuffer program_path = concat_strings(&file_arena,
@@ -1103,6 +1141,37 @@ static int64_t parse_files(JkArena *storage,
                     }
 
                     printf("\n");
+                } else if (jk_buffer_compare(command, JKS("isa")) == 0) {
+                    int a0;
+                    while (is_space_exclude_newlines(a0 = jk_buffer_character_get(file, pos))) {
+                        pos++;
+                    }
+                    if (a0 == '\r' || a0 == '\n' || a0 == JK_OOB) {
+                        fprintf(stderr, "%s: '#jk_build isa' expects an argument\n", program_name);
+                    } else {
+                        JkBuffer isa_string;
+                        {
+                            int64_t start = pos;
+                            int c;
+                            while (!isspace(c = jk_buffer_character_get(file, pos))
+                                    && c != JK_OOB) {
+                                pos++;
+                            }
+                            isa_string.size = pos - start;
+                            isa_string.data = file.data + start;
+                        }
+                        if (jk_buffer_compare(isa_string, JKS("x86_64")) == 0) {
+                            options->isa = ISA_X86_64;
+                        } else if (jk_buffer_compare(isa_string, JKS("arm64")) == 0) {
+                            options->isa = ISA_ARM64;
+                        } else if (jk_buffer_compare(isa_string, JKS("wasm")) == 0) {
+                            options->isa = ISA_WASM;
+                        } else {
+                            fprintf(stderr,
+                                    "%s: Invalid argument for '#jk_build isa'\n",
+                                    program_name);
+                        }
+                    }
                 } else if (jk_buffer_compare(command, JKS("single_translation_unit")) == 0) {
                     if (path_index == 0) {
                         JK_FLAG_SET(flags, FLAG_SINGLE_TRANSLATION_UNIT, 1);
@@ -1276,6 +1345,69 @@ static void append_shared_defines(
     }
 }
 
+static void append_clang_gcc_shared_options(
+        Paths paths, Options options, uint64_t flags, StringArrayBuilder *command)
+{
+    append(command, "-o");
+    string_array_builder_push(command, paths.basename);
+
+    if (options.mode == JK_DEBUG_SLOW) {
+        append(command, "-Og");
+    } else {
+        append(command, "-O3");
+#ifndef _WIN32
+        append(&command, "-flto");
+#endif
+    }
+    append(command, "-g");
+    if (jk_buffer_compare(paths.extension, JKS("c")) == 0) {
+        append(command, "-std=c11");
+    }
+    if (jk_buffer_compare(paths.extension, JKS("cpp")) == 0) {
+        append(command, "-std=c++20");
+    }
+    append(command,
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror=vla",
+            "-Wno-missing-braces",
+            "-Wno-unused-parameter");
+    if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
+        append(command, "-Wno-unused-function");
+    }
+
+    switch (options.isa) {
+    case ISA_UNKNOWN:
+    case ISA_COUNT: {
+    } break;
+
+    case ISA_X86_64: {
+        append(command, "-march=x86-64-v3");
+    } break;
+
+    case ISA_ARM64: {
+        append(command, "-march=armv8-a");
+    } break;
+
+    case ISA_WASM: {
+        if (options.compiler == COMPILER_GCC) {
+            fprintf(stderr, "%s: GCC does not support wasm\n", program_name);
+        }
+        append(command, "--target=wasm32");
+        append(command, "--no-standard-libraries");
+        append(command, "-mbulk-memory");
+    } break;
+    }
+
+    if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+        append(command, "-shared");
+    }
+
+    append(command, "-I");
+    string_array_builder_push(command, paths.repo_root);
+}
+
 static int jk_build(Options options, JkBuffer source_file_relative_path)
 {
     JkPlatformArenaVirtualRoot storage_root;
@@ -1311,46 +1443,29 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         }
     }
 
-    b32 is_objective_c_file = paths.source_file.data[paths.source_file.size - 1] == 'm';
-
     uint64_t flags = parse_files(&storage,
             &scratch_arena,
-            options,
+            &options,
             paths,
             &dependencies,
             &nasm_files,
             &compiler_arguments,
             &linker_arguments);
 
-    // Move jk_lib.c dependency to the end of the dependency list. This is unfortunately necessary
-    // because it defines a subset of certain headers if they are not included elsewhere. However,
-    // if they _are_ included elsewhere, we don't want two definitions. Because I do not control the
-    // contents of those headers, I can only add an include guard to my definitions. This means
-    // including the other headers first and the jk_lib.c is fine. However, including jk_lib.c first
-    // and then one of these other headers fails. To prevent this, we'll include jk_lib.c last.
-    StringNode **link = &dependencies.tail.previous;
-    while (*link) {
-        StringNode *node = *link;
-        if (jk_buffer_compare(node->string, JKS("jk_src/jk_lib/jk_lib.c")) == 0) {
-            *link = node->previous;
-            node->previous = dependencies.tail.previous;
-            dependencies.tail.previous = node;
-            break;
-        } else {
-            link = &node->previous;
-        }
-    }
-
-    JkBuffer extension = {0};
+    JkBuffer output_extension = {0};
+    if (options.isa == ISA_WASM) {
+        output_extension = JKS(".wasm");
+    } else {
 #ifdef _WIN32
-    extension = JK_FLAG_GET(flags, FLAG_LIBRARY) ? JKS(".dll") : JKS(".exe");
+        output_extension = JK_FLAG_GET(flags, FLAG_LIBRARY) ? JKS(".dll") : JKS(".exe");
 #else
-    if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
-        extension = JKS(".so");
-    }
+        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
+            output_extension = JKS(".so");
+        }
 #endif
-    if (extension.size) {
-        paths.basename = concat_strings(&storage, paths.basename, extension);
+    }
+    if (output_extension.size) {
+        paths.basename = concat_strings(&storage, paths.basename, output_extension);
     }
 
     JkBufferArray nasm_files_array = string_array_builder_build(&nasm_files);
@@ -1438,6 +1553,28 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         } break;
         }
 
+        switch (options.isa) {
+        case ISA_X86_64: {
+            append(&command, "/arch:AVX2");
+        } break;
+
+        case ISA_ARM64: {
+            fprintf(stderr,
+                    "%s: jk_build does not support arm64 builds via MSVC, targeting x86_64 "
+                    "instead\n",
+                    program_name);
+        } break;
+
+        case ISA_WASM: {
+            fprintf(stderr,
+                    "%s: MSVC does not support wasm, targeting x86_64 instead\n",
+                    program_name);
+        } break;
+
+        default: {
+        } break;
+        }
+
         append(&command, "/I");
         string_array_builder_push(&command, paths.repo_root);
     } break;
@@ -1445,37 +1582,14 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     case COMPILER_GCC: {
         append(&command, "gcc");
 
-        append(&command, "-o");
-        string_array_builder_push(&command, paths.basename);
+        append_clang_gcc_shared_options(paths, options, flags, &command);
+        append_shared_defines(&storage, options, flags, &command);
 
-        append(&command, "-std=c11");
-        append(&command, "-pedantic");
-        append(&command, "-mfma");
-        append(&command, "-g");
-        append(&command, "-Wall");
-        append(&command, "-Wextra");
         append(&command, "-fstack-protector");
         append(&command, "-fzero-init-padding-bits=all");
-        append(&command, "-Werror=vla");
-        append(&command, "-Wno-missing-braces");
-        append(&command, "-Wno-unused-parameter");
-        append_shared_defines(&storage, options, flags, &command);
-        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
-            append(&command, "-shared");
-        }
-        if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
-            append(&command, "-Wno-unused-function");
-        }
-        if (options.mode == JK_DEBUG_SLOW) {
-            append(&command, "-Og");
-        } else {
-            append(&command, "-O3");
-            append(&command, "-flto");
+        if (options.mode != JK_DEBUG_SLOW) {
             append(&command, "-fuse-linker-plugin");
         }
-
-        append(&command, "-I");
-        string_array_builder_push(&command, paths.repo_root);
     } break;
 
     case COMPILER_TCC: {
@@ -1492,6 +1606,13 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
         }
         append_shared_defines(&storage, options, flags, &command);
 
+        if (!(options.isa == ISA_UNKNOWN || options.isa == ISA_X86_64)) {
+            fprintf(stderr,
+                    "%s: TCC does not support %s\n",
+                    program_name,
+                    isa_strings[options.isa]);
+        }
+
         append(&command, "-I");
         string_array_builder_push(&command, paths.repo_root);
     } break;
@@ -1499,43 +1620,13 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     case COMPILER_CLANG: {
         append(&command, "clang");
 
-        append(&command, "-o");
-        string_array_builder_push(&command, paths.basename);
+        append_clang_gcc_shared_options(paths, options, flags, &command);
+        append_shared_defines(&storage, options, flags, &command);
 
         append(&command,
-                "-Wall",
-                "-Wextra",
-                "-Wpedantic",
-                "-Wno-missing-braces",
+                "-Wno-dollar-in-identifier-extension",
                 "-Wno-missing-field-initializers",
-                "-Wno-unused-command-line-argument",
-                "-Wno-unused-parameter",
-                "-Wno-dollar-in-identifier-extension");
-#if defined(__x86_64__) || defined(_M_X64)
-        append(&command, "-mfma");
-#endif
-        append(&command, "-g");
-        if (!is_objective_c_file) {
-            append(&command, "-std=c11");
-        }
-        if (JK_FLAG_GET(flags, FLAG_LIBRARY)) {
-            append(&command, "-shared");
-        }
-        if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {
-            append(&command, "-Wno-unused-function");
-        }
-        append_shared_defines(&storage, options, flags, &command);
-        if (options.mode == JK_DEBUG_SLOW) {
-            append(&command, "-Og");
-        } else {
-            append(&command, "-O3");
-#ifndef _WIN32
-            append(&command, "-flto");
-#endif
-        }
-
-        append(&command, "-I");
-        string_array_builder_push(&command, paths.repo_root);
+                "-Wno-unused-command-line-argument");
     } break;
 
     case COMPILER_NONE: {
@@ -1560,8 +1651,9 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
             stu_file_path.size--;
 
-            stu_file_path = concat_strings(
-                    &storage, stu_file_path, is_objective_c_file ? JKS("stu.m") : JKS("stu.c"));
+            stu_file_path = concat_strings(&storage,
+                    stu_file_path,
+                    concat_strings(&storage, JKS("stu."), paths.extension));
         }
 
         // Get the directory
@@ -1641,6 +1733,9 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     } break;
 
     case COMPILER_CLANG: {
+        if (options.isa == ISA_WASM) {
+            append(&command, "-Wl,--no-entry,--allow-undefined");
+        }
     } break;
 
     case COMPILER_NONE: {
@@ -1669,6 +1764,31 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     return result;
 }
 
+#ifdef _WIN32
+#define DEFAULT_COMPILER COMPILER_MSVC
+#define DEFAULT_COMPILER_STRING "msvc"
+#elif __linux__
+#define DEFAULT_COMPILER COMPILER_GCC
+#define DEFAULT_COMPILER_STRING "gcc"
+#else
+#define DEFAULT_COMPILER COMPILER_CLANG
+#define DEFAULT_COMPILER_STRING "clang"
+#endif
+
+#if defined(__x86_64__) || defined(_M_X64)
+#define DEFAULT_ISA ISA_X86_64
+#define DEFAULT_ISA_STRING "x86_64"
+#elif __arm64__
+#define DEFAULT_ISA ISA_ARM64
+#define DEFAULT_ISA_STRING "arm64"
+#elif __wasm__
+#define DEFAULT_ISA ISA_WASM
+#define DEFAULT_ISA_STRING "wasm"
+#else
+#define DEFAULT_ISA ISA_UNKNOWN
+#define DEFAULT_ISA_STRING "host machine's"
+#endif
+
 int main(int argc, char **argv)
 {
     program_name = argv[0];
@@ -1676,13 +1796,8 @@ int main(int argc, char **argv)
     // Parse arguments
 
     Options options = {
-#ifdef _WIN32
-        .compiler = COMPILER_MSVC, // Default to MSVC on Windows
-#elif __linux__
-        .compiler = COMPILER_GCC, // Default to GCC on Linux
-#else
-        .compiler = COMPILER_CLANG, // Default to clang on macOS
-#endif
+        .compiler = DEFAULT_COMPILER,
+        .isa = DEFAULT_ISA,
         .mode = JK_DEBUG_FAST,
     };
     JkBuffer source_file_relative_path = {0};
@@ -1720,6 +1835,37 @@ int main(int argc, char **argv)
                             }
                         } else if (strcmp(argv[i], "--help") == 0) {
                             help = 1;
+                        } else if (strncmp(name, "isa", end) == 0) {
+                            char *string = 0;
+                            if (name[end] == '=') {
+                                if (name[end + 1] != '\0') {
+                                    string = &name[end + 1];
+                                }
+                            } else {
+                                string = argv[++i];
+                            }
+
+                            if (string) {
+                                b32 set = 0;
+                                for (Isa isa = 1; isa < ISA_COUNT; isa++) {
+                                    if (compare_case_insensitive(string, isa_strings[isa])) {
+                                        set = 1;
+                                        options.isa = isa;
+                                    }
+                                }
+                                if (!set) {
+                                    fprintf(stderr,
+                                            "%s: Option '--isa' given invalid argument '%s'\n",
+                                            argv[0],
+                                            string);
+                                    usage_error = 1;
+                                }
+                            } else {
+                                fprintf(stderr,
+                                        "%s: Option '--isa' missing required argument\n",
+                                        argv[0]);
+                                usage_error = 1;
+                            }
                         } else if (strncmp(name, "mode", end) == 0) {
                             expect_mode_string = 1;
 
@@ -1842,8 +1988,12 @@ int main(int argc, char **argv)
                    "\twill be found by jk_build and included when it invokes a compiler.\n\n"
                    "OPTIONS\n"
                    "\t-c COMPILER, --compiler=COMPILER\n"
-                   "\t\tCOMPILER can be clang, gcc, msvc, or tcc.\n\n"
+                   "\t\tCOMPILER can be clang, gcc, msvc, or tcc. Default "
+                   "is " DEFAULT_COMPILER_STRING ".\n\n"
                    "\t--help\tDisplay this help text and exit.\n\n"
+                   "\t--isa=ISA\n"
+                   "\t\tChoose an instruction set architecture.\n"
+                   "\t\tISA can be x86_64, arm64, or wasm. Default is " DEFAULT_ISA_STRING ".\n\n"
                    "\t-m MODE, --mode=MODE\n"
                    "\t\tMODE can be 0 - debug_slow, 1 - debug_fast, or 2 - release.\n"
                    "\t\tDefaults to debug_fast. Can be specified by number (-m 0) or\n"
