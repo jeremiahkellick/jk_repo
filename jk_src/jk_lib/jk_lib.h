@@ -1410,6 +1410,8 @@ JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line);
 
 #define JK_ABS(value) ((value) < 0 ? -(value) : (value))
 
+#define JK_ALIGN_UP(x, pow_2_alignment) (((x) + ((pow_2_alignment) - 1)) & ~((pow_2_alignment) - 1))
+
 #define JK_SWAP(a, b, type)   \
     do {                      \
         type jk_swap_tmp = a; \

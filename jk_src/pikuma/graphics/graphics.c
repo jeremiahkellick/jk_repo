@@ -37,6 +37,21 @@ typedef struct TriangleArray {
     Triangle *e;
 } TriangleArray;
 
+typedef struct TriangleNode {
+    struct TriangleNode *next;
+    Bitmap texture;
+    Triangle tri;
+} TriangleNode;
+
+typedef struct Tile {
+    TriangleNode *head;
+} Tile;
+
+typedef struct TileArray {
+    int64_t count;
+    Tile *e;
+} TileArray;
+
 typedef struct TexturedVertex {
     JkVec3 v;
     JkVec2 t;
@@ -47,13 +62,13 @@ typedef struct TexturedVertexArray {
     TexturedVertex *e;
 } TexturedVertexArray;
 
-static JkIntRect triangle_bounding_box(Triangle t)
+static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2)
 {
     return (JkIntRect){
-        .min.x = JK_MIN3(t.v[0].x, t.v[1].x, t.v[2].x),
-        .min.y = JK_MIN3(t.v[0].y, t.v[1].y, t.v[2].y),
-        .max.x = jk_ceil_f32(JK_MAX3(t.v[0].x, t.v[1].x, t.v[2].x)),
-        .max.y = jk_ceil_f32(JK_MAX3(t.v[0].y, t.v[1].y, t.v[2].y)),
+        .min.x = JK_MIN3(v0.x, v1.x, v2.x),
+        .min.y = JK_MIN3(v0.y, v1.y, v2.y),
+        .max.x = jk_ceil_f32(JK_MAX3(v0.x, v1.x, v2.x)),
+        .max.y = jk_ceil_f32(JK_MAX3(v0.y, v1.y, v2.y)),
     };
 }
 
@@ -71,15 +86,16 @@ typedef struct Interpolants {
     JkF32x8 e[INTERPOLANT_COUNT];
 } Interpolants;
 
-static void triangle_fill(State *state, Triangle tri, Bitmap texture)
+static void triangle_fill(State *state, TriangleNode *node, JkIntRect bounding_box)
 {
-    JkIntRect screen_rect = {.min = (JkIntVec2){0}, .max = state->dimensions};
-    JkIntRect bounds = jk_int_rect_intersect(screen_rect, triangle_bounding_box(tri));
+    Triangle tri = node->tri;
+    JkIntRect bounds = jk_int_rect_intersect(
+            bounding_box, triangle_bounding_box(tri.v[0], tri.v[1], tri.v[2]));
     if (!(bounds.min.x < bounds.max.x && bounds.min.y < bounds.max.y)) {
         return;
     }
     bounds.min.x &= ~(8 - 1);
-    JkVec2 tex_float_dimensions = jk_vec2_from_int(texture.dimensions);
+    JkVec2 tex_float_dimensions = jk_vec2_from_int(node->texture.dimensions);
 
     JkVec2 verts_2d[3];
     for (int64_t i = 0; i < 3; i++) {
@@ -175,7 +191,7 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
 
                         JkF32x8 color_buffer = jk_f32x8_load((float *)(state->draw_buffer + index));
                         JkF32x8 color = jk_f32x8_gather(
-                                texture.memory, jk_truncate_f32x8_to_i32x8(tex_index));
+                                node->texture.memory, jk_truncate_f32x8_to_i32x8(tex_index));
                         jk_f32x8_store((float *)(state->draw_buffer + index),
                                 jk_f32x8_blend(color_buffer, color, visible));
                     }
@@ -232,7 +248,7 @@ typedef struct EdgeFunction {
     float init;
 } EdgeFunction;
 
-static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id, JkArena *arena)
+static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id)
 {
     static float const padding = 0.3;
 
@@ -400,8 +416,8 @@ void render(JkContext *context, Assets *assets, State *state)
 
     jk_profile_frame_begin();
 
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root, state->memory);
+    JkArenaRoot frame_arena_root;
+    JkArena frame_arena = jk_arena_fixed_init(&frame_arena_root, state->memory);
 
     JkVec3Array vertices;
     JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
@@ -455,7 +471,7 @@ void render(JkContext *context, Assets *assets, State *state)
                             jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
                 }
 
-                move_against_box(&move, world_matrix, object_id, &arena);
+                move_against_box(&move, world_matrix, object_id);
             }
         } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
         state->camera_position = jk_vec3_to_2(move.s.p1);
@@ -495,10 +511,19 @@ void render(JkContext *context, Assets *assets, State *state)
             jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
             pixel_matrix);
 
-    JK_PROFILE_ZONE_TIME_BEGIN(triangles);
+    JK_PROFILE_ZONE_TIME_BEGIN(project);
+
+    JkIntVec2 tile_count;
+    for (int64_t i = 0; i < 2; i++) {
+        tile_count.v[i] = JK_ALIGN_UP(state->dimensions.v[i], TILE_SIDE_LENGTH) / TILE_SIDE_LENGTH;
+    }
+    JkIntRect tiles_rect = {.min = (JkIntVec2){0}, .max = tile_count};
+    Tile *tiles = jk_arena_push_zero(&frame_arena, sizeof(*tiles) * tile_count.x * tile_count.y);
+
+    JkArena triangle_arena = jk_arena_scratch_get();
     for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
         Object *object = objects.e + object_id.i;
-        JkArena object_arena = jk_arena_child_get(&arena);
+        JkArena object_arena = jk_arena_child_get(&frame_arena);
 
         JkMat4 world_matrix = jk_mat4_i;
         for (ObjectId parent_id = object_id; parent_id.i;
@@ -596,63 +621,97 @@ void render(JkContext *context, Assets *assets, State *state)
             vs.count = (TexturedVertex *)jk_arena_pointer_current(&face_arena) - vs.e;
 
             // Triangulate the resulting polygon
-            TriangleArray tris = {.e = jk_arena_pointer_current(&face_arena)};
-            for (int64_t i = 2; i < vs.count; i++) {
-                Triangle *tri = jk_arena_push(&face_arena, sizeof(*tri));
-                int64_t indexes[3] = {0, i - 1, i};
-                for (int64_t j = 0; j < 3; j++) {
-                    tri->v[j] = vs.e[indexes[j]].v;
-                    tri->t[j] = vs.e[indexes[j]].t;
+            for (int64_t vertex_index = 2; vertex_index < vs.count; vertex_index++) {
+                int64_t indexes[3] = {0, vertex_index - 1, vertex_index};
+                Triangle tri;
+                for (int64_t i = 0; i < 3; i++) {
+                    tri.v[i] = vs.e[indexes[i]].v;
+                    tri.t[i] = vs.e[indexes[i]].t;
                 }
-            }
-            tris.count = (Triangle *)jk_arena_pointer_current(&face_arena) - tris.e;
-
-            for (int64_t i = 0; i < tris.count; i++) {
-                if (clockwise(tris.e[i])) {
-                    triangle_fill(state, tris.e[i], texture);
+                if (clockwise(tri)) {
+                    JkVec3 tile_coords[3];
+                    for (int64_t i = 0; i < 3; i++) {
+                        tile_coords[i] = jk_vec3_mul(1.0f / TILE_SIDE_LENGTH, tri.v[i]);
+                    }
+                    JkIntRect coverage = jk_int_rect_intersect(
+                            triangle_bounding_box(tile_coords[0], tile_coords[1], tile_coords[2]),
+                            tiles_rect);
+                    for (int32_t y = coverage.min.y; y < coverage.max.y; y++) {
+                        for (int32_t x = coverage.min.x; x < coverage.max.x; x++) {
+                            Tile *tile = tiles + (tile_count.x * y + x);
+                            TriangleNode *new_node =
+                                    jk_arena_push(&triangle_arena, sizeof(*new_node));
+                            new_node->tri = tri;
+                            new_node->texture = texture;
+                            new_node->next = tile->head;
+                            tile->head = new_node;
+                        }
+                    }
                 }
             }
         }
     }
-    JK_PROFILE_ZONE_END(triangles);
 
-    JK_PROFILE_ZONE_TIME_BEGIN(pixels);
-    for (int32_t y = 0; y < state->dimensions.y; y++) {
-        for (int32_t x = 0; x < state->dimensions.x; x += 8) {
-            JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
-            for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                JkI256 sample = jk_i256_load(state->draw_buffer
-                        + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
-                JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
-                channels[0] = jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
-                channels[1] = jk_i256_add_i32(channels[1],
-                        jk_i256_and(JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 8), byte_mask));
-                channels[2] = jk_i256_add_i32(channels[2],
-                        jk_i256_and(JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 16), byte_mask));
-            }
-            for (int32_t channel_index = 0; channel_index < 3; channel_index++) {
-                channels[channel_index] =
-                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(channels[channel_index], 2);
+    JK_PROFILE_ZONE_END(project);
+
+    for (JkIntVec2 tile_coord = {0}; tile_coord.y < tile_count.y; tile_coord.y++) {
+        for (tile_coord.x = 0; tile_coord.x < tile_count.x; tile_coord.x++) {
+            Tile *tile = tiles + (tile_count.x * tile_coord.y + tile_coord.x);
+
+            JkIntRect bounding_box;
+            for (int64_t i = 0; i < 2; i++) {
+                bounding_box.min.v[i] = TILE_SIDE_LENGTH * tile_coord.v[i];
+                bounding_box.max.v[i] = bounding_box.min.v[i] + TILE_SIDE_LENGTH;
             }
 
-            JkI256 color = channels[0];
-            color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
-            color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
+            JK_PROFILE_ZONE_TIME_BEGIN(triangles);
+            for (TriangleNode *node = tile->head; node; node = node->next) {
+                triangle_fill(state, node, bounding_box);
+            }
+            JK_PROFILE_ZONE_END(triangles);
 
-            jk_i256_store(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
+            JK_PROFILE_ZONE_TIME_BEGIN(pixels);
+            for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
+                for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
+                    JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
+                    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+                        JkI256 sample = jk_i256_load(state->draw_buffer
+                                + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
+                        JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
+                        channels[0] = jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
+                        channels[1] = jk_i256_add_i32(channels[1],
+                                jk_i256_and(
+                                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 8), byte_mask));
+                        channels[2] = jk_i256_add_i32(channels[2],
+                                jk_i256_and(
+                                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 16), byte_mask));
+                    }
+                    for (int32_t channel_index = 0; channel_index < 3; channel_index++) {
+                        channels[channel_index] =
+                                JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(channels[channel_index], 2);
+                    }
+
+                    JkI256 color = channels[0];
+                    color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
+                    color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
+
+                    jk_i256_store(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
+                }
+            }
+            JK_PROFILE_ZONE_END(pixels);
         }
     }
-    JK_PROFILE_ZONE_END(pixels);
 
     jk_profile_frame_end();
 
     if (jk_key_pressed(&state->keyboard, JK_KEY_P)) {
-        jk_log(JK_LOG_INFO, jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+        jk_log(JK_LOG_INFO, jk_profile_report(&frame_arena, state->estimate_cpu_frequency(100)));
     }
 
     if (0 < state->test_frames_remaining) {
         if (--state->test_frames_remaining == 0) {
-            jk_log(JK_LOG_INFO, jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+            jk_log(JK_LOG_INFO,
+                    jk_profile_report(&frame_arena, state->estimate_cpu_frequency(100)));
         }
     }
 }
