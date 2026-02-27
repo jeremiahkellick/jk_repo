@@ -145,9 +145,9 @@ JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkF32x8 offset)
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets)
 {
-    return (JkF32x8){_mm256_i32gather_ps(pointer, _mm256_cvttps_epi32(offset.v), 1)};
+    return (JkF32x8){_mm256_i32gather_ps(pointer, offsets.v, 4)};
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
@@ -312,21 +312,20 @@ JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkF32x8 offset)
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets)
 {
-    uint8_t *ptr = pointer;
-    int32x4x2_t off = {vcvtq_s32_f32(offset.val[0]), vcvtq_s32_f32(offset.val[1])};
+    float *ptr = pointer;
     float32x4x2_t r = jk_f32x8_zero();
 
-    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 0)), r.val[0], 0);
-    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 1)), r.val[0], 1);
-    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 2)), r.val[0], 2);
-    r.val[0] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[0], 3)), r.val[0], 3);
+    r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 0), r.val[0], 0);
+    r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 1), r.val[0], 1);
+    r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 2), r.val[0], 2);
+    r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 3), r.val[0], 3);
 
-    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 0)), r.val[1], 0);
-    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 1)), r.val[1], 1);
-    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 2)), r.val[1], 2);
-    r.val[1] = vld1q_lane_f32((float *)(ptr + vgetq_lane_s32(off.val[1], 3)), r.val[1], 3);
+    r.val[1] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[1], 0), r.val[1], 0);
+    r.val[1] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[1], 1), r.val[1], 1);
+    r.val[1] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[1], 2), r.val[1], 2);
+    r.val[1] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[1], 3), r.val[1], 3);
 
     return r;
 }

@@ -232,26 +232,31 @@ static BitmapSpan bitmap_get(Context *c, JkBuffer image_file_name)
                 c->scratch_arena, jk_buffer_to_null_terminated(c->scratch_arena, image_path));
 
         b32 valid = 1;
-        int64_t size = 0;
+        int64_t source_size = 0;
         BitmapHeader *header = 0;
         valid = valid && JK_SIZEOF(BitmapHeader) <= image_file.size;
         if (valid) {
             header = (BitmapHeader *)image_file.data;
-            size = JK_SIZEOF(JkColor3) * header->width * header->height;
+            source_size = JK_SIZEOF(JkColor3) * header->width * header->height;
         }
 
         valid = valid && header->identifier == 0x4d42 && header->bits_per_pixel == 24
                 && header->compression_method == 0 && 0 < header->width && header->width <= 4096
                 && 0 < header->height && header->height <= 4096
-                && (header->data_offset + size) <= image_file.size;
+                && (header->data_offset + source_size) <= image_file.size;
 
         if (valid) {
             span->dimensions.x = header->width;
             span->dimensions.y = header->height;
             span->offset = c->result_arena->pos - c->result_arena->base;
-            jk_memcpy(jk_arena_push(c->result_arena, size),
-                    image_file.data + header->data_offset,
-                    size);
+            JkColor3 *src_pointer = (JkColor3 *)(image_file.data + header->data_offset);
+            JkColor3 *src_endpoint =
+                    (JkColor3 *)(image_file.data + header->data_offset + source_size);
+            JkColor *dest_pointer = jk_arena_push(
+                    c->result_arena, JK_SIZEOF(JkColor) * span->dimensions.x * span->dimensions.y);
+            while (src_pointer < src_endpoint) {
+                *dest_pointer++ = jk_color3_to_4(*src_pointer++, 0xff);
+            }
         } else {
             fprintf(stderr, "bitmap_get: Invalid image file format, expects 24-bit BMP\n");
             *span = error_bitmap(c);

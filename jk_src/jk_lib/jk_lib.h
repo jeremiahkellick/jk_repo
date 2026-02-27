@@ -500,7 +500,7 @@ JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer);
 JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x);
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkF32x8 offset);
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets);
 
 JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b);
 

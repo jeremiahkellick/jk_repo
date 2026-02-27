@@ -171,11 +171,11 @@ static void triangle_fill(State *state, Triangle tri, Bitmap texture)
 
                         JkF32x8 tex_index = jk_f32x8_mul(
                                 jk_f32x8_broadcast(tex_float_dimensions.x), jk_f32x8_floor(tex_y));
-                        tex_index = jk_f32x8_floor(jk_f32x8_add(tex_index, tex_x));
-                        JkF32x8 tex_offset = jk_f32x8_mul(jk_f32x8_broadcast(3), tex_index);
+                        tex_index = jk_f32x8_add(tex_index, tex_x);
 
                         JkF32x8 color_buffer = jk_f32x8_load((float *)(state->draw_buffer + index));
-                        JkF32x8 color = jk_f32x8_gather(texture.memory, tex_offset);
+                        JkF32x8 color = jk_f32x8_gather(
+                                texture.memory, jk_truncate_f32x8_to_i32x8(tex_index));
                         jk_f32x8_store((float *)(state->draw_buffer + index),
                                 jk_f32x8_blend(color_buffer, color, visible));
                     }
@@ -206,7 +206,7 @@ static Bitmap bitmap_from_span(Assets *assets, BitmapSpan span)
 {
     return (Bitmap){
         .dimensions = span.dimensions,
-        .memory = (JkColor3 *)((uint8_t *)assets + span.offset),
+        .memory = (JkColor *)((uint8_t *)assets + span.offset),
     };
 }
 

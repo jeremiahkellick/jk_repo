@@ -34,7 +34,7 @@ typedef struct FaceArray {
 
 typedef struct Bitmap {
     JkIntVec2 dimensions;
-    JkColor3 *memory;
+    JkColor *memory;
 } Bitmap;
 
 typedef struct BitmapSpan {
