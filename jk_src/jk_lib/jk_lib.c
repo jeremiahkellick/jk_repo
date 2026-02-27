@@ -211,6 +211,21 @@ JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
     return _mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
 }
 
+JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x)
+{
+    return (JkF32x8){_mm256_castsi256_ps(x.v)};
+}
+
+JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x)
+{
+    return (JkI256){_mm256_castps_si256(x.v)};
+}
+
+JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x)
+{
+    return (JkI256){_mm256_cvttps_epi32(x.v)};
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 
 JK_PUBLIC uint64_t jk_cpu_timer_get(void)
@@ -402,6 +417,11 @@ JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x)
 JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x)
 {
     return (int32x4x2_t){vreinterpretq_s32_f32(x.val[0]), vreinterpretq_s32_f32(x.val[1])};
+}
+
+JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x)
+{
+    return (JkI256){vcvtq_s32_f32(x.val[0]), vcvtq_s32_f32(x.val[1])};
 }
 
 #endif

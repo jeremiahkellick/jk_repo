@@ -531,6 +531,8 @@ JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x);
 
 JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x);
 
+JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x);
+
 // ---- SIMD end ---------------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
