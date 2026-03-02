@@ -161,11 +161,22 @@ struct JkArena {
 
 typedef struct JkLog JkLog;
 
+#define JK_DEFER(begin, end) \
+    for (b32 _jk_defer_run = ((begin), 1); _jk_defer_run; _jk_defer_run = 0, (end))
+
 // ---- Context begin ----------------------------------------------------------
+
+typedef struct JkChannel {
+    int64_t index;
+    int64_t count;
+    void *barrier;
+} JkChannel;
 
 typedef struct JkContext {
     JkArena scratch_arenas[2];
     JkLog *log;
+    void (*barrier_wait)(void *barrier);
+    JkChannel channel;
 } JkContext;
 
 JK_GLOBAL_DECLARE JkContext jk_context_nil;
@@ -173,6 +184,24 @@ JK_GLOBAL_DECLARE JkContext jk_context_nil;
 JK_GLOBAL_DECLARE JK_THREAD_LOCAL JkContext *jk_context;
 
 // ---- Context end ------------------------------------------------------------
+
+// ---- Thread management begin ------------------------------------------------
+
+JK_PUBLIC void jk_channel_sync(void);
+
+typedef struct JkChannelNarrowState {
+    b32 run;
+    JkChannel restore;
+} JkChannelNarrowState;
+
+JkChannelNarrowState jk_channel_narrow_helper(int64_t channel_index);
+
+#define JK_CHANNEL_NARROW(channel_index)                                            \
+    for (JkChannelNarrowState _jk_narrow = jk_channel_narrow_helper(channel_index); \
+            _jk_narrow.run;                                                         \
+            _jk_narrow.run = 0, jk_context->channel = _jk_narrow.restore)
+
+// ---- Thread management end --------------------------------------------------
 
 // ---- Buffer begin -----------------------------------------------------------
 
@@ -500,7 +529,7 @@ JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer);
 JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x);
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets);
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask);
 
 JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b);
 
@@ -520,6 +549,8 @@ JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b);
 JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b);
 
 JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x);
 
 JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask);
 
@@ -1462,5 +1493,7 @@ JK_PUBLIC int32_t jk_round(float value);
 JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance);
 
 JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance);
+
+JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value);
 
 #endif

@@ -30,6 +30,11 @@ JK_PUBLIC float jk_sqrt_f32(float value)
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value)));
 }
 
+JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value)
+{
+    return _InterlockedExchangeAdd((long volatile *)pointer, value);
+}
+
 #elif defined(__GNUC__) || defined(__clang__)
 
 JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
@@ -59,6 +64,11 @@ JK_PUBLIC float jk_ceil_f32(float value)
 JK_PUBLIC float jk_sqrt_f32(float value)
 {
     return __builtin_sqrtf(value);
+}
+
+JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value)
+{
+    return __sync_fetch_and_add(pointer, value);
 }
 
 #endif
@@ -145,9 +155,9 @@ JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets)
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask)
 {
-    return (JkF32x8){_mm256_i32gather_ps(pointer, offsets.v, 4)};
+    return (JkF32x8){_mm256_mask_i32gather_ps(jk_f32x8_zero().v, pointer, offsets.v, mask.v, 4)};
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
@@ -194,6 +204,11 @@ JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b)
 JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
 {
     return (JkF32x8){_mm256_cmp_ps(a.v, b.v, _CMP_LT_OQ)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x)
+{
+    return x;
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
@@ -434,6 +449,31 @@ JK_GLOBAL_DEFINE JK_READONLY JkContext jk_context_nil;
 JK_GLOBAL_DEFINE JK_THREAD_LOCAL JkContext *jk_context = (JkContext *)&jk_context_nil;
 
 // ---- Context end ------------------------------------------------------------
+
+// ---- Thread management begin ------------------------------------------------
+
+JK_PUBLIC void jk_channel_sync(void)
+{
+    if (jk_context->barrier_wait && jk_context->channel.barrier) {
+        jk_context->barrier_wait(jk_context->channel.barrier);
+    }
+}
+
+JkChannelNarrowState jk_channel_narrow_helper(int64_t channel_index)
+{
+    JkChannelNarrowState state = {
+        .run = channel_index == jk_context->channel.index,
+        .restore = jk_context->channel,
+    };
+    if (state.run) {
+        jk_context->channel.index = 0;
+        jk_context->channel.count = 1;
+        jk_context->channel.barrier = 0;
+    }
+    return state;
+}
+
+// ---- Thread management end --------------------------------------------------
 
 // ---- Buffer begin -----------------------------------------------------------
 

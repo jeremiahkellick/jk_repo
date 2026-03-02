@@ -72,6 +72,8 @@ JK_PUBLIC JkBuffer jk_platform_stack_trace(JkBuffer buffer, int64_t skip, int64_
 
 JK_PUBLIC void jk_platform_print(JkBuffer string);
 
+JK_PUBLIC void jk_platform_barrier_wait(void *barrier);
+
 // ---- OS functions end -------------------------------------------------------
 
 // ---- ISA functions begin ----------------------------------------------------
@@ -309,6 +311,8 @@ JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chun
 JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk);
 
 // ---- File formats end -------------------------------------------------------
+
+JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel);
 
 JK_PUBLIC void jk_platform_thread_init(void);
 

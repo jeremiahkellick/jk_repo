@@ -20,6 +20,7 @@
 #define CLEAR_COLOR_B 0x00
 
 typedef enum Flag {
+    FLAG_RUNNING,
     FLAG_INITIALIZED,
 } Flag;
 
@@ -93,6 +94,8 @@ typedef struct State {
     float camera_pitch;
     JkVec2 camera_position;
     int64_t test_frames_remaining;
+
+    _Alignas(64) b32 volatile should_run;
 } State;
 
 typedef void RenderFunction(JkContext *context, Assets *assets, State *state);

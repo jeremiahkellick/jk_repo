@@ -460,6 +460,11 @@ JK_PUBLIC JK_NOINLINE JkBuffer jk_platform_stack_trace(
     return result;
 }
 
+JK_PUBLIC void jk_platform_barrier_wait(void *barrier)
+{
+    EnterSynchronizationBarrier(barrier, 0);
+}
+
 #else
 
 #include <limits.h>
@@ -1187,7 +1192,7 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
 
 // ---- File formats end -------------------------------------------------------
 
-JK_PUBLIC void jk_platform_thread_init(void)
+JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel)
 {
     static JK_THREAD_LOCAL JkContext context;
     static JK_THREAD_LOCAL JkPlatformArenaVirtualRoot
@@ -1198,7 +1203,14 @@ JK_PUBLIC void jk_platform_thread_init(void)
     }
     JkBuffer log_memory = jk_platform_memory_alloc(JK_ALLOC_COMMIT, 16 * JK_MEGABYTE);
     context.log = jk_log_init(jk_platform_print, log_memory);
+    context.barrier_wait = jk_platform_barrier_wait;
+    context.channel = channel;
     jk_context = &context;
+}
+
+JK_PUBLIC void jk_platform_thread_init(void)
+{
+    jk_platform_thread_init_channel((JkChannel){.index = 0, .count = 1, .barrier = 0});
 }
 
 JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n)

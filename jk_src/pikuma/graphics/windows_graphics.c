@@ -17,6 +17,7 @@
 #include <jk_gen/pikuma/graphics/assets.c>
 #endif
 
+#define THREAD_COUNT 8
 #define FRAME_RATE 60
 #define MOUSE_SENSITIVITY 0.6f
 
@@ -25,10 +26,13 @@ typedef struct Global {
     JkArena arena;
     Assets *assets;
     RenderFunction *render;
+    HWND window;
     JkIntVec2 window_dimensions;
-    b32 running;
     HCURSOR cursor_arrow;
     State state;
+
+    _Alignas(64) SYNCHRONIZATION_BARRIER barrier;
+    HANDLE threads_spawned_event;
 
     _Alignas(64) SRWLOCK keyboard_lock;
     _Alignas(64) JkKeyboard keyboard;
@@ -141,7 +145,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     switch (message) {
     case WM_DESTROY:
     case WM_CLOSE: {
-        g.running = 0;
+        g.state.should_run = 0;
     } break;
 
     case WM_SIZE: {
@@ -243,11 +247,16 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return result;
 }
 
-DWORD app_thread(LPVOID param)
+DWORD app_thread_main(LPVOID param)
 {
-    jk_platform_thread_init();
+    WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
-    HWND window = (HWND)param;
+    if (!JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+        return 0;
+    }
+
+    jk_platform_thread_init_channel(
+            (JkChannel){.index = (int64_t)param, .count = THREAD_COUNT, .barrier = &g.barrier});
 
     int64_t frequency = g.state.os_timer_frequency;
     int64_t ticks_per_frame = frequency / FRAME_RATE;
@@ -255,8 +264,8 @@ DWORD app_thread(LPVOID param)
     // Set the Windows scheduler granularity to 1ms
     b32 can_sleep = timeBeginPeriod(1) == TIMERR_NOERROR;
 
-    HDC device_context = GetDC(window);
-    update_dimensions(window);
+    HDC device_context = GetDC(g.window);
+    update_dimensions(g.window);
 
 #if JK_BUILD_MODE != JK_RELEASE
     HINSTANCE graphics_library = 0;
@@ -281,7 +290,7 @@ DWORD app_thread(LPVOID param)
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     b32 capture_mouse = 0;
-    while (g.running) {
+    while (JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
 #if JK_BUILD_MODE != JK_RELEASE
         // Hot reloading
         WIN32_FILE_ATTRIBUTE_DATA graphics_dll_info;
@@ -314,7 +323,7 @@ DWORD app_thread(LPVOID param)
 
         g.state.os_time = jk_platform_os_timer_get();
 
-        if (window != GetForegroundWindow()) {
+        if (g.window != GetForegroundWindow()) {
             capture_mouse = 0;
             AcquireSRWLockExclusive(&g.keyboard_lock);
             g.keyboard = (JkKeyboard){0};
@@ -337,7 +346,7 @@ DWORD app_thread(LPVOID param)
         { // Mouse position
             POINT mouse_pos;
             if (GetCursorPos(&mouse_pos)) {
-                if (ScreenToClient(window, &mouse_pos)) {
+                if (ScreenToClient(g.window, &mouse_pos)) {
                     g.state.mouse.position.x = mouse_pos.x;
                     g.state.mouse.position.y = mouse_pos.y;
                 } else {
@@ -351,7 +360,7 @@ DWORD app_thread(LPVOID param)
         if ((jk_key_down(&g.state.keyboard, JK_KEY_LEFTALT)
                     || jk_key_down(&g.state.keyboard, JK_KEY_RIGHTALT))
                 && jk_key_pressed(&g.state.keyboard, JK_KEY_F4)) {
-            g.running = 0;
+            g.state.should_run = 0;
         }
 
         int32_t deadzone = 10;
@@ -372,7 +381,7 @@ DWORD app_thread(LPVOID param)
 
         if (capture_mouse) {
             RECT rect;
-            GetWindowRect(window, &rect);
+            GetWindowRect(g.window, &rect);
             LONG center_x = (rect.left + rect.right) / 2;
             LONG center_y = (rect.top + rect.bottom) / 2;
             rect.left = center_x;
@@ -385,7 +394,10 @@ DWORD app_thread(LPVOID param)
             ClipCursor(0);
         }
 
+        jk_channel_sync();
         g.render(jk_context, g.assets, &g.state);
+        jk_channel_sync();
+
         time++;
 
         uint64_t counter_work = jk_platform_os_timer_get();
@@ -411,7 +423,7 @@ DWORD app_thread(LPVOID param)
             }
         }
 
-        copy_draw_buffer_to_window(window, device_context);
+        copy_draw_buffer_to_window(g.window, device_context);
 
         int64_t work_time = counter_work - counter_previous;
         work_time_total += work_time;
@@ -459,6 +471,26 @@ DWORD app_thread(LPVOID param)
     return 0;
 }
 
+DWORD app_thread_auxiliary(LPVOID param)
+{
+    WaitForSingleObject(g.threads_spawned_event, INFINITE);
+
+    if (!JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+        return 0;
+    }
+
+    jk_platform_thread_init_channel(
+            (JkChannel){.index = (int64_t)param, .count = THREAD_COUNT, .barrier = &g.barrier});
+
+    while (JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+        jk_channel_sync();
+        g.render(jk_context, g.assets, &g.state);
+        jk_channel_sync();
+    }
+
+    return 0;
+}
+
 int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     g.cursor_arrow = LoadCursorA(0, IDC_ARROW);
@@ -498,7 +530,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         .lpszClassName = "jk_graphics_window_class",
     };
     RegisterClassA(&window_class);
-    HWND window = CreateWindowExA(0,
+    g.window = CreateWindowExA(0,
             window_class.lpszClassName,
             "Graphics",
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,
@@ -510,18 +542,18 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             0,
             jk_platform_hinstance,
             0);
-    if (window) {
+    if (g.window) {
         RAWINPUTDEVICE raw_input_devices[] = {
             {
                 .usUsagePage = 0x01,
                 .usUsage = 0x06,
                 .dwFlags = RIDEV_NOLEGACY,
-                .hwndTarget = window,
+                .hwndTarget = g.window,
             },
             {
                 .usUsagePage = 0x01,
                 .usUsage = 0x02,
-                .hwndTarget = window,
+                .hwndTarget = g.window,
             },
         };
         if (!RegisterRawInputDevices(raw_input_devices,
@@ -530,22 +562,43 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             jk_log(JK_LOG_WARNING, JKS("Failed to register raw input devices\n"));
         }
 
-        HANDLE app_thread_handle = CreateThread(0, 0, app_thread, window, 0, 0);
-        if (app_thread_handle) {
-            g.running = 1;
-            while (g.running) {
-                MSG message;
-                while (g.running && PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-                    if (message.message == WM_QUIT) {
-                        g.running = 0;
-                    }
-                    TranslateMessage(&message);
-                    DispatchMessageA(&message);
-                }
+        JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 1);
+
+        InitializeSynchronizationBarrier(&g.barrier, THREAD_COUNT, 100);
+        g.threads_spawned_event = CreateEventA(0, 1, 0, 0);
+
+        HANDLE threads[THREAD_COUNT];
+        for (int64_t i = 0; i < THREAD_COUNT; i++) {
+            threads[i] = CreateThread(
+                    0, 0, i == 0 ? app_thread_main : app_thread_auxiliary, (void *)i, 0, 0);
+
+            if (!threads[i]) {
+                JK_LOGF(JK_LOG_FATAL, jkfn("Failed to create app thread "), jkfi(i));
+                JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 0);
             }
-            WaitForSingleObject(app_thread_handle, INFINITE);
-        } else {
-            jk_log(JK_LOG_FATAL, JKS("Failed to launch app thread\n"));
+        }
+
+        g.state.should_run = JK_FLAG_GET(g.state.flags, FLAG_RUNNING);
+        if (!SetEvent(g.threads_spawned_event)) {
+            JK_LOGF(JK_LOG_FATAL, jkfn("Failed to signal threads_spawned_event"));
+            exit(1);
+        }
+
+        while (g.state.should_run) {
+            MSG message;
+            while (g.state.should_run && GetMessageA(&message, 0, 0, 0)) {
+                if (message.message == WM_QUIT) {
+                    g.state.should_run = 0;
+                }
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            }
+        }
+
+        for (int64_t i = 0; i < THREAD_COUNT; i++) {
+            if (threads[i]) {
+                WaitForSingleObject(threads[i], INFINITE);
+            }
         }
     } else {
         jk_log(JK_LOG_FATAL, JKS("CreateWindowExA failed\n"));
