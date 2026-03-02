@@ -21,9 +21,6 @@ static int32_t jk_platform_init_common(int32_t argc, char **argv)
 
 #ifdef _WIN32
 
-#include <windows.h>
-
-#define INITGUID // Causes definition of SystemTraceControlGuid in evntrace.h
 #include <dbghelp.h>
 #include <sys/stat.h>
 
@@ -460,9 +457,19 @@ JK_PUBLIC JK_NOINLINE JkBuffer jk_platform_stack_trace(
     return result;
 }
 
-JK_PUBLIC void jk_platform_barrier_wait(void *barrier)
+JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed)
 {
-    EnterSynchronizationBarrier(barrier, 0);
+    return InitializeSynchronizationBarrier(b, needed, 100);
+}
+
+JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b)
+{
+    EnterSynchronizationBarrier(b, 0);
+}
+
+JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b)
+{
+    DeleteSynchronizationBarrier(b);
 }
 
 #else
@@ -710,6 +717,44 @@ JK_PUBLIC void jk_platform_print(JkBuffer string)
 {
     if (0 < string.size) {
         fwrite(string.data, 1, string.size, stdout);
+    }
+}
+
+JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed)
+{
+    b->needed = needed;
+    b->called = 0;
+    if (pthread_mutex_init(&b->mutex, 0)) {
+        jk_log(JK_LOG_ERROR, JKS("Failed to initialize mutex"));
+        return 0;
+    }
+    if (pthread_cond_init(&b->cond, 0)) {
+        jk_log(JK_LOG_ERROR, JKS("Failed to initialize condition variable"));
+        return 0;
+    }
+    return 1;
+}
+
+JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b)
+{
+    pthread_mutex_lock(&b->mutex);
+    b->called++;
+    if (b->called == b->needed) {
+        b->called = 0;
+        pthread_cond_broadcast(&b->cond);
+    } else {
+        pthread_cond_wait(&b->cond, &b->mutex);
+    }
+    pthread_mutex_unlock(&b->mutex);
+}
+
+JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b)
+{
+    if (pthread_mutex_destroy(&b->mutex)) {
+        jk_log(JK_LOG_ERROR, JKS("Failed to destory mutex"));
+    }
+    if (pthread_cond_destroy(&b->cond)) {
+        jk_log(JK_LOG_ERROR, JKS("Failed to destory condition variable"));
     }
 }
 
@@ -1192,6 +1237,11 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
 
 // ---- File formats end -------------------------------------------------------
 
+static void jk_platform_barrier_wait_void(void *pointer)
+{
+    jk_platform_barrier_wait(pointer);
+}
+
 JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel)
 {
     static JK_THREAD_LOCAL JkContext context;
@@ -1203,7 +1253,7 @@ JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel)
     }
     JkBuffer log_memory = jk_platform_memory_alloc(JK_ALLOC_COMMIT, 16 * JK_MEGABYTE);
     context.log = jk_log_init(jk_platform_print, log_memory);
-    context.barrier_wait = jk_platform_barrier_wait;
+    context.barrier_wait = jk_platform_barrier_wait_void;
     context.channel = channel;
     jk_context = &context;
 }

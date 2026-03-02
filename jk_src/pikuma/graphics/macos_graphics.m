@@ -19,6 +19,8 @@
 #include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
+#define THREAD_COUNT 8
+
 typedef enum MouseFlags {
     MOUSE_LEFT_DOWN,
     MOUSE_LEFT_PRESSED,
@@ -45,10 +47,11 @@ typedef struct MyRect {
 } MyRect;
 
 typedef struct Global {
-    b32 running;
     b32 capture_mouse;
     Assets *assets;
     State state;
+
+    _Alignas(64) JkPlatformBarrier barrier;
 
     _Alignas(64) pthread_mutex_t keyboard_lock;
     _Alignas(64) JkKeyboard keyboard;
@@ -127,6 +130,22 @@ static void print_stdout(JkBuffer string)
 - (instancetype)initWithScaleFactor:(CGFloat)scale_factor;
 @end
 
+static void *auxiliary_thread(void *param)
+{
+    if (!JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+        return 0;
+    }
+
+    jk_platform_thread_init_channel(
+            (JkChannel){.index = (int64_t)param, .count = THREAD_COUNT, .barrier = &g.barrier});
+
+    while (JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+        render(jk_context, g.assets, &g.state);
+    }
+
+    return 0;
+}
+
 int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
@@ -158,7 +177,25 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     g.state.os_timer_frequency = jk_platform_os_timer_frequency();
     g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
 
-    g.running = 1;
+    jk_platform_barrier_init(&g.barrier, THREAD_COUNT);
+
+    JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 1);
+
+    pthread_t threads[THREAD_COUNT - 1];
+    for (int64_t thread_index = 1; thread_index < THREAD_COUNT; thread_index++) {
+        if (pthread_create(threads + thread_index, 0, auxiliary_thread, (void *)thread_index)) {
+            JK_LOGF(JK_LOG_FATAL, jkfn("Failed to create thread"), jkfi(thread_index));
+            JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 0);
+        }
+    }
+
+    if (JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+        jk_context->channel.index = 0;
+        jk_context->channel.count = THREAD_COUNT;
+        jk_context->channel.barrier = &g.barrier;
+    }
+
+    g.state.should_run = JK_FLAG_GET(g.state.flags, FLAG_RUNNING);
 
     @autoreleasepool {
         CGFloat scale_factor = [NSScreen mainScreen].backingScaleFactor;
@@ -173,7 +210,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         [application run];
     }
 
-    g.running = 0;
+    g.state.should_run = 0;
 
     return 0;
 }

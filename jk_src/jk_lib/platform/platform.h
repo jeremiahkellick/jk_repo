@@ -7,32 +7,32 @@
 // USER DEFINED
 JK_PUBLIC int32_t jk_platform_entry_point(int32_t argc, char **argv);
 
-#if _WIN32 && JK_PLATFORM_DESKTOP_APP
+// ---- OS-specific definitions begin ------------------------------------------
+
+#ifdef _WIN32
+
+#include <windows.h>
+
+#if JK_PLATFORM_DESKTOP_APP
 JK_GLOBAL_DECLARE HINSTANCE jk_platform_hinstance;
 #endif
 
-// ---- Copy-paste from windows headers to avoid importing windows.h begin -----
+typedef SYNCHRONIZATION_BARRIER JkPlatformBarrier;
 
-#ifndef GUID_DEFINED
-#define GUID_DEFINED
-#if defined(__midl)
-typedef struct {
-    unsigned long Data1;
-    unsigned short Data2;
-    unsigned short Data3;
-    byte Data4[8];
-} GUID;
 #else
-typedef struct _GUID {
-    unsigned long Data1;
-    unsigned short Data2;
-    unsigned short Data3;
-    unsigned char Data4[8];
-} GUID;
-#endif
+
+#include <pthread.h>
+
+typedef struct JkPlatformBarrier {
+    int64_t needed;
+    int64_t called;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+} JkPlatformBarrier;
+
 #endif
 
-// ---- Copy-paste from windows headers to avoid importing windows.h end -------
+// ---- OS-specific definitions end --------------------------------------------
 
 // ---- OS functions begin -----------------------------------------------------
 
@@ -72,7 +72,11 @@ JK_PUBLIC JkBuffer jk_platform_stack_trace(JkBuffer buffer, int64_t skip, int64_
 
 JK_PUBLIC void jk_platform_print(JkBuffer string);
 
-JK_PUBLIC void jk_platform_barrier_wait(void *barrier);
+JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed);
+
+JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b);
+
+JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b);
 
 // ---- OS functions end -------------------------------------------------------
 

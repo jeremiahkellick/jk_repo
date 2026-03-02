@@ -327,10 +327,11 @@ JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets)
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask)
 {
     float *ptr = pointer;
     float32x4x2_t r = jk_f32x8_zero();
+    offsets = jk_i256_and(offsets, jk_reinterpret_f32x8_as_i256(mask));
 
     r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 0), r.val[0], 0);
     r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 1), r.val[0], 1);
@@ -398,15 +399,17 @@ JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
     };
 }
 
+JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x)
+{
+    return jk_reinterpret_i256_as_f32x8(
+            JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_reinterpret_f32x8_as_i256(x), 31));
+}
+
 JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
 {
-    int32x4x2_t smeared_mask =
-            JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_reinterpret_f32x8_as_i256(mask), 31);
     return (float32x4x2_t){
-        vbslq_f32(
-                vreinterpretq_u32_s32(smeared_mask.val[0]), true_value.val[0], false_value.val[0]),
-        vbslq_f32(
-                vreinterpretq_u32_s32(smeared_mask.val[1]), true_value.val[1], false_value.val[1]),
+        vbslq_f32(vreinterpretq_u32_s32(mask.val[0]), true_value.val[0], false_value.val[0]),
+        vbslq_f32(vreinterpretq_u32_s32(mask.val[1]), true_value.val[1], false_value.val[1]),
     };
 }
 
@@ -418,9 +421,8 @@ JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x)
 
 JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
 {
-    int32x4x2_t smeared = JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_reinterpret_f32x8_as_i256(x), 31);
-    return vminvq_u32(vreinterpretq_u32_s32(smeared.val[0]))
-            && vminvq_u32(vreinterpretq_u32_s32(smeared.val[1]));
+    return vminvq_u32(vreinterpretq_u32_s32(x.val[0]))
+            && vminvq_u32(vreinterpretq_u32_s32(x.val[1]));
 }
 
 JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x)

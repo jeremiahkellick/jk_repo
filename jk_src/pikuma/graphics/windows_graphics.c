@@ -31,7 +31,7 @@ typedef struct Global {
     HCURSOR cursor_arrow;
     State state;
 
-    _Alignas(64) SYNCHRONIZATION_BARRIER barrier;
+    _Alignas(64) JkPlatformBarrier barrier;
     HANDLE threads_spawned_event;
 
     _Alignas(64) SRWLOCK keyboard_lock;
@@ -564,7 +564,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
         JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 1);
 
-        InitializeSynchronizationBarrier(&g.barrier, THREAD_COUNT, 100);
+        jk_platform_barrier_init(&g.barrier, THREAD_COUNT);
         g.threads_spawned_event = CreateEventA(0, 1, 0, 0);
 
         HANDLE threads[THREAD_COUNT];

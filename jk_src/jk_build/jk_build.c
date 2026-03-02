@@ -451,7 +451,7 @@ static b32 jk_platform_memory_commit(void *address, int64_t size)
 {
     if (0 < size) {
         if (mprotect(address, size, PROT_READ | PROT_WRITE)) {
-            jk_log(JK_LOG_ERROR, JKS("Failed to commit memory"));
+            fprintf(stderr, "Failed to commit memory\n");
             return 0;
         } else {
             return 1;
@@ -1352,11 +1352,11 @@ static void append_clang_gcc_shared_options(
     string_array_builder_push(command, paths.basename);
 
     if (options.mode == JK_DEBUG_SLOW) {
-        append(command, "-Og");
+        append(command, "-O0");
     } else {
         append(command, "-O3");
 #ifndef _WIN32
-        append(&command, "-flto");
+        append(command, "-flto");
 #endif
     }
     append(command, "-g");

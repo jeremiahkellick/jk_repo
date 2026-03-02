@@ -167,9 +167,10 @@ static void triangle_fill(State *state, TriangleNode *node, JkIntRect bounding_b
         for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
             Interpolants interpolants = interpolants_row[sample_index];
             for (int32_t x = bounds.min.x; x < bounds.max.x; x += 8) {
-                JkF32x8 outside_triangle = jk_f32x8_or(interpolants.e[I_BARYCENTRIC_0],
-                        jk_f32x8_or(
-                                interpolants.e[I_BARYCENTRIC_1], interpolants.e[I_BARYCENTRIC_2]));
+                JkF32x8 outside_triangle =
+                        jk_f32x8_to_mask(jk_f32x8_or(interpolants.e[I_BARYCENTRIC_0],
+                                jk_f32x8_or(interpolants.e[I_BARYCENTRIC_1],
+                                        interpolants.e[I_BARYCENTRIC_2])));
                 if (!jk_f32x8_all(outside_triangle)) {
                     int32_t index = PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x;
                     JkF32x8 z_buffer = jk_f32x8_load(state->z_buffer + index);
@@ -391,8 +392,8 @@ void render(JkContext *context, Assets *assets, State *state)
 {
     jk_context = context;
 
-    static JkIntRect tiles_rect;
-    static TileArray tiles;
+    static JkIntRect volatile tiles_rect_shared;
+    static TileArray volatile tiles_shared;
 
     _Alignas(64) static int32_t volatile next_tile_index;
 
@@ -506,13 +507,18 @@ void render(JkContext *context, Assets *assets, State *state)
         JkArena arena = jk_arena_scratch_get();
         JkArena triangle_arena = jk_arena_scratch_get_not(&arena);
 
+        JkIntRect tiles_rect;
         tiles_rect.min = (JkIntVec2){0};
         for (int64_t i = 0; i < 2; i++) {
             tiles_rect.max.v[i] =
                     JK_ALIGN_UP(state->dimensions.v[i], TILE_SIDE_LENGTH) / TILE_SIDE_LENGTH;
         }
+        TileArray tiles;
         tiles.count = tiles_rect.max.x * tiles_rect.max.y;
         tiles.e = jk_arena_push_zero(&arena, sizeof(*tiles.e) * tiles.count);
+
+        tiles_rect_shared = tiles_rect;
+        tiles_shared = tiles;
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
@@ -656,55 +662,61 @@ void render(JkContext *context, Assets *assets, State *state)
     JkI256 bg = jk_i256_broadcast_i32(
             *(int32_t *)(0 < state->test_frames_remaining ? &test_bg : &normal_bg));
 
-    int32_t tile_index;
-    while ((tile_index = jk_atomic_add(&next_tile_index, 1)) < tiles.count) {
-        Tile *tile = tiles.e + tile_index;
+    {
+        JkIntRect tiles_rect = tiles_rect_shared;
+        TileArray tiles = tiles_shared;
+        int32_t tile_index;
+        while ((tile_index = jk_atomic_add(&next_tile_index, 1)) < tiles.count) {
+            Tile *tile = tiles.e + tile_index;
 
-        JkIntVec2 tile_coord = {tile_index % tiles_rect.max.x, tile_index / tiles_rect.max.x};
-        JkIntRect bounding_box;
-        for (int64_t i = 0; i < 2; i++) {
-            bounding_box.min.v[i] = TILE_SIDE_LENGTH * tile_coord.v[i];
-            bounding_box.max.v[i] = bounding_box.min.v[i] + TILE_SIDE_LENGTH;
-        }
+            JkIntVec2 tile_coord = {tile_index % tiles_rect.max.x, tile_index / tiles_rect.max.x};
+            JkIntRect bounding_box;
+            for (int64_t i = 0; i < 2; i++) {
+                bounding_box.min.v[i] = TILE_SIDE_LENGTH * tile_coord.v[i];
+                bounding_box.max.v[i] = bounding_box.min.v[i] + TILE_SIDE_LENGTH;
+            }
 
-        for (int32_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-            for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
-                for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
-                    int32_t pixel_index =
-                            PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x;
-                    jk_i256_store(state->draw_buffer + pixel_index, bg);
-                    jk_f32x8_store(state->z_buffer + pixel_index, jk_f32x8_zero());
+            for (int32_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+                for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
+                    for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
+                        int32_t pixel_index =
+                                PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x;
+                        jk_i256_store(state->draw_buffer + pixel_index, bg);
+                        jk_f32x8_store(state->z_buffer + pixel_index, jk_f32x8_zero());
+                    }
                 }
             }
-        }
 
-        for (TriangleNode *node = tile->head; node; node = node->next) {
-            triangle_fill(state, node, bounding_box);
-        }
+            for (TriangleNode *node = tile->head; node; node = node->next) {
+                triangle_fill(state, node, bounding_box);
+            }
 
-        for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
-            for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
-                JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
-                for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                    JkI256 sample = jk_i256_load(state->draw_buffer
-                            + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
-                    JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
-                    channels[0] = jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
-                    channels[1] = jk_i256_add_i32(channels[1],
-                            jk_i256_and(JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 8), byte_mask));
-                    channels[2] = jk_i256_add_i32(channels[2],
-                            jk_i256_and(JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 16), byte_mask));
+            for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
+                for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
+                    JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
+                    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
+                        JkI256 sample = jk_i256_load(state->draw_buffer
+                                + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
+                        JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
+                        channels[0] = jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
+                        channels[1] = jk_i256_add_i32(channels[1],
+                                jk_i256_and(
+                                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 8), byte_mask));
+                        channels[2] = jk_i256_add_i32(channels[2],
+                                jk_i256_and(
+                                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 16), byte_mask));
+                    }
+                    for (int32_t channel_index = 0; channel_index < 3; channel_index++) {
+                        channels[channel_index] =
+                                JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(channels[channel_index], 2);
+                    }
+
+                    JkI256 color = channels[0];
+                    color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
+                    color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
+
+                    jk_i256_store(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
                 }
-                for (int32_t channel_index = 0; channel_index < 3; channel_index++) {
-                    channels[channel_index] =
-                            JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(channels[channel_index], 2);
-                }
-
-                JkI256 color = channels[0];
-                color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
-                color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
-
-                jk_i256_store(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
             }
         }
     }
