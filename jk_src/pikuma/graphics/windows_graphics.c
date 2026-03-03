@@ -22,7 +22,6 @@
 #define MOUSE_SENSITIVITY 0.6f
 
 typedef struct Global {
-    JkPlatformArenaVirtualRoot arena_root;
     JkArena arena;
     Assets *assets;
     RenderFunction *render;
@@ -496,8 +495,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     g.cursor_arrow = LoadCursorA(0, IDC_ARROW);
     g.cursor = g.cursor_arrow;
 
-    g.arena = jk_platform_arena_virtual_init(&g.arena_root, 5ll * 1024 * 1024 * 1024);
-    if (!jk_arena_valid(&g.arena)) {
+    g.arena = jk_platform_arena_virtual_init(5ll * 1024 * 1024 * 1024);
+    if (!g.arena.memory.size) {
         jk_log(JK_LOG_FATAL, JKS("Failed to initialize virtual memory arena\n"));
         exit(1);
     }

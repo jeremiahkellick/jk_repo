@@ -58,9 +58,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         exit(1);
     }
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
-    JkBuffer file = jk_platform_file_read_full(&storage, argv[1]);
+    JkArena *storage = jk_arena_scratch_begin().arena;
+    JkBuffer file = jk_platform_file_read_full(storage, argv[1]);
     int64_t file_ptr = 0;
 
     FILE *incorrect = fopen("incorrect.txt", "wb");
@@ -69,7 +68,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         exit(1);
     }
 
-    Character *characters = jk_arena_pointer_current(&storage);
+    Character *characters = jk_arena_pointer_current(storage);
     int64_t character_count = 0;
     while (file_ptr < file.size) {
         // Read character
@@ -80,7 +79,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             break;
         }
         character_count++;
-        Character *data = jk_arena_push_zero(&storage, JK_SIZEOF(*data));
+        Character *data = jk_arena_push_zero(storage, JK_SIZEOF(*data));
         int64_t start = file_ptr;
         data->v[CHARACTER].data = file.data + file_ptr;
         do {
@@ -134,7 +133,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         }
     } while (prompt == -1);
 
-    int64_t *indicies = jk_arena_push(&storage, JK_SIZEOF(*indicies) * character_count);
+    int64_t *indicies = jk_arena_push(storage, JK_SIZEOF(*indicies) * character_count);
     for (int64_t i = 0; i < character_count; i++) {
         indicies[i] = i;
     }

@@ -132,33 +132,33 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     printf("Arena\n");
 
     int64_t page_size = jk_platform_page_size();
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena arena = jk_platform_arena_virtual_init(&arena_root, page_size * 3);
-    JK_ASSERT(jk_arena_valid(&arena));
+    JkArena arena = jk_platform_arena_virtual_init(page_size * 3);
+    JK_ASSERT(arena.memory.size);
 
+    JK_ARENA_SCOPE(&arena)
     {
-        JkArena child = jk_arena_child_get(&arena);
-
-        uint8_t *push1 = jk_arena_push(&child, JK_SIZEOF(string1));
+        uint8_t *push1 = jk_arena_push(&arena, JK_SIZEOF(string1));
         JK_ASSERT(push1);
         memcpy(push1, string1, JK_SIZEOF(string1));
         printf("%s", push1);
 
-        uint8_t *push2 = jk_arena_push(&child, page_size * 2);
+        uint8_t *push2 = jk_arena_push(&arena, page_size * 2);
         JK_ASSERT(push2);
         uint8_t *print = &push2[page_size * 2 - JK_SIZEOF(string2)];
         memcpy(print, string2, JK_SIZEOF(string2));
         printf("%s", print);
 
-        int64_t size_before = child.root->memory.size;
-        int64_t pos_before = child.pos;
-        uint8_t *push3 = jk_arena_push(&child, page_size * 2);
-        int64_t size_after = child.root->memory.size;
-        int64_t pos_after = child.pos;
+        int64_t size_before = arena.memory.size;
+        int64_t pos_before = arena.pos;
+        uint8_t *push3 = jk_arena_push(&arena, page_size * 2);
+        int64_t size_after = arena.memory.size;
+        int64_t pos_after = arena.pos;
         JK_ASSERT(push3 == NULL);
         JK_ASSERT(size_before == size_after);
         JK_ASSERT(pos_before == pos_after);
     }
+
+    JK_ASSERT(arena.pos == 0);
 
     // ---- Arena end ----------------------------------------------------------
 
@@ -428,7 +428,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     JK_ASSERT(jk_round_up_to_power_of_2(18) == 32);
     JK_ASSERT(jk_round_down_to_power_of_2(18) == 16);
 
-    jk_platform_arena_virtual_release(&arena_root);
+    jk_platform_arena_virtual_release(&arena);
 
     return 0;
 }

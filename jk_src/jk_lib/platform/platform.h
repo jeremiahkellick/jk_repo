@@ -88,15 +88,9 @@ JK_PUBLIC double jk_platform_fma_64(double a, double b, double c);
 
 // ---- Virtual arena begin ------------------------------------------------------------
 
-typedef struct JkPlatformArenaVirtualRoot {
-    JkArenaRoot generic;
-    int64_t virtual_size;
-} JkPlatformArenaVirtualRoot;
+JK_PUBLIC JkArena jk_platform_arena_virtual_init(int64_t virtual_size);
 
-JK_PUBLIC JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, int64_t virtual_size);
-
-JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root);
+JK_PUBLIC void jk_platform_arena_virtual_release(JkArena *arena);
 
 // ---- Virtual arena end --------------------------------------------------------------
 

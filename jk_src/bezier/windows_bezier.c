@@ -334,10 +334,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     global_bezier.cpu_timer_get = jk_cpu_timer_get;
     global_bezier.debug_print = debug_print;
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 5ll * 1024 * 1024 * 1024);
-
-    global_assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
+    global_assets = (ChessAssets *)jk_platform_file_read_full(
+            jk_arena_scratch_begin().arena, "chess_assets")
+                            .data;
 
     if (global_bezier.draw_buffer) {
         WNDCLASSA window_class = {

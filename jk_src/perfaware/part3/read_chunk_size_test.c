@@ -249,11 +249,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     int64_t file_size = jk_platform_file_size(argv[1]);
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, 64ll * 1024 * 1024 * 1024);
-    JkBuffer full_file_buffer = jk_platform_file_read_full(&storage, argv[1]);
+    JkBuffer full_file_buffer = jk_platform_file_read_full(jk_arena_scratch_begin().arena, argv[1]);
     int64_t reference_sum = sum(full_file_buffer);
-    jk_platform_arena_virtual_release(&arena_root);
 
     int64_t buffer_size = STARTING_SIZE;
     for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++, buffer_size *= 2) {

@@ -52,10 +52,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         }
     }
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
-
-    JkBuffer file = jk_platform_file_read_full(&storage, opts_parse.operands[0]);
+    JkBuffer file =
+            jk_platform_file_read_full(jk_arena_scratch_begin().arena, opts_parse.operands[0]);
     JkHashTable *seen = jk_hash_table_create();
     int64_t count = 0;
     int64_t pos = 0;

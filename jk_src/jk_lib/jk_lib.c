@@ -1202,8 +1202,10 @@ JK_PUBLIC void jk_log(JkLogType type, JkBuffer message)
 
 JK_PUBLIC void jk_logf(JkLogType type, JkFormatItemArray items)
 {
-    JkArena scratch = jk_arena_scratch_get();
-    jk_log(type, jk_format(&scratch, items));
+    JK_ARENA_SCRATCH(scratch)
+    {
+        jk_log(type, jk_format(scratch.arena, items));
+    }
 }
 
 JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b)
@@ -1399,33 +1401,16 @@ JK_PUBLIC float jk_acos_f32(float x)
 
 // ---- Arena begin ------------------------------------------------------------
 
-static b32 jk_arena_fixed_grow(JkArena *arena, int64_t new_size)
-{
-    return 0; // Fixed arenas don't grow, duh
-}
-
-JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory)
-{
-    root->memory = memory;
-    root->grow = jk_arena_fixed_grow;
-    return (JkArena){.root = root};
-}
-
-JK_PUBLIC b32 jk_arena_valid(JkArena *arena)
-{
-    return !!arena->root;
-}
-
 JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
 {
     JK_DEBUG_ASSERT(0 <= size);
     int64_t new_pos = arena->pos + size;
-    if (arena->root->memory.size < new_pos) {
-        if (!arena->root->grow(arena, new_pos)) {
+    if (arena->memory.size < new_pos) {
+        if (!(arena->grow && arena->grow(arena, new_pos))) {
             return 0;
         }
     }
-    void *address = arena->root->memory.data + arena->pos;
+    void *address = arena->memory.data + arena->pos;
     arena->pos = new_pos;
     return address;
 }
@@ -1452,47 +1437,52 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size)
 JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena)
 {
     return (JkBuffer){
-        .size = arena->pos - arena->base,
-        .data = arena->root->memory.data + arena->base,
+        .size = arena->pos,
+        .data = arena->memory.data,
     };
 }
 
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size && size <= arena->pos - arena->base);
+    JK_DEBUG_ASSERT(0 <= size && size <= arena->pos);
     arena->pos -= size;
-}
-
-JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent)
-{
-    return (JkArena){
-        .base = parent->pos,
-        .pos = parent->pos,
-        .root = parent->root,
-    };
-}
-
-JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child)
-{
-    parent->pos = child->pos;
 }
 
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena)
 {
-    return arena->root->memory.data + arena->pos;
+    return arena->memory.data + arena->pos;
 }
 
-JK_PUBLIC JkArena jk_arena_scratch_get(void)
+JK_PUBLIC JkArenaScope jk_arena_scope_begin(JkArena *arena)
 {
-    return jk_arena_child_get(jk_context->scratch_arenas + 0);
+    return (JkArenaScope){
+        .flags = JK_MASK(JK_ARENA_SCOPE_FLAG_DEFER), .arena = arena, .base = arena->pos};
 }
 
-JK_PUBLIC JkArena jk_arena_scratch_get_not(JkArena *not_this_arena)
+JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope)
 {
-    if (jk_context->scratch_arenas[0].root == not_this_arena->root) {
-        return jk_arena_child_get(jk_context->scratch_arenas + 1);
+    scope.arena->pos = scope.base;
+}
+
+JK_PUBLIC JkBuffer jk_arena_scope_as_buffer(JkArenaScope scope)
+{
+    return (JkBuffer){
+        .size = scope.arena->pos - scope.base,
+        .data = scope.arena->memory.data + scope.base,
+    };
+}
+
+JK_PUBLIC JkArenaScope jk_arena_scratch_begin(void)
+{
+    return jk_arena_scope_begin(jk_context->scratch_arenas + 0);
+}
+
+JK_PUBLIC JkArenaScope jk_arena_scratch_begin_not(JkArena *not_this_arena)
+{
+    if (jk_context->scratch_arenas + 0 == not_this_arena) {
+        return jk_arena_scope_begin(jk_context->scratch_arenas + 1);
     } else {
-        return jk_arena_child_get(jk_context->scratch_arenas + 0);
+        return jk_arena_scope_begin(jk_context->scratch_arenas + 0);
     }
 }
 
@@ -2787,7 +2777,6 @@ JK_PUBLIC int jk_parse_positive_integer(char *string)
 
 JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size);
     uint8_t *bytes = address;
     for (int64_t i = 0; i < size; i++) {
         bytes[i] = value;
@@ -2797,7 +2786,6 @@ JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
 
 JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size)
 {
-    JK_DEBUG_ASSERT(0 <= size);
     uint8_t *dest_bytes = dest;
     uint8_t *src_bytes = src;
     for (int64_t i = 0; i < size; i++) {

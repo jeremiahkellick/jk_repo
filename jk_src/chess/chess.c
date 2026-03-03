@@ -976,60 +976,61 @@ b32 ai_running(JkContext *context, Ai *ai)
         ai->response.move = move_unpack(favorite_child->move);
 
 #if JK_BUILD_MODE != JK_RELEASE
-        JkArena debug_arena = jk_arena_scratch_get();
+        JK_ARENA_SCRATCH(scratch)
+        {
+            uint64_t time_elapsed = ai->time - ai->time_started;
+            double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
-        uint64_t time_elapsed = ai->time - ai->time_started;
-        double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
+            // Print min and max depth
+            MoveTreeStats stats = {.min_depth = INT64_MAX};
+            move_tree_stats_calculate(&stats, ai->root, 0);
+            stats.max_line = jk_arena_pointer_current(scratch.arena);
+            for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
+                MovePacked *line_move = jk_arena_push(scratch.arena, JK_SIZEOF(*line_move));
+                *line_move = ancestor->move;
+            }
 
-        // Print min and max depth
-        MoveTreeStats stats = {.min_depth = INT64_MAX};
-        move_tree_stats_calculate(&stats, ai->root, 0);
-        stats.max_line = jk_arena_pointer_current(&debug_arena);
-        for (MoveNode *ancestor = stats.deepest_leaf; ancestor; ancestor = ancestor->parent) {
-            MovePacked *line_move = jk_arena_push(&debug_arena, JK_SIZEOF(*line_move));
-            *line_move = ancestor->move;
-        }
+            double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
 
-        double mnps = ((double)stats.node_count / 1000000.0) / seconds_elapsed;
-
-        // clang-format off
+            // clang-format off
         JK_LOGF(JK_LOG_INFO,
                 jkfn("elder_count: "), jkfu(stats.elder_count), jkf_nl,
                 jkfn("node_count: "), jkfu(stats.node_count), jkf_nl,
                 jkfn("seconds_elapsed: "), jkff(seconds_elapsed, 2), jkf_nl,
                 jkff(mnps, 4), jkfn("Mn/s"), jkf_nl);
-        // clang-format on
+            // clang-format on
 
-        if (stats.max_depth < 300) {
-            int64_t max_score_depth = INT64_MIN;
-            {
-                Team team = board_current_team_get(ai->response.board);
-                Board board = ai->response.board;
-                MoveNode *node = favorite_child;
-                while (node) {
-                    max_score_depth++;
-                    board = board_move_perform(board, node->move);
-                    JK_LOGF(JK_LOG_INFO, jkfn("age: "), jkfu(node_age_get(node)), jkf_nl);
-                    JK_LOGF(JK_LOG_INFO,
-                            jkfn("board_score: "),
-                            jkfi(board_score(board, max_score_depth, (MoveCounts){0})),
-                            jkf_nl);
-                    debug_render(board);
-                    team = !team;
-                    int32_t max_score = INT32_MIN;
-                    MoveNode *max_score_node = 0;
-                    for (MoveNode *child = node->first_child; child; child = child->next_sibling) {
-                        int32_t score = team_multiplier[team] * child->score;
-                        if (max_score < score) {
-                            max_score = score;
-                            max_score_node = child;
+            if (stats.max_depth < 300) {
+                int64_t max_score_depth = INT64_MIN;
+                {
+                    Team team = board_current_team_get(ai->response.board);
+                    Board board = ai->response.board;
+                    MoveNode *node = favorite_child;
+                    while (node) {
+                        max_score_depth++;
+                        board = board_move_perform(board, node->move);
+                        JK_LOGF(JK_LOG_INFO, jkfn("age: "), jkfu(node_age_get(node)), jkf_nl);
+                        JK_LOGF(JK_LOG_INFO,
+                                jkfn("board_score: "),
+                                jkfi(board_score(board, max_score_depth, (MoveCounts){0})),
+                                jkf_nl);
+                        debug_render(board);
+                        team = !team;
+                        int32_t max_score = INT32_MIN;
+                        MoveNode *max_score_node = 0;
+                        for (MoveNode *child = node->first_child; child;
+                                child = child->next_sibling) {
+                            int32_t score = team_multiplier[team] * child->score;
+                            if (max_score < score) {
+                                max_score = score;
+                                max_score_node = child;
+                            }
                         }
+                        node = max_score_node;
                     }
-                    node = max_score_node;
                 }
-            }
 
-            // clang-format off
+                // clang-format off
             JK_LOGF(JK_LOG_INFO,
                     jkfn("node_count\t"), jkfu(stats.node_count), jkf_nl,
                     jkfn("leaf_count\t"), jkfu(stats.leaf_count), jkf_nl,
@@ -1037,31 +1038,32 @@ b32 ai_running(JkContext *context, Ai *ai)
                     jkfn("avg_depth\t"), jkfu(stats.depth_sum / stats.leaf_count), jkf_nl,
                     jkfn("max_depth\t"), jkfu(stats.max_depth), jkf_nl,
                     jkfn("max_score_depth\t"), jkfu(max_score_depth), jkf_nl);
-            // clang-format on
+                // clang-format on
 
-            jk_log(JK_LOG_INFO, JKS("max_line:\n"));
-            for (int64_t i = 0; i < stats.max_depth; i++) {
-                uint16_t move_bits = stats.max_line[i].bits;
-                JK_LOGF(JK_LOG_INFO, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
-            }
-
-            {
-                Board board = ai->response.board;
-                for (int32_t i = stats.min_line.count - 1; i >= 0; i--) {
-                    board = board_move_perform(board, stats.min_line.data[i]);
-                    debug_render(board);
+                jk_log(JK_LOG_INFO, JKS("max_line:\n"));
+                for (int64_t i = 0; i < stats.max_depth; i++) {
+                    uint16_t move_bits = stats.max_line[i].bits;
+                    JK_LOGF(JK_LOG_INFO, jkfn("\t0x"), jkfh(move_bits, 4), jkf_nl);
                 }
-            }
 
-            {
-                Board board = ai->response.board;
-                for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
-                    board = board_move_perform(board, stats.max_line[i]);
-                    JK_LOGF(JK_LOG_INFO,
-                            jkfn("score: "),
-                            jkfi(board_score(board, stats.max_depth - 1 - i, (MoveCounts){0})),
-                            jkf_nl);
-                    debug_render(board);
+                {
+                    Board board = ai->response.board;
+                    for (int32_t i = stats.min_line.count - 1; i >= 0; i--) {
+                        board = board_move_perform(board, stats.min_line.data[i]);
+                        debug_render(board);
+                    }
+                }
+
+                {
+                    Board board = ai->response.board;
+                    for (int32_t i = (int32_t)stats.max_depth - 1; i >= 0; i--) {
+                        board = board_move_perform(board, stats.max_line[i]);
+                        JK_LOGF(JK_LOG_INFO,
+                                jkfn("score: "),
+                                jkfi(board_score(board, stats.max_depth - 1 - i, (MoveCounts){0})),
+                                jkf_nl);
+                        debug_render(board);
+                    }
                 }
             }
         }
@@ -1208,8 +1210,7 @@ void update(JkContext *context, ChessAssets *assets, Chess *chess)
 {
     jk_context = context;
 
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
+    JkArena arena = {.memory = chess->render_memory};
 
 #if JK_BUILD_MODE != JK_RELEASE
     if (!debug_assets) {
@@ -1865,8 +1866,7 @@ void render(ChessAssets *assets, Chess *chess)
 
     JkIntVec2 pos;
 
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root, chess->render_memory);
+    JkArena arena = {.memory = chess->render_memory};
 
     // static int64_t render_count;
     // JK_PRINT_FMT(&arena, jkfn("render_count "), jkfi(++render_count), jkf_nl);

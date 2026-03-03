@@ -150,14 +150,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena arena = jk_platform_arena_virtual_init(&arena_root, 8 * JK_GIGABYTE);
-    if (!jk_arena_valid(&arena)) {
-        jk_log(JK_LOG_ERROR, JKS("Failed to initialize virtual memory arena\n"));
-        exit(1);
-    }
-
-    g.assets = (Assets *)jk_platform_file_read_full(&arena, "graphics_assets").data;
+    g.assets =
+            (Assets *)jk_platform_file_read_full(jk_arena_scratch_begin().arena, "graphics_assets")
+                    .data;
 
     g.state.memory.size = 2 * JK_MEGABYTE;
     uint8_t *memory = mmap(NULL,

@@ -13,20 +13,18 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 36);
-
-    JkBuffer text = jk_platform_file_read_full(&storage, "../jk_src/jk_lib/json/lex_test.json");
+    JkArena *arena = jk_arena_scratch_begin().arena;
+    JkBuffer text = jk_platform_file_read_full(arena, "../jk_src/jk_lib/json/lex_test.json");
     int64_t pos = 0;
 
     JkJsonToken token;
     do {
-        token = jk_json_lex(text, &pos, &storage);
+        token = jk_json_lex(text, &pos, arena);
         if (token.type == JK_JSON_TOKEN_INVALID) {
             fprintf(stderr, "%s: Invalid JSON\n", argv[0]);
             exit(1);
         }
-        jk_platform_print(jk_json_token_to_string(&storage, &token));
+        jk_platform_print(jk_json_token_to_string(arena, &token));
         printf(" ");
     } while (token.type != JK_JSON_TOKEN_EOF);
 

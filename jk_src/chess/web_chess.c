@@ -27,7 +27,6 @@ static Chess g_chess;
 static Ai g_ai;
 static int32_t g_ai_request_id;
 static AiRequest g_ai_request;
-static JkArenaRoot g_ai_arena_root;
 static JkArena g_ai_arena;
 
 typedef union FloatConvert {
@@ -176,18 +175,14 @@ void fill_audio_buffer(SoundIndex sound,
 b32 ai_alloc_memory(void)
 {
     static JkContext c;
-    static JkArenaRoot scratch_arena_roots[JK_ARRAY_COUNT(c.scratch_arenas)];
 
     int64_t scratch_arena_size = 16 * JK_KILOBYTE;
     JkBuffer log_memory = {.size = 1 * JK_MEGABYTE};
     if (ensure_memory(AI_MEMORY_SIZE + JK_ARRAY_COUNT(c.scratch_arenas) * scratch_arena_size
                 + log_memory.size)) {
         for (int64_t i = 0; i < JK_ARRAY_COUNT(c.scratch_arenas); i++) {
-            JkBuffer memory = {
-                .size = scratch_arena_size,
-                .data = __heap_base + AI_MEMORY_SIZE + i * scratch_arena_size,
-            };
-            c.scratch_arenas[i] = jk_arena_fixed_init(scratch_arena_roots + i, memory);
+            c.scratch_arenas[i].memory.size = scratch_arena_size;
+            c.scratch_arenas[i].memory.data = __heap_base + AI_MEMORY_SIZE + i * scratch_arena_size;
         }
         log_memory.data = __heap_base + AI_MEMORY_SIZE
                 + JK_ARRAY_COUNT(c.scratch_arenas) * scratch_arena_size;
@@ -202,8 +197,7 @@ b32 ai_alloc_memory(void)
 b32 ai_begin_request(double os_time)
 {
     if (g_ai_request.wants_ai_move) {
-        g_ai_arena = jk_arena_fixed_init(
-                &g_ai_arena_root, (JkBuffer){.size = AI_MEMORY_SIZE, .data = __heap_base});
+        g_ai_arena.memory = (JkBuffer){.size = AI_MEMORY_SIZE, .data = __heap_base};
         ai_init(&g_ai_arena, &g_ai, g_ai_request.board, os_time, 1000);
         return 1;
     } else {

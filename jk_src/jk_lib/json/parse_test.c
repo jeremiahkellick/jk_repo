@@ -14,14 +14,12 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
+    JkArena *arena = jk_arena_scratch_begin().arena;
+    JkBuffer text = jk_platform_file_read_full(arena, "../jk_src/jk_lib/json/parse_test.json");
 
-    JkBuffer text = jk_platform_file_read_full(&storage, "../jk_src/jk_lib/json/parse_test.json");
-
-    JkJson *json = jk_json_parse(text, &storage);
+    JkJson *json = jk_json_parse(text, arena);
     if (json) {
-        jk_platform_print(jk_json_to_string(&storage, json, 0));
+        jk_platform_print(jk_json_to_string(arena, json, 0));
         printf("\n");
         assert(json->type == JK_JSON_OBJECT);
         JkJson *smokes = jk_json_member_get(json, "smokes");

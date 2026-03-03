@@ -41,8 +41,10 @@ int32_t WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line,
 JK_PUBLIC void jk_platform_print(JkBuffer string)
 {
     if (0 < string.size) {
-        JkArena scratch = jk_arena_scratch_get();
-        OutputDebugStringA(jk_buffer_to_null_terminated(&scratch, string));
+        JK_ARENA_SCRATCH(scratch)
+        {
+            OutputDebugStringA(jk_buffer_to_null_terminated(scratch.arena, string));
+        }
     }
 }
 
@@ -787,49 +789,50 @@ JK_PUBLIC double jk_platform_fma_64(double a, double b, double c)
 
 static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
 {
-    JkPlatformArenaVirtualRoot *root = (JkPlatformArenaVirtualRoot *)arena->root;
     new_size = jk_platform_page_size_round_up(new_size);
-    if (!(root->generic.memory.size <= new_size && new_size <= root->virtual_size)) {
+    JK_DEBUG_ASSERT(arena->memory.size <= new_size);
+    int64_t virtual_size = (int64_t)arena->user_data;
+    if (virtual_size < new_size) {
         return 0;
     } else {
-        int64_t expansion_size = new_size - root->generic.memory.size;
-        if (jk_platform_memory_commit(
-                    root->generic.memory.data + root->generic.memory.size, expansion_size)) {
-            root->generic.memory.size = new_size;
+        int64_t expansion_size = new_size - arena->memory.size;
+        if (jk_platform_memory_commit(arena->memory.data + arena->memory.size, expansion_size)) {
+            arena->memory.size = new_size;
             return 1;
         } else {
+            jk_log(JK_LOG_ERROR, JKS("Failed to commit a virtual arena's reserved memory"));
             return 0;
         }
     }
 }
 
-JK_PUBLIC JkArena jk_platform_arena_virtual_init(
-        JkPlatformArenaVirtualRoot *root, int64_t virtual_size)
+JK_PUBLIC JkArena jk_platform_arena_virtual_init(int64_t virtual_size)
 {
     JkArena result = {0};
-    jk_memset(root, 0, sizeof(*root));
 
     JkBuffer reserved = jk_platform_memory_alloc(JK_ALLOC_RESERVE, virtual_size);
     if (reserved.size == virtual_size) {
         int64_t page_size = jk_platform_page_size();
         if (jk_platform_memory_commit(reserved.data, page_size)) {
-            root->generic.memory.size = page_size;
-            root->generic.memory.data = reserved.data;
-            root->generic.grow = jk_platform_arena_virtual_grow;
-            root->virtual_size = virtual_size;
-            result.root = &root->generic;
+            result.memory.size = page_size;
+            result.memory.data = reserved.data;
+            result.grow = jk_platform_arena_virtual_grow;
+            result.user_data = (void *)virtual_size;
         } else {
+            jk_log(JK_LOG_ERROR, JKS("Failed to commit a virtual arena's reserved memory"));
             jk_platform_memory_free(reserved);
         }
+    } else {
+        jk_log(JK_LOG_ERROR, JKS("Failed to reserve memory for virtual arena"));
     }
 
     return result;
 }
 
-JK_PUBLIC void jk_platform_arena_virtual_release(JkPlatformArenaVirtualRoot *root)
+JK_PUBLIC void jk_platform_arena_virtual_release(JkArena *arena)
 {
-    jk_platform_memory_free(
-            (JkBuffer){.size = root->virtual_size, .data = root->generic.memory.data});
+    int64_t virtual_size = (int64_t)arena->user_data;
+    jk_platform_memory_free((JkBuffer){.size = virtual_size, .data = arena->memory.data});
 }
 
 // ---- Virtual arena end --------------------------------------------------------------
@@ -1245,11 +1248,8 @@ static void jk_platform_barrier_wait_void(void *pointer)
 JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel)
 {
     static JK_THREAD_LOCAL JkContext context;
-    static JK_THREAD_LOCAL JkPlatformArenaVirtualRoot
-            scratch_arena_roots[JK_ARRAY_COUNT(context.scratch_arenas)];
     for (int64_t i = 0; i < JK_ARRAY_COUNT(context.scratch_arenas); i++) {
-        context.scratch_arenas[i] =
-                jk_platform_arena_virtual_init(scratch_arena_roots + i, 8 * JK_GIGABYTE);
+        context.scratch_arenas[i] = jk_platform_arena_virtual_init(8 * JK_GIGABYTE);
     }
     JkBuffer log_memory = jk_platform_memory_alloc(JK_ALLOC_COMMIT, 16 * JK_MEGABYTE);
     context.log = jk_log_init(jk_platform_print, log_memory);
@@ -1348,45 +1348,49 @@ end:
 JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
         JkBuffer buffer, JkBuffer file_path, JkBuffer array_name)
 {
+    b32 result = 0;
+
     if (!jk_platform_create_directory(jk_path_directory(file_path))) {
         jk_log(JK_LOG_ERROR, JKS("Failed to create directory\n"));
         return 0;
     }
 
-    JkArena arena = jk_arena_scratch_get();
+    JkArenaScope scratch = jk_arena_scratch_begin();
 
-    char *file_path_nt = jk_buffer_to_null_terminated(&arena, file_path);
-    char *array_name_nt = jk_buffer_to_null_terminated(&arena, array_name);
-    if (!file_path_nt || !array_name_nt) {
-        jk_log(JK_LOG_ERROR, JKS("String memory limit exceeded\n"));
-        return 0;
-    }
+    char *file_path_nt = jk_buffer_to_null_terminated(scratch.arena, file_path);
+    char *array_name_nt = jk_buffer_to_null_terminated(scratch.arena, array_name);
+    if (file_path_nt && array_name_nt) {
+        FILE *file = fopen(file_path_nt, "wb");
+        if (file) {
+            fprintf(file, "JK_PUBLIC char %s[%lld] = {\n", array_name_nt, (long long)buffer.size);
+            int64_t byte_index = 0;
+            while (byte_index < buffer.size) {
+                fprintf(file, "   ");
+                for (int64_t i = 0; i < 16 && byte_index < buffer.size; i++) {
+                    fprintf(file, " 0x%02x,", (int32_t)buffer.data[byte_index++]);
+                }
+                fprintf(file, "\n");
+            }
+            fprintf(file, "};\n");
 
-    FILE *file = fopen(file_path_nt, "wb");
-    if (!file) {
-        JK_LOGF(JK_LOG_ERROR,
-                jkfn("Failed to open file '"),
-                jkfs(file_path),
-                jkfn("': "),
-                jkfn(strerror(errno)),
-                jkf_nl);
-        return 0;
-    }
+            fclose(file);
 
-    fprintf(file, "JK_PUBLIC char %s[%lld] = {\n", array_name_nt, (long long)buffer.size);
-    int64_t byte_index = 0;
-    while (byte_index < buffer.size) {
-        fprintf(file, "   ");
-        for (int64_t i = 0; i < 16 && byte_index < buffer.size; i++) {
-            fprintf(file, " 0x%02x,", (int32_t)buffer.data[byte_index++]);
+            result = 1;
+        } else {
+            JK_LOGF(JK_LOG_ERROR,
+                    jkfn("Failed to open file '"),
+                    jkfs(file_path),
+                    jkfn("': "),
+                    jkfn(strerror(errno)),
+                    jkf_nl);
         }
-        fprintf(file, "\n");
+    } else {
+        jk_log(JK_LOG_ERROR, JKS("String memory limit exceeded\n"));
     }
-    fprintf(file, "};\n");
 
-    fclose(file);
+    jk_arena_scope_end(scratch);
 
-    return 1;
+    return result;
 }
 
 JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait)
@@ -1414,11 +1418,11 @@ JK_PUBLIC void jk_platform_profile_end_and_print(void)
     jk_profile_frame_end();
 
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
-    uint8_t print_bytes[4096];
-    JkBuffer print_memory = JK_BUFFER_INIT_FROM_BYTE_ARRAY(print_bytes);
-    JkArenaRoot arena_root;
-    JkArena arena = jk_arena_fixed_init(&arena_root, print_memory);
-    jk_log(JK_LOG_INFO, jk_profile_report(&arena, frequency));
+
+    JK_ARENA_SCRATCH(scratch)
+    {
+        jk_log(JK_LOG_INFO, jk_profile_report(scratch.arena, frequency));
+    }
 }
 
 JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count)

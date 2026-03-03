@@ -397,6 +397,9 @@ void render(JkContext *context, Assets *assets, State *state)
 
     _Alignas(64) static int32_t volatile next_tile_index;
 
+    JkArenaScope scratch;
+    JkArenaScope triangle_scratch;
+
     JK_CHANNEL_NARROW(0)
     {
         if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
@@ -504,8 +507,8 @@ void render(JkContext *context, Assets *assets, State *state)
                 jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
                 pixel_matrix);
 
-        JkArena arena = jk_arena_scratch_get();
-        JkArena triangle_arena = jk_arena_scratch_get_not(&arena);
+        scratch = jk_arena_scratch_begin();
+        triangle_scratch = jk_arena_scratch_begin_not(scratch.arena);
 
         JkIntRect tiles_rect;
         tiles_rect.min = (JkIntVec2){0};
@@ -515,14 +518,14 @@ void render(JkContext *context, Assets *assets, State *state)
         }
         TileArray tiles;
         tiles.count = tiles_rect.max.x * tiles_rect.max.y;
-        tiles.e = jk_arena_push_zero(&arena, sizeof(*tiles.e) * tiles.count);
+        tiles.e = jk_arena_push_zero(scratch.arena, sizeof(*tiles.e) * tiles.count);
 
         tiles_rect_shared = tiles_rect;
         tiles_shared = tiles;
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
-            JkArena object_arena = jk_arena_child_get(&arena);
+            JkArenaScope object_scope = jk_arena_scope_begin(scratch.arena);
 
             JkMat4 world_matrix = jk_mat4_i;
             for (ObjectId parent_id = object_id; parent_id.i;
@@ -532,13 +535,13 @@ void render(JkContext *context, Assets *assets, State *state)
             }
 
             JkVec3 *world_vertices =
-                    jk_arena_push(&object_arena, vertices.count * JK_SIZEOF(*world_vertices));
+                    jk_arena_push(scratch.arena, vertices.count * JK_SIZEOF(*world_vertices));
             for (int64_t i = 0; i < vertices.count; i++) {
                 world_vertices[i] = jk_mat4_mul_point(world_matrix, vertices.e[i]);
             }
 
             JkVec4 *clip_space_vertices =
-                    jk_arena_push(&object_arena, vertices.count * JK_SIZEOF(*clip_space_vertices));
+                    jk_arena_push(scratch.arena, vertices.count * JK_SIZEOF(*clip_space_vertices));
             for (int64_t i = 0; i < vertices.count; i++) {
                 clip_space_vertices[i] =
                         jk_mat4_mul_vec4(clip_space_matrix, jk_vec3_to_4(world_vertices[i], 1));
@@ -549,8 +552,8 @@ void render(JkContext *context, Assets *assets, State *state)
             Bitmap texture = bitmap_from_span(assets, object->texture);
 
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
+                JkArenaScope face_scope = jk_arena_scope_begin(scratch.arena);
                 Face face = faces.e[face_index];
-                JkArena face_arena = jk_arena_child_get(&object_arena);
 
                 JkVec2 uv[3];
                 if (object->repeat_size) {
@@ -600,7 +603,7 @@ void render(JkContext *context, Assets *assets, State *state)
                 }
 
                 // Apply near clipping and projection
-                TexturedVertexArray vs = {.e = jk_arena_pointer_current(&face_arena)};
+                TexturedVertexArray vs = {.e = jk_arena_pointer_current(scratch.arena)};
                 for (int64_t i = 0; i < 3; i++) {
                     int64_t b_i = (i + 1) % 3;
                     JkVec4 a = clip_space_vertices[face.v[i]];
@@ -609,16 +612,16 @@ void render(JkContext *context, Assets *assets, State *state)
                     b32 b_inside = !!(b.z < b.w);
                     if (a_inside != b_inside) { // Crosses clip plane, add interpolated vertex
                         float t = (near_clip - a.w) / (b.w - a.w);
-                        add_textured_vertex(&face_arena,
+                        add_textured_vertex(scratch.arena,
                                 pixel_matrix,
                                 jk_vec4_lerp(a, b, t),
                                 jk_vec2_lerp(uv[i], uv[b_i], t));
                     }
                     if (b_inside) {
-                        add_textured_vertex(&face_arena, pixel_matrix, b, uv[b_i]);
+                        add_textured_vertex(scratch.arena, pixel_matrix, b, uv[b_i]);
                     }
                 }
-                vs.count = (TexturedVertex *)jk_arena_pointer_current(&face_arena) - vs.e;
+                vs.count = (TexturedVertex *)jk_arena_pointer_current(scratch.arena) - vs.e;
 
                 // Triangulate the resulting polygon
                 for (int64_t vertex_index = 2; vertex_index < vs.count; vertex_index++) {
@@ -642,7 +645,7 @@ void render(JkContext *context, Assets *assets, State *state)
                                 Tile *tile = tiles.e + (tiles_rect.max.x * y + x);
 
                                 TriangleNode *new_node =
-                                        jk_arena_push(&triangle_arena, sizeof(*new_node));
+                                        jk_arena_push(triangle_scratch.arena, sizeof(*new_node));
                                 new_node->tri = tri;
                                 new_node->texture = texture;
                                 new_node->next = tile->head;
@@ -651,7 +654,11 @@ void render(JkContext *context, Assets *assets, State *state)
                         }
                     }
                 }
+
+                jk_arena_scope_end(face_scope);
             }
+
+            jk_arena_scope_end(object_scope);
         }
 
         next_tile_index = 0;
@@ -722,6 +729,8 @@ void render(JkContext *context, Assets *assets, State *state)
     }
 
     if (jk_context->channel.index == 0) {
+        jk_arena_scope_end(scratch);
+        jk_arena_scope_end(triangle_scratch);
         JK_FLAG_SET(state->flags, FLAG_RUNNING, state->should_run);
     }
     jk_channel_sync();
@@ -731,14 +740,21 @@ void render(JkContext *context, Assets *assets, State *state)
         jk_profile_frame_end();
 
         if (jk_key_pressed(&state->keyboard, JK_KEY_P)) {
-            JkArena arena = jk_arena_scratch_get();
-            jk_log(JK_LOG_INFO, jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+            JK_ARENA_SCRATCH(log_scratch)
+            {
+                jk_log(JK_LOG_INFO,
+                        jk_profile_report(log_scratch.arena, state->estimate_cpu_frequency(100)));
+            }
         }
 
         if (0 < state->test_frames_remaining) {
             if (--state->test_frames_remaining == 0) {
-                JkArena arena = jk_arena_scratch_get();
-                jk_log(JK_LOG_INFO, jk_profile_report(&arena, state->estimate_cpu_frequency(100)));
+                JK_ARENA_SCRATCH(log_scratch)
+                {
+                    jk_log(JK_LOG_INFO,
+                            jk_profile_report(
+                                    log_scratch.arena, state->estimate_cpu_frequency(100)));
+                }
             }
         }
     }

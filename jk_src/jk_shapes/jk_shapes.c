@@ -488,17 +488,17 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                     bitmap.dimensions.x * bitmap.dimensions.y * JK_SIZEOF(bitmap.data[0]));
             jk_shapes_hash_table_set(&renderer->hash_table, bitmap_slot, bitmap_key, bitmap);
 
-            JkArena arena = jk_arena_child_get(renderer->arena);
+            JkArenaScope rasterize_scope = jk_arena_scope_begin(renderer->arena);
 
             int64_t coverage_size = JK_SIZEOF(float) * (bitmap.dimensions.x + 1);
-            float *coverage = jk_arena_push(&arena, coverage_size);
-            float *fill = jk_arena_push(&arena, coverage_size);
+            float *coverage = jk_arena_push(renderer->arena, coverage_size);
+            float *fill = jk_arena_push(renderer->arena, coverage_size);
 
             JkShapesPenCommandArray commands;
             commands.count = shape.commands.size / JK_SIZEOF(commands.e[0]);
             commands.e = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
-            JkEdgeArray edges =
-                    jk_shapes_edges_get(&arena, commands, negative_offset_ceil, pixel_scale, 0.25f);
+            JkEdgeArray edges = jk_shapes_edges_get(
+                    renderer->arena, commands, negative_offset_ceil, pixel_scale, 0.25f);
 
             for (int32_t y = 0; y < bitmap.dimensions.y; y++) {
                 jk_memset(coverage, 0, coverage_size * 2);
@@ -589,6 +589,8 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
                     bitmap.data[y * bitmap.dimensions.x + x] = (uint8_t)value;
                 }
             }
+
+            jk_arena_scope_end(rasterize_scope);
         }
     }
 

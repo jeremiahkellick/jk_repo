@@ -77,10 +77,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         printf("Failed to open '%s': %s\n", file_name, strerror(errno));
     }
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena arena = jk_platform_arena_virtual_init(&arena_root, 8 * JK_GIGABYTE);
-
-    JkGzipDecompressResult result = jk_gzip_decompress(&arena, gzip_buffer);
+    JkGzipDecompressResult result = jk_gzip_decompress(jk_arena_scratch_begin().arena, gzip_buffer);
 
     for (int64_t i = 0; i < JK_ARRAY_COUNT(result.buffers); i++) {
         if (jk_buffer_compare(expected_result.buffers[i], result.buffers[i]) != 0) {

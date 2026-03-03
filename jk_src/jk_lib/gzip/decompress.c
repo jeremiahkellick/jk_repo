@@ -15,16 +15,15 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         return 1;
     }
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena arena = jk_platform_arena_virtual_init(&arena_root, 64 * JK_GIGABYTE);
-    JkBuffer file = jk_platform_file_read_full(&arena, argv[1]);
+    JkArena *arena = jk_arena_scratch_begin().arena;
+    JkBuffer file = jk_platform_file_read_full(arena, argv[1]);
 
-    JkGzipDecompressResult result = jk_gzip_decompress(&arena, file);
+    JkGzipDecompressResult result = jk_gzip_decompress(arena, file);
     if (!result.name.size) {
-        result.name = JK_FORMAT(&arena, jkfn("decompressed_"), jkfn(argv[0]));
+        result.name = JK_FORMAT(arena, jkfn("decompressed_"), jkfn(argv[0]));
     }
 
-    char *output_file_name = jk_buffer_to_null_terminated(&arena, result.name);
+    char *output_file_name = jk_buffer_to_null_terminated(arena, result.name);
     FILE *output_file = fopen(output_file_name, "wb");
     if (output_file) {
         fwrite(result.contents.data, 1, result.contents.size, output_file);

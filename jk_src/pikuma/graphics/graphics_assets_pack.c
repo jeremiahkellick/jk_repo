@@ -202,7 +202,7 @@ static BitmapSpan error_bitmap(Context *c)
 {
     BitmapSpan result = {
         .dimensions = {2, 2},
-        .offset = c->result_arena->pos - c->result_arena->base,
+        .offset = c->result_arena->pos,
     };
     JkColor *pixels = jk_arena_push(
             c->result_arena, JK_SIZEOF(*pixels) * result.dimensions.x * result.dimensions.y);
@@ -248,7 +248,7 @@ static BitmapSpan bitmap_get(Context *c, JkBuffer image_file_name)
         if (valid) {
             span->dimensions.x = header->width;
             span->dimensions.y = header->height;
-            span->offset = c->result_arena->pos - c->result_arena->base;
+            span->offset = c->result_arena->pos;
             JkColor3 *src_pointer = (JkColor3 *)(image_file.data + header->data_offset);
             JkColor3 *src_endpoint =
                     (JkColor3 *)(image_file.data + header->data_offset + source_size);
@@ -487,18 +487,18 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
     }
 }
 
-static ObjectId object_new(JkArena *objects_arena)
+static ObjectId object_new(JkArenaScope objects_scope)
 {
-    Object *object = jk_arena_push(objects_arena, JK_SIZEOF(*object));
-    return (ObjectId){object - (Object *)(objects_arena->root->memory.data + objects_arena->base)};
+    Object *object = jk_arena_push(objects_scope.arena, JK_SIZEOF(*object));
+    return (ObjectId){object - (Object *)(objects_scope.arena->memory.data + objects_scope.base)};
 }
 
-static Object *object_get(JkArena *objects_arena, ObjectId id)
+static Object *object_get(JkArenaScope objects_scope, ObjectId id)
 {
-    return (Object *)(objects_arena->root->memory.data + objects_arena->base) + id.i;
+    return (Object *)(objects_scope.arena->memory.data + objects_scope.base) + id.i;
 }
 
-static void process_thing(JkArena *objects_arena, Thing *thing, ObjectId object_id)
+static void process_thing(JkArenaScope objects_scope, Thing *thing, ObjectId object_id)
 {
     if (!thing) {
         return;
@@ -506,8 +506,8 @@ static void process_thing(JkArena *objects_arena, Thing *thing, ObjectId object_
 
     if (JK_FLAG_GET(thing->flags, THING_FLAG_MODEL)) {
         ObjectId parent = object_id;
-        object_id = object_new(objects_arena);
-        Object *object = object_get(objects_arena, object_id);
+        object_id = object_new(objects_scope);
+        Object *object = object_get(objects_scope, object_id);
         object->parent = parent;
 
         JkMat4 local_matrix = inv_conversion_matrix;
@@ -548,7 +548,7 @@ static void process_thing(JkArena *objects_arena, Thing *thing, ObjectId object_
     }
 
     if (object_id.i) {
-        Object *object = object_get(objects_arena, object_id);
+        Object *object = object_get(objects_scope, object_id);
         if (thing->faces.size) {
             object->faces = thing->faces;
         }
@@ -561,26 +561,23 @@ static void process_thing(JkArena *objects_arena, Thing *thing, ObjectId object_
     }
 
     for (Link *child = thing->first_child; child; child = child->next) {
-        process_thing(objects_arena, child->thing, object_id);
+        process_thing(objects_scope, child->thing, object_id);
     }
 }
 
-JkSpan child_arena_span(JkArena *parent, JkArena *child)
+JkSpan arena_scope_span(JkArenaScope scope)
 {
     return (JkSpan){
-        .size = child->pos - child->base,
-        .offset = child->base - parent->base,
+        .size = scope.arena->pos - scope.base,
+        .offset = scope.base,
     };
 }
 
 JkSpan append_arena(JkArena *dest, JkArena *src)
 {
-    JkSpan result = {
-        .size = src->pos - src->base,
-        .offset = dest->pos - dest->base,
-    };
+    JkSpan result = {.size = src->pos, .offset = dest->pos};
     uint8_t *data = jk_arena_push(dest, result.size);
-    jk_memcpy(data, src->root->memory.data + src->base, result.size);
+    jk_memcpy(data, src->memory.data, result.size);
     return result;
 }
 
@@ -595,21 +592,16 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     Context *c = &context;
     c->directory = jk_path_directory(file_path);
 
-    JkPlatformArenaVirtualRoot result_arena_root;
-    JkArena result_arena = jk_platform_arena_virtual_init(&result_arena_root, 8 * JK_GIGABYTE);
+    JkArena result_arena = jk_platform_arena_virtual_init(8 * JK_GIGABYTE);
     c->result_arena = &result_arena;
 
-    JkPlatformArenaVirtualRoot verts_arena_root;
-    JkArena verts_arena = jk_platform_arena_virtual_init(&verts_arena_root, 1 * JK_GIGABYTE);
+    JkArena verts_arena = jk_platform_arena_virtual_init(1 * JK_GIGABYTE);
     c->verts_arena = &verts_arena;
 
-    JkPlatformArenaVirtualRoot texcoords_arena_root;
-    JkArena texcoords_arena =
-            jk_platform_arena_virtual_init(&texcoords_arena_root, 1 * JK_GIGABYTE);
+    JkArena texcoords_arena = jk_platform_arena_virtual_init(1 * JK_GIGABYTE);
     c->texcoords_arena = &texcoords_arena;
 
-    JkPlatformArenaVirtualRoot scratch_arena_root;
-    JkArena scratch_arena = jk_platform_arena_virtual_init(&scratch_arena_root, 1 * JK_GIGABYTE);
+    JkArena scratch_arena = jk_platform_arena_virtual_init(1 * JK_GIGABYTE);
     c->scratch_arena = &scratch_arena;
 
     JkBuffer file = jk_platform_file_read_full(&scratch_arena, (char *)file_path.data);
@@ -665,30 +657,25 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             }
         }
         if (faces_base < result_arena.pos) {
-            thing->faces.offset = faces_base - result_arena.base;
+            thing->faces.offset = faces_base;
             thing->faces.size = result_arena.pos - faces_base;
         }
     }
 
-    JkArena objects_arena = jk_arena_child_get(&result_arena);
-    jk_arena_push(&objects_arena, JK_SIZEOF(Object)); // Push nil object
+    JkArenaScope objects_scope = jk_arena_scope_begin(&result_arena);
+    jk_arena_push(objects_scope.arena, JK_SIZEOF(Object)); // Push nil object
     for (int64_t i = 0; i < thing_count; i++) {
         Thing *thing = things + i;
         if (!JK_FLAG_GET(thing->flags, THING_FLAG_HAS_PARENT)) {
-            process_thing(&objects_arena, thing, (ObjectId){0});
+            process_thing(objects_scope, thing, (ObjectId){0});
         }
     }
-
-    assets->objects = child_arena_span(&result_arena, &objects_arena);
-    jk_arena_child_commit(&result_arena, &objects_arena);
+    assets->objects = arena_scope_span(objects_scope);
 
     char *binary_file_name = "graphics_assets";
     FILE *binary_file = fopen(binary_file_name, "wb");
     if (binary_file) {
-        fwrite(result_arena.root->memory.data + result_arena.base,
-                result_arena.pos - result_arena.base,
-                1,
-                binary_file);
+        fwrite(result_arena.memory.data, result_arena.pos, 1, binary_file);
     } else {
         fprintf(stderr,
                 "%s: Failed to open '%s': %s\n",

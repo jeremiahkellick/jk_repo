@@ -219,7 +219,7 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
     int64_t bit_cursor = 0;
     b32 done = 0;
     while (!done) {
-        JkArena block_arena = jk_arena_child_get(arena);
+        JkArenaScope block_scope = jk_arena_scope_begin(arena);
 
         uint64_t block_header = jk_buffer_bits_read(data, &bit_cursor, 3);
         uint64_t mode = block_header >> 1;
@@ -253,9 +253,9 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
                         jk_buffer_bits_read(data, &bit_cursor, 4) + 4;
 
                 // Allocate the code length buffers
-                code_length_buffers[lit_len] = jk_buffer_alloc_zero(&block_arena, 286);
-                code_length_buffers[dist] = jk_buffer_alloc_zero(&block_arena, 32);
-                JkBuffer code_length_code_lengths = jk_buffer_alloc_zero(&block_arena, 19);
+                code_length_buffers[lit_len] = jk_buffer_alloc_zero(arena, 286);
+                code_length_buffers[dist] = jk_buffer_alloc_zero(arena, 32);
+                JkBuffer code_length_code_lengths = jk_buffer_alloc_zero(arena, 19);
 
                 // Read in the code length alphabet code lengths
                 for (int64_t i = 0; i < code_length_code_length_count; i++) {
@@ -264,7 +264,7 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
                 }
                 JkDeflateHuffmanDecoder code_length_decoder;
                 jk_deflate_huffman_decoder_init(
-                        &block_arena, &code_length_decoder, code_length_code_lengths);
+                        arena, &code_length_decoder, code_length_code_lengths);
 
                 // Decode code lengths for literal/length and distance alphabets
                 for (uint8_t buf_i = 0; buf_i < JK_ARRAY_COUNT(code_length_buffers); buf_i++) {
@@ -303,9 +303,8 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
 
             JkDeflateHuffmanDecoder lit_len_decoder;
             JkDeflateHuffmanDecoder dist_decoder;
-            jk_deflate_huffman_decoder_init(
-                    &block_arena, &lit_len_decoder, code_length_buffers[lit_len]);
-            jk_deflate_huffman_decoder_init(&block_arena, &dist_decoder, code_length_buffers[dist]);
+            jk_deflate_huffman_decoder_init(arena, &lit_len_decoder, code_length_buffers[lit_len]);
+            jk_deflate_huffman_decoder_init(arena, &dist_decoder, code_length_buffers[dist]);
 
             b32 end_of_block = 0;
             while (!end_of_block) {
@@ -342,6 +341,8 @@ JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompresse
         } else {
             jk_log(JK_LOG_ERROR, JKS("DELFATE data contained an invalid block header\n"));
         }
+
+        jk_arena_scope_end(block_scope);
     }
 
     return result;

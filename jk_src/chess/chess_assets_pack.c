@@ -53,19 +53,17 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    JkPlatformArenaVirtualRoot scratch_arena_root;
-    JkArena scratch_arena = jk_platform_arena_virtual_init(&scratch_arena_root, JK_GIGABYTE);
+    JkArena scratch_arena = jk_platform_arena_virtual_init(JK_GIGABYTE);
 
-    JkPlatformArenaVirtualRoot storage_arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&storage_arena_root, JK_GIGABYTE);
+    JkArena storage = jk_platform_arena_virtual_init(JK_GIGABYTE);
 
     ChessAssets *assets = jk_arena_push_zero(&storage, JK_SIZEOF(*assets));
 
-    { // Fill out shapes array with piece data
-        JkArena pieces_arena = jk_arena_child_get(&scratch_arena);
-
+    // Fill out shapes array with piece data
+    JK_ARENA_SCOPE(&scratch_arena)
+    {
         JkBufferArray piece_strings =
-                jk_platform_file_read_lines(&pieces_arena, "../jk_assets/chess/paths.txt");
+                jk_platform_file_read_lines(&scratch_arena, "../jk_assets/chess/paths.txt");
         JK_ASSERT(piece_strings.count == PIECE_TYPE_COUNT - 1);
 
         for (int32_t piece_index = 1; piece_index < PIECE_TYPE_COUNT; piece_index++) {
@@ -81,12 +79,12 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             int64_t pos = 0;
             int c;
             while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
-                JkArena tmp_arena = jk_arena_child_get(&pieces_arena);
+                JkArenaScope command_scope = jk_arena_scope_begin(&scratch_arena);
 
                 switch (c) {
                 case 'M':
                 case 'L': {
-                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 2 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 2) {
                         JkShapesPenCommand *new_command =
@@ -104,7 +102,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
                 case 'H':
                 case 'V': {
-                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count);
                     for (int64_t i = 0; i < numbers.count; i++) {
                         JkShapesPenCommand *new_command =
@@ -117,7 +115,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 } break;
 
                 case 'Q': {
-                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 4 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 4) {
                         JkShapesPenCommand *new_command =
@@ -132,7 +130,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 } break;
 
                 case 'C': {
-                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 6 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 6) {
                         JkShapesPenCommand *new_command =
@@ -147,7 +145,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 } break;
 
                 case 'A': {
-                    JkFloatArray numbers = parse_numbers(&tmp_arena, piece_string, &pos);
+                    JkFloatArray numbers = parse_numbers(&scratch_arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 7 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 7) {
                         JkShapesPenCommand *new_command =
@@ -179,6 +177,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     JK_ASSERT(0 && "Unknown SVG path command character");
                 } break;
                 }
+
+                jk_arena_scope_end(command_scope);
             }
 
             assets->shapes[piece_index].commands.size =
@@ -186,11 +186,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         }
     }
 
-    { // Fill out the rest of the shapes array with font data
-        JkArena font_arena = jk_arena_child_get(&scratch_arena);
-
+    // Fill out the rest of the shapes array with font data
+    JK_ARENA_SCOPE(&scratch_arena)
+    {
         char *ttf_file_name = "../jk_assets/chess/AmiriQuran-Regular.ttf";
-        JkBuffer ttf_file = jk_platform_file_read_full(&font_arena, ttf_file_name);
+        JkBuffer ttf_file = jk_platform_file_read_full(&scratch_arena, ttf_file_name);
         if (!ttf_file.size) {
             fprintf(stderr, "Failed to read file '%s'\n", ttf_file_name);
             exit(1);
@@ -290,9 +290,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     // Load sounds
     for (SoundIndex i = 0; i < SOUND_COUNT; i++) {
         if (sound_file_paths[i]) {
-            JkArena sound_arena = jk_arena_child_get(&scratch_arena);
+            JkArenaScope sound_scope = jk_arena_scope_begin(&scratch_arena);
 
-            JkBuffer audio_file = jk_platform_file_read_full(&sound_arena, sound_file_paths[i]);
+            JkBuffer audio_file = jk_platform_file_read_full(&scratch_arena, sound_file_paths[i]);
             if (audio_file.size) {
                 b32 error = 0;
                 JkRiffChunkMain *chunk_main = (JkRiffChunkMain *)audio_file.data;
@@ -334,12 +334,14 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 fprintf(stderr, "Failed to load %s\n", sound_file_paths[i]);
                 exit(1);
             }
+
+            jk_arena_scope_end(sound_scope);
         }
     }
 
     // Write as binary file to build/chess_assets
     FILE *binary_file = fopen("chess_assets", "wb");
-    fwrite(storage.root->memory.data, storage.pos, 1, binary_file);
+    fwrite(storage.memory.data, storage.pos, 1, binary_file);
     fclose(binary_file);
 
     // Write as C byte array to jk_gen/chess/assets.c

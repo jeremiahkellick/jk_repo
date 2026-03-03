@@ -152,8 +152,7 @@ void *ai_thread(void *param)
         Board board = g.main.ai_request.board;
         pthread_mutex_unlock(&g.ai_request_lock);
 
-        JkArenaRoot arena_root;
-        JkArena arena = jk_arena_fixed_init(&arena_root, g.ai.memory);
+        JkArena arena = {.memory = g.ai.memory};
 
         Ai ai;
         ai_init(&arena, &ai, board, jk_platform_os_timer_get(), jk_platform_os_timer_frequency());
@@ -252,13 +251,9 @@ int main(void)
 #if JK_BUILD_MODE == JK_RELEASE
     g.assets = (ChessAssets *)chess_assets_byte_array;
 #else
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (size_t)1 << 35);
-    if (jk_arena_valid(&storage)) {
-        g.assets = (ChessAssets *)jk_platform_file_read_full(&storage, "chess_assets").data;
-    } else {
-        fprintf(stderr, "Failed to initialize arena\n");
-    }
+    g.assets = (ChessAssets *)jk_platform_file_read_full(
+            jk_arena_scratch_begin().arena, "chess_assets")
+                       .data;
 #endif
 
     { // Set up audio callback

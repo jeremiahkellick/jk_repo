@@ -73,8 +73,7 @@ static double s10e5_to_double(uint16_t value)
 
 int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena arena = jk_platform_arena_virtual_init(&arena_root, JK_GIGABYTE);
+    JkArena *arena = jk_arena_scratch_begin().arena;
 
     FILE *file = fopen(file_name, "wb");
     if (file) {
@@ -94,12 +93,12 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             double approx = s10e5_to_double(s10e5);
 
             // clang-format off
-            JkBuffer fixed_point = JK_FORMAT(&arena,
+            JkBuffer fixed_point = JK_FORMAT(arena,
                     jkfb(sign, 1), jkfn(":"), jkfb(whole, 16), jkfn(":"), jkfb(fractional, 15));
             // clang-format on
 
             // clang-format off
-            JkBuffer floating_point = JK_FORMAT(&arena,
+            JkBuffer floating_point = JK_FORMAT(arena,
                     jkfb(fsign, 1), jkfn(":"), jkfb(exponent, 5), jkfn(":"), jkfb(mantissa, 10));
             // clang-format on
 

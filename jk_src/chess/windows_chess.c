@@ -67,7 +67,6 @@ static JkIntVec2 g_window_dimensions;
 static Chess g_chess = {0};
 static ChessAssets *g_assets;
 static JkBuffer g_ai_memory;
-static JkPlatformArenaVirtualRoot g_storage_root;
 static JkArena g_storage;
 
 static b32 g_running;
@@ -277,8 +276,10 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 static void debug_print(JkBuffer string)
 {
     AcquireSRWLockExclusive(&g_shared.debug_print_lock);
-    JkArena tmp_arena = jk_arena_child_get(&g_storage);
-    OutputDebugStringA(jk_buffer_to_null_terminated(&tmp_arena, string));
+    JK_ARENA_SCRATCH(scratch)
+    {
+        OutputDebugStringA(jk_buffer_to_null_terminated(scratch.arena, string));
+    }
     ReleaseSRWLockExclusive(&g_shared.debug_print_lock);
 }
 
@@ -697,8 +698,7 @@ DWORD ai_thread(LPVOID param)
 
         AcquireSRWLockShared(&g_dll_lock);
 
-        JkArenaRoot arena_root;
-        JkArena arena = jk_arena_fixed_init(&arena_root, g_ai_memory);
+        JkArena arena = {.memory = g_ai_memory};
 
         Ai ai;
         g_ai_init(&arena, &ai, board, jk_platform_os_timer_get(), jk_platform_os_timer_frequency());
@@ -756,8 +756,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 #if JK_BUILD_MODE == JK_RELEASE
     g_assets = (ChessAssets *)chess_assets_byte_array;
 #else
-    g_storage = jk_platform_arena_virtual_init(&g_storage_root, JK_GIGABYTE);
-    if (jk_arena_valid(&g_storage)) {
+    g_storage = jk_platform_arena_virtual_init(JK_GIGABYTE);
+    if (g_storage.memory.size) {
         g_assets = (ChessAssets *)jk_platform_file_read_full(&g_storage, "chess_assets").data;
     } else {
         OutputDebugStringA("Failed to initialize storage arena\n");

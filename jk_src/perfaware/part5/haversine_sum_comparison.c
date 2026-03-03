@@ -252,10 +252,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         answers_file_name = opts_parse.operands[1];
     }
 
-    JkPlatformArenaVirtualRoot arena_root;
-    JkArena storage = jk_platform_arena_virtual_init(&arena_root, (int64_t)1 << 35);
-
-    HaversineContext context = haversine_setup(json_file_name, answers_file_name, &storage);
+    HaversineContext context =
+            haversine_setup(json_file_name, answers_file_name, jk_arena_scratch_begin().arena);
 
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 

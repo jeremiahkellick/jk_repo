@@ -148,15 +148,11 @@ typedef union JkVec4 {
 
 typedef struct JkArena JkArena;
 
-typedef struct JkArenaRoot {
+struct JkArena {
+    int64_t pos;
     JkBuffer memory;
     b32 (*grow)(JkArena *arena, int64_t new_size);
-} JkArenaRoot;
-
-struct JkArena {
-    int64_t base;
-    int64_t pos;
-    JkArenaRoot *root;
+    void *user_data;
 };
 
 typedef struct JkLog JkLog;
@@ -568,9 +564,16 @@ JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x);
 
 // ---- Arena begin ------------------------------------------------------------
 
-JK_PUBLIC JkArena jk_arena_fixed_init(JkArenaRoot *root, JkBuffer memory);
+typedef enum JkArenaScopeFlag {
+    JK_ARENA_SCOPE_FLAG_DEFER,
+    JK_ARENA_SCOPE_FLAG_COUNT,
+} JkArenaScopeFlag;
 
-JK_PUBLIC b32 jk_arena_valid(JkArena *arena);
+typedef struct JkArenaScope {
+    uint8_t flags;
+    JkArena *arena;
+    int64_t base;
+} JkArenaScope;
 
 JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size);
 
@@ -590,15 +593,35 @@ JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena);
 
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size);
 
-JK_PUBLIC JkArena jk_arena_child_get(JkArena *parent);
-
-JK_PUBLIC void jk_arena_child_commit(JkArena *parent, JkArena *child);
-
 JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena);
 
-JK_PUBLIC JkArena jk_arena_scratch_get(void);
+JK_PUBLIC JkArenaScope jk_arena_scope_begin(JkArena *arena);
 
-JK_PUBLIC JkArena jk_arena_scratch_get_not(JkArena *not_this_arena);
+JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope);
+
+#define JK_ARENA_SCOPE(backing_arena)                                        \
+    for (JkArenaScope _jk_arena_scope = jk_arena_scope_begin(backing_arena); \
+            JK_FLAG_GET(_jk_arena_scope.flags, JK_ARENA_SCOPE_FLAG_DEFER);   \
+            _jk_arena_scope.flags &= ~JK_MASK(JK_ARENA_SCOPE_FLAG_DEFER),    \
+                      jk_arena_scope_end(_jk_arena_scope))
+
+JK_PUBLIC JkBuffer jk_arena_scope_as_buffer(JkArenaScope scope);
+
+JK_PUBLIC JkArenaScope jk_arena_scratch_begin(void);
+
+JK_PUBLIC JkArenaScope jk_arena_scratch_begin_not(JkArena *not_this_arena);
+
+#define JK_ARENA_SCRATCH(identifier)                                  \
+    for (JkArenaScope identifier = jk_arena_scratch_begin();          \
+            JK_FLAG_GET(identifier.flags, JK_ARENA_SCOPE_FLAG_DEFER); \
+            identifier.flags &= ~JK_MASK(JK_ARENA_SCOPE_FLAG_DEFER),  \
+                      jk_arena_scope_end(identifier))
+
+#define JK_ARENA_SCRATCH_NOT(identifier, not_this_arena)                       \
+    for (JkArenaScope identifier = jk_arena_scratch_begin_not(not_this_arena); \
+            JK_FLAG_GET(identifier.flags, JK_ARENA_SCOPE_FLAG_DEFER);          \
+            identifier.flags &= ~JK_MASK(JK_ARENA_SCOPE_FLAG_DEFER),           \
+                      jk_arena_scope_end(identifier))
 
 // ---- Arena end --------------------------------------------------------------
 
