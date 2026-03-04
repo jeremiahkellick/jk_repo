@@ -28,7 +28,10 @@ typedef struct Global {
     HWND window;
     JkIntVec2 window_dimensions;
     HCURSOR cursor_arrow;
+
+    _Alignas(64) Environment env;
     State state;
+    Input input;
 
     _Alignas(64) JkPlatformBarrier barrier;
     HANDLE threads_spawned_event;
@@ -54,20 +57,20 @@ static void update_dimensions(HWND window)
 static void copy_draw_buffer_to_window(HWND window, HDC device_context)
 {
     HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
-    if (g.state.dimensions.x < g.window_dimensions.x) {
+    if (g.input.dimensions.x < g.window_dimensions.x) {
         RECT rect = {
-            .left = g.state.dimensions.x,
+            .left = g.input.dimensions.x,
             .right = g.window_dimensions.x,
             .top = 0,
             .bottom = g.window_dimensions.y,
         };
         FillRect(device_context, &rect, brush);
     }
-    if (g.state.dimensions.y < g.window_dimensions.y) {
+    if (g.input.dimensions.y < g.window_dimensions.y) {
         RECT rect = {
             .left = 0,
             .right = g.window_dimensions.x,
-            .top = g.state.dimensions.y,
+            .top = g.input.dimensions.y,
             .bottom = g.window_dimensions.y,
         };
         FillRect(device_context, &rect, brush);
@@ -88,13 +91,13 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
     StretchDIBits(device_context,
             0,
             0,
-            g.state.dimensions.x,
-            g.state.dimensions.y,
+            g.input.dimensions.x,
+            g.input.dimensions.y,
             0,
             0,
-            g.state.dimensions.x,
-            g.state.dimensions.y,
-            g.state.draw_buffer,
+            g.input.dimensions.x,
+            g.input.dimensions.y,
+            g.env.draw_buffer,
             &bitmap_info,
             DIB_RGB_COLORS,
             SRCCOPY);
@@ -144,7 +147,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     switch (message) {
     case WM_DESTROY:
     case WM_CLOSE: {
-        g.state.should_run = 0;
+        g.env.should_run = 0;
     } break;
 
     case WM_SIZE: {
@@ -250,14 +253,14 @@ DWORD app_thread_main(LPVOID param)
 {
     WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
-    if (!JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+    if (!JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
         return 0;
     }
 
     jk_platform_thread_init_channel(
             (JkChannel){.index = (int64_t)param, .count = THREAD_COUNT, .barrier = &g.barrier});
 
-    int64_t frequency = g.state.os_timer_frequency;
+    int64_t frequency = jk_platform_os_timer_frequency();
     int64_t ticks_per_frame = frequency / FRAME_RATE;
 
     // Set the Windows scheduler granularity to 1ms
@@ -289,7 +292,7 @@ DWORD app_thread_main(LPVOID param)
     uint64_t counter_previous = jk_platform_os_timer_get();
     uint64_t target_flip_time = counter_previous + ticks_per_frame;
     b32 capture_mouse = 0;
-    while (JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+    while (JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
 #if JK_BUILD_MODE != JK_RELEASE
         // Hot reloading
         WIN32_FILE_ATTRIBUTE_DATA graphics_dll_info;
@@ -317,10 +320,8 @@ DWORD app_thread_main(LPVOID param)
         }
 #endif
 
-        g.state.dimensions.x = JK_MAX(256, JK_MIN(g.window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
-        g.state.dimensions.y = JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
-
-        g.state.os_time = jk_platform_os_timer_get();
+        g.input.dimensions.x = JK_MAX(256, JK_MIN(g.window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
+        g.input.dimensions.y = JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
 
         if (g.window != GetForegroundWindow()) {
             capture_mouse = 0;
@@ -333,12 +334,12 @@ DWORD app_thread_main(LPVOID param)
         }
 
         AcquireSRWLockExclusive(&g.keyboard_lock);
-        g.state.keyboard = g.keyboard;
+        g.input.keyboard = g.keyboard;
         jk_keyboard_clear(&g.keyboard);
         ReleaseSRWLockExclusive(&g.keyboard_lock);
 
         AcquireSRWLockExclusive(&g.mouse_lock);
-        g.state.mouse = g.mouse;
+        g.input.mouse = g.mouse;
         jk_mouse_clear(&g.mouse);
         ReleaseSRWLockExclusive(&g.mouse_lock);
 
@@ -346,8 +347,8 @@ DWORD app_thread_main(LPVOID param)
             POINT mouse_pos;
             if (GetCursorPos(&mouse_pos)) {
                 if (ScreenToClient(g.window, &mouse_pos)) {
-                    g.state.mouse.position.x = mouse_pos.x;
-                    g.state.mouse.position.y = mouse_pos.y;
+                    g.input.mouse.position.x = mouse_pos.x;
+                    g.input.mouse.position.y = mouse_pos.y;
                 } else {
                     jk_log(JK_LOG_ERROR, JKS("Failed to get mouse position\n"));
                 }
@@ -356,21 +357,21 @@ DWORD app_thread_main(LPVOID param)
             }
         }
 
-        if ((jk_key_down(&g.state.keyboard, JK_KEY_LEFTALT)
-                    || jk_key_down(&g.state.keyboard, JK_KEY_RIGHTALT))
-                && jk_key_pressed(&g.state.keyboard, JK_KEY_F4)) {
-            g.state.should_run = 0;
+        if ((jk_key_down(&g.input.keyboard, JK_KEY_LEFTALT)
+                    || jk_key_down(&g.input.keyboard, JK_KEY_RIGHTALT))
+                && jk_key_pressed(&g.input.keyboard, JK_KEY_F4)) {
+            g.env.should_run = 0;
         }
 
         int32_t deadzone = 10;
-        if (JK_FLAG_GET(g.state.mouse.flags, JK_MOUSE_LEFT_PRESSED)
-                && deadzone <= g.state.mouse.position.x
-                && g.state.mouse.position.x < (g.state.dimensions.x - deadzone)
-                && deadzone <= g.state.mouse.position.y
-                && g.state.mouse.position.y < (g.state.dimensions.y - deadzone)) {
+        if (JK_FLAG_GET(g.input.mouse.flags, JK_MOUSE_LEFT_PRESSED)
+                && deadzone <= g.input.mouse.position.x
+                && g.input.mouse.position.x < (g.input.dimensions.x - deadzone)
+                && deadzone <= g.input.mouse.position.y
+                && g.input.mouse.position.y < (g.input.dimensions.y - deadzone)) {
             capture_mouse = 1;
         }
-        if (jk_key_pressed(&g.state.keyboard, JK_KEY_ESC)) {
+        if (jk_key_pressed(&g.input.keyboard, JK_KEY_ESC)) {
             capture_mouse = 0;
         }
 
@@ -389,12 +390,12 @@ DWORD app_thread_main(LPVOID param)
             rect.bottom = center_y;
             ClipCursor(&rect);
         } else {
-            g.state.mouse.delta = (JkVec2){0};
+            g.input.mouse.delta = (JkVec2){0};
             ClipCursor(0);
         }
 
         jk_channel_sync();
-        g.render(jk_context, g.assets, &g.state);
+        g.render(jk_context, g.assets, &g.env, &g.state, &g.input);
         jk_channel_sync();
 
         time++;
@@ -474,16 +475,16 @@ DWORD app_thread_auxiliary(LPVOID param)
 {
     WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
-    if (!JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+    if (!JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
         return 0;
     }
 
     jk_platform_thread_init_channel(
             (JkChannel){.index = (int64_t)param, .count = THREAD_COUNT, .barrier = &g.barrier});
 
-    while (JK_FLAG_GET(g.state.flags, FLAG_RUNNING)) {
+    while (JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
         jk_channel_sync();
-        g.render(jk_context, g.assets, &g.state);
+        g.render(jk_context, g.assets, &g.env, &g.state, &g.input);
         jk_channel_sync();
     }
 
@@ -508,19 +509,18 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     g.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
 #endif
 
-    g.state.memory.size = 2 * JK_MEGABYTE;
-    uint8_t *memory = VirtualAlloc(
-            0, DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + g.state.memory.size, MEM_COMMIT, PAGE_READWRITE);
+    uint8_t *memory = VirtualAlloc(0,
+            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + sizeof(*g.env.recording),
+            MEM_COMMIT,
+            PAGE_READWRITE);
     if (!memory) {
         jk_log(JK_LOG_FATAL, JKS("Failed to allocate memory\n"));
         exit(1);
     }
-    g.state.draw_buffer = (JkColor *)memory;
-    g.state.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
-    g.state.memory.data = memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE;
-
-    g.state.os_timer_frequency = jk_platform_os_timer_frequency();
-    g.state.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
+    g.env.draw_buffer = (JkColor *)memory;
+    g.env.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
+    g.env.recording = (Recording *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
+    g.env.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
 
     WNDCLASSA window_class = {
         .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
@@ -561,7 +561,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             jk_log(JK_LOG_WARNING, JKS("Failed to register raw input devices\n"));
         }
 
-        JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 1);
+        JK_FLAG_SET(g.env.flags, ENV_FLAG_RUNNING, 1);
 
         jk_platform_barrier_init(&g.barrier, THREAD_COUNT);
         g.threads_spawned_event = CreateEventA(0, 1, 0, 0);
@@ -573,21 +573,21 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
             if (!threads[i]) {
                 JK_LOGF(JK_LOG_FATAL, jkfn("Failed to create app thread "), jkfi(i));
-                JK_FLAG_SET(g.state.flags, FLAG_RUNNING, 0);
+                JK_FLAG_SET(g.env.flags, ENV_FLAG_RUNNING, 0);
             }
         }
 
-        g.state.should_run = JK_FLAG_GET(g.state.flags, FLAG_RUNNING);
+        g.env.should_run = JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING);
         if (!SetEvent(g.threads_spawned_event)) {
             JK_LOGF(JK_LOG_FATAL, jkfn("Failed to signal threads_spawned_event"));
             exit(1);
         }
 
-        while (g.state.should_run) {
+        while (g.env.should_run) {
             MSG message;
-            while (g.state.should_run && GetMessageA(&message, 0, 0, 0)) {
+            while (g.env.should_run && GetMessageA(&message, 0, 0, 0)) {
                 if (message.message == WM_QUIT) {
-                    g.state.should_run = 0;
+                    g.env.should_run = 0;
                 }
                 TranslateMessage(&message);
                 DispatchMessageA(&message);

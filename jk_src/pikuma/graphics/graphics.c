@@ -86,7 +86,7 @@ typedef struct Interpolants {
     JkF32x8 e[INTERPOLANT_COUNT];
 } Interpolants;
 
-static void triangle_fill(State *state, TriangleNode *node, JkIntRect bounding_box)
+static void triangle_fill(Environment *env, TriangleNode *node, JkIntRect bounding_box)
 {
     Triangle tri = node->tri;
     JkIntRect bounds = jk_int_rect_intersect(
@@ -173,11 +173,11 @@ static void triangle_fill(State *state, TriangleNode *node, JkIntRect bounding_b
                                         interpolants.e[I_BARYCENTRIC_2])));
                 if (!jk_f32x8_all(outside_triangle)) {
                     int32_t index = PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x;
-                    JkF32x8 z_buffer = jk_f32x8_load(state->z_buffer + index);
+                    JkF32x8 z_buffer = jk_f32x8_load(env->z_buffer + index);
                     JkF32x8 in_front = jk_f32x8_less_than(z_buffer, interpolants.e[I_Z]);
                     JkF32x8 visible = jk_f32x8_andnot(outside_triangle, in_front);
                     if (jk_f32x8_any(visible)) {
-                        jk_f32x8_store(state->z_buffer + index,
+                        jk_f32x8_store(env->z_buffer + index,
                                 jk_f32x8_blend(z_buffer, interpolants.e[I_Z], visible));
                         JkF32x8 u = jk_f32x8_div(interpolants.e[I_U], interpolants.e[I_Z]);
                         JkF32x8 v = jk_f32x8_div(interpolants.e[I_V], interpolants.e[I_Z]);
@@ -190,11 +190,11 @@ static void triangle_fill(State *state, TriangleNode *node, JkIntRect bounding_b
                                 jk_f32x8_broadcast(tex_float_dimensions.x), jk_f32x8_floor(tex_y));
                         tex_index = jk_f32x8_add(tex_index, tex_x);
 
-                        JkF32x8 color_buffer = jk_f32x8_load((float *)(state->draw_buffer + index));
+                        JkF32x8 color_buffer = jk_f32x8_load((float *)(env->draw_buffer + index));
                         JkF32x8 color = jk_f32x8_gather(node->texture.memory,
                                 jk_truncate_f32x8_to_i32x8(tex_index),
                                 visible);
-                        jk_f32x8_store((float *)(state->draw_buffer + index),
+                        jk_f32x8_store((float *)(env->draw_buffer + index),
                                 jk_f32x8_blend(color_buffer, color, visible));
                     }
                 }
@@ -388,7 +388,7 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id)
     }
 }
 
-void render(JkContext *context, Assets *assets, State *state)
+void render(JkContext *context, Assets *assets, Environment *env, State *state, Input *input_ptr)
 {
     jk_context = context;
 
@@ -399,14 +399,62 @@ void render(JkContext *context, Assets *assets, State *state)
 
     JkArenaScope scratch;
     JkArenaScope triangle_scratch;
+    Input input;
 
     JK_CHANNEL_NARROW(0)
     {
-        if (jk_key_pressed(&state->keyboard, JK_KEY_R)) {
+        input = *input_ptr;
+
+        if (jk_key_pressed(&input.keyboard, JK_KEY_1)) {
+            env->record_state = (env->record_state + 1) % RECORD_STATE_COUNT;
+
+            switch (env->record_state) {
+            case RECORD_STATE_NONE: {
+            } break;
+
+            case RECORD_STATE_RECORDING: {
+                env->recording->initial = *state;
+                env->recording->count = 0;
+            } break;
+
+            case RECORD_STATE_PLAYBACK: {
+                env->playback_cursor = 0;
+            } break;
+
+            case RECORD_STATE_COUNT: {
+                jk_log(JK_LOG_WARNING, JKS("Invalid env->record_state"));
+            } break;
+            }
+        }
+
+        switch (env->record_state) {
+        case RECORD_STATE_NONE: {
+        } break;
+
+        case RECORD_STATE_RECORDING: {
+            if (env->recording->count < JK_ARRAY_COUNT(env->recording->inputs)) {
+                env->recording->inputs[env->recording->count++] = input;
+            }
+        } break;
+
+        case RECORD_STATE_PLAYBACK: {
+            if (env->playback_cursor == 0) {
+                *state = env->recording->initial;
+            }
+            input = env->recording->inputs[env->playback_cursor];
+            env->playback_cursor = (env->playback_cursor + 1) % env->recording->count;
+        } break;
+
+        case RECORD_STATE_COUNT: {
+            jk_log(JK_LOG_WARNING, JKS("Invalid env->record_state"));
+        } break;
+        }
+
+        if (jk_key_pressed(&input.keyboard, JK_KEY_R)) {
             JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
         }
 
-        if (jk_key_pressed(&state->keyboard, JK_KEY_T)) {
+        if (jk_key_pressed(&input.keyboard, JK_KEY_T)) {
             JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
             state->test_frames_remaining = 240;
         }
@@ -421,10 +469,8 @@ void render(JkContext *context, Assets *assets, State *state)
             jk_profile_reset();
         }
 
-        if (0 < state->test_frames_remaining) {
-            state->dimensions.x = 1902;
-            state->dimensions.y = 970;
-        }
+        JkIntVec2 dimensions =
+                0 < state->test_frames_remaining ? (JkIntVec2){1902, 970} : input.dimensions;
 
         JkVec3Array vertices;
         JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
@@ -438,9 +484,9 @@ void render(JkContext *context, Assets *assets, State *state)
         if (state->test_frames_remaining <= 0) {
             float mouse_sensitivity = 0.4 * DELTA_TIME;
             state->camera_yaw +=
-                    jk_remainder_f32(mouse_sensitivity * -state->mouse.delta.x, 2 * JK_PI);
+                    jk_remainder_f32(mouse_sensitivity * -input.mouse.delta.x, 2 * JK_PI);
             state->camera_pitch =
-                    JK_CLAMP(state->camera_pitch + mouse_sensitivity * -state->mouse.delta.y,
+                    JK_CLAMP(state->camera_pitch + mouse_sensitivity * -input.mouse.delta.y,
                             -JK_PI / 2,
                             JK_PI / 2);
         }
@@ -449,16 +495,16 @@ void render(JkContext *context, Assets *assets, State *state)
 
         if (state->test_frames_remaining <= 0) {
             JkVec3 camera_move = {0};
-            if (jk_key_down(&state->keyboard, JK_KEY_W)) {
+            if (jk_key_down(&input.keyboard, JK_KEY_W)) {
                 camera_move.y += 1;
             }
-            if (jk_key_down(&state->keyboard, JK_KEY_S)) {
+            if (jk_key_down(&input.keyboard, JK_KEY_S)) {
                 camera_move.y -= 1;
             }
-            if (jk_key_down(&state->keyboard, JK_KEY_A)) {
+            if (jk_key_down(&input.keyboard, JK_KEY_A)) {
                 camera_move.x -= 1;
             }
-            if (jk_key_down(&state->keyboard, JK_KEY_D)) {
+            if (jk_key_down(&input.keyboard, JK_KEY_D)) {
                 camera_move.x += 1;
             }
             camera_move = jk_vec3_mul(
@@ -500,12 +546,12 @@ void render(JkContext *context, Assets *assets, State *state)
                 jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
                 clip_space_matrix);
         clip_space_matrix = jk_mat4_mul(
-                jk_mat4_perspective(state->dimensions, JK_PI / 3, near_clip), clip_space_matrix);
+                jk_mat4_perspective(dimensions, JK_PI / 3, near_clip), clip_space_matrix);
 
         JkMat4 pixel_matrix = jk_mat4_translate((JkVec3){1, -1, 0});
-        pixel_matrix = jk_mat4_mul(
-                jk_mat4_scale((JkVec3){state->dimensions.x / 2.0f, -state->dimensions.y / 2.0f, 1}),
-                pixel_matrix);
+        pixel_matrix =
+                jk_mat4_mul(jk_mat4_scale((JkVec3){dimensions.x / 2.0f, -dimensions.y / 2.0f, 1}),
+                        pixel_matrix);
 
         scratch = jk_arena_scratch_begin();
         triangle_scratch = jk_arena_scratch_begin_not(scratch.arena);
@@ -513,8 +559,7 @@ void render(JkContext *context, Assets *assets, State *state)
         JkIntRect tiles_rect;
         tiles_rect.min = (JkIntVec2){0};
         for (int64_t i = 0; i < 2; i++) {
-            tiles_rect.max.v[i] =
-                    JK_ALIGN_UP(state->dimensions.v[i], TILE_SIDE_LENGTH) / TILE_SIDE_LENGTH;
+            tiles_rect.max.v[i] = JK_ALIGN_UP(dimensions.v[i], TILE_SIDE_LENGTH) / TILE_SIDE_LENGTH;
         }
         TileArray tiles;
         tiles.count = tiles_rect.max.x * tiles_rect.max.y;
@@ -688,21 +733,21 @@ void render(JkContext *context, Assets *assets, State *state)
                     for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
                         int32_t pixel_index =
                                 PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x;
-                        jk_i256_store(state->draw_buffer + pixel_index, bg);
-                        jk_f32x8_store(state->z_buffer + pixel_index, jk_f32x8_zero());
+                        jk_i256_store(env->draw_buffer + pixel_index, bg);
+                        jk_f32x8_store(env->z_buffer + pixel_index, jk_f32x8_zero());
                     }
                 }
             }
 
             for (TriangleNode *node = tile->head; node; node = node->next) {
-                triangle_fill(state, node, bounding_box);
+                triangle_fill(env, node, bounding_box);
             }
 
             for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
                 for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
                     JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
                     for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                        JkI256 sample = jk_i256_load(state->draw_buffer
+                        JkI256 sample = jk_i256_load(env->draw_buffer
                                 + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
                         JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
                         channels[0] = jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
@@ -722,7 +767,7 @@ void render(JkContext *context, Assets *assets, State *state)
                     color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
                     color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
 
-                    jk_i256_store(state->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
+                    jk_i256_store(env->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
                 }
             }
         }
@@ -731,7 +776,7 @@ void render(JkContext *context, Assets *assets, State *state)
     if (jk_context->channel.index == 0) {
         jk_arena_scope_end(scratch);
         jk_arena_scope_end(triangle_scratch);
-        JK_FLAG_SET(state->flags, FLAG_RUNNING, state->should_run);
+        JK_FLAG_SET(env->flags, ENV_FLAG_RUNNING, env->should_run);
     }
     jk_channel_sync();
 
@@ -739,11 +784,11 @@ void render(JkContext *context, Assets *assets, State *state)
     {
         jk_profile_frame_end();
 
-        if (jk_key_pressed(&state->keyboard, JK_KEY_P)) {
+        if (jk_key_pressed(&input.keyboard, JK_KEY_P)) {
             JK_ARENA_SCRATCH(log_scratch)
             {
                 jk_log(JK_LOG_INFO,
-                        jk_profile_report(log_scratch.arena, state->estimate_cpu_frequency(100)));
+                        jk_profile_report(log_scratch.arena, env->estimate_cpu_frequency(100)));
             }
         }
 
@@ -752,8 +797,7 @@ void render(JkContext *context, Assets *assets, State *state)
                 JK_ARENA_SCRATCH(log_scratch)
                 {
                     jk_log(JK_LOG_INFO,
-                            jk_profile_report(
-                                    log_scratch.arena, state->estimate_cpu_frequency(100)));
+                            jk_profile_report(log_scratch.arena, env->estimate_cpu_frequency(100)));
                 }
             }
         }

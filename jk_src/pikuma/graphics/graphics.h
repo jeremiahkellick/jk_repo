@@ -20,9 +20,19 @@
 #define CLEAR_COLOR_B 0x00
 
 typedef enum Flag {
-    FLAG_RUNNING,
     FLAG_INITIALIZED,
 } Flag;
+
+typedef enum EnvironmentFlag {
+    ENV_FLAG_RUNNING,
+} EnvironmentFlag;
+
+typedef enum RecordState {
+    RECORD_STATE_NONE,
+    RECORD_STATE_RECORDING,
+    RECORD_STATE_PLAYBACK,
+    RECORD_STATE_COUNT,
+} RecordState;
 
 typedef struct Face {
     int32_t v[3]; // vertex indexes
@@ -77,28 +87,40 @@ typedef struct Pixel {
     PixelIndex *next;
 } Pixel;
 
-typedef struct State {
-    JkColor *draw_buffer;
-    float *z_buffer;
-    JkBuffer memory;
-    int64_t os_timer_frequency;
-    int64_t (*estimate_cpu_frequency)(int64_t);
-
-    uint64_t os_time;
+typedef struct Input {
     JkIntVec2 dimensions;
     JkKeyboard keyboard;
     JkMouse mouse;
+} Input;
 
+typedef struct State {
     uint64_t flags;
     float camera_yaw;
     float camera_pitch;
     JkVec2 camera_position;
     int64_t test_frames_remaining;
-
-    _Alignas(64) b32 volatile should_run;
 } State;
 
-typedef void RenderFunction(JkContext *context, Assets *assets, State *state);
+typedef struct Recording {
+    int64_t count;
+    State initial;
+    Input inputs[32 * 1024];
+} Recording;
+
+typedef struct Environment {
+    uint64_t flags;
+    RecordState record_state;
+    int64_t playback_cursor;
+    JkColor *draw_buffer;
+    float *z_buffer;
+    Recording *recording;
+    int64_t (*estimate_cpu_frequency)(int64_t);
+
+    _Alignas(64) b32 volatile should_run;
+} Environment;
+
+typedef void RenderFunction(
+        JkContext *context, Assets *assets, Environment *env, State *state, Input *input);
 RenderFunction render;
 
 #endif
