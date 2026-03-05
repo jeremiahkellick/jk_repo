@@ -2,6 +2,7 @@
 #define GRAPHICS_H
 
 #include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_shapes/jk_shapes.h>
 
 #define FPS 60
 #define DELTA_TIME (1.0f / FPS)
@@ -25,6 +26,7 @@ typedef enum Flag {
 
 typedef enum EnvironmentFlag {
     ENV_FLAG_RUNNING,
+    ENV_FLAG_DEBUG_DISPLAY,
 } EnvironmentFlag;
 
 typedef enum RecordState {
@@ -75,7 +77,12 @@ typedef struct Assets {
     JkSpan vertices; // JkVec3Array
     JkSpan texcoords; // JkVec2Array
     JkSpan objects; // ObjectArray
+    float font_ascent;
+    float font_descent;
+    JkShape shapes[95];
 } Assets;
+
+#define ASCII_TO_SHAPE_OFFSET (1 - 32)
 
 typedef struct PixelIndex {
     int32_t i;
@@ -95,6 +102,7 @@ typedef struct Input {
 
 typedef struct State {
     uint64_t flags;
+    int64_t frame_id;
     float camera_yaw;
     float camera_pitch;
     JkVec2 camera_position;
@@ -108,19 +116,30 @@ typedef struct Recording {
 } Recording;
 
 typedef struct Environment {
-    uint64_t flags;
-    RecordState record_state;
-    int64_t playback_cursor;
-    JkColor *draw_buffer;
-    float *z_buffer;
-    Recording *recording;
+    // Platform layer should set these pointers
+    Assets *assets;
     int64_t (*estimate_cpu_frequency)(int64_t);
 
-    _Alignas(64) b32 volatile should_run;
+    // Platform layer should ensure these point to buffers of the given size
+    JkColor *draw_buffer; // DRAW_BUFFER_SIZE
+    float *z_buffer; // Z_BUFFER_SIZE
+    Recording *recording; // sizeof(Recording)
+
+    // Platform layer should set ENV_FLAG_RUNNING if initialization was successful
+    uint64_t flags;
+
+    RecordState record_state;
+    int64_t playback_cursor;
+
+    Input input;
+    State state;
+
+    // The platform layer can set this at any time to stop the app from running at a convenient
+    // point. The platform layer should not touch ENV_FLAG_RUNNING directly beyond initial setup.
+    _Alignas(64) b32 volatile shutdown_requested;
 } Environment;
 
-typedef void RenderFunction(
-        JkContext *context, Assets *assets, Environment *env, State *state, Input *input);
+typedef void RenderFunction(JkContext *context, Environment *env);
 RenderFunction render;
 
 #endif

@@ -23,15 +23,12 @@
 
 typedef struct Global {
     JkArena arena;
-    Assets *assets;
     RenderFunction *render;
     HWND window;
     JkIntVec2 window_dimensions;
     HCURSOR cursor_arrow;
 
     _Alignas(64) Environment env;
-    State state;
-    Input input;
 
     _Alignas(64) JkPlatformBarrier barrier;
     HANDLE threads_spawned_event;
@@ -57,20 +54,20 @@ static void update_dimensions(HWND window)
 static void copy_draw_buffer_to_window(HWND window, HDC device_context)
 {
     HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
-    if (g.input.dimensions.x < g.window_dimensions.x) {
+    if (g.env.input.dimensions.x < g.window_dimensions.x) {
         RECT rect = {
-            .left = g.input.dimensions.x,
+            .left = g.env.input.dimensions.x,
             .right = g.window_dimensions.x,
             .top = 0,
             .bottom = g.window_dimensions.y,
         };
         FillRect(device_context, &rect, brush);
     }
-    if (g.input.dimensions.y < g.window_dimensions.y) {
+    if (g.env.input.dimensions.y < g.window_dimensions.y) {
         RECT rect = {
             .left = 0,
             .right = g.window_dimensions.x,
-            .top = g.input.dimensions.y,
+            .top = g.env.input.dimensions.y,
             .bottom = g.window_dimensions.y,
         };
         FillRect(device_context, &rect, brush);
@@ -91,12 +88,12 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
     StretchDIBits(device_context,
             0,
             0,
-            g.input.dimensions.x,
-            g.input.dimensions.y,
+            g.env.input.dimensions.x,
+            g.env.input.dimensions.y,
             0,
             0,
-            g.input.dimensions.x,
-            g.input.dimensions.y,
+            g.env.input.dimensions.x,
+            g.env.input.dimensions.y,
             g.env.draw_buffer,
             &bitmap_info,
             DIB_RGB_COLORS,
@@ -147,7 +144,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     switch (message) {
     case WM_DESTROY:
     case WM_CLOSE: {
-        g.env.should_run = 0;
+        g.env.shutdown_requested = 1;
     } break;
 
     case WM_SIZE: {
@@ -320,8 +317,10 @@ DWORD app_thread_main(LPVOID param)
         }
 #endif
 
-        g.input.dimensions.x = JK_MAX(256, JK_MIN(g.window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
-        g.input.dimensions.y = JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
+        g.env.input.dimensions.x =
+                JK_MAX(256, JK_MIN(g.window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
+        g.env.input.dimensions.y =
+                JK_MAX(256, JK_MIN(g.window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
 
         if (g.window != GetForegroundWindow()) {
             capture_mouse = 0;
@@ -334,12 +333,12 @@ DWORD app_thread_main(LPVOID param)
         }
 
         AcquireSRWLockExclusive(&g.keyboard_lock);
-        g.input.keyboard = g.keyboard;
+        g.env.input.keyboard = g.keyboard;
         jk_keyboard_clear(&g.keyboard);
         ReleaseSRWLockExclusive(&g.keyboard_lock);
 
         AcquireSRWLockExclusive(&g.mouse_lock);
-        g.input.mouse = g.mouse;
+        g.env.input.mouse = g.mouse;
         jk_mouse_clear(&g.mouse);
         ReleaseSRWLockExclusive(&g.mouse_lock);
 
@@ -347,8 +346,8 @@ DWORD app_thread_main(LPVOID param)
             POINT mouse_pos;
             if (GetCursorPos(&mouse_pos)) {
                 if (ScreenToClient(g.window, &mouse_pos)) {
-                    g.input.mouse.position.x = mouse_pos.x;
-                    g.input.mouse.position.y = mouse_pos.y;
+                    g.env.input.mouse.position.x = mouse_pos.x;
+                    g.env.input.mouse.position.y = mouse_pos.y;
                 } else {
                     jk_log(JK_LOG_ERROR, JKS("Failed to get mouse position\n"));
                 }
@@ -357,21 +356,21 @@ DWORD app_thread_main(LPVOID param)
             }
         }
 
-        if ((jk_key_down(&g.input.keyboard, JK_KEY_LEFTALT)
-                    || jk_key_down(&g.input.keyboard, JK_KEY_RIGHTALT))
-                && jk_key_pressed(&g.input.keyboard, JK_KEY_F4)) {
-            g.env.should_run = 0;
+        if ((jk_key_down(&g.env.input.keyboard, JK_KEY_LEFTALT)
+                    || jk_key_down(&g.env.input.keyboard, JK_KEY_RIGHTALT))
+                && jk_key_pressed(&g.env.input.keyboard, JK_KEY_F4)) {
+            g.env.shutdown_requested = 1;
         }
 
         int32_t deadzone = 10;
-        if (JK_FLAG_GET(g.input.mouse.flags, JK_MOUSE_LEFT_PRESSED)
-                && deadzone <= g.input.mouse.position.x
-                && g.input.mouse.position.x < (g.input.dimensions.x - deadzone)
-                && deadzone <= g.input.mouse.position.y
-                && g.input.mouse.position.y < (g.input.dimensions.y - deadzone)) {
+        if (JK_FLAG_GET(g.env.input.mouse.flags, JK_MOUSE_LEFT_PRESSED)
+                && deadzone <= g.env.input.mouse.position.x
+                && g.env.input.mouse.position.x < (g.env.input.dimensions.x - deadzone)
+                && deadzone <= g.env.input.mouse.position.y
+                && g.env.input.mouse.position.y < (g.env.input.dimensions.y - deadzone)) {
             capture_mouse = 1;
         }
-        if (jk_key_pressed(&g.input.keyboard, JK_KEY_ESC)) {
+        if (jk_key_pressed(&g.env.input.keyboard, JK_KEY_ESC)) {
             capture_mouse = 0;
         }
 
@@ -390,12 +389,12 @@ DWORD app_thread_main(LPVOID param)
             rect.bottom = center_y;
             ClipCursor(&rect);
         } else {
-            g.input.mouse.delta = (JkVec2){0};
+            g.env.input.mouse.delta = (JkVec2){0};
             ClipCursor(0);
         }
 
         jk_channel_sync();
-        g.render(jk_context, g.assets, &g.env, &g.state, &g.input);
+        g.render(jk_context, &g.env);
         jk_channel_sync();
 
         time++;
@@ -484,7 +483,7 @@ DWORD app_thread_auxiliary(LPVOID param)
 
     while (JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
         jk_channel_sync();
-        g.render(jk_context, g.assets, &g.env, &g.state, &g.input);
+        g.render(jk_context, &g.env);
         jk_channel_sync();
     }
 
@@ -503,10 +502,10 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
 
 #if JK_BUILD_MODE == JK_RELEASE
-    g.assets = (Assets *)assets_byte_array;
-    g.render = render;
+    g.env.assets = (Assets *)assets_byte_array;
+    g.env.render = render;
 #else
-    g.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
+    g.env.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
 #endif
 
     uint8_t *memory = VirtualAlloc(0,
@@ -577,17 +576,16 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             }
         }
 
-        g.env.should_run = JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING);
         if (!SetEvent(g.threads_spawned_event)) {
             JK_LOGF(JK_LOG_FATAL, jkfn("Failed to signal threads_spawned_event"));
             exit(1);
         }
 
-        while (g.env.should_run) {
+        while (JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
             MSG message;
-            while (g.env.should_run && GetMessageA(&message, 0, 0, 0)) {
+            while (JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING) && GetMessageA(&message, 0, 0, 0)) {
                 if (message.message == WM_QUIT) {
-                    g.env.should_run = 0;
+                    g.env.shutdown_requested = 1;
                 }
                 TranslateMessage(&message);
                 DispatchMessageA(&message);

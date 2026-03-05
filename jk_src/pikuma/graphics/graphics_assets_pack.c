@@ -10,6 +10,7 @@
 #include <jk_src/jk_lib/hash_table/hash_table.h>
 #include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/pikuma/graphics/graphics.h>
+#include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
 
 static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/scene.fbx");
@@ -618,6 +619,98 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
 
     Assets *assets = jk_arena_push(&result_arena, JK_SIZEOF(*assets));
+
+    // Fill out the rest of the shapes array with font data
+    JK_ARENA_SCOPE(&scratch_arena)
+    {
+        char *ttf_file_name = "../jk_assets/pikuma/graphics/Inconsolata-Regular.ttf";
+        JkBuffer ttf_file = jk_platform_file_read_full(&scratch_arena, ttf_file_name);
+        if (!ttf_file.size) {
+            fprintf(stderr, "Failed to read file '%s'\n", ttf_file_name);
+            exit(1);
+        }
+
+        stbtt_fontinfo font;
+
+        stbtt_InitFont(&font, ttf_file.data, stbtt_GetFontOffsetForIndex(ttf_file.data, 0));
+
+        {
+            int32_t advance_width;
+            stbtt_GetCodepointHMetrics(&font, ' ', &advance_width, 0);
+            assets->shapes[1].advance_width = (float)advance_width;
+        }
+
+        assets->font_ascent = jk_infinity_f32.f32;
+        assets->font_descent = -jk_infinity_f32.f32;
+        for (int64_t shape_index = 2; shape_index < JK_ARRAY_COUNT(assets->shapes); shape_index++) {
+            JkShape *shape = assets->shapes + shape_index;
+            int32_t codepoint = shape_index - ASCII_TO_SHAPE_OFFSET;
+
+            int32_t x0, x1, y0, y1;
+            stbtt_GetCodepointBox(&font, codepoint, &x0, &y0, &x1, &y1);
+
+            // Since the font uses y values that grow from the bottom. Negate and swap y0 and y1.
+            int32_t tmp = y0;
+            y0 = -y1;
+            y1 = -tmp;
+
+            shape->offset.x = (float)x0;
+            shape->offset.y = (float)y0;
+            shape->dimensions.x = (float)(x1 - x0);
+            shape->dimensions.y = (float)(y1 - y0);
+
+            int32_t advance_width;
+            stbtt_GetCodepointHMetrics(&font, codepoint, &advance_width, 0);
+            shape->advance_width = (float)advance_width;
+
+            if (y0 < assets->font_ascent) {
+                assets->font_ascent = (float)y0;
+            }
+            if (assets->font_descent < y1) {
+                assets->font_descent = (float)y1;
+            }
+
+            stbtt_vertex *verticies;
+            int64_t command_count = stbtt_GetCodepointShape(&font, codepoint, &verticies);
+            shape->commands.size = JK_SIZEOF(JkShapesPenCommand) * command_count;
+            shape->commands.offset = result_arena.pos;
+            JkShapesPenCommand *commands = jk_arena_push_zero(&result_arena, shape->commands.size);
+            for (int64_t i = 0; i < command_count; i++) {
+                switch (verticies[i].type) {
+                case STBTT_vmove:
+                case STBTT_vline: {
+                    commands[i].type = verticies[i].type == STBTT_vmove
+                            ? JK_SHAPES_PEN_COMMAND_MOVE
+                            : JK_SHAPES_PEN_COMMAND_LINE;
+                    commands[i].v[0].x = (float)verticies[i].x;
+                    commands[i].v[0].y = (float)-verticies[i].y;
+                } break;
+
+                case STBTT_vcurve: {
+                    commands[i].type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
+                    commands[i].v[0].x = (float)verticies[i].cx;
+                    commands[i].v[0].y = (float)-verticies[i].cy;
+                    commands[i].v[1].x = (float)verticies[i].x;
+                    commands[i].v[1].y = (float)-verticies[i].y;
+                } break;
+
+                case STBTT_vcubic: {
+                    commands[i].type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
+                    commands[i].v[0].x = (float)verticies[i].cx;
+                    commands[i].v[0].y = (float)-verticies[i].cy;
+                    commands[i].v[1].x = (float)verticies[i].cx1;
+                    commands[i].v[1].y = (float)-verticies[i].cy1;
+                    commands[i].v[2].x = (float)verticies[i].x;
+                    commands[i].v[2].y = (float)-verticies[i].y;
+                } break;
+
+                default: {
+                    JK_ASSERT(0 && "Unsupported vertex type");
+                } break;
+                }
+            }
+        }
+    }
 
     process_fbx_nodes(c, file, header->first_node - file.data, 0);
 

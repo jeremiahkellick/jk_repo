@@ -6,6 +6,7 @@
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
+#include <jk_src/jk_shapes/jk_shapes.h>
 // #jk_build dependencies_end
 
 static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
@@ -388,7 +389,62 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id)
     }
 }
 
-void render(JkContext *context, Assets *assets, Environment *env, State *state, Input *input_ptr)
+static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
+{
+    JkColor result = {0, 0, 0, 255};
+    for (uint8_t i = 0; i < 3; i++) {
+        result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
+                              + background.v[i] * (255 - (int32_t)alpha))
+                / 255;
+    }
+    return result;
+}
+
+typedef struct TextLayout {
+    JkVec2 offset;
+    JkVec2 dimensions;
+} TextLayout;
+
+static TextLayout text_layout_get(Assets *assets, JkBuffer text, float scale)
+{
+    TextLayout result = {0};
+    result.dimensions.x = 0.0f;
+    for (int64_t i = 0; i < text.size; i++) {
+        JkShape *shape = assets->shapes + text.data[i] + ASCII_TO_SHAPE_OFFSET;
+        if (i == 0) {
+            result.offset.x = -shape->offset.x;
+            result.dimensions.x = result.offset.x;
+        }
+        if (i == text.size - 1) {
+            result.dimensions.x += shape->offset.x + shape->dimensions.x;
+        } else {
+            result.dimensions.x += shape->advance_width;
+        }
+    }
+
+    // Layout looks more natural if we weight the descenders less than ascenders when considering
+    // font "height". This is probably because we imagine the descenders dipping below the baseline.
+    float descent = 0.4 * assets->font_descent;
+
+    result.offset.y = -assets->font_ascent;
+    result.dimensions.y = descent - assets->font_ascent;
+
+    result.offset = jk_vec2_mul(scale, result.offset);
+    result.dimensions = jk_vec2_mul(scale, result.dimensions);
+
+    return result;
+}
+
+static void draw_text(
+        JkShapesRenderer *renderer, JkBuffer text, JkVec2 cursor, float scale, JkColor color)
+{
+    for (int64_t i = 0; i < text.size; i++) {
+        cursor.x += jk_shapes_draw(
+                renderer, text.data[i] + ASCII_TO_SHAPE_OFFSET, cursor, scale, color);
+    }
+}
+
+void render(JkContext *context, Environment *env)
 {
     jk_context = context;
 
@@ -397,13 +453,14 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
 
     _Alignas(64) static int32_t volatile next_tile_index;
 
-    JkArenaScope scratch;
-    JkArenaScope triangle_scratch;
-    Input input;
+    JkArenaScope scratch = {0};
+    JkArenaScope triangle_scratch = {0};
+    Input input = {0};
+    JkIntVec2 dimensions = {0};
 
     JK_CHANNEL_NARROW(0)
     {
-        input = *input_ptr;
+        input = env->input;
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_1)) {
             env->record_state = (env->record_state + 1) % RECORD_STATE_COUNT;
@@ -413,7 +470,7 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
             } break;
 
             case RECORD_STATE_RECORDING: {
-                env->recording->initial = *state;
+                env->recording->initial = env->state;
                 env->recording->count = 0;
             } break;
 
@@ -425,6 +482,12 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
                 jk_log(JK_LOG_WARNING, JKS("Invalid env->record_state"));
             } break;
             }
+        }
+
+        if (jk_key_pressed(&input.keyboard, JK_KEY_F3)) {
+            JK_FLAG_SET(env->flags,
+                    ENV_FLAG_DEBUG_DISPLAY,
+                    !JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY));
         }
 
         switch (env->record_state) {
@@ -439,7 +502,7 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
 
         case RECORD_STATE_PLAYBACK: {
             if (env->playback_cursor == 0) {
-                *state = env->recording->initial;
+                env->state = env->recording->initial;
             }
             input = env->recording->inputs[env->playback_cursor];
             env->playback_cursor = (env->playback_cursor + 1) % env->recording->count;
@@ -451,49 +514,49 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
         }
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_R)) {
-            JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
+            JK_FLAG_SET(env->state.flags, FLAG_INITIALIZED, 0);
         }
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_T)) {
-            JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 0);
-            state->test_frames_remaining = 240;
+            JK_FLAG_SET(env->state.flags, FLAG_INITIALIZED, 0);
+            env->state.test_frames_remaining = 240;
         }
 
-        if (!JK_FLAG_GET(state->flags, FLAG_INITIALIZED)) {
-            JK_FLAG_SET(state->flags, FLAG_INITIALIZED, 1);
-
-            state->camera_position = jk_vec3_to_2(camera_position_init);
-            state->camera_yaw = camera_rot_angle_init;
-            state->camera_pitch = 0;
+        if (!JK_FLAG_GET(env->state.flags, FLAG_INITIALIZED)) {
+            env->state.flags = JK_MASK(FLAG_INITIALIZED);
+            env->state.frame_id = 0;
+            env->state.camera_yaw = camera_rot_angle_init;
+            env->state.camera_pitch = 0;
+            env->state.camera_position = jk_vec3_to_2(camera_position_init);
 
             jk_profile_reset();
         }
 
-        JkIntVec2 dimensions =
-                0 < state->test_frames_remaining ? (JkIntVec2){1902, 970} : input.dimensions;
+        dimensions =
+                0 < env->state.test_frames_remaining ? (JkIntVec2){1902, 970} : input.dimensions;
 
         JkVec3Array vertices;
-        JK_ARRAY_FROM_SPAN(vertices, assets, assets->vertices);
+        JK_ARRAY_FROM_SPAN(vertices, env->assets, env->assets->vertices);
         JkVec2Array texcoords;
-        JK_ARRAY_FROM_SPAN(texcoords, assets, assets->texcoords);
+        JK_ARRAY_FROM_SPAN(texcoords, env->assets, env->assets->texcoords);
         ObjectArray objects;
-        JK_ARRAY_FROM_SPAN(objects, assets, assets->objects);
+        JK_ARRAY_FROM_SPAN(objects, env->assets, env->assets->objects);
 
         jk_profile_frame_begin();
 
-        if (state->test_frames_remaining <= 0) {
+        if (env->state.test_frames_remaining <= 0) {
             float mouse_sensitivity = 0.4 * DELTA_TIME;
-            state->camera_yaw +=
+            env->state.camera_yaw +=
                     jk_remainder_f32(mouse_sensitivity * -input.mouse.delta.x, 2 * JK_PI);
-            state->camera_pitch =
-                    JK_CLAMP(state->camera_pitch + mouse_sensitivity * -input.mouse.delta.y,
+            env->state.camera_pitch =
+                    JK_CLAMP(env->state.camera_pitch + mouse_sensitivity * -input.mouse.delta.y,
                             -JK_PI / 2,
                             JK_PI / 2);
         }
 
-        JkVec4 yaw_quat = jk_quat_angle_axis(state->camera_yaw, (JkVec3){0, 0, 1});
+        JkVec4 yaw_quat = jk_quat_angle_axis(env->state.camera_yaw, (JkVec3){0, 0, 1});
 
-        if (state->test_frames_remaining <= 0) {
+        if (env->state.test_frames_remaining <= 0) {
             JkVec3 camera_move = {0};
             if (jk_key_down(&input.keyboard, JK_KEY_W)) {
                 camera_move.y += 1;
@@ -510,7 +573,7 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
             camera_move = jk_vec3_mul(
                     5 * DELTA_TIME, jk_vec3_normalized(jk_quat_rotate(yaw_quat, camera_move)));
 
-            JkVec3 move_start = jk_vec2_to_3(state->camera_position, camera_position_init.z);
+            JkVec3 move_start = jk_vec2_to_3(env->state.camera_position, camera_position_init.z);
             Move move = {
                 .s = {move_start, jk_vec3_add(move_start, camera_move)},
                 .prev_projection_plane = {.normal = {0, 0, 1}, .point = {0, 0, -1000}},
@@ -530,13 +593,13 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
                     move_against_box(&move, world_matrix, object_id);
                 }
             } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
-            state->camera_position = jk_vec3_to_2(move.s.p1);
+            env->state.camera_position = jk_vec3_to_2(move.s.p1);
         }
 
         JkTransform camera_transform = {
-            .translation = jk_vec2_to_3(state->camera_position, camera_position_init.z),
+            .translation = jk_vec2_to_3(env->state.camera_position, camera_position_init.z),
             .rotation = jk_quat_mul(
-                    yaw_quat, jk_quat_angle_axis(state->camera_pitch, (JkVec3){1, 0, 0})),
+                    yaw_quat, jk_quat_angle_axis(env->state.camera_pitch, (JkVec3){1, 0, 0})),
             .scale = {1, 1, 1},
         };
 
@@ -593,8 +656,8 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
             }
 
             FaceArray faces;
-            JK_ARRAY_FROM_SPAN(faces, assets, object->faces);
-            Bitmap texture = bitmap_from_span(assets, object->texture);
+            JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
+            Bitmap texture = bitmap_from_span(env->assets, object->texture);
 
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
                 JkArenaScope face_scope = jk_arena_scope_begin(scratch.arena);
@@ -712,7 +775,7 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
     jk_channel_sync();
 
     JkI256 bg = jk_i256_broadcast_i32(
-            *(int32_t *)(0 < state->test_frames_remaining ? &test_bg : &normal_bg));
+            *(int32_t *)(0 < env->state.test_frames_remaining ? &test_bg : &normal_bg));
 
     {
         JkIntRect tiles_rect = tiles_rect_shared;
@@ -774,9 +837,7 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
     }
 
     if (jk_context->channel.index == 0) {
-        jk_arena_scope_end(scratch);
-        jk_arena_scope_end(triangle_scratch);
-        JK_FLAG_SET(env->flags, ENV_FLAG_RUNNING, env->should_run);
+        JK_FLAG_SET(env->flags, ENV_FLAG_RUNNING, !env->shutdown_requested);
     }
     jk_channel_sync();
 
@@ -792,8 +853,8 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
             }
         }
 
-        if (0 < state->test_frames_remaining) {
-            if (--state->test_frames_remaining == 0) {
+        if (0 < env->state.test_frames_remaining) {
+            if (--env->state.test_frames_remaining == 0) {
                 JK_ARENA_SCRATCH(log_scratch)
                 {
                     jk_log(JK_LOG_INFO,
@@ -801,5 +862,53 @@ void render(JkContext *context, Assets *assets, Environment *env, State *state, 
                 }
             }
         }
+
+        if (JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY)) {
+            JkShapesRenderer renderer;
+            JkShapeArray shapes = (JkShapeArray){
+                .count = JK_ARRAY_COUNT(env->assets->shapes), .e = env->assets->shapes};
+            float pixels_per_unit = JK_MIN(dimensions.x, dimensions.y) / 64.0f;
+            JkVec2 ui_dimensions =
+                    jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_int(dimensions));
+            jk_shapes_renderer_init(&renderer, pixels_per_unit, env->assets, shapes, scratch.arena);
+
+            float text_scale = 0.005f;
+            JkBuffer frame_id_text = JK_FORMAT(scratch.arena, jkfu(env->state.frame_id));
+            float digit_width = 2.4f;
+            JkVec2 top_left = {ui_dimensions.x - digit_width, 1};
+            for (int64_t i = frame_id_text.size - 1; 0 <= i; i--, top_left.x -= digit_width) {
+                int64_t shape_index = frame_id_text.data[i] + ASCII_TO_SHAPE_OFFSET;
+                JkShape *shape = env->assets->shapes + shape_index;
+                jk_shapes_draw(&renderer,
+                        shape_index,
+                        jk_vec2_add(top_left, jk_vec2_mul(-text_scale, shape->offset)),
+                        text_scale,
+                        (JkColor){255, 255, 255, 255});
+            }
+
+            JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
+            JkIntRect screen_rect = {.max = dimensions};
+            for (int64_t i = 0; i < draw_commands.count; i++) {
+                JkShapesDrawCommand *command = draw_commands.e + i;
+                JkIntRect rect = jk_int_rect_intersect(screen_rect, command->rect);
+                for (JkIntVec2 pos = rect.min; pos.y < rect.max.y; pos.y++) {
+                    for (pos.x = rect.min.x; pos.x < rect.max.x; pos.x++) {
+                        int32_t index = DRAW_BUFFER_SIDE_LENGTH * pos.y + pos.x;
+                        uint8_t alpha = 255;
+                        if (command->alpha_map) {
+                            JkIntVec2 pos_in_rect = jk_int_vec2_sub(pos, command->rect.min);
+                            int32_t width = (command->rect.max.x - command->rect.min.x);
+                            alpha = command->alpha_map[pos_in_rect.y * width + pos_in_rect.x];
+                        }
+                        env->draw_buffer[index] =
+                                blend_alpha(command->color, env->draw_buffer[index], alpha);
+                    }
+                }
+            }
+        }
+
+        jk_arena_scope_end(scratch);
+        jk_arena_scope_end(triangle_scratch);
+        env->state.frame_id++;
     }
 }

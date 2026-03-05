@@ -48,11 +48,8 @@ typedef struct MyRect {
 
 typedef struct Global {
     b32 capture_mouse;
-    Assets *assets;
 
     _Alignas(64) Environment env;
-    State state;
-    Input input;
 
     _Alignas(64) JkPlatformBarrier barrier;
 
@@ -143,7 +140,7 @@ static void *auxiliary_thread(void *param)
             (JkChannel){.index = (int64_t)param, .count = THREAD_COUNT, .barrier = &g.barrier});
 
     while (JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
-        render(jk_context, g.assets, &g.env, &g.state, &g.input);
+        render(jk_context, &g.env);
     }
 
     return 0;
@@ -153,7 +150,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
-    g.assets =
+    g.env.assets =
             (Assets *)jk_platform_file_read_full(jk_arena_scratch_begin().arena, "graphics_assets")
                     .data;
 
@@ -190,8 +187,6 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         jk_context->channel.barrier = &g.barrier;
     }
 
-    g.env.should_run = JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING);
-
     @autoreleasepool {
         CGFloat scale_factor = [NSScreen mainScreen].backingScaleFactor;
 
@@ -205,7 +200,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         [application run];
     }
 
-    g.env.should_run = 0;
+    g.env.shutdown_requested = 1;
 
     return 0;
 }
@@ -423,20 +418,20 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 - (void)drawRect:(NSRect)dirtyRect
 {
     JkIntVec2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
-    g.input.dimensions.x = JK_MAX(256, JK_MIN(window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
-    g.input.dimensions.y = JK_MAX(256, JK_MIN(window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
+    g.env.input.dimensions.x = JK_MAX(256, JK_MIN(window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
+    g.env.input.dimensions.y = JK_MAX(256, JK_MIN(window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
 
     if (self.window) {
         NSPoint mouse_location = [NSEvent mouseLocation];
         NSRect window_rect = [self.window contentRectForFrameRect:self.window.frame];
         CGFloat x = mouse_location.x - window_rect.origin.x;
         CGFloat y = window_rect.size.height - (mouse_location.y - window_rect.origin.y);
-        g.input.mouse.position.x = x * self.scale_factor;
-        g.input.mouse.position.y = y * self.scale_factor;
+        g.env.input.mouse.position.x = x * self.scale_factor;
+        g.env.input.mouse.position.y = y * self.scale_factor;
     }
 
     pthread_mutex_lock(&g.keyboard_lock);
-    g.input.keyboard = g.keyboard;
+    g.env.input.keyboard = g.keyboard;
     jk_keyboard_clear(&g.keyboard);
     pthread_mutex_unlock(&g.keyboard_lock);
 
@@ -450,50 +445,52 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     int32_t deadzone = 10;
 
     if (JK_FLAG_GET(mouse_flags, MOUSE_LEFT_PRESSED) && !g.capture_mouse
-            && deadzone <= g.input.mouse.position.x
-            && g.input.mouse.position.x < (g.input.dimensions.x - deadzone)
-            && deadzone <= g.input.mouse.position.y
-            && g.input.mouse.position.y < (g.input.dimensions.y - deadzone)) {
+            && deadzone <= g.env.input.mouse.position.x
+            && g.env.input.mouse.position.x < (g.env.input.dimensions.x - deadzone)
+            && deadzone <= g.env.input.mouse.position.y
+            && g.env.input.mouse.position.y < (g.env.input.dimensions.y - deadzone)) {
         g.capture_mouse = 1;
         CGDisplayHideCursor(CVDisplayLinkGetCurrentCGDisplay(self.display_link));
     }
     if (g.capture_mouse
-            && (jk_key_pressed(&g.input.keyboard, JK_KEY_ESC)
+            && (jk_key_pressed(&g.env.input.keyboard, JK_KEY_ESC)
                     || (self.window && ![self.window isKeyWindow]))) {
         g.capture_mouse = 0;
         CGDisplayShowCursor(CVDisplayLinkGetCurrentCGDisplay(self.display_link));
     }
     CGAssociateMouseAndMouseCursorPosition(!g.capture_mouse);
 
-    g.input.mouse.delta = g.capture_mouse ? mouse_delta : (JkVec2){0};
+    g.env.input.mouse.delta = g.capture_mouse ? mouse_delta : (JkVec2){0};
 
-    render(jk_context, g.assets, &g.env, &g.state, &g.input);
+    render(jk_context, &g.env);
 
     // Copy bitmap buffer into texture
-    [self.texture replaceRegion:MTLRegionMake2D(0, 0, g.input.dimensions.x, g.input.dimensions.y)
-                    mipmapLevel:0
-                      withBytes:g.env.draw_buffer
-                    bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * JK_SIZEOF(JkColor)];
+    [self.texture
+            replaceRegion:MTLRegionMake2D(0, 0, g.env.input.dimensions.x, g.env.input.dimensions.y)
+              mipmapLevel:0
+                withBytes:g.env.draw_buffer
+              bytesPerRow:DRAW_BUFFER_SIDE_LENGTH * JK_SIZEOF(JkColor)];
 
     JkVec2 pos = {-1.0f, 1.0f};
 
     JkVec2 dimensions;
-    dimensions.x = g.input.dimensions.x * 2.0f / window_dimensions.x;
-    dimensions.y = -(g.input.dimensions.y * 2.0f / window_dimensions.y);
+    dimensions.x = g.env.input.dimensions.x * 2.0f / window_dimensions.x;
+    dimensions.y = -(g.env.input.dimensions.y * 2.0f / window_dimensions.y);
 
     Vertex verticies[4];
     verticies[0].position = simd_make_float4(pos.x, pos.y + dimensions.y, 0.0f, 1.0f);
-    verticies[0].texture_coordinate = simd_make_float2(0.0f, g.input.dimensions.y);
+    verticies[0].texture_coordinate = simd_make_float2(0.0f, g.env.input.dimensions.y);
 
     verticies[1].position =
             simd_make_float4(pos.x + dimensions.x, pos.y + dimensions.y, 0.0f, 1.0f);
-    verticies[1].texture_coordinate = simd_make_float2(g.input.dimensions.x, g.input.dimensions.y);
+    verticies[1].texture_coordinate =
+            simd_make_float2(g.env.input.dimensions.x, g.env.input.dimensions.y);
 
     verticies[2].position = simd_make_float4(pos.x, pos.y, 0.0f, 1.0f);
     verticies[2].texture_coordinate = simd_make_float2(0.0f, 0.0f);
 
     verticies[3].position = simd_make_float4(pos.x + dimensions.x, pos.y, 0.0f, 1.0f);
-    verticies[3].texture_coordinate = simd_make_float2(g.input.dimensions.x, 0.0f);
+    verticies[3].texture_coordinate = simd_make_float2(g.env.input.dimensions.x, 0.0f);
 
     memcpy([self.vertex_buffer contents], verticies, JK_SIZEOF(verticies));
 
