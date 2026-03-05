@@ -669,6 +669,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             if (assets->font_descent < y1) {
                 assets->font_descent = (float)y1;
             }
+            if (codepoint == 'A') {
+                assets->font_monospace_advance_width = (float)advance_width;
+            }
 
             stbtt_vertex *verticies;
             int64_t command_count = stbtt_GetCodepointShape(&font, codepoint, &verticies);

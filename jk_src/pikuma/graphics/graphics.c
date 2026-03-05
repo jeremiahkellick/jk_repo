@@ -221,11 +221,11 @@ static b32 clockwise(Triangle t)
             < 0;
 }
 
-static Bitmap bitmap_from_span(Assets *assets, BitmapSpan span)
+static Bitmap bitmap_from_span(Environment *env, BitmapSpan span)
 {
     return (Bitmap){
         .dimensions = span.dimensions,
-        .memory = (JkColor *)((uint8_t *)assets + span.offset),
+        .memory = (JkColor *)((uint8_t *)env->assets + span.offset),
     };
 }
 
@@ -349,10 +349,12 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id)
     }
 
     if (0 <= projection_plane) {
-        move->s.p1 = jk_vec3_add(move->s.p1,
-                jk_vec3_mul(-jk_vec3_dot(planes[projection_plane].normal,
-                                    jk_vec3_sub(move->s.p1, planes[projection_plane].point)),
-                        planes[projection_plane].normal));
+        float p1_dot = jk_vec3_dot(planes[projection_plane].normal,
+                jk_vec3_sub(move->s.p1, planes[projection_plane].point));
+        if (p1_dot < 0) {
+            move->s.p1 =
+                    jk_vec3_add(move->s.p1, jk_vec3_mul(-p1_dot, planes[projection_plane].normal));
+        }
 
         // If p1 is inside the previous projection plane, we've hit a corner and should project p1
         // to the line of intersection between the two planes
@@ -405,29 +407,19 @@ typedef struct TextLayout {
     JkVec2 dimensions;
 } TextLayout;
 
-static TextLayout text_layout_get(Assets *assets, JkBuffer text, float scale)
+static TextLayout text_layout_monospace(Environment *env, JkBuffer text, float scale)
 {
     TextLayout result = {0};
-    result.dimensions.x = 0.0f;
-    for (int64_t i = 0; i < text.size; i++) {
-        JkShape *shape = assets->shapes + text.data[i] + ASCII_TO_SHAPE_OFFSET;
-        if (i == 0) {
-            result.offset.x = -shape->offset.x;
-            result.dimensions.x = result.offset.x;
-        }
-        if (i == text.size - 1) {
-            result.dimensions.x += shape->offset.x + shape->dimensions.x;
-        } else {
-            result.dimensions.x += shape->advance_width;
-        }
-    }
+
+    result.offset.x = 0;
+    result.dimensions.x = env->assets->font_monospace_advance_width * text.size;
 
     // Layout looks more natural if we weight the descenders less than ascenders when considering
     // font "height". This is probably because we imagine the descenders dipping below the baseline.
-    float descent = 0.4 * assets->font_descent;
+    float descent = 0.4 * env->assets->font_descent;
 
-    result.offset.y = -assets->font_ascent;
-    result.dimensions.y = descent - assets->font_ascent;
+    result.offset.y = -env->assets->font_ascent;
+    result.dimensions.y = descent - env->assets->font_ascent;
 
     result.offset = jk_vec2_mul(scale, result.offset);
     result.dimensions = jk_vec2_mul(scale, result.dimensions);
@@ -657,7 +649,7 @@ void render(JkContext *context, Environment *env)
 
             FaceArray faces;
             JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
-            Bitmap texture = bitmap_from_span(env->assets, object->texture);
+            Bitmap texture = bitmap_from_span(env, object->texture);
 
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
                 JkArenaScope face_scope = jk_arena_scope_begin(scratch.arena);
@@ -872,19 +864,16 @@ void render(JkContext *context, Environment *env)
                     jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_int(dimensions));
             jk_shapes_renderer_init(&renderer, pixels_per_unit, env->assets, shapes, scratch.arena);
 
+            float padding = 0.5f;
             float text_scale = 0.005f;
             JkBuffer frame_id_text = JK_FORMAT(scratch.arena, jkfu(env->state.frame_id));
-            float digit_width = 2.4f;
-            JkVec2 top_left = {ui_dimensions.x - digit_width, 1};
-            for (int64_t i = frame_id_text.size - 1; 0 <= i; i--, top_left.x -= digit_width) {
-                int64_t shape_index = frame_id_text.data[i] + ASCII_TO_SHAPE_OFFSET;
-                JkShape *shape = env->assets->shapes + shape_index;
-                jk_shapes_draw(&renderer,
-                        shape_index,
-                        jk_vec2_add(top_left, jk_vec2_mul(-text_scale, shape->offset)),
-                        text_scale,
-                        (JkColor){255, 255, 255, 255});
-            }
+            TextLayout layout = text_layout_monospace(env, frame_id_text, text_scale);
+            JkVec2 top_left = {(ui_dimensions.x - padding) - layout.dimensions.x, padding};
+            draw_text(&renderer,
+                    frame_id_text,
+                    jk_vec2_add(top_left, layout.offset),
+                    text_scale,
+                    (JkColor){255, 255, 255, 255});
 
             JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
             JkIntRect screen_rect = {.max = dimensions};

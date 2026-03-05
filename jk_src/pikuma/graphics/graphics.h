@@ -79,6 +79,7 @@ typedef struct Assets {
     JkSpan objects; // ObjectArray
     float font_ascent;
     float font_descent;
+    float font_monospace_advance_width;
     JkShape shapes[95];
 } Assets;
 
