@@ -109,6 +109,24 @@ typedef struct JkF32x8 {
 
 // ---- ISA-specific definitions end -------------------------------------------
 
+// ---- Compiler-specific definitions begin ------------------------------------
+
+#if defined(__GNUC__) || defined(__clang__)
+
+#define JK_PRETEND_WRITE(identifier) __asm__ volatile("" : "+x"(identifier))
+
+#define JK_PRETEND_READ(value) __asm__ volatile("" ::"x"(value))
+
+#else
+
+#define JK_PRETEND_WRITE(identifier)
+
+#define JK_PRETEND_READ(value)
+
+#endif
+
+// ---- Compiler-specific definitions end --------------------------------------
+
 typedef struct JkBuffer {
     int64_t size;
     uint8_t *data;

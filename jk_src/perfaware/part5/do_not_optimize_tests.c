@@ -100,6 +100,53 @@ static void fix_attempt_2(int64_t rep_count)
     }
 }
 
+static void vmovsd_method(int64_t rep_count)
+{
+    for (int64_t i = 0; i < rep_count; i++) {
+        double value;
+
+#if __clang__
+        __asm__ volatile("vmovsd %2, %1, %0" : "=x"(value) : "x"(0.0), "x"(0.5));
+#endif
+        double result = arbitrary_work(value);
+#if __clang__
+        __asm__ volatile("" ::"x"(result));
+#endif
+
+        (void)result;
+    }
+}
+
+static void qna_method(int64_t rep_count)
+{
+    for (int64_t i = 0; i < rep_count; i++) {
+        double value = 0.5;
+
+#if __clang__
+        __asm__ volatile("" : "+x"(value));
+#endif
+        double result = arbitrary_work(value);
+#if __clang__
+        __asm__ volatile("" ::"x"(result));
+#endif
+
+        (void)result;
+    }
+}
+
+static void macro_method(int64_t rep_count)
+{
+    for (int64_t i = 0; i < rep_count; i++) {
+        double value = 0.5;
+
+        JK_PRETEND_WRITE(value);
+        double result = arbitrary_work(value);
+        JK_PRETEND_READ(result);
+
+        (void)result;
+    }
+}
+
 typedef void LoopFunction(int64_t rep_count);
 
 typedef struct TestFunction {
@@ -112,6 +159,9 @@ static TestFunction functions[] = {
     {"our_way", our_way},
     {"fix_attempt_1", fix_attempt_1},
     {"fix_attempt_2", fix_attempt_2},
+    {"vmovsd_method", vmovsd_method},
+    {"qna_method", qna_method},
+    {"macro_method", macro_method},
 };
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
@@ -127,7 +177,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         printf("\n%s\n", function->name);
 
         jk_platform_repetition_test_run_wave(test, 0, frequency, 10);
-        while (jk_platform_repetition_test_running(test)) {
+        while (jk_platform_repetition_test_running_baseline(test, tests + 0)) {
             jk_platform_repetition_test_time_begin(test);
             function->func(10000000);
             jk_platform_repetition_test_time_end(test);
