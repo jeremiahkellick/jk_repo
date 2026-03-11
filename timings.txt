@@ -1,0 +1,297 @@
+BASELINE
+
+CPU frequency: 3600024930
+
+Min: 130792914 (36.3311ms)
+	triangles[1]: 105218844 (80.45%)
+	pixels[1]: 23727160 (18.14%)
+
+Max: 139308388 (38.6965ms)
+	triangles[1]: 112732826 (80.92%)
+	pixels[1]: 24077364 (17.28%)
+
+Average: 31701275273 (36.6910ms)
+	triangles[1]: 106022146 (80.27%)
+	pixels[1]: 23919291 (18.11%)
+
+BARY_WEIGHTS
+
+CPU frequency: 3600019760
+
+Min: 112519824 (31.2553ms)
+	triangles[1]: 86987250 (77.31%)
+	pixels[1]: 23473996 (20.86%)
+
+Max: 119051422 (33.0697ms)
+	triangles[1]: 93190298 (78.28%)
+	pixels[1]: 23616850 (19.84%)
+
+Average: 27214619384 (31.4982ms)
+	triangles[1]: 87664045 (77.31%)
+	pixels[1]: 23568332 (20.78%)
+
+BARY_COORDS
+
+CPU frequency: 3600020980
+
+Min: 109200200 (30.3332ms)
+	triangles[1]: 83801468 (76.74%)
+	pixels[1]: 23409272 (21.44%)
+
+Max: 149403846 (41.5008ms)
+	triangles[1]: 119684292 (80.11%)
+	pixels[1]: 24111256 (16.14%)
+
+Average: 26464662463 (30.6302ms)
+	triangles[1]: 84647725 (76.76%)
+	pixels[1]: 23441632 (21.26%)
+
+TEXCOORD DELTA
+
+CPU frequency: 3600018640
+
+Min: 93766868 (26.0462ms)
+	triangles[1]: 68502336 (73.06%)
+	pixels[1]: 23366076 (24.92%)
+
+Max: 98778414 (27.4383ms)
+	triangles[1]: 72402236 (73.30%)
+	pixels[1]: 23955430 (24.25%)
+
+Average: 22704871534 (26.2787ms)
+	triangles[1]: 68952196 (72.89%)
+	pixels[1]: 23478709 (24.82%)
+
+PIXEL INDEX DDA
+
+CPU frequency: 3600020140
+
+Min: 88348946 (24.5412ms)
+	triangles[1]: 64890720 (73.45%)
+	pixels[1]: 21501960 (24.34%)
+
+Max: 92730687 (25.7584ms)
+	triangles[1]: 67731882 (73.04%)
+	pixels[1]: 22412394 (24.17%)
+
+Average: 21398992296 (24.7672ms)
+	triangles[1]: 65386913 (73.33%)
+	pixels[1]: 21611373 (24.24%)
+
+FLOAT REMAINDER
+
+CPU frequency: 3600031460
+
+Min: 69174596 (19.2150ms)
+	triangles[1]: 45794146 (66.20%)
+	pixels[1]: 21549934 (31.15%)
+
+Max: 72499966 (20.1387ms)
+	triangles[1]: 48810280 (67.32%)
+	pixels[1]: 21534456 (29.70%)
+
+Average: 16859824049 (19.5135ms)
+	triangles[1]: 46492977 (66.18%)
+	pixels[1]: 21570515 (30.71%)
+
+OFFSET UV IN TRIANGLE SETUP
+
+CPU frequency: 3600029660
+
+Min: 68006807 (18.8906ms)
+	triangles[1]: 44483349 (65.41%)
+	pixels[1]: 21531630 (31.66%)
+
+Max: 71192554 (19.7755ms)
+	triangles[1]: 46500920 (65.32%)
+	pixels[1]: 22031658 (30.95%)
+
+Average: 16498870326 (19.0958ms)
+	triangles[1]: 44916929 (65.34%)
+	pixels[1]: 21642134 (31.48%)
+
+4x MSAA
+
+CPU frequency: 3600026330
+
+Min: 89199682 (24.7775ms)
+	triangles[1]: 64797594 (72.64%)
+	pixels[1]: 22364974 (25.07%)
+
+Max: 95318072 (26.4770ms)
+	triangles[1]: 69821486 (73.25%)
+	pixels[1]: 22784388 (23.90%)
+
+Average: 21807686034 (25.2402ms)
+	triangles[1]: 65908327 (72.53%)
+	pixels[1]: 22834323 (25.13%)
+
+FAKE RUN
+
+CPU frequency: 3600023500
+
+Min: 54926020 (15.2571ms)
+	triangles[1]: 9673092 (17.61%)
+	pixels[1]: 18636142 (33.93%)
+
+Max: 58228803 (16.1746ms)
+	triangles[1]: 9739984 (16.73%)
+	pixels[1]: 18900167 (32.46%)
+
+Average: 13307013591 (15.4015ms)
+	triangles[1]: 9672623 (17.45%)
+	pixels[1]: 18731597 (33.78%)
+
+4x MSAA w/ multiple texture samples
+
+CPU frequency: 3600026280
+
+Min: 161551770 (44.8752ms)
+	triangles[1]: 118719740 (73.49%)
+	pixels[1]: 15863542 (9.82%)
+
+Max: 166697974 (46.3047ms)
+	triangles[1]: 122809756 (73.67%)
+	pixels[1]: 15925618 (9.55%)
+
+Average: 39106220294 (45.2615ms)
+	triangles[1]: 119809070 (73.53%)
+	pixels[1]: 15937714 (9.78%)
+
+ELIMINATED 2 DIVIDES PER SAMPLE
+
+CPU frequency: 3600026220
+
+Min: 156767778 (43.5463ms)
+	triangles[1]: 113951852 (72.69%)
+	pixels[1]: 15791156 (10.07%)
+
+Max: 165789061 (46.0522ms)
+	triangles[1]: 121288760 (73.16%)
+	pixels[1]: 16852428 (10.16%)
+
+Average: 37963501380 (43.9389ms)
+	triangles[1]: 114994341 (72.70%)
+	pixels[1]: 15871742 (10.03%)
+
+WITH LOADS
+
+CPU frequency: 3600027930
+
+Min: 175753612 (48.8201ms)
+	triangles[1]: 132924400 (75.63%)
+	pixels[1]: 15896098 (9.04%)
+
+Max: 182845971 (50.7902ms)
+	triangles[1]: 138726463 (75.87%)
+	pixels[1]: 15881340 (8.69%)
+
+Average: 42727210714 (49.4524ms)
+	triangles[1]: 134743286 (75.69%)
+	pixels[1]: 15967187 (8.97%)
+
+SIMD TEST 1
+
+CPU frequency: 3600021580
+
+Min: 81890306 (22.7472ms)
+	triangles[1]: 42276400 (51.63%)
+	pixels[1]: 14421124 (17.61%)
+
+Max: 94447758 (26.2353ms)
+	triangles[1]: 50665588 (53.64%)
+	pixels[1]: 15062180 (15.95%)
+
+Average: 20358302653 (23.5627ms)
+	triangles[1]: 43782921 (51.61%)
+	pixels[1]: 15001469 (17.68%)
+
+GATHER
+
+CPU frequency: 3600028000
+
+Min: 66753268 (18.5424ms)
+	triangles[1]: 30090732 (45.08%)
+	pixels[1]: 16179606 (24.24%)
+
+Max: 75590628 (20.9972ms)
+	triangles[1]: 35776147 (47.33%)
+	pixels[1]: 17334792 (22.93%)
+
+Average: 17044916412 (19.7278ms)
+	triangles[1]: 32405674 (45.63%)
+	pixels[1]: 16543045 (23.29%)
+
+SIMD FAKE RUN
+
+CPU frequency: 3600020060
+
+Min: 36994722 (10.2763ms)
+	triangles[1]: 1662564 (4.49%)
+	pixels[1]: 15611816 (42.20%)
+
+Max: 39955826 (11.0988ms)
+	triangles[1]: 1655820 (4.14%)
+	pixels[1]: 15925454 (39.86%)
+
+Average: 9075897454 (10.5045ms)
+	triangles[1]: 1697732 (4.49%)
+	pixels[1]: 15939536 (42.15%)
+
+ONLY LOAD Z BUFFER WHEN INSIDE TRIANGLE
+
+CPU frequency: 3600023800
+
+Min: 60508508 (16.8078ms)
+	triangles[1]: 24136914 (39.89%)
+	pixels[1]: 16005018 (26.45%)
+
+Max: 64579974 (17.9388ms)
+	triangles[1]: 25624152 (39.68%)
+	pixels[1]: 16278916 (25.21%)
+
+Average: 14760684201 (17.0840ms)
+	triangles[1]: 24344153 (39.58%)
+	pixels[1]: 16103486 (26.18%)
+
+SIMD LANES PIXELS INSTEAD OF SAMPLES
+
+CPU frequency: 3600022080
+
+Min: 59911961 (16.6421ms)
+	triangles[1]: 33728814 (56.30%)
+	pixels[1]: 6158516 (10.28%)
+
+Max: 67613856 (18.7815ms)
+	triangles[1]: 37180902 (54.99%)
+	pixels[1]: 7352070 (10.87%)
+
+Average: 15142919501 (17.5264ms)
+	triangles[1]: 35426657 (56.15%)
+	pixels[1]: 6700469 (10.62%)
+
+MAKE SAMPLE LOOP THE OUTER LOOP
+
+CPU frequency: 3600016750
+
+Min: 55140168 (15.3166ms)
+	triangles[1]: 29457000 (53.42%)
+	pixels[1]: 6412992 (11.63%)
+
+Max: 62876321 (17.4656ms)
+	triangles[1]: 34582071 (55.00%)
+	pixels[1]: 6650718 (10.58%)
+
+Average: 14072641618 (16.2877ms)
+	triangles[1]: 31306455 (53.39%)
+	pixels[1]: 6593227 (11.24%)
+
+MULTITHREAD
+
+CPU frequency: 3600034960
+
+Min: 17183758 (4.7732ms)
+
+Max: 20733442 (5.7592ms)
+
+Average: 18945426 (5.2626ms)
