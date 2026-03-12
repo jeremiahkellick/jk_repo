@@ -1,0 +1,39 @@
+CPU frequency: 24000780
+
+Min: 1458583 (60.7723ms)
+	triangles[1]: 1269277 (87.02%)
+	pixels[1]: 173149 (11.87%)
+
+Max: 1618209 (67.4232ms)
+	triangles[1]: 1419313 (87.71%)
+	pixels[1]: 182479 (11.28%)
+
+Average: 353720165 (61.4078ms)
+	triangles[1]: 1282802 (87.04%)
+	pixels[1]: 174827 (11.86%)
+
+SIMD w/ Accelerate Framework
+
+CPU frequency: 24000010
+
+Min: 322006 (13.4169ms)
+	triangles[1]: 176885 (54.93%)
+	pixels[1]: 37967 (11.79%)
+
+Max: 349134 (14.5472ms)
+	triangles[1]: 198773 (56.93%)
+	pixels[1]: 39744 (11.38%)
+
+Average: 328016 (13.6673ms)
+	triangles[1]: 179549 (54.74%)
+	pixels[1]: 39261 (11.97%)
+
+MULTITHREADED
+
+CPU frequency: 24000019
+
+Min: 82538 (3.4391ms)
+
+Max: 174187 (7.2578ms)
+
+Average: 87483 (3.6451ms)
