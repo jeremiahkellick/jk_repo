@@ -9,7 +9,7 @@
 
 #define SAMPLE_COUNT 4
 #define LANE_COUNT 8
-#define TILE_SIDE_LENGTH 64
+#define TILE_SIDE_LENGTH 32
 
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
 #define PIXEL_COUNT (DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
@@ -56,11 +56,18 @@ typedef struct BitmapSpan {
     int64_t offset;
 } BitmapSpan;
 
+typedef enum ObjectFlag {
+    OBJ_COLLIDE,
+    OBJ_WALKABLE,
+    OBJ_FLAG_COUNT,
+} ObjectFlag;
+
 typedef struct ObjectId {
     int64_t i;
 } ObjectId;
 
 typedef struct Object {
+    uint32_t flags;
     ObjectId parent;
     JkTransform transform;
     JkSpan faces; // FaceArray

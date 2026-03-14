@@ -13,7 +13,7 @@
 #include <jk_src/stb/stb_truetype.h>
 // #jk_build dependencies_end
 
-static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/scene.fbx");
+static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/terrain.fbx");
 static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};
 
 static JkMat4 conversion_matrix;
@@ -37,6 +37,8 @@ typedef enum ThingFlag {
     THING_FLAG_HAS_PARENT,
     THING_FLAG_MODEL,
     THING_FLAG_SCALE,
+    THING_FLAG_COLLIDE,
+    THING_FLAG_WALKABLE,
 } ThingFlag;
 
 struct Thing {
@@ -413,6 +415,8 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
         } else if (jk_buffer_compare(name, JKS("P")) == 0) {
             b32 proceed = 1;
             b32 has_repeat_size = 0;
+            b32 has_collide = 0;
+            b32 has_walkable = 0;
 
             TransformType type = 0;
 
@@ -429,6 +433,10 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     type = TRANSFORM_SCALE;
                 } else if (jk_buffer_compare(string, JKS("repeat_size")) == 0) {
                     has_repeat_size = 1;
+                } else if (jk_buffer_compare(string, JKS("collide")) == 0) {
+                    has_collide = 1;
+                } else if (jk_buffer_compare(string, JKS("walkable")) == 0) {
+                    has_walkable = 1;
                 } else {
                     proceed = 0;
                 }
@@ -443,6 +451,22 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             if (proceed && has_repeat_size) {
                 if (node->name[cursor++] == 'D') {
                     thing->repeat_size = *(double *)(node->name + cursor);
+                }
+                proceed = 0;
+            }
+
+            if (proceed && has_collide) {
+                if (node->name[cursor++] == 'I') {
+                    int32_t collide = *(int32_t *)(node->name + cursor);
+                    JK_FLAG_SET(thing->flags, THING_FLAG_COLLIDE, collide);
+                }
+                proceed = 0;
+            }
+
+            if (proceed && has_walkable) {
+                if (node->name[cursor++] == 'I') {
+                    int32_t walkable = *(int32_t *)(node->name + cursor);
+                    JK_FLAG_SET(thing->flags, THING_FLAG_WALKABLE, walkable);
                 }
                 proceed = 0;
             }
@@ -558,6 +582,12 @@ static void process_thing(JkArenaScope objects_scope, Thing *thing, ObjectId obj
         }
         if (thing->repeat_size) {
             object->repeat_size = thing->repeat_size;
+        }
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_COLLIDE)) {
+            JK_FLAG_SET(object->flags, OBJ_COLLIDE, 1);
+        }
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_WALKABLE)) {
+            JK_FLAG_SET(object->flags, OBJ_WALKABLE, 1);
         }
     }
 
