@@ -32,18 +32,22 @@ _Alignas(32) static float lane_offsets[2][LANE_COUNT] = {
 
 typedef struct Triangle {
     JkVec3 v[3];
-    JkVec2 t[3];
 } Triangle;
+
+typedef struct TexturedTriangle {
+    JkVec3 v[3];
+    JkVec2 t[3];
+} TexturedTriangle;
 
 typedef struct TriangleArray {
     int64_t count;
-    Triangle *e;
+    TexturedTriangle *e;
 } TriangleArray;
 
 typedef struct TriangleNode {
     struct TriangleNode *next;
     Bitmap texture;
-    Triangle tri;
+    TexturedTriangle tri;
 } TriangleNode;
 
 typedef struct Tile {
@@ -75,6 +79,11 @@ static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2)
     };
 }
 
+typedef struct NavContact {
+    struct NavContact *next;
+    float z;
+} NavContact;
+
 typedef enum NavInterpolant {
     NAV_BARYCENTRIC_0,
     NAV_BARYCENTRIC_1,
@@ -87,7 +96,8 @@ typedef struct NavInterpolants {
     float e[NAV_INTERPOLANT_COUNT];
 } NavInterpolants;
 
-static void nav_triangle_rasterize(JkFloatArray z_buffer, JkIntVec2 nav_dimensions, Triangle tri)
+static void nav_triangle_rasterize(
+        JkArena *arena, NavContact **nav_contacts, JkIntVec2 nav_dimensions, Triangle tri)
 {
     JkIntRect bounds = jk_int_rect_intersect((JkIntRect){.max = nav_dimensions},
             triangle_bounding_box(tri.v[0], tri.v[1], tri.v[2]));
@@ -133,13 +143,19 @@ static void nav_triangle_rasterize(JkFloatArray z_buffer, JkIntVec2 nav_dimensio
     for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
         NavInterpolants interpolants = interpolants_row;
         for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
-            int32_t pixel_index = nav_dimensions.x * y + x;
             if (-EPSILON < interpolants.e[NAV_BARYCENTRIC_0]
                     && -EPSILON < interpolants.e[NAV_BARYCENTRIC_1]
                     && -EPSILON < interpolants.e[NAV_BARYCENTRIC_2]) {
-                if (z_buffer.e[pixel_index] < interpolants.e[NAV_Z]) {
-                    z_buffer.e[pixel_index] = interpolants.e[NAV_Z];
+                NavContact *contact = jk_arena_push(arena, sizeof(*contact));
+                contact->z = interpolants.e[NAV_Z];
+
+                NavContact **link = nav_contacts + (nav_dimensions.x * y + x);
+                while (*link && contact->z < (*link)->z) {
+                    link = &(*link)->next;
                 }
+
+                contact->next = *link;
+                *link = contact;
             }
 
             for (int64_t i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
@@ -169,7 +185,7 @@ typedef struct Interpolants {
 
 static void triangle_fill(Environment *env, TriangleNode *node, JkIntRect bounding_box)
 {
-    Triangle tri = node->tri;
+    TexturedTriangle tri = node->tri;
     JkIntRect bounds = jk_int_rect_intersect(
             bounding_box, triangle_bounding_box(tri.v[0], tri.v[1], tri.v[2]));
     if (!(bounds.min.x < bounds.max.x && bounds.min.y < bounds.max.y)) {
@@ -294,7 +310,7 @@ static void triangle_fill(Environment *env, TriangleNode *node, JkIntRect boundi
     }
 }
 
-static b32 clockwise(Triangle t)
+static b32 clockwise(TexturedTriangle t)
 {
     return (t.v[1].x - t.v[0].x) * (t.v[2].y - t.v[0].y)
             - (t.v[1].y - t.v[0].y) * (t.v[2].x - t.v[0].x)
@@ -309,10 +325,10 @@ static Bitmap bitmap_from_span(Environment *env, BitmapSpan span)
     };
 }
 
-static void add_textured_vertex(JkArena *arena, JkMat4 pixel_matrix, JkVec4 v, JkVec2 t)
+static void add_textured_vertex(JkArena *arena, JkMat4 screen_from_ndc, JkVec4 v, JkVec2 t)
 {
     TexturedVertex *new = jk_arena_push(arena, sizeof(*new));
-    new->v = jk_mat4_mul_point(pixel_matrix, jk_vec4_perspective_divide(v));
+    new->v = jk_mat4_mul_point(screen_from_ndc, jk_vec4_perspective_divide(v));
     new->t = jk_vec2_mul(new->v.z, t);
 }
 
@@ -331,7 +347,7 @@ typedef struct EdgeFunction {
     float init;
 } EdgeFunction;
 
-static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id)
+static void move_against_box(Move *move, JkMat4 world_from_local, ObjectId id)
 {
     static float const padding = 0.5;
 
@@ -341,12 +357,12 @@ static void move_against_box(Move *move, JkMat4 world_matrix, ObjectId id)
         {0, 0, 0.5},
     };
 
-    JkVec3 origin = jk_mat4_mul_point(world_matrix, (JkVec3){0, 0, 0});
+    JkVec3 origin = jk_mat4_mul_point(world_from_local, (JkVec3){0, 0, 0});
 
     // Compute all 6 planes
     Plane planes[6];
     for (int64_t extent = 0; extent < 3; extent++) {
-        JkVec3 transformed = jk_mat4_mul_normal(world_matrix, local_extents[extent]);
+        JkVec3 transformed = jk_mat4_mul_normal(world_from_local, local_extents[extent]);
         JkVec3 padded =
                 jk_vec3_add(transformed, jk_vec3_mul(padding, jk_vec3_normalized(transformed)));
         for (int64_t negative = 0; negative < 2; negative++) {
@@ -516,6 +532,16 @@ static void draw_text(
     }
 }
 
+static JkMat4 object_compute_world_from_local(ObjectArray objects, ObjectId id)
+{
+    JkMat4 result = jk_mat4_i;
+    for (ObjectId parent_id = id; parent_id.i; parent_id = objects.e[parent_id.i].parent) {
+        Object *parent = objects.e + parent_id.i;
+        result = jk_mat4_mul(jk_transform_to_mat4(parent->transform), result);
+    }
+    return result;
+}
+
 void render(JkContext *context, Environment *env)
 {
     jk_context = context;
@@ -525,8 +551,8 @@ void render(JkContext *context, Environment *env)
 
     _Alignas(64) static int32_t volatile next_tile_index;
 
-    JkArenaScope scratch = {0};
-    JkArenaScope triangle_scratch = {0};
+    JkArenaScope scratch0 = {0};
+    JkArenaScope scratch1 = {0};
     Input input = {0};
     JkIntVec2 dimensions = {0};
 
@@ -536,7 +562,7 @@ void render(JkContext *context, Environment *env)
             jk_vec2_mul(0.5, jk_vec2_from_int(nav_dimensions)));
     nav_origin.x = jk_floor_f32(nav_origin.x);
     nav_origin.y = jk_floor_f32(nav_origin.y);
-    JkFloatArray nav_z_buffer = {0};
+    NavContact **nav_contacts = 0;
 
     JK_CHANNEL_NARROW(0)
     {
@@ -663,15 +689,10 @@ void render(JkContext *context, Environment *env)
                 prev_p1 = move.s.p1;
                 for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
                     if (JK_FLAG_GET(objects.e[object_id.i].flags, OBJ_COLLIDE)) {
-                        JkMat4 world_matrix = jk_mat4_i;
-                        for (ObjectId parent_id = object_id; parent_id.i;
-                                parent_id = objects.e[parent_id.i].parent) {
-                            Object *parent = objects.e + parent_id.i;
-                            world_matrix = jk_mat4_mul(
-                                    jk_transform_to_mat4(parent->transform), world_matrix);
-                        }
+                        JkMat4 world_from_local =
+                                object_compute_world_from_local(objects, object_id);
 
-                        move_against_box(&move, world_matrix, object_id);
+                        move_against_box(&move, world_from_local, object_id);
                     }
                 }
             } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
@@ -686,29 +707,55 @@ void render(JkContext *context, Environment *env)
         };
 
         float near_clip = 0.2f;
-        JkMat4 clip_matrix = jk_transform_to_mat4_inv(camera_transform);
-        clip_matrix = jk_mat4_mul(
+        JkMat4 clip_from_world = jk_transform_to_mat4_inv(camera_transform);
+        clip_from_world = jk_mat4_mul(
                 jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
-                clip_matrix);
-        clip_matrix =
-                jk_mat4_mul(jk_mat4_perspective(dimensions, JK_PI / 3, near_clip), clip_matrix);
+                clip_from_world);
+        clip_from_world =
+                jk_mat4_mul(jk_mat4_perspective(dimensions, JK_PI / 3, near_clip), clip_from_world);
 
-        JkMat4 nav_matrix = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
-        nav_matrix = jk_mat4_mul(
-                jk_mat4_translate(jk_vec2_to_3(jk_vec2_mul(-1, nav_origin), 0)), nav_matrix);
+        JkMat4 nav_from_world = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
+        nav_from_world = jk_mat4_mul(
+                jk_mat4_translate(jk_vec2_to_3(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
 
-        JkMat4 pixel_matrix = jk_mat4_translate((JkVec3){1, -1, 0});
-        pixel_matrix =
+        JkMat4 screen_from_ndc = jk_mat4_translate((JkVec3){1, -1, 0});
+        screen_from_ndc =
                 jk_mat4_mul(jk_mat4_scale((JkVec3){dimensions.x / 2.0f, -dimensions.y / 2.0f, 1}),
-                        pixel_matrix);
+                        screen_from_ndc);
 
-        scratch = jk_arena_scratch_begin();
-        triangle_scratch = jk_arena_scratch_begin_not(scratch.arena);
+        scratch0 = jk_arena_scratch_begin();
+        scratch1 = jk_arena_scratch_begin_not(scratch0.arena);
 
-        JK_ARENA_PUSH_ARRAY(scratch.arena, nav_z_buffer, nav_dimensions.x * nav_dimensions.y);
-        for (int64_t i = 0; i < nav_z_buffer.count; i++) {
-            nav_z_buffer.e[i] = -jk_infinity_f32.f32;
+        // ---- Navigation begin ----------------------------------------------
+
+        nav_contacts = jk_arena_push_zero(
+                scratch0.arena, nav_dimensions.x * nav_dimensions.y * JK_SIZEOF(NavContact *));
+
+        JkArenaScope nav_scope = jk_arena_scope_begin(scratch0.arena);
+
+        for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
+            Object *object = objects.e + object_id.i;
+
+            FaceArray faces;
+            JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
+
+            JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
+            JkMat4 nav_from_local = jk_mat4_mul(nav_from_world, world_from_local);
+
+            // Process faces in world space for navigation grid
+            for (int64_t face_index = 0; face_index < faces.count; face_index++) {
+                Face face = faces.e[face_index];
+                Triangle triangle = {0};
+                for (int64_t i = 0; i < 3; i++) {
+                    triangle.v[i] = jk_mat4_mul_point(nav_from_local, vertices.e[face.v[i]]);
+                }
+                nav_triangle_rasterize(scratch1.arena, nav_contacts, nav_dimensions, triangle);
+            }
         }
+
+        jk_arena_scope_end(nav_scope);
+
+        // ---- Navigation end ------------------------------------------------
 
         JkIntRect tiles_rect;
         tiles_rect.min = (JkIntVec2){0};
@@ -717,52 +764,27 @@ void render(JkContext *context, Environment *env)
         }
         TileArray tiles;
         tiles.count = tiles_rect.max.x * tiles_rect.max.y;
-        tiles.e = jk_arena_push_zero(scratch.arena, sizeof(*tiles.e) * tiles.count);
+        tiles.e = jk_arena_push_zero(scratch0.arena, sizeof(*tiles.e) * tiles.count);
 
         tiles_rect_shared = tiles_rect;
         tiles_shared = tiles;
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
-            JkArenaScope object_scope = jk_arena_scope_begin(scratch.arena);
+            JkArenaScope object_scope = jk_arena_scope_begin(scratch0.arena);
 
             FaceArray faces;
             JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
             Bitmap texture = bitmap_from_span(env, object->texture);
 
-            JkMat4 world_matrix = jk_mat4_i;
-            for (ObjectId parent_id = object_id; parent_id.i;
-                    parent_id = objects.e[parent_id.i].parent) {
-                Object *parent = objects.e + parent_id.i;
-                world_matrix = jk_mat4_mul(jk_transform_to_mat4(parent->transform), world_matrix);
-            }
+            JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
+            JkMat4 clip_from_local = jk_mat4_mul(clip_from_world, world_from_local);
 
-            JkMat4 obj_nav_matrix = jk_mat4_mul(nav_matrix, world_matrix);
-            JkMat4 obj_clip_matrix = jk_mat4_mul(clip_matrix, world_matrix);
-
-            JkVec3 *nav_vertices =
-                    jk_arena_push(scratch.arena, vertices.count * JK_SIZEOF(*nav_vertices));
-            JkVec4 *clip_space_vertices =
-                    jk_arena_push(scratch.arena, vertices.count * JK_SIZEOF(*clip_space_vertices));
-            for (int64_t i = 0; i < vertices.count; i++) {
-                nav_vertices[i] = jk_mat4_mul_point(obj_nav_matrix, vertices.e[i]);
-                clip_space_vertices[i] =
-                        jk_mat4_mul_vec4(obj_clip_matrix, jk_vec3_to_4(vertices.e[i], 1));
-            }
-
-            // Process faces in world space for navigation grid
-            for (int64_t face_index = 0; face_index < faces.count; face_index++) {
-                Face face = faces.e[face_index];
-                Triangle triangle = {0};
-                for (int64_t i = 0; i < 3; i++) {
-                    triangle.v[i] = nav_vertices[face.v[i]];
-                }
-                nav_triangle_rasterize(nav_z_buffer, nav_dimensions, triangle);
-            }
+            // jk_mat4_mul_vec4(clip_from_local, jk_vec3_to_4(vertices.e[i], 1));
 
             // Clip and bin faces for later rendering
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
-                JkArenaScope face_scope = jk_arena_scope_begin(scratch.arena);
+                JkArenaScope face_scope = jk_arena_scope_begin(scratch0.arena);
                 Face face = faces.e[face_index];
 
                 JkVec2 uv[3];
@@ -813,30 +835,32 @@ void render(JkContext *context, Environment *env)
                 }
 
                 // Apply near clipping and projection
-                TexturedVertexArray vs = {.e = jk_arena_pointer_current(scratch.arena)};
+                TexturedVertexArray vs = {.e = jk_arena_pointer_current(scratch0.arena)};
                 for (int64_t i = 0; i < 3; i++) {
                     int64_t b_i = (i + 1) % 3;
-                    JkVec4 a = clip_space_vertices[face.v[i]];
-                    JkVec4 b = clip_space_vertices[face.v[b_i]];
+                    JkVec4 a = jk_mat4_mul_vec4(
+                            clip_from_local, jk_vec3_to_4(vertices.e[face.v[i]], 1));
+                    JkVec4 b = jk_mat4_mul_vec4(
+                            clip_from_local, jk_vec3_to_4(vertices.e[face.v[b_i]], 1));
                     b32 a_inside = !!(a.z < a.w);
                     b32 b_inside = !!(b.z < b.w);
                     if (a_inside != b_inside) { // Crosses clip plane, add interpolated vertex
                         float t = (near_clip - a.w) / (b.w - a.w);
-                        add_textured_vertex(scratch.arena,
-                                pixel_matrix,
+                        add_textured_vertex(scratch0.arena,
+                                screen_from_ndc,
                                 jk_vec4_lerp(a, b, t),
                                 jk_vec2_lerp(uv[i], uv[b_i], t));
                     }
                     if (b_inside) {
-                        add_textured_vertex(scratch.arena, pixel_matrix, b, uv[b_i]);
+                        add_textured_vertex(scratch0.arena, screen_from_ndc, b, uv[b_i]);
                     }
                 }
-                vs.count = (TexturedVertex *)jk_arena_pointer_current(scratch.arena) - vs.e;
+                vs.count = (TexturedVertex *)jk_arena_pointer_current(scratch0.arena) - vs.e;
 
                 // Triangulate the resulting polygon
                 for (int64_t vertex_index = 2; vertex_index < vs.count; vertex_index++) {
                     int64_t indexes[3] = {0, vertex_index - 1, vertex_index};
-                    Triangle tri;
+                    TexturedTriangle tri;
                     for (int64_t i = 0; i < 3; i++) {
                         tri.v[i] = vs.e[indexes[i]].v;
                         tri.t[i] = vs.e[indexes[i]].t;
@@ -855,7 +879,7 @@ void render(JkContext *context, Environment *env)
                                 Tile *tile = tiles.e + (tiles_rect.max.x * y + x);
 
                                 TriangleNode *new_node =
-                                        jk_arena_push(triangle_scratch.arena, sizeof(*new_node));
+                                        jk_arena_push(scratch1.arena, sizeof(*new_node));
                                 new_node->tri = tri;
                                 new_node->texture = texture;
                                 new_node->next = tile->head;
@@ -972,11 +996,12 @@ void render(JkContext *context, Environment *env)
             float pixels_per_unit = JK_MIN(dimensions.x, dimensions.y) / 64.0f;
             JkVec2 ui_dimensions =
                     jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_int(dimensions));
-            jk_shapes_renderer_init(&renderer, pixels_per_unit, env->assets, shapes, scratch.arena);
+            jk_shapes_renderer_init(
+                    &renderer, pixels_per_unit, env->assets, shapes, scratch0.arena);
 
             float padding = 0.5f;
             float text_scale = 0.005f;
-            JkBuffer frame_id_text = JK_FORMAT(scratch.arena, jkfu(env->state.frame_id));
+            JkBuffer frame_id_text = JK_FORMAT(scratch0.arena, jkfu(env->state.frame_id));
             TextLayout layout = text_layout_monospace(env, frame_id_text, text_scale);
             JkVec2 top_left = {(ui_dimensions.x - padding) - layout.dimensions.x, padding};
             draw_text(&renderer,
@@ -1007,38 +1032,42 @@ void render(JkContext *context, Environment *env)
 
             float min_depth = jk_infinity_f32.f32;
             float max_depth = -jk_infinity_f32.f32;
-            for (int64_t i = 0; i < nav_z_buffer.count; i++) {
-                float z = nav_z_buffer.e[i];
-                if (z != -jk_infinity_f32.f32 && z < min_depth) {
-                    min_depth = z;
-                }
-                if (max_depth < z) {
-                    max_depth = z;
+            for (int64_t i = 0; i < nav_dimensions.x * nav_dimensions.y; i++) {
+                NavContact *contact = nav_contacts[i];
+                if (contact) {
+                    if (contact->z != -jk_infinity_f32.f32 && contact->z < min_depth) {
+                        min_depth = contact->z;
+                    }
+                    if (max_depth < contact->z) {
+                        max_depth = contact->z;
+                    }
                 }
             }
             float scale = 254.0f / (max_depth - min_depth);
 
             for (int32_t y = 0; y < nav_dimensions.y; y++) {
                 for (int32_t x = 0; x < nav_dimensions.x; x++) {
-                    float z = nav_z_buffer.e[nav_dimensions.x * y + x];
-                    JkColor color = {.r = 255, .a = 255};
-                    if (z != -jk_infinity_f32.f32) {
-                        uint8_t lightness = scale * (z - min_depth);
-                        for (int64_t i = 0; i < 3; i++) {
-                            color.v[i] = lightness;
+                    NavContact *contact = nav_contacts[nav_dimensions.x * y + x];
+                    if (contact) {
+                        JkColor color = {.r = 255, .a = 255};
+                        if (contact->z != -jk_infinity_f32.f32) {
+                            uint8_t lightness = scale * (contact->z - min_depth);
+                            for (int64_t i = 0; i < 3; i++) {
+                                color.v[i] = lightness;
+                            }
                         }
+                        int32_t dy = 2 * (nav_dimensions.y - 1 - y);
+                        env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * dy + (2 * x)] = color;
+                        env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * dy + (2 * x + 1)] = color;
+                        env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * (dy + 1) + (2 * x)] = color;
+                        env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * (dy + 1) + (2 * x + 1)] = color;
                     }
-                    int32_t dy = 2 * (nav_dimensions.y - 1 - y);
-                    env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * dy + (2 * x)] = color;
-                    env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * dy + (2 * x + 1)] = color;
-                    env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * (dy + 1) + (2 * x)] = color;
-                    env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * (dy + 1) + (2 * x + 1)] = color;
                 }
             }
         }
 
-        jk_arena_scope_end(scratch);
-        jk_arena_scope_end(triangle_scratch);
+        jk_arena_scope_end(scratch0);
+        jk_arena_scope_end(scratch1);
         env->state.frame_id++;
     }
 }
