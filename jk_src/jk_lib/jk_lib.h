@@ -625,6 +625,12 @@ JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope);
 
 JK_PUBLIC JkBuffer jk_arena_scope_as_buffer(JkArenaScope scope);
 
+#define JK_ARRAY_FROM_ARENA_SCOPE(array, scope)                                      \
+    do {                                                                             \
+        (array).count = ((scope).arena->pos - (scope).base) / JK_SIZEOF(*(array).e); \
+        (array).e = (void *)((scope).arena->memory.data + (scope).base);             \
+    } while (0)
+
 JK_PUBLIC JkArenaScope jk_arena_scratch_begin(void);
 
 JK_PUBLIC JkArenaScope jk_arena_scratch_begin_not(JkArena *not_this_arena);
