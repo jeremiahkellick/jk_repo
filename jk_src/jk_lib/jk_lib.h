@@ -492,6 +492,10 @@ JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value);
 
 JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f);
 
+JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value);
+
+JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f);
+
 JK_PUBLIC float jk_round_f32(float value);
 
 JK_PUBLIC float jk_floor_f32(float value);
@@ -579,6 +583,26 @@ JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x);
 JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x);
 
 // ---- SIMD end ---------------------------------------------------------------
+
+// ---- Fixed-point begin ------------------------------------------------------
+
+JK_PUBLIC int32_t jk_q16_from_i32(int32_t x);
+
+JK_PUBLIC int32_t jk_q16_to_i32(int32_t x);
+
+JK_PUBLIC int32_t jk_q16_truncate_to_i32(int32_t x);
+
+JK_PUBLIC int32_t jk_q16_ceil_to_i32(int32_t x);
+
+JK_PUBLIC int32_t jk_q16_from_f32(float x);
+
+JK_PUBLIC float jk_q16_to_f32(int32_t x);
+
+JK_PUBLIC int32_t jk_q16_mul(int32_t a, int32_t b);
+
+JK_PUBLIC int32_t jk_q16_div(int32_t a, int32_t b);
+
+// ---- Fixed-point end --------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
@@ -717,6 +741,39 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector);
 JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector);
 
 // ---- JkIntVec2 end ----------------------------------------------------------
+
+// ---- JkQ16Vec2 begin --------------------------------------------------------
+
+typedef union JkQ16Vec2 {
+    int32_t v[2];
+    struct {
+        int32_t x;
+        int32_t y;
+    };
+} JkQ16Vec2;
+
+typedef struct JkQ16Vec2Array {
+    int64_t count;
+    JkQ16Vec2 *e;
+} JkQ16Vec2Array;
+
+JK_PUBLIC b32 jk_q16_vec2_equal(JkQ16Vec2 a, JkQ16Vec2 b);
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_add(JkQ16Vec2 a, JkQ16Vec2 b);
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_sub(JkQ16Vec2 a, JkQ16Vec2 b);
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_mul(int32_t scalar, JkQ16Vec2 vector);
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_div(int32_t divisor, JkQ16Vec2 vector);
+
+JK_PUBLIC int32_t jk_q16_vec2_cross(JkQ16Vec2 u, JkQ16Vec2 v);
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v);
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v);
+
+// ---- JkQ16Vec2 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------
 
@@ -1528,6 +1585,8 @@ JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value);
 JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value);
 
 JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount);
+
+JK_PUBLIC uint32_t jk_signed_shift_u32(uint32_t value, int64_t amount);
 
 JK_PUBLIC b32 jk_is_power_of_two(int64_t x);
 

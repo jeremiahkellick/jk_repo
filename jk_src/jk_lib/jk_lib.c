@@ -785,14 +785,14 @@ JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, int64_t decima
     JkFloatUnpacked unpacked = jk_unpack_f64(value);
     if (unpacked.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
         if (unpacked.significand) {
-            return unpacked.sign ? JKS("-nan") : JKS("nan");
+            return jk_buffer_copy(arena, unpacked.sign ? JKS("-nan") : JKS("nan"));
         } else {
-            return unpacked.sign ? JKS("-inf") : JKS("inf");
+            return jk_buffer_copy(arena, unpacked.sign ? JKS("-inf") : JKS("inf"));
         }
     } else {
         int32_t int_shift = JK_MAX(-64, unpacked.exponent);
         if ((int32_t)jk_count_leading_zeros(unpacked.significand) < int_shift) {
-            return unpacked.sign ? JKS("-unprintable") : JKS("unprintable");
+            return jk_buffer_copy(arena, unpacked.sign ? JKS("-unprintable") : JKS("unprintable"));
         } else {
             uint64_t integer = jk_signed_shift(unpacked.significand, int_shift);
             JkBuffer sign = unpacked.sign ? JKS("-") : JKS("");
@@ -1294,10 +1294,10 @@ JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f)
     if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
         result |= (0x7ffllu << 52) | (f.significand & 0xfffffffffffffllu);
     } else {
-        int8_t target_shift = jk_count_leading_zeros(f.significand) - 12 + 1;
+        int64_t target_shift = jk_count_leading_zeros(f.significand) - (64 - 53);
         int32_t new_exponent = JK_MAX(1 - 1023 - 52, f.exponent - target_shift);
         if (1023 - 52 < new_exponent) { // Exceeded max exponent, return infinity
-            result |= 0x7f800000;
+            result |= 0x7ff0000000000000;
         } else {
             uint64_t shifted_significand =
                     jk_signed_shift(f.significand, f.exponent - new_exponent);
@@ -1310,6 +1310,55 @@ JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f)
     }
 
     return *(double *)&result;
+}
+
+JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value)
+{
+    JkFloatUnpacked result;
+
+    uint32_t bits = *(uint32_t *)&value;
+
+    result.sign = (bits >> 31) & 1;
+    result.significand = bits & 0x7fffff;
+
+    int32_t raw_exponent = (bits >> 23) & 0xff;
+    // Subtract the bit-width of the mantissa from the exponent in addition to the usual bias
+    // because we want to treat the significand as an unsigned integer instead of fixed-point
+    if (raw_exponent == 0xff) {
+        result.exponent = JK_FLOAT_EXPONENT_SPECIAL;
+    } else {
+        result.exponent = JK_MAX(1, raw_exponent) - 127 - 23;
+        if (raw_exponent) {
+            result.significand |= 0x800000;
+        }
+    }
+
+    return result;
+}
+
+JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f)
+{
+    uint32_t result = f.sign ? (1 << 31) : 0;
+
+    if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
+        result |= (0xff << 23) | (f.significand & 0x7fffff);
+    } else {
+        int64_t target_shift = jk_count_leading_zeros(f.significand) - (64 - 24);
+        int32_t new_exponent = JK_MAX(1 - 127 - 23, f.exponent - target_shift);
+        if (127 - 23 < new_exponent) { // Exceeded max exponent, return infinity
+            result |= 0x7f800000;
+        } else {
+            uint64_t shifted_significand =
+                    jk_signed_shift_u32(f.significand, f.exponent - new_exponent);
+            result |= shifted_significand & 0x7fffff;
+
+            if (shifted_significand & 0x800000) {
+                result |= (uint32_t)((new_exponent + 127 + 23) & 0xff) << 23;
+            }
+        }
+    }
+
+    return *(float *)&result;
 }
 
 JK_PUBLIC float jk_remainder_f32(float x, float y)
@@ -1398,6 +1447,56 @@ JK_PUBLIC float jk_acos_f32(float x)
 }
 
 // ---- Math end ---------------------------------------------------------------
+
+// ---- Fixed-point begin ------------------------------------------------------
+
+JK_PUBLIC int32_t jk_q16_from_i32(int32_t x)
+{
+    return x << 16;
+}
+
+JK_PUBLIC int32_t jk_q16_to_i32(int32_t x)
+{
+    return x >> 16;
+}
+
+JK_PUBLIC int32_t jk_q16_truncate_to_i32(int32_t x)
+{
+    return (x + (~(x >> 31) & 65535)) >> 16;
+}
+
+JK_PUBLIC int32_t jk_q16_ceil_to_i32(int32_t x)
+{
+    return (x + ((x >> 31) & 65535)) >> 16;
+}
+
+JK_PUBLIC int32_t jk_q16_from_f32(float x)
+{
+    JkFloatUnpacked f = jk_unpack_f32(x);
+    int32_t value = jk_signed_shift(f.significand, f.exponent + 16);
+    return f.sign ? -value : value;
+}
+
+JK_PUBLIC float jk_q16_to_f32(int32_t x)
+{
+    return jk_pack_f32((JkFloatUnpacked){
+        .sign = x < 0,
+        .exponent = -16,
+        .significand = JK_ABS((int64_t)x),
+    });
+}
+
+JK_PUBLIC int32_t jk_q16_mul(int32_t a, int32_t b)
+{
+    return (int32_t)(((int64_t)a * (int64_t)b) >> 16);
+}
+
+JK_PUBLIC int32_t jk_q16_div(int32_t numerator, int32_t denominator)
+{
+    return (int32_t)(((int64_t)numerator << 16) / (int64_t)denominator);
+}
+
+// ---- Fixed-point end --------------------------------------------------------
 
 // ---- Arena begin ------------------------------------------------------------
 
@@ -1708,6 +1807,50 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector)
 }
 
 // ---- JkIntVec2 end ----------------------------------------------------------
+
+// ---- JkQ16Vec2 begin --------------------------------------------------------
+
+JK_PUBLIC b32 jk_q16_vec2_equal(JkQ16Vec2 a, JkQ16Vec2 b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_add(JkQ16Vec2 a, JkQ16Vec2 b)
+{
+    return (JkQ16Vec2){.x = a.x + b.x, .y = a.y + b.y};
+}
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_sub(JkQ16Vec2 a, JkQ16Vec2 b)
+{
+    return (JkQ16Vec2){.x = a.x - b.x, .y = a.y - b.y};
+}
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_mul(int32_t scalar, JkQ16Vec2 vector)
+{
+    return (JkQ16Vec2){.x = jk_q16_mul(scalar, vector.x), .y = jk_q16_mul(scalar, vector.y)};
+}
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_div(int32_t divisor, JkQ16Vec2 vector)
+{
+    return (JkQ16Vec2){.x = jk_q16_div(vector.x, divisor), .y = jk_q16_div(vector.y, divisor)};
+}
+
+JK_PUBLIC int32_t jk_q16_vec2_cross(JkQ16Vec2 u, JkQ16Vec2 v)
+{
+    return jk_q16_mul(u.x, v.y) - jk_q16_mul(u.y, v.x);
+}
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v)
+{
+    return (JkQ16Vec2){.x = jk_q16_from_i32(v.x), .y = jk_q16_from_i32(v.y)};
+}
+
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v)
+{
+    return (JkQ16Vec2){.x = jk_q16_from_f32(v.x), .y = jk_q16_from_f32(v.y)};
+}
+
+// ---- JkQ16Vec2 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------
 
@@ -2866,6 +3009,15 @@ JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount)
         return amount <= -64 ? 0 : value >> -amount;
     } else {
         return 64 <= amount ? 0 : value << amount;
+    }
+}
+
+JK_PUBLIC uint32_t jk_signed_shift_u32(uint32_t value, int64_t amount)
+{
+    if (amount < 0) {
+        return amount <= -32 ? 0 : value >> -amount;
+    } else {
+        return 32 <= amount ? 0 : value << amount;
     }
 }
 
