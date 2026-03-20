@@ -16,6 +16,12 @@
 static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 255};
 
+static JkColor component_colors[] = {
+    {.r = 0xff, .g = 0x00, .b = 0x00, .a = 0xff},
+    {.r = 0x00, .g = 0xff, .b = 0x00, .a = 0xff},
+    {.r = 0x00, .g = 0x00, .b = 0xff, .a = 0xff},
+};
+
 static JkVec3 camera_position_init = {0, 0, 1.75};
 static float camera_rot_angle_init = 5 * JK_PI / 4;
 
@@ -246,36 +252,44 @@ static b32 clockwise_left_handed(JkVec3 v0, JkVec3 v1, JkVec3 v2)
     return (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x) > 0;
 }
 
-typedef struct NavRing {
-    struct NavRing *neighbors[4];
-    int64_t vertex_count;
-    JkVec3 vertices[8];
-} NavRing;
-
-typedef struct NavRingArray {
-    int64_t count;
-    NavRing *e;
-} NavRingArray;
+typedef struct NavRing NavRing;
+typedef struct NavContact NavContact;
 
 typedef enum NavContactFlag {
     NAV_CONTACT_UP,
     NAV_CONTACT_FLAG_COUNT,
 } NavContactFlag;
 
-typedef struct NavContact {
+struct NavContact {
     struct NavContact *next;
 
     uint32_t flags;
     int32_t z;
     NavRing *rings[4];
-} NavContact;
+};
 
 typedef struct NavContacts {
     NavContact *e[4];
 } NavContacts;
 
+struct NavRing {
+    struct NavRing *neighbors[4];
+    NavContact *corners[4];
+    int64_t component;
+    int64_t vertex_count;
+    JkVec3 vertices[4];
+};
+
+typedef struct NavRingArray {
+    int64_t count;
+    NavRing *e;
+} NavRingArray;
+
+static JK_READONLY NavContact nil_contact;
+
 static JK_READONLY NavRing nil_ring = {
     .neighbors = {&nil_ring, &nil_ring, &nil_ring, &nil_ring},
+    .corners = {&nil_contact, &nil_contact, &nil_contact, &nil_contact},
 };
 static JK_READONLY NavContact nil_contact = {
     .next = &nil_contact,
@@ -793,6 +807,18 @@ static void draw_world_segment(Environment *env,
     draw_line(env, color, screen[0], screen[1]);
 }
 
+void assign_component(NavRing *ring, int64_t component)
+{
+    if (ring == &nil_ring || ring->component) {
+        return;
+    }
+
+    ring->component = component;
+    for (int64_t i = 0; i < 4; i++) {
+        assign_component(ring->neighbors[i], component);
+    }
+}
+
 void render(JkContext *context, Environment *env)
 {
     jk_context = context;
@@ -1083,24 +1109,47 @@ void render(JkContext *context, Environment *env)
                     int32_t min_z = max_z - nav_step_height;
 
                     NavContacts candidates = contacts;
-                    b32 found[4] = {0};
+                    int64_t found_count = 0;
                     for (int64_t i = 0; i < 4; i++) {
-                        for (; !found[i] && candidates.e[i] != &nil_contact;
+                        for (; ring.corners[i] == &nil_contact && candidates.e[i] != &nil_contact;
                                 candidates.e[i] = candidates.e[i]->next) {
                             if (min_z < candidates.e[i]->z && candidates.e[i]->z <= max_z) {
-                                found[i] = 1;
-                                ring.vertices[ring.vertex_count++] = jk_vec2_to_3(
-                                        world_pos[i], jk_q16_to_f32(candidates.e[i]->z));
+                                ring.corners[i] = candidates.e[i];
+                                found_count++;
                             }
                         }
                     }
 
-                    if (2 < ring.vertex_count) {
-                        NavRing *new_ring = jk_arena_push(scratch0.arena, sizeof(*new_ring));
-                        *new_ring = ring;
+                    if (2 < found_count) {
+                        NavRing *self = jk_arena_push(scratch0.arena, sizeof(*self));
+                        *self = ring;
 
                         for (int64_t i = 0; i < 4; i++) {
-                            if (found[i]) {
+                            int64_t prev = JK_MOD(i - 1, 4);
+                            int64_t next = JK_MOD(i + 1, 4);
+                            int64_t opposite = JK_MOD(i + 2, 4);
+
+                            NavContact *corner = self->corners[i];
+                            if (corner != &nil_contact) {
+                                corner->rings[opposite] = self;
+
+                                // Find neighbors
+                                NavRing *neighbor0 = corner->rings[prev];
+                                if (neighbor0 != &nil_ring
+                                        && neighbor0->corners[opposite] == self->corners[prev]) {
+                                    self->neighbors[prev] = neighbor0;
+                                    neighbor0->neighbors[next] = self;
+                                }
+                                NavRing *neighbor1 = corner->rings[next];
+                                if (neighbor1 != &nil_ring
+                                        && neighbor1->corners[opposite] == self->corners[next]) {
+                                    self->neighbors[i] = neighbor1;
+                                    neighbor1->neighbors[opposite] = self;
+                                }
+
+                                self->vertices[self->vertex_count++] =
+                                        jk_vec2_to_3(world_pos[i], jk_q16_to_f32(corner->z));
+
                                 contacts.e[i] = candidates.e[i];
                             }
                         }
@@ -1112,6 +1161,14 @@ void render(JkContext *context, Environment *env)
         }
 
         JK_ARRAY_FROM_ARENA_SCOPE(nav_rings, ring_scope);
+
+        int64_t component = 1;
+        for (int64_t i = 0; i < nav_rings.count; i++) {
+            NavRing *ring = nav_rings.e + i;
+            if (!ring->component) {
+                assign_component(ring, component++);
+            }
+        }
 
         // ---- Navigation end ------------------------------------------------
 
@@ -1354,7 +1411,7 @@ void render(JkContext *context, Environment *env)
                     draw_world_segment(env,
                             screen_from_ndc,
                             clip_from_world,
-                            (JkColor){.r = 0, .g = 80, .b = 0, .a = 255},
+                            component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
                             ring.vertices[i],
                             ring.vertices[(i + 1) % ring.vertex_count]);
                 }
