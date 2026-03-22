@@ -520,6 +520,12 @@ JK_PUBLIC float jk_acos_f32(float value);
 
 // ---- Math end ---------------------------------------------------------------
 
+// ---- Geometry begin ---------------------------------------------------------
+
+JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c);
+
+// ---- Geometry end -----------------------------------------------------------
+
 // ---- SIMD begin -------------------------------------------------------------
 
 JK_PUBLIC JkI256 jk_i256_zero(void);

@@ -1448,6 +1448,22 @@ JK_PUBLIC float jk_acos_f32(float x)
 
 // ---- Math end ---------------------------------------------------------------
 
+// ---- Geometry begin ---------------------------------------------------------
+
+JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c)
+{
+    float dot_ab = jk_vec3_dot(jk_vec3_sub(p, a), jk_vec3_sub(b, a)); //  d1
+    float dot_ba = jk_vec3_dot(jk_vec3_sub(p, b), jk_vec3_sub(a, b)); // -d3
+    float dot_bc = jk_vec3_dot(jk_vec3_sub(p, b), jk_vec3_sub(c, b));
+    float dot_cb = jk_vec3_dot(jk_vec3_sub(p, c), jk_vec3_sub(b, c));
+    float dot_ac = jk_vec3_dot(jk_vec3_sub(p, a), jk_vec3_sub(c, a)); //  d2
+    float dot_ca = jk_vec3_dot(jk_vec3_sub(p, c), jk_vec3_sub(a, c)); // -d6
+    float special0 = dot_cb - dot_ca;
+    float special1 = 
+}
+
+// ---- Geometry end -----------------------------------------------------------
+
 // ---- Fixed-point begin ------------------------------------------------------
 
 JK_PUBLIC int32_t jk_q16_from_i32(int32_t x)
