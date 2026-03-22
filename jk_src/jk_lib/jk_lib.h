@@ -839,6 +839,8 @@ JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b);
 
 JK_PUBLIC JkVec3 jk_vec3_sub(JkVec3 a, JkVec3 b);
 
+JK_PUBLIC JkVec3 jk_vec3_negate(JkVec3 v);
+
 JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector);
 
 JK_PUBLIC JkVec3 jk_vec3_hadamard_prod(JkVec3 u, JkVec3 v);

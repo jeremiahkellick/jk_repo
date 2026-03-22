@@ -1452,14 +1452,63 @@ JK_PUBLIC float jk_acos_f32(float x)
 
 JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c)
 {
-    float dot_ab = jk_vec3_dot(jk_vec3_sub(p, a), jk_vec3_sub(b, a)); //  d1
-    float dot_ba = jk_vec3_dot(jk_vec3_sub(p, b), jk_vec3_sub(a, b)); // -d3
-    float dot_bc = jk_vec3_dot(jk_vec3_sub(p, b), jk_vec3_sub(c, b));
-    float dot_cb = jk_vec3_dot(jk_vec3_sub(p, c), jk_vec3_sub(b, c));
-    float dot_ac = jk_vec3_dot(jk_vec3_sub(p, a), jk_vec3_sub(c, a)); //  d2
-    float dot_ca = jk_vec3_dot(jk_vec3_sub(p, c), jk_vec3_sub(a, c)); // -d6
-    float special0 = dot_cb - dot_ca;
-    float special1 = 
+    JkVec3 ap = jk_vec3_sub(p, a);
+    JkVec3 bp = jk_vec3_sub(p, b);
+    JkVec3 cp = jk_vec3_sub(p, c);
+
+    JkVec3 ab = jk_vec3_sub(b, a);
+    JkVec3 bc = jk_vec3_sub(c, b);
+    JkVec3 ca = jk_vec3_sub(a, c);
+
+    float dot_ab = jk_vec3_dot(ap, ab);
+    float dot_ba = jk_vec3_dot(bp, jk_vec3_negate(ab));
+    float dot_bc = jk_vec3_dot(bp, bc);
+    float dot_cb = jk_vec3_dot(cp, jk_vec3_negate(bc));
+    float dot_ca = jk_vec3_dot(cp, ca);
+    float dot_ac = jk_vec3_dot(ap, jk_vec3_negate(ca));
+
+    // If p is in a vertex voronoi region, return that vertex
+    if (dot_ab <= 0 && dot_ac <= 0) {
+        return a;
+    }
+    if (dot_ba <= 0 && dot_bc <= 0) {
+        return b;
+    }
+    if (dot_ca <= 0 && dot_cb <= 0) {
+        return c;
+    }
+
+    // Compute edge weights
+    float w_ab = dot_bc * dot_ab + dot_ba * (dot_ac - dot_ab);
+    float w_bc = dot_ba * dot_cb - dot_bc * (dot_cb - dot_ca);
+    float w_ca = dot_ab * dot_ca + dot_ac * (dot_cb - dot_ca);
+
+    // If p is in an edge voronoi region, project p to that edge
+    if (w_ab <= 0 && 0 <= dot_ab && 0 <= dot_ba) {
+        float t = dot_ab / (dot_ab + dot_ba);
+        return jk_vec3_add(a, jk_vec3_mul(t, ab));
+    }
+    if (w_bc <= 0 && 0 <= dot_bc && 0 <= dot_cb) {
+        float t = dot_bc / (dot_bc + dot_cb);
+        return jk_vec3_add(b, jk_vec3_mul(t, bc));
+    }
+    if (w_ca <= 0 && 0 <= dot_ca && 0 <= dot_ac) {
+        float t = dot_ca / (dot_ca + dot_ac);
+        return jk_vec3_add(c, jk_vec3_mul(t, ca));
+    }
+
+    // If we made it this far, then p is in the triangle voronoi region. Project p to the triangle
+    // using barycentric coordinates.
+
+    float bary_a = w_bc / (w_ab + w_bc + w_ca);
+    float bary_b = w_ca / (w_ab + w_bc + w_ca);
+    float bary_c = 1 - bary_a - bary_b;
+
+    JkVec3 result = jk_vec3_mul(bary_a, a);
+    result = jk_vec3_add(result, jk_vec3_mul(bary_b, b));
+    result = jk_vec3_add(result, jk_vec3_mul(bary_c, c));
+
+    return result;
 }
 
 // ---- Geometry end -----------------------------------------------------------
@@ -1985,6 +2034,11 @@ JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b)
 JK_PUBLIC JkVec3 jk_vec3_sub(JkVec3 a, JkVec3 b)
 {
     return (JkVec3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
+}
+
+JK_PUBLIC JkVec3 jk_vec3_negate(JkVec3 v)
+{
+    return (JkVec3){.x = -v.x, .y = -v.y, .z = -v.z};
 }
 
 JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector)
