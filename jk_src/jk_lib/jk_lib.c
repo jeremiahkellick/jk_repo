@@ -2382,7 +2382,7 @@ JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis)
     return result;
 }
 
-JkVec4 jk_quat_reverse(JkVec4 q)
+JkVec4 jk_quat_conjugate(JkVec4 q)
 {
     return (JkVec4){.x = -q.x, .y = -q.y, .z = -q.z, .w = q.w};
 }
@@ -2502,7 +2502,7 @@ JK_PUBLIC JkMat4 jk_transform_to_mat4(JkTransform t)
 JK_PUBLIC JkMat4 jk_transform_to_mat4_inv(JkTransform t)
 {
     JkMat4 result = jk_mat4_translate(jk_vec3_mul(-1, t.translation));
-    result = jk_mat4_mul(jk_quat_to_mat4(jk_quat_reverse(t.rotation)), result);
+    result = jk_mat4_mul(jk_quat_to_mat4(jk_quat_conjugate(t.rotation)), result);
     JkVec3 inv_scale;
     for (int64_t i = 0; i < 3; i++) {
         inv_scale.v[i] = 1 / t.scale.v[i];

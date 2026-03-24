@@ -113,7 +113,7 @@ typedef struct State {
     int64_t frame_id;
     float camera_yaw;
     float camera_pitch;
-    JkVec2 camera_position;
+    JkVec3 player_position;
     int64_t test_frames_remaining;
 } State;
 

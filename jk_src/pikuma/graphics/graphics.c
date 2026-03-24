@@ -22,8 +22,8 @@ static JkColor component_colors[] = {
     {.r = 0x00, .g = 0x00, .b = 0xff, .a = 0xff},
 };
 
-static JkVec3 camera_position_init = {0, 0, 1.75};
-static float camera_rot_angle_init = 5 * JK_PI / 4;
+static float const player_height = 1.75f;
+static float const camera_rot_angle_init = 5 * JK_PI / 4;
 
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
@@ -284,6 +284,13 @@ typedef struct NavRingArray {
     int64_t count;
     NavRing *e;
 } NavRingArray;
+
+typedef struct NavPoint {
+    JkVec3 p;
+    float distance_sqr;
+    NavRing *ring;
+    int64_t triangle_index;
+} NavPoint;
 
 static JK_READONLY NavContact nil_contact;
 
@@ -559,161 +566,6 @@ static void add_textured_vertex(JkArena *arena, JkMat4 screen_from_ndc, JkVec4 v
     new->t = jk_vec2_mul(new->v.z, t);
 }
 
-typedef struct Plane {
-    JkVec3 normal;
-    JkVec3 point;
-} Plane;
-
-typedef struct Move {
-    JkSegment3d s;
-    Plane prev_projection_plane;
-} Move;
-
-typedef struct EdgeFunction {
-    JkVec2 deltas;
-    float init;
-} EdgeFunction;
-
-static void move_against_box(Move *move, JkMat4 world_from_local, ObjectId id)
-{
-    static float const padding = 0.5;
-
-    static JkVec3 const local_extents[3] = {
-        {0.5, 0, 0},
-        {0, 0.5, 0},
-        {0, 0, 0.5},
-    };
-
-    JkVec3 origin = jk_mat4_mul_point(world_from_local, (JkVec3){0, 0, 0});
-
-    // Compute all 6 planes
-    Plane planes[6];
-    for (int64_t extent = 0; extent < 3; extent++) {
-        JkVec3 transformed = jk_mat4_mul_normal(world_from_local, local_extents[extent]);
-        JkVec3 padded =
-                jk_vec3_add(transformed, jk_vec3_mul(padding, jk_vec3_normalized(transformed)));
-        for (int64_t negative = 0; negative < 2; negative++) {
-            JkVec3 signed_extent = jk_vec3_mul(negative ? -1 : 1, padded);
-            int64_t plane = 2 * extent + negative;
-            planes[plane].normal = jk_vec3_normalized(signed_extent);
-            planes[plane].point = jk_vec3_add(origin, signed_extent);
-            // The origin is centered along X and Y, but it's aligned with the bottom face along the
-            // Z axis, so if we're dealing with the Z axis, we need to add an offset
-            if (extent == 2) {
-                planes[plane].point = jk_vec3_add(planes[plane].point, transformed);
-            }
-        }
-    }
-
-    JkVec3 move_delta = jk_vec3_sub(move->s.p1, move->s.p0);
-
-    b32 inside = 1;
-    int64_t entry_plane = -1;
-    float smallest_depenetration = jk_infinity_f32.f32;
-    int64_t depenetration_plane = -1;
-    float t_entry = -jk_infinity_f32.f32;
-    float t_exit = jk_infinity_f32.f32;
-    for (int64_t plane = 0; plane < 6; plane++) {
-        float delta_dot = jk_vec3_dot(planes[plane].normal, move_delta);
-        float p0_dot =
-                jk_vec3_dot(planes[plane].normal, jk_vec3_sub(move->s.p0, planes[plane].point));
-        float p1_dot =
-                jk_vec3_dot(planes[plane].normal, jk_vec3_sub(move->s.p1, planes[plane].point));
-
-        if (0 < p0_dot) {
-            inside = 0;
-        }
-
-        if (inside && -p0_dot < smallest_depenetration) {
-            smallest_depenetration = -p0_dot;
-            depenetration_plane = plane;
-        }
-
-        b32 is_entry_plane = delta_dot < 0;
-        if (is_entry_plane) {
-            delta_dot *= -1;
-            p0_dot *= -1;
-            p1_dot *= -1;
-        }
-
-        float t;
-        if (p0_dot < 0 && p1_dot < 0) { // both points are before the plane
-            t = jk_infinity_f32.f32;
-        } else if (0 <= p0_dot && 0 <= p1_dot) { // boths points are after the plane
-            t = -jk_infinity_f32.f32;
-        } else if (p0_dot < 0 && 0 <= p1_dot) { // there's an intersection
-            // Set t to the percentage between p0 and p1 where we encounter the plane
-            t = -p0_dot / delta_dot;
-        } else {
-            // We're probably parallel. Set t value such that we're guaranteed to no-op
-            t = is_entry_plane ? -jk_infinity_f32.f32 : jk_infinity_f32.f32;
-        }
-
-        if (is_entry_plane) {
-            if (t_entry < t) {
-                t_entry = t;
-                entry_plane = plane;
-            }
-        } else {
-            t_exit = JK_MIN(t_exit, t);
-        }
-    }
-
-    int64_t projection_plane = -1;
-    if (inside) {
-        // We're inside the box, depenetrate p0 and project p1 to the same plane
-        projection_plane = depenetration_plane;
-        move->s.p0 = jk_vec3_add(move->s.p0,
-                jk_vec3_mul(smallest_depenetration, planes[depenetration_plane].normal));
-    } else if (t_entry < t_exit) {
-        // Our path intersects the box. Set p0 to the intersection point and project p1.
-        projection_plane = entry_plane;
-        move->s.p0 = jk_vec3_lerp(move->s.p0, move->s.p1, t_entry);
-    }
-
-    if (0 <= projection_plane) {
-        float p1_dot = jk_vec3_dot(planes[projection_plane].normal,
-                jk_vec3_sub(move->s.p1, planes[projection_plane].point));
-        if (p1_dot < 0) {
-            move->s.p1 =
-                    jk_vec3_add(move->s.p1, jk_vec3_mul(-p1_dot, planes[projection_plane].normal));
-        }
-
-        // If p1 is inside the previous projection plane, we've hit a corner and should project p1
-        // to the line of intersection between the two planes
-        if (jk_vec3_dot(move->prev_projection_plane.normal,
-                    jk_vec3_sub(move->s.p1, move->prev_projection_plane.point))
-                < 0) {
-            Plane a = move->prev_projection_plane;
-            Plane b = planes[projection_plane];
-            JkVec3 intersect_normal = jk_vec3_cross(a.normal, b.normal);
-            float sqr_mag = jk_vec3_magnitude_sqr(intersect_normal);
-            if (0.0001f < JK_ABS(sqr_mag)) {
-                intersect_normal = jk_vec3_mul(1 / jk_sqrt_f32(sqr_mag), intersect_normal);
-                float dot = jk_vec3_dot(a.normal, b.normal);
-                float denom = 1 - dot * dot;
-                if (denom) {
-                    float d_a = jk_vec3_dot(a.normal, a.point);
-                    float d_b = jk_vec3_dot(b.normal, b.point);
-                    JkVec3 a_comp = jk_vec3_mul(d_a - dot * d_b, a.normal);
-                    JkVec3 b_comp = jk_vec3_mul(d_b - dot * d_a, b.normal);
-                    JkVec3 intersect_point = jk_vec3_mul(1 / denom, jk_vec3_add(a_comp, b_comp));
-
-                    for (int64_t i = 0; i < 2; i++) {
-                        JkVec3 delta = jk_vec3_mul(
-                                jk_vec3_dot(intersect_normal,
-                                        jk_vec3_sub(move->s.endpoints[i], intersect_point)),
-                                intersect_normal);
-                        move->s.endpoints[i] = jk_vec3_add(intersect_point, delta);
-                    }
-                }
-            }
-        }
-
-        move->prev_projection_plane = planes[projection_plane];
-    }
-}
-
 static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
 {
     JkColor result = {0, 0, 0, 255};
@@ -819,8 +671,26 @@ void assign_component(NavRing *ring, int64_t component)
     }
 }
 
+static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring)
+{
+    NavPoint result = {.distance_sqr = jk_infinity_f32.f32, .ring = ring};
+    for (int64_t i = 2; i < ring->vertex_count; i++) {
+        JkVec3 candidate = jk_closest_point_on_triangle(
+                p, ring->vertices[0], ring->vertices[i - 1], ring->vertices[i]);
+        float candidate_distance_sqr = jk_vec3_distance_squared(p, candidate);
+        if (candidate_distance_sqr < result.distance_sqr) {
+            result.p = candidate;
+            result.distance_sqr = candidate_distance_sqr;
+            result.triangle_index = i;
+        }
+    }
+    return result;
+}
+
 void render(JkContext *context, Environment *env)
 {
+    JkColor text_color = {255, 255, 255, 255};
+
     jk_context = context;
 
     static JkIntRect volatile tiles_rect_shared;
@@ -840,8 +710,9 @@ void render(JkContext *context, Environment *env)
     int32_t nav_step_height = jk_q16_from_f32(0.75f);
     int32_t nav_height = jk_q16_from_f32(1.875f);
     JkIntVec2 nav_dimensions = {32, 32};
-    JkVec2 nav_origin = jk_vec2_sub(jk_vec2_mul(1 / nav_density, env->state.camera_position),
-            jk_vec2_mul(0.5, jk_vec2_from_int(nav_dimensions)));
+    JkVec2 nav_origin =
+            jk_vec2_sub(jk_vec2_mul(1 / nav_density, jk_vec3_to_2(env->state.player_position)),
+                    jk_vec2_mul(0.5, jk_vec2_from_int(nav_dimensions)));
     nav_origin.x = jk_floor_f32(nav_origin.x);
     nav_origin.y = jk_floor_f32(nav_origin.y);
     NavContact **nav_contacts = 0;
@@ -916,7 +787,7 @@ void render(JkContext *context, Environment *env)
             env->state.frame_id = 0;
             env->state.camera_yaw = camera_rot_angle_init;
             env->state.camera_pitch = 0;
-            env->state.camera_position = jk_vec3_to_2(camera_position_init);
+            env->state.player_position = (JkVec3){0};
 
             jk_profile_reset();
         }
@@ -943,72 +814,14 @@ void render(JkContext *context, Environment *env)
                             JK_PI / 2);
         }
 
-        JkVec4 yaw_quat = jk_quat_angle_axis(env->state.camera_yaw, (JkVec3){0, 0, 1});
-
-        if (env->state.test_frames_remaining <= 0) {
-            JkVec3 camera_move = {0};
-            if (jk_key_down(&input.keyboard, JK_KEY_W)) {
-                camera_move.y += 1;
-            }
-            if (jk_key_down(&input.keyboard, JK_KEY_S)) {
-                camera_move.y -= 1;
-            }
-            if (jk_key_down(&input.keyboard, JK_KEY_A)) {
-                camera_move.x -= 1;
-            }
-            if (jk_key_down(&input.keyboard, JK_KEY_D)) {
-                camera_move.x += 1;
-            }
-            camera_move = jk_vec3_mul(
-                    5 * DELTA_TIME, jk_vec3_normalized(jk_quat_rotate(yaw_quat, camera_move)));
-
-            JkVec3 move_start = jk_vec2_to_3(env->state.camera_position, camera_position_init.z);
-            Move move = {
-                .s = {move_start, jk_vec3_add(move_start, camera_move)},
-                .prev_projection_plane = {.normal = {0, 0, 1}, .point = {0, 0, -1000}},
-            };
-            JkVec3 prev_p1;
-            do {
-                prev_p1 = move.s.p1;
-                for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
-                    if (JK_FLAG_GET(objects.e[object_id.i].flags, OBJ_COLLIDE)) {
-                        JkMat4 world_from_local =
-                                object_compute_world_from_local(objects, object_id);
-
-                        move_against_box(&move, world_from_local, object_id);
-                    }
-                }
-            } while (!jk_vec3_equal(prev_p1, move.s.p1, 0.0001));
-            env->state.camera_position = jk_vec3_to_2(move.s.p1);
-        }
-
-        JkTransform camera_transform = {
-            .translation = jk_vec2_to_3(env->state.camera_position, camera_position_init.z),
-            .rotation = jk_quat_mul(
-                    yaw_quat, jk_quat_angle_axis(env->state.camera_pitch, (JkVec3){1, 0, 0})),
-            .scale = {1, 1, 1},
-        };
-
-        clip_from_world = jk_transform_to_mat4_inv(camera_transform);
-        clip_from_world = jk_mat4_mul(
-                jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
-                clip_from_world);
-        clip_from_world =
-                jk_mat4_mul(jk_mat4_perspective(dimensions, JK_PI / 3, NEAR_CLIP), clip_from_world);
-
-        JkMat4 nav_from_world = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
-        nav_from_world = jk_mat4_mul(
-                jk_mat4_translate(jk_vec2_to_3(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
-
-        screen_from_ndc = jk_mat4_translate((JkVec3){1, -1, 0});
-        screen_from_ndc =
-                jk_mat4_mul(jk_mat4_scale((JkVec3){dimensions.x / 2.0f, -dimensions.y / 2.0f, 1}),
-                        screen_from_ndc);
-
         scratch0 = jk_arena_scratch_begin();
         scratch1 = jk_arena_scratch_begin_not(scratch0.arena);
 
         // ---- Navigation begin ----------------------------------------------
+
+        JkMat4 nav_from_world = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
+        nav_from_world = jk_mat4_mul(
+                jk_mat4_translate(jk_vec2_to_3(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
 
         nav_contacts = jk_arena_push(
                 scratch0.arena, nav_dimensions.x * nav_dimensions.y * JK_SIZEOF(NavContact *));
@@ -1162,15 +975,100 @@ void render(JkContext *context, Environment *env)
 
         JK_ARRAY_FROM_ARENA_SCOPE(nav_rings, ring_scope);
 
-        int64_t component = 1;
-        for (int64_t i = 0; i < nav_rings.count; i++) {
-            NavRing *ring = nav_rings.e + i;
-            if (!ring->component) {
-                assign_component(ring, component++);
+        NavPoint start = {.distance_sqr = jk_infinity_f32.f32};
+        {
+            int64_t component = 1;
+            for (int64_t i = 0; i < nav_rings.count; i++) {
+                NavRing *ring = nav_rings.e + i;
+                if (!ring->component) {
+                    assign_component(ring, component++);
+                }
+
+                NavPoint candidate = closest_point_on_ring(env->state.player_position, ring);
+                if (candidate.distance_sqr < start.distance_sqr) {
+                    start = candidate;
+                }
             }
         }
 
+        JkVec4 yaw_quat = jk_quat_angle_axis(env->state.camera_yaw, (JkVec3){0, 0, 1});
+
+        JkVec3 target = start.p;
+        if (env->state.test_frames_remaining <= 0) {
+            JkVec3 forward = {0};
+            if (jk_key_down(&input.keyboard, JK_KEY_W)) {
+                forward.y += 1;
+            }
+            if (jk_key_down(&input.keyboard, JK_KEY_S)) {
+                forward.y -= 1;
+            }
+            if (jk_key_down(&input.keyboard, JK_KEY_A)) {
+                forward.x -= 1;
+            }
+            if (jk_key_down(&input.keyboard, JK_KEY_D)) {
+                forward.x += 1;
+            }
+            forward = jk_quat_rotate(yaw_quat, forward);
+            JkVec3 right = {-forward.y, forward.x};
+
+            JkVec3 a = start.ring->vertices[0];
+            JkVec3 b = start.ring->vertices[start.triangle_index - 1];
+            JkVec3 c = start.ring->vertices[start.triangle_index];
+
+            JkVec3 up = jk_vec3_normalized(jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a)));
+
+            JkVec3 right_up = jk_vec3_cross(right, up);
+            JkVec3 forward_up = jk_vec3_cross(forward, up);
+            if (jk_vec3_magnitude_sqr(right_up) < jk_vec3_magnitude_sqr(forward_up)) {
+                forward = jk_vec3_cross(up, forward_up);
+            } else {
+                forward = right_up;
+            }
+
+            if (EPSILON < jk_vec3_magnitude_sqr(forward)) {
+                forward = jk_vec3_normalized(forward);
+                JkVec3 move = jk_vec3_mul(5 * DELTA_TIME, forward);
+                target = jk_vec3_add(target, move);
+            }
+        }
+
+        NavPoint destination = {.distance_sqr = jk_infinity_f32.f32};
+        {
+            int64_t component = 1;
+            for (int64_t i = 0; i < nav_rings.count; i++) {
+                NavRing *ring = nav_rings.e + i;
+                if (!ring->component) {
+                    assign_component(ring, component++);
+                }
+
+                NavPoint candidate = closest_point_on_ring(target, ring);
+                if (candidate.distance_sqr < destination.distance_sqr) {
+                    destination = candidate;
+                }
+            }
+        }
+        env->state.player_position = destination.p;
+
         // ---- Navigation end ------------------------------------------------
+
+        JkTransform camera_transform = {
+            .translation = jk_vec3_add(env->state.player_position, (JkVec3){0, 0, player_height}),
+            .rotation = jk_quat_mul(
+                    yaw_quat, jk_quat_angle_axis(env->state.camera_pitch, (JkVec3){1, 0, 0})),
+            .scale = {1, 1, 1},
+        };
+
+        clip_from_world = jk_transform_to_mat4_inv(camera_transform);
+        clip_from_world = jk_mat4_mul(
+                jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
+                clip_from_world);
+        clip_from_world =
+                jk_mat4_mul(jk_mat4_perspective(dimensions, JK_PI / 3, NEAR_CLIP), clip_from_world);
+
+        screen_from_ndc = jk_mat4_translate((JkVec3){1, -1, 0});
+        screen_from_ndc =
+                jk_mat4_mul(jk_mat4_scale((JkVec3){dimensions.x / 2.0f, -dimensions.y / 2.0f, 1}),
+                        screen_from_ndc);
 
         JkIntRect tiles_rect;
         tiles_rect.min = (JkIntVec2){0};
@@ -1435,7 +1333,7 @@ void render(JkContext *context, Environment *env)
                     frame_id_text,
                     jk_vec2_add(top_left, layout.offset),
                     text_scale,
-                    (JkColor){255, 255, 255, 255});
+                    text_color);
 
             JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
             JkIntRect screen_rect = {.max = dimensions};

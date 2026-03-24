@@ -961,7 +961,7 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 
 JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis);
 
-JkVec4 jk_quat_reverse(JkVec4 q);
+JkVec4 jk_quat_conjugate(JkVec4 q);
 
 JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b);
 
