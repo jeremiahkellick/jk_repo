@@ -10,6 +10,7 @@
 // #jk_build dependencies_end
 
 #define NEAR_CLIP 0.2f
+#define SPEED 5.0f
 
 #define EPSILON 0x1.51b717p-14f
 
@@ -38,7 +39,7 @@ _Alignas(32) static float lane_offsets[2][LANE_COUNT] = {
     {0, 0, 0, 0, 0, 0, 0, 0},
 };
 
-// ---- Xiaolin Wu's line algorithm begin --------------------------------------------
+// ---- Xiaolin Wu's line algorithm begin --------------------------------------
 
 static uint8_t region_code(JkIntVec2 dimensions, JkVec2 v)
 {
@@ -185,7 +186,7 @@ static void draw_line(Environment *env, JkColor color, JkVec2 a, JkVec2 b)
     }
 }
 
-// ---- Xiaolin Wu's line algorithm end ----------------------------------------------
+// ---- Xiaolin Wu's line algorithm end ----------------------------------------
 
 typedef struct Q16Triangle {
     JkQ16Vec2 v[3];
@@ -272,12 +273,19 @@ typedef struct NavContacts {
     NavContact *e[4];
 } NavContacts;
 
+typedef enum NavRingFlag {
+    NAV_RING_ENQUEUED,
+    NAV_RING_FLAG_COUNT,
+} NavRingFlag;
+
 struct NavRing {
     struct NavRing *neighbors[4];
+
     NavContact *corners[4];
     int64_t component;
     int64_t vertex_count;
     JkVec3 vertices[4];
+    uint32_t flags;
 };
 
 typedef struct NavRingArray {
@@ -295,6 +303,8 @@ typedef struct NavPoint {
 static JK_READONLY NavContact nil_contact;
 
 static JK_READONLY NavRing nil_ring = {
+    .flags = JK_MASK(NAV_RING_ENQUEUED),
+    .component = 1,
     .neighbors = {&nil_ring, &nil_ring, &nil_ring, &nil_ring},
     .corners = {&nil_contact, &nil_contact, &nil_contact, &nil_contact},
 };
@@ -409,6 +419,41 @@ static void nav_triangle_rasterize(
         }
     }
 }
+
+// ---- NavRingQueue begin ------------------------------------------------------------
+
+typedef struct NavRingQueue {
+    int64_t mask;
+    int64_t start;
+    int64_t end;
+    NavRing **rings;
+} NavRingQueue;
+
+static NavRingQueue q_new(JkArena *arena, int64_t capacity)
+{
+    JK_DEBUG_ASSERT(jk_is_power_of_two(capacity));
+    return (NavRingQueue){
+        .mask = capacity - 1,
+        .rings = jk_arena_push(arena, JK_SIZEOF(NavRing *) * capacity),
+    };
+}
+
+static void q_enqueue(NavRingQueue *q, NavRing *ring)
+{
+    q->rings[q->end++ & q->mask] = ring;
+    JK_FLAG_SET(ring->flags, NAV_RING_ENQUEUED, 1);
+}
+
+static NavRing *q_dequeue(NavRingQueue *q)
+{
+    if (q->start < q->end) {
+        return q->rings[q->start++ & q->mask];
+    } else {
+        return 0;
+    }
+}
+
+// ---- NavRingQueue end --------------------------------------------------------------
 
 typedef enum Interpolant {
     I_BARYCENTRIC_0,
@@ -911,6 +956,8 @@ void render(JkContext *context, Environment *env)
                 };
                 while (nav_contacts_any(contacts)) {
                     NavRing ring = nil_ring;
+                    ring.flags = 0;
+                    ring.component = 0;
 
                     int64_t max_index = 0;
                     for (int64_t i = 1; i < 4; i++) {
@@ -975,21 +1022,18 @@ void render(JkContext *context, Environment *env)
 
         JK_ARRAY_FROM_ARENA_SCOPE(nav_rings, ring_scope);
 
+        JkArenaScope queue_scope = jk_arena_scope_begin(scratch0.arena);
         NavPoint start = {.distance_sqr = jk_infinity_f32.f32};
         {
-            int64_t component = 1;
             for (int64_t i = 0; i < nav_rings.count; i++) {
                 NavRing *ring = nav_rings.e + i;
-                if (!ring->component) {
-                    assign_component(ring, component++);
-                }
-
                 NavPoint candidate = closest_point_on_ring(env->state.player_position, ring);
                 if (candidate.distance_sqr < start.distance_sqr) {
                     start = candidate;
                 }
             }
         }
+        jk_arena_scope_end(queue_scope);
 
         JkVec4 yaw_quat = jk_quat_angle_axis(env->state.camera_yaw, (JkVec3){0, 0, 1});
 
@@ -1027,27 +1071,49 @@ void render(JkContext *context, Environment *env)
 
             if (EPSILON < jk_vec3_magnitude_sqr(forward)) {
                 forward = jk_vec3_normalized(forward);
-                JkVec3 move = jk_vec3_mul(5 * DELTA_TIME, forward);
+                JkVec3 move = jk_vec3_mul(SPEED * DELTA_TIME, forward);
                 target = jk_vec3_add(target, move);
             }
         }
 
+        int64_t component = 1;
+        for (int64_t i = 0; i < nav_rings.count; i++) {
+            NavRing *ring = nav_rings.e + i;
+            if (!ring->component) {
+                assign_component(ring, component++);
+            }
+        }
+
+        // Compute max depth
+        float step_size = JK_SQRT_2 * nav_density;
+        int64_t max_steps = jk_ceil_f32((SPEED * DELTA_TIME) / step_size);
+        int64_t max_depth = 2 * max_steps + 1;
+
+        JkArenaScope q_scope = jk_arena_scope_begin(scratch0.arena);
         NavPoint destination = {.distance_sqr = jk_infinity_f32.f32};
-        {
-            int64_t component = 1;
-            for (int64_t i = 0; i < nav_rings.count; i++) {
-                NavRing *ring = nav_rings.e + i;
-                if (!ring->component) {
-                    assign_component(ring, component++);
-                }
+        NavRingQueue q = q_new(scratch0.arena, 1024);
+        q_enqueue(&q, start.ring);
+        int64_t depth = 0;
+        while (q.start < q.end && depth < max_depth) {
+            int64_t depth_end = q.end;
+            while (q.start < depth_end) {
+                NavRing *ring = q_dequeue(&q);
 
                 NavPoint candidate = closest_point_on_ring(target, ring);
                 if (candidate.distance_sqr < destination.distance_sqr) {
                     destination = candidate;
                 }
+
+                for (int64_t i = 0; i < 4; i++) {
+                    if (!JK_FLAG_GET(ring->neighbors[i]->flags, NAV_RING_ENQUEUED)) {
+                        q_enqueue(&q, ring->neighbors[i]);
+                    }
+                }
             }
+            depth++;
         }
         env->state.player_position = destination.p;
+        jk_arena_scope_end(q_scope);
 
         // ---- Navigation end ------------------------------------------------
 
