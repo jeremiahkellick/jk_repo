@@ -1915,6 +1915,11 @@ JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v)
     return (JkQ16Vec2){.x = jk_q16_from_f32(v.x), .y = jk_q16_from_f32(v.y)};
 }
 
+JK_PUBLIC JkVec2 jk_q16_vec2_to_f32(JkQ16Vec2 v)
+{
+    return (JkVec2){.x = jk_q16_to_f32(v.x), .y = jk_q16_to_f32(v.y)};
+}
+
 // ---- JkQ16Vec2 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------

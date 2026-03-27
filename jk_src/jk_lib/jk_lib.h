@@ -779,6 +779,8 @@ JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v);
 
 JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v);
 
+JK_PUBLIC JkVec2 jk_q16_vec2_to_f32(JkQ16Vec2 v);
+
 // ---- JkQ16Vec2 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------

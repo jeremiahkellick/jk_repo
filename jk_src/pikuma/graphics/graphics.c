@@ -14,6 +14,12 @@
 
 #define EPSILON 0x1.51b717p-14f
 
+#define NAV_STEP_HEIGHT jk_q16_from_f32(0.75f)
+#define NAV_HEIGHT jk_q16_from_f32(1.875f)
+
+static float const nav_density = 0.25f;
+static JkIntVec2 const nav_dimensions = {32, 32};
+
 static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 255};
 
@@ -266,7 +272,7 @@ struct NavContact {
 
     uint32_t flags;
     int32_t z;
-    NavRing *rings[4];
+    NavRing *rings[4]; // 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left
 };
 
 typedef struct NavContacts {
@@ -274,17 +280,23 @@ typedef struct NavContacts {
 } NavContacts;
 
 typedef enum NavRingFlag {
+    NAV_RING_FOUND_EDGE_UP,
+    NAV_RING_FOUND_EDGE_RIGHT,
+    NAV_RING_FOUND_EDGE_DOWN,
+    NAV_RING_FOUND_EDGE_LEFT,
     NAV_RING_ENQUEUED,
     NAV_RING_FLAG_COUNT,
 } NavRingFlag;
 
 struct NavRing {
-    struct NavRing *neighbors[4];
+    struct NavRing *neighbors[4]; // 0 up, 1 right, 2 down, 3 left
 
-    NavContact *corners[4];
+    JkIntVec2 pos;
+    NavContact *corners[4]; // 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left
+    JkVec3 found_points[4];
     int64_t component;
     int64_t vertex_count;
-    JkVec3 vertices[4];
+    JkVec3 vertices[8];
     uint32_t flags;
 };
 
@@ -325,6 +337,26 @@ static b32 nav_contacts_any(NavContacts contacts)
     return result;
 }
 
+static JkIntVec2 nav_corner_offset[4] = {
+    {0, 0},
+    {1, 0},
+    {1, 1},
+    {0, 1},
+};
+
+static JkQ16Vec2 nav_corner_pos(NavRing *ring, int64_t corner_index)
+{
+    JkIntVec2 result_i32 = jk_int_vec2_add(ring->pos, nav_corner_offset[corner_index]);
+    return jk_q16_vec2_from_i32(result_i32);
+}
+
+static JkQ16Vec2 jk_q16_vec2_midpoint(JkQ16Vec2 a, JkQ16Vec2 b)
+{
+    JkQ16Vec2 half_a = {a.x >> 1, a.y >> 1};
+    JkQ16Vec2 half_b = {b.x >> 1, b.y >> 1};
+    return jk_q16_vec2_add(half_a, half_b);
+}
+
 typedef enum NavInterpolant {
     NAV_BARYCENTRIC_0,
     NAV_BARYCENTRIC_1,
@@ -337,30 +369,42 @@ typedef struct NavInterpolants {
     int32_t e[NAV_INTERPOLANT_COUNT];
 } NavInterpolants;
 
-static void nav_triangle_rasterize(
-        JkArena *arena, NavContact **nav_contacts, JkIntVec2 nav_dimensions, Q16Triangle tri)
+typedef struct NavTriangle {
+    uint32_t flags;
+    JkIntRect bounds;
+    NavInterpolants interpolants;
+    NavInterpolants deltas[2];
+} NavTriangle;
+
+typedef struct NavTriangleArray {
+    int64_t count;
+    NavTriangle *e;
+} NavTriangleArray;
+
+static void nav_triangle_setup(JkArena *arena, JkIntVec2 nav_dimensions, Q16Triangle tri)
 {
-    JkIntRect b = (JkIntRect){.max = nav_dimensions};
-    JkIntRect bounds = jk_int_rect_intersect(b, q16_triangle_bounding_box(tri));
-    if (!(bounds.min.x < bounds.max.x && bounds.min.y < bounds.max.y)) {
+    NavTriangle *result = jk_arena_push_zero(arena, sizeof(*result));
+
+    JkIntRect nav_area_bounds = (JkIntRect){.max = nav_dimensions};
+    result->bounds = jk_int_rect_intersect(nav_area_bounds, q16_triangle_bounding_box(tri));
+    if (!(result->bounds.min.x < result->bounds.max.x
+                && result->bounds.min.y < result->bounds.max.y)) {
+        jk_arena_pop(arena, sizeof(*result));
         return;
     }
 
-    uint32_t flags = 0;
     int32_t up = jk_q16_vec2_cross(
             jk_q16_vec2_sub(tri.v[1], tri.v[0]), jk_q16_vec2_sub(tri.v[2], tri.v[0]));
     if (up < 0) {
         JK_SWAP(tri.v[1], tri.v[2], JkQ16Vec2);
     } else if (0 < up) {
-        JK_FLAG_SET(flags, NAV_CONTACT_UP, 1);
+        JK_FLAG_SET(result->flags, NAV_CONTACT_UP, 1);
     } else {
         return;
     }
 
     // Initialize interpolants and their deltas
     int32_t barycentric_divisor = 0;
-    NavInterpolants deltas[2] = {0};
-    NavInterpolants interpolants_row = {0};
     for (int64_t i = 0; i < 3; i++) {
         int64_t a = (i + 1) % 3;
         int64_t b = (i + 2) % 3;
@@ -368,54 +412,134 @@ static void nav_triangle_rasterize(
         barycentric_divisor += cross;
         int32_t x_delta = tri.v[a].y - tri.v[b].y;
         int32_t y_delta = tri.v[b].x - tri.v[a].x;
-        deltas[0].e[NAV_BARYCENTRIC_0 + i] = x_delta;
-        deltas[1].e[NAV_BARYCENTRIC_0 + i] = y_delta;
+        result->deltas[0].e[NAV_BARYCENTRIC_0 + i] = x_delta;
+        result->deltas[1].e[NAV_BARYCENTRIC_0 + i] = y_delta;
         b32 top = tri.v[b].x < tri.v[a].x && tri.v[a].y == tri.v[b].y;
         b32 left = tri.v[b].y < tri.v[a].y;
         int32_t bias = (top || left) ? 0 : -1;
-        interpolants_row.e[NAV_BARYCENTRIC_0 + i] =
-                (x_delta * bounds.min.x) + (y_delta * bounds.min.y) + cross + bias;
+        result->interpolants.e[NAV_BARYCENTRIC_0 + i] = cross + bias;
     }
     if (barycentric_divisor == 0) {
+        jk_arena_pop(arena, sizeof(*result));
         return;
     }
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
-            deltas[axis_index].e[NAV_Z] +=
-                    jk_q16_div(jk_q16_mul(deltas[axis_index].e[NAV_BARYCENTRIC_0 + i], tri.z[i]),
-                            barycentric_divisor);
+            result->deltas[axis_index].e[NAV_Z] += jk_q16_div(
+                    jk_q16_mul(result->deltas[axis_index].e[NAV_BARYCENTRIC_0 + i], tri.z[i]),
+                    barycentric_divisor);
         }
-        interpolants_row.e[NAV_Z] +=
-                jk_q16_div(jk_q16_mul(interpolants_row.e[NAV_BARYCENTRIC_0 + i], tri.z[i]),
+        result->interpolants.e[NAV_Z] +=
+                jk_q16_div(jk_q16_mul(result->interpolants.e[NAV_BARYCENTRIC_0 + i], tri.z[i]),
                         barycentric_divisor);
     }
+}
 
-    for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
+static NavInterpolants nav_triangle_sample(NavTriangle *edge_functions, JkQ16Vec2 pos)
+{
+    NavInterpolants result;
+    for (NavInterpolant i = 0; i <= NAV_INTERPOLANT_COUNT; i++) {
+        result.e[i] = jk_q16_mul(pos.x, edge_functions->deltas[0].e[i])
+                + jk_q16_mul(pos.y, edge_functions->deltas[1].e[i])
+                + edge_functions->interpolants.e[i];
+    }
+    return result;
+}
+
+static void nav_triangle_generate_contact(
+        JkArena *arena, NavContact **head, NavInterpolants *interpolants, uint32_t flags)
+{
+    if (0 <= (interpolants->e[NAV_BARYCENTRIC_0] | interpolants->e[NAV_BARYCENTRIC_1]
+                | interpolants->e[NAV_BARYCENTRIC_2])) {
+        NavContact *contact = jk_arena_push(arena, sizeof(*contact));
+        *contact = nil_contact;
+        contact->flags = flags;
+        contact->z = interpolants->e[NAV_Z];
+
+        NavContact **link = head;
+        while (*link && contact->z < (*link)->z) {
+            link = &(*link)->next;
+        }
+
+        contact->next = *link;
+        *link = contact;
+    }
+}
+
+static void nav_remove_invalid_contacts(NavContact **head)
+{
+    int32_t ceiling = INT32_MAX / 2;
+    int64_t solid_count = 0;
+    NavContact **link = head;
+    NavContact *contact;
+    while ((contact = *link) != &nil_contact) {
+        b32 valid = 1;
+
+        valid = valid && solid_count <= 0;
+        valid = valid && (solid_count < 0 || NAV_HEIGHT < ceiling - contact->z);
+        if (JK_FLAG_GET(contact->flags, NAV_CONTACT_UP)) {
+            solid_count++;
+        } else {
+            solid_count--;
+            ceiling = contact->z - jk_q16_from_f32(0.00048828125f);
+            valid = 0;
+        }
+
+        if (valid) {
+            link = &contact->next;
+        } else {
+            *link = contact->next;
+        }
+    }
+}
+
+static int32_t nav_sample(
+        JkArena *arena, NavTriangleArray nav_triangles, int32_t min_z, int32_t max_z, JkQ16Vec2 pos)
+{
+    JkArenaScope scope = jk_arena_scope_begin(arena);
+
+    NavContact *head = &nil_contact;
+    for (int64_t i = 0; i < nav_triangles.count; i++) {
+        NavInterpolants interpolants = nav_triangle_sample(nav_triangles.e + i, pos);
+        nav_triangle_generate_contact(arena, &head, &interpolants, nav_triangles.e[i].flags);
+    }
+
+    nav_remove_invalid_contacts(&head);
+
+    int32_t result = INT32_MIN;
+    for (NavContact *contact = head; contact != &nil_contact; contact = contact->next) {
+        if (min_z < contact->z && contact->z <= max_z) {
+            result = contact->z;
+            break;
+        }
+    }
+
+    jk_arena_scope_end(scope);
+    return result;
+}
+
+static void nav_triangle_rasterize(
+        JkArena *arena, NavContact **nav_contacts, JkIntVec2 nav_dimensions, NavTriangle *tri)
+{
+    NavInterpolants interpolants_row;
+    for (NavInterpolant i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
+        interpolants_row.e[i] = tri->bounds.min.x * tri->deltas[0].e[i]
+                + tri->bounds.min.y * tri->deltas[1].e[i] + tri->interpolants.e[i];
+    }
+
+    for (int32_t y = tri->bounds.min.y; y < tri->bounds.max.y; y++) {
         NavInterpolants interpolants = interpolants_row;
-        for (int32_t x = bounds.min.x; x < bounds.max.x; x++) {
-            if (0 <= (interpolants.e[NAV_BARYCENTRIC_0] | interpolants.e[NAV_BARYCENTRIC_1]
-                        | interpolants.e[NAV_BARYCENTRIC_2])) {
-                NavContact *contact = jk_arena_push(arena, sizeof(*contact));
-                *contact = nil_contact;
-                contact->flags = flags;
-                contact->z = interpolants.e[NAV_Z];
-
-                NavContact **link = nav_contacts + (nav_dimensions.x * y + x);
-                while (*link && contact->z < (*link)->z) {
-                    link = &(*link)->next;
-                }
-
-                contact->next = *link;
-                *link = contact;
-            }
+        for (int32_t x = tri->bounds.min.x; x < tri->bounds.max.x; x++) {
+            NavContact **head = nav_contacts + (nav_dimensions.x * y + x);
+            nav_triangle_generate_contact(arena, head, &interpolants, tri->flags);
 
             for (int64_t i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
-                interpolants.e[i] += deltas[0].e[i];
+                interpolants.e[i] += tri->deltas[0].e[i];
             }
         }
 
         for (int64_t i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
-            interpolants_row.e[i] += deltas[1].e[i];
+            interpolants_row.e[i] += tri->deltas[1].e[i];
         }
     }
 }
@@ -751,10 +875,6 @@ void render(JkContext *context, Environment *env)
     JkMat4 clip_from_world = jk_mat4_i;
     JkMat4 screen_from_ndc = jk_mat4_i;
 
-    float nav_density = 0.25f;
-    int32_t nav_step_height = jk_q16_from_f32(0.75f);
-    int32_t nav_height = jk_q16_from_f32(1.875f);
-    JkIntVec2 nav_dimensions = {32, 32};
     JkVec2 nav_origin =
             jk_vec2_sub(jk_vec2_mul(1 / nav_density, jk_vec3_to_2(env->state.player_position)),
                     jk_vec2_mul(0.5, jk_vec2_from_int(nav_dimensions)));
@@ -868,15 +988,10 @@ void render(JkContext *context, Environment *env)
         nav_from_world = jk_mat4_mul(
                 jk_mat4_translate(jk_vec2_to_3(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
 
-        nav_contacts = jk_arena_push(
-                scratch0.arena, nav_dimensions.x * nav_dimensions.y * JK_SIZEOF(NavContact *));
-        for (int64_t i = 0; i < nav_dimensions.x * nav_dimensions.y; i++) {
-            nav_contacts[i] = &nil_contact;
-        }
+        // Collect navigation triangles
+        JkArenaScope nav_triangle_transform_scope = jk_arena_scope_begin(scratch1.arena);
+        JkArenaScope nav_triangles_scope = jk_arena_scope_begin(scratch0.arena);
 
-        JkArenaScope nav_rasterize_scope = jk_arena_scope_begin(scratch1.arena);
-
-        // Rasterize in initial set of contacts
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
 
@@ -903,37 +1018,28 @@ void render(JkContext *context, Environment *env)
                     triangle.v[i] = nav_vertices[face.v[i]];
                     triangle.z[i] = nav_zs[face.v[i]];
                 }
-                nav_triangle_rasterize(scratch0.arena, nav_contacts, nav_dimensions, triangle);
+                nav_triangle_setup(scratch0.arena, nav_dimensions, triangle);
             }
         }
 
-        jk_arena_scope_end(nav_rasterize_scope);
+        NavTriangleArray nav_triangles;
+        JK_ARRAY_FROM_ARENA_SCOPE(nav_triangles, nav_triangles_scope);
+        jk_arena_scope_end(nav_triangle_transform_scope);
+
+        // Rasterize navigation triangles
+        nav_contacts = jk_arena_push(
+                scratch0.arena, nav_dimensions.x * nav_dimensions.y * JK_SIZEOF(NavContact *));
+        for (int64_t i = 0; i < nav_dimensions.x * nav_dimensions.y; i++) {
+            nav_contacts[i] = &nil_contact;
+        }
+        for (int64_t i = 0; i < nav_triangles.count; i++) {
+            nav_triangle_rasterize(
+                    scratch0.arena, nav_contacts, nav_dimensions, nav_triangles.e + i);
+        }
 
         // Remove invalid contacts
         for (int64_t i = 0; i < nav_dimensions.x * nav_dimensions.y; i++) {
-            int32_t ceiling = INT32_MAX / 2;
-            int64_t solid_count = 0;
-            NavContact **link = nav_contacts + i;
-            NavContact *contact;
-            while ((contact = *link) != &nil_contact) {
-                b32 valid = 1;
-
-                valid = valid && solid_count <= 0;
-                valid = valid && (solid_count < 0 || nav_height < ceiling - contact->z);
-                if (JK_FLAG_GET(contact->flags, NAV_CONTACT_UP)) {
-                    solid_count++;
-                } else {
-                    solid_count--;
-                    ceiling = contact->z - jk_q16_from_f32(0.00048828125f);
-                    valid = 0;
-                }
-
-                if (valid) {
-                    link = &contact->next;
-                } else {
-                    *link = contact->next;
-                }
-            }
+            nav_remove_invalid_contacts(nav_contacts + i);
         }
 
         scratch0.arena->pos = JK_ALIGN_UP(scratch0.arena->pos, 8);
@@ -941,13 +1047,6 @@ void render(JkContext *context, Environment *env)
 
         for (JkIntVec2 pos = {0}; pos.y < nav_dimensions.y - 1; pos.y++) {
             for (pos.x = 0; pos.x < nav_dimensions.x - 1; pos.x++) {
-                JkVec2 world_pos[4];
-                world_pos[0] =
-                        jk_vec2_mul(nav_density, jk_vec2_add(jk_vec2_from_int(pos), nav_origin));
-                world_pos[1] = jk_vec2_add(world_pos[0], (JkVec2){nav_density, 0});
-                world_pos[2] = jk_vec2_add(world_pos[0], (JkVec2){nav_density, nav_density});
-                world_pos[3] = jk_vec2_add(world_pos[0], (JkVec2){0, nav_density});
-
                 NavContacts contacts = {
                     nav_contacts[nav_dimensions.x * pos.y + pos.x],
                     nav_contacts[nav_dimensions.x * pos.y + (pos.x + 1)],
@@ -956,6 +1055,7 @@ void render(JkContext *context, Environment *env)
                 };
                 while (nav_contacts_any(contacts)) {
                     NavRing ring = nil_ring;
+                    ring.pos = pos;
                     ring.flags = 0;
                     ring.component = 0;
 
@@ -966,7 +1066,7 @@ void render(JkContext *context, Environment *env)
                         }
                     }
                     int32_t max_z = contacts.e[max_index]->z;
-                    int32_t min_z = max_z - nav_step_height;
+                    int32_t min_z = max_z - NAV_STEP_HEIGHT;
 
                     NavContacts candidates = contacts;
                     int64_t found_count = 0;
@@ -980,7 +1080,7 @@ void render(JkContext *context, Environment *env)
                         }
                     }
 
-                    if (2 < found_count) {
+                    if (0 < found_count) {
                         NavRing *self = jk_arena_push(scratch0.arena, sizeof(*self));
                         *self = ring;
 
@@ -1007,9 +1107,6 @@ void render(JkContext *context, Environment *env)
                                     neighbor1->neighbors[opposite] = self;
                                 }
 
-                                self->vertices[self->vertex_count++] =
-                                        jk_vec2_to_3(world_pos[i], jk_q16_to_f32(corner->z));
-
                                 contacts.e[i] = candidates.e[i];
                             }
                         }
@@ -1021,6 +1118,83 @@ void render(JkContext *context, Environment *env)
         }
 
         JK_ARRAY_FROM_ARENA_SCOPE(nav_rings, ring_scope);
+
+        // Find edges
+        for (int64_t ring_index = 0; ring_index < nav_rings.count; ring_index++) {
+            NavRing *ring = nav_rings.e + ring_index;
+
+            JkVec2 world_pos[4];
+            world_pos[0] =
+                    jk_vec2_mul(nav_density, jk_vec2_add(jk_vec2_from_int(ring->pos), nav_origin));
+            world_pos[1] = jk_vec2_add(world_pos[0], (JkVec2){nav_density, 0});
+            world_pos[2] = jk_vec2_add(world_pos[0], (JkVec2){nav_density, nav_density});
+            world_pos[3] = jk_vec2_add(world_pos[0], (JkVec2){0, nav_density});
+
+            for (int64_t edge_index = 0; edge_index < 4; edge_index++) {
+                if (JK_FLAG_GET(ring->flags, NAV_RING_FOUND_EDGE_UP + edge_index)) {
+                    continue;
+                }
+
+                int64_t next_index = JK_MOD(edge_index + 1, 4);
+                int64_t opposite_index = JK_MOD(edge_index + 2, 4);
+
+                int64_t inside_index = next_index;
+                int64_t outside_index = edge_index;
+                int64_t outside_count = 0;
+                if (ring->corners[edge_index] == &nil_contact) {
+                    outside_count++;
+                }
+                if (ring->corners[next_index] == &nil_contact) {
+                    outside_count++;
+                    JK_SWAP(inside_index, outside_index, int64_t);
+                }
+
+                if (outside_count == 1) {
+                    JkQ16Vec2 inside_pos = nav_corner_pos(ring, inside_index);
+                    JkQ16Vec2 outside_pos = nav_corner_pos(ring, outside_index);
+
+                    int32_t inside_z = ring->corners[inside_index]->z;
+                    int32_t min_z = inside_z - NAV_STEP_HEIGHT;
+                    int32_t max_z = inside_z + NAV_STEP_HEIGHT;
+
+                    // Binary search for walkable point closest to outside contact
+                    for (int64_t i = 0; i < 6; i++) {
+                        JkQ16Vec2 midpoint = jk_q16_vec2_midpoint(inside_pos, outside_pos);
+                        int32_t z =
+                                nav_sample(scratch1.arena, nav_triangles, min_z, max_z, midpoint);
+                        if (z == INT32_MIN) { // miss
+                            outside_pos = midpoint;
+                        } else { // hit
+                            inside_pos = midpoint;
+                            inside_z = z;
+                        }
+                    }
+
+                    ring->found_points[edge_index] = jk_vec2_to_3(
+                            jk_vec2_mul(nav_density,
+                                    jk_vec2_add(jk_q16_vec2_to_f32(inside_pos), nav_origin)),
+                            jk_q16_to_f32(inside_z));
+
+                    JK_FLAG_SET(ring->flags, NAV_RING_FOUND_EDGE_UP + edge_index, 1);
+
+                    NavRing *neighbor = ring->neighbors[edge_index];
+                    if (neighbor != &nil_ring) {
+                        neighbor->found_points[opposite_index] = ring->found_points[edge_index];
+                        JK_FLAG_SET(neighbor->flags, NAV_RING_FOUND_EDGE_UP + opposite_index, 1);
+                    }
+                }
+            }
+
+            for (int64_t edge_index = 0; edge_index < 4; edge_index++) {
+                if (ring->corners[edge_index] != &nil_contact) {
+                    ring->vertices[ring->vertex_count++] = jk_vec2_to_3(
+                            world_pos[edge_index], jk_q16_to_f32(ring->corners[edge_index]->z));
+                }
+                if (JK_FLAG_GET(ring->flags, NAV_RING_FOUND_EDGE_UP + edge_index)) {
+                    ring->vertices[ring->vertex_count++] = ring->found_points[edge_index];
+                }
+            }
+        }
 
         JkArenaScope queue_scope = jk_arena_scope_begin(scratch0.arena);
         NavPoint start = {.distance_sqr = jk_infinity_f32.f32};
@@ -1089,31 +1263,32 @@ void render(JkContext *context, Environment *env)
         int64_t max_steps = jk_ceil_f32((SPEED * DELTA_TIME) / step_size);
         int64_t max_depth = 2 * max_steps + 1;
 
-        JkArenaScope q_scope = jk_arena_scope_begin(scratch0.arena);
-        NavPoint destination = {.distance_sqr = jk_infinity_f32.f32};
-        NavRingQueue q = q_new(scratch0.arena, 1024);
-        q_enqueue(&q, start.ring);
-        int64_t depth = 0;
-        while (q.start < q.end && depth < max_depth) {
-            int64_t depth_end = q.end;
-            while (q.start < depth_end) {
-                NavRing *ring = q_dequeue(&q);
+        JK_ARENA_SCOPE(scratch0.arena)
+        {
+            NavPoint destination = {.distance_sqr = jk_infinity_f32.f32};
+            NavRingQueue q = q_new(scratch0.arena, 1024);
+            q_enqueue(&q, start.ring);
+            int64_t depth = 0;
+            while (q.start < q.end && depth < max_depth) {
+                int64_t depth_end = q.end;
+                while (q.start < depth_end) {
+                    NavRing *ring = q_dequeue(&q);
 
-                NavPoint candidate = closest_point_on_ring(target, ring);
-                if (candidate.distance_sqr < destination.distance_sqr) {
-                    destination = candidate;
-                }
+                    NavPoint candidate = closest_point_on_ring(target, ring);
+                    if (candidate.distance_sqr <= destination.distance_sqr) {
+                        destination = candidate;
+                    }
 
-                for (int64_t i = 0; i < 4; i++) {
-                    if (!JK_FLAG_GET(ring->neighbors[i]->flags, NAV_RING_ENQUEUED)) {
-                        q_enqueue(&q, ring->neighbors[i]);
+                    for (int64_t i = 0; i < 4; i++) {
+                        if (!JK_FLAG_GET(ring->neighbors[i]->flags, NAV_RING_ENQUEUED)) {
+                            q_enqueue(&q, ring->neighbors[i]);
+                        }
                     }
                 }
+                depth++;
             }
-            depth++;
+            env->state.player_position = destination.p;
         }
-        env->state.player_position = destination.p;
-        jk_arena_scope_end(q_scope);
 
         // ---- Navigation end ------------------------------------------------
 
