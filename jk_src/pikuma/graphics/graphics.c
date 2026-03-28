@@ -12,7 +12,7 @@
 #define NEAR_CLIP 0.2f
 #define SPEED 5.0f
 
-#define EPSILON 0x1.51b717p-14f
+#define EPSILON 0x1.0p-32f
 
 #define NAV_STEP_HEIGHT jk_q16_from_f32(0.75f)
 #define NAV_HEIGHT jk_q16_from_f32(1.875f)
@@ -438,7 +438,7 @@ static void nav_triangle_setup(JkArena *arena, JkIntVec2 nav_dimensions, Q16Tria
 static NavInterpolants nav_triangle_sample(NavTriangle *edge_functions, JkQ16Vec2 pos)
 {
     NavInterpolants result;
-    for (NavInterpolant i = 0; i <= NAV_INTERPOLANT_COUNT; i++) {
+    for (NavInterpolant i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
         result.e[i] = jk_q16_mul(pos.x, edge_functions->deltas[0].e[i])
                 + jk_q16_mul(pos.y, edge_functions->deltas[1].e[i])
                 + edge_functions->interpolants.e[i];
@@ -1234,6 +1234,9 @@ void render(JkContext *context, Environment *env)
             JkVec3 c = start.ring->vertices[start.triangle_index];
 
             JkVec3 up = jk_vec3_normalized(jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a)));
+            if (jk_vec3_magnitude_sqr(up) < EPSILON) {
+                up = (JkVec3){0, 0, 1};
+            }
 
             JkVec3 right_up = jk_vec3_cross(right, up);
             JkVec3 forward_up = jk_vec3_cross(forward, up);
