@@ -30,8 +30,6 @@ static JkColor component_colors[] = {
 };
 
 static float const player_height = 1.75f;
-static float const camera_rot_angle_init = 5 * JK_PI / 4;
-
 static JkVec3 light_dir = {-1, 4, -1};
 static int32_t rotation_seconds = 8;
 
@@ -950,7 +948,7 @@ void render(JkContext *context, Environment *env)
         if (!JK_FLAG_GET(env->state.flags, FLAG_INITIALIZED)) {
             env->state.flags = JK_MASK(FLAG_INITIALIZED);
             env->state.frame_id = 0;
-            env->state.camera_yaw = camera_rot_angle_init;
+            env->state.camera_yaw = 5 * JK_PI / 4;
             env->state.camera_pitch = 0;
             env->state.player_position = (JkVec3){0};
 
@@ -1154,8 +1152,8 @@ void render(JkContext *context, Environment *env)
                     JkQ16Vec2 outside_pos = nav_corner_pos(ring, outside_index);
 
                     int32_t inside_z = ring->corners[inside_index]->z;
-                    int32_t min_z = inside_z - NAV_STEP_HEIGHT;
-                    int32_t max_z = inside_z + NAV_STEP_HEIGHT;
+                    int32_t min_z = inside_z - (NAV_STEP_HEIGHT >> 1);
+                    int32_t max_z = inside_z + (NAV_STEP_HEIGHT >> 1);
 
                     // Binary search for walkable point closest to outside contact
                     for (int64_t i = 0; i < 6; i++) {
@@ -1233,23 +1231,23 @@ void render(JkContext *context, Environment *env)
             JkVec3 b = start.ring->vertices[start.triangle_index - 1];
             JkVec3 c = start.ring->vertices[start.triangle_index];
 
-            JkVec3 up = jk_vec3_normalized(jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a)));
-            if (jk_vec3_magnitude_sqr(up) < EPSILON) {
+            JkVec3 up = jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a));
+            if (EPSILON < jk_vec3_magnitude_sqr(up)) {
+                up = jk_vec3_normalized(up);
+            } else {
                 up = (JkVec3){0, 0, 1};
             }
 
-            JkVec3 right_up = jk_vec3_cross(right, up);
-            JkVec3 forward_up = jk_vec3_cross(forward, up);
-            if (jk_vec3_magnitude_sqr(right_up) < jk_vec3_magnitude_sqr(forward_up)) {
-                forward = jk_vec3_cross(up, forward_up);
-            } else {
-                forward = right_up;
+            JkVec3 direction = jk_vec3_cross(right, up);
+            if (jk_vec3_magnitude_sqr(direction) < EPSILON) {
+                // project the forward vector onto the walk plane
+                direction = jk_vec3_sub(forward,
+                        jk_vec3_mul(jk_vec3_dot(forward, up) / jk_vec3_magnitude_sqr(up), up));
             }
 
-            if (EPSILON < jk_vec3_magnitude_sqr(forward)) {
-                forward = jk_vec3_normalized(forward);
-                JkVec3 move = jk_vec3_mul(SPEED * DELTA_TIME, forward);
-                target = jk_vec3_add(target, move);
+            if (EPSILON < jk_vec3_magnitude_sqr(direction)) {
+                direction = jk_vec3_normalized(direction);
+                target = jk_vec3_add(target, jk_vec3_mul(SPEED * DELTA_TIME, direction));
             }
         }
 
