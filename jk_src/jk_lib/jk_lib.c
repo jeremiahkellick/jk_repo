@@ -1905,6 +1905,11 @@ JK_PUBLIC int32_t jk_q16_vec2_cross(JkQ16Vec2 u, JkQ16Vec2 v)
     return jk_q16_mul(u.x, v.y) - jk_q16_mul(u.y, v.x);
 }
 
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_3(JkQ16Vec3 v)
+{
+    return (JkQ16Vec2){.x = v.x, .y = v.y};
+}
+
 JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v)
 {
     return (JkQ16Vec2){.x = jk_q16_from_i32(v.x), .y = jk_q16_from_i32(v.y)};
@@ -1921,6 +1926,65 @@ JK_PUBLIC JkVec2 jk_q16_vec2_to_f32(JkQ16Vec2 v)
 }
 
 // ---- JkQ16Vec2 end ----------------------------------------------------------
+
+// ---- JkQ16Vec3 begin --------------------------------------------------------
+
+JK_PUBLIC b32 jk_q16_vec3_equal(JkQ16Vec3 a, JkQ16Vec3 b)
+{
+    return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_add(JkQ16Vec3 a, JkQ16Vec3 b)
+{
+    return (JkQ16Vec3){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z};
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_sub(JkQ16Vec3 a, JkQ16Vec3 b)
+{
+    return (JkQ16Vec3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_mul(int32_t scalar, JkQ16Vec3 v)
+{
+    return (JkQ16Vec3){
+        .x = jk_q16_mul(scalar, v.x), .y = jk_q16_mul(scalar, v.y), .z = jk_q16_mul(scalar, v.z)};
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 v)
+{
+    return (JkQ16Vec3){
+        .x = jk_q16_div(v.x, divisor),
+        .y = jk_q16_div(v.y, divisor),
+        .z = jk_q16_div(v.z, divisor),
+    };
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v)
+{
+    return (JkQ16Vec3){
+        .x = jk_q16_mul(u.y, v.z) - jk_q16_mul(u.z, v.y),
+        .y = jk_q16_mul(u.z, v.x) - jk_q16_mul(u.x, v.z),
+        .z = jk_q16_mul(u.x, v.y) - jk_q16_mul(u.y, v.x),
+    };
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z)
+{
+    return (JkQ16Vec3){.x = v.x, .y = v.y, .z = z};
+}
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_f32(JkVec3 v)
+{
+    return (JkQ16Vec3){
+        .x = jk_q16_from_f32(v.x), .y = jk_q16_from_f32(v.y), .z = jk_q16_from_f32(v.z)};
+}
+
+JK_PUBLIC JkVec3 jk_q16_vec3_to_f32(JkQ16Vec3 v)
+{
+    return (JkVec3){.x = jk_q16_to_f32(v.x), .y = jk_q16_to_f32(v.y), .z = jk_q16_to_f32(v.z)};
+}
+
+// ---- JkQ16Vec3 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------
 

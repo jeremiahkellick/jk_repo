@@ -763,6 +763,15 @@ typedef struct JkQ16Vec2Array {
     JkQ16Vec2 *e;
 } JkQ16Vec2Array;
 
+typedef union JkQ16Vec3 {
+    int32_t v[3];
+    struct {
+        int32_t x;
+        int32_t y;
+        int32_t z;
+    };
+} JkQ16Vec3;
+
 JK_PUBLIC b32 jk_q16_vec2_equal(JkQ16Vec2 a, JkQ16Vec2 b);
 
 JK_PUBLIC JkQ16Vec2 jk_q16_vec2_add(JkQ16Vec2 a, JkQ16Vec2 b);
@@ -775,6 +784,8 @@ JK_PUBLIC JkQ16Vec2 jk_q16_vec2_div(int32_t divisor, JkQ16Vec2 vector);
 
 JK_PUBLIC int32_t jk_q16_vec2_cross(JkQ16Vec2 u, JkQ16Vec2 v);
 
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_3(JkQ16Vec3 v);
+
 JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v);
 
 JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v);
@@ -782,6 +793,33 @@ JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v);
 JK_PUBLIC JkVec2 jk_q16_vec2_to_f32(JkQ16Vec2 v);
 
 // ---- JkQ16Vec2 end ----------------------------------------------------------
+
+// ---- JkQ16Vec3 begin --------------------------------------------------------
+
+typedef struct JkQ16Vec3Array {
+    int64_t count;
+    JkQ16Vec3 *e;
+} JkQ16Vec3Array;
+
+JK_PUBLIC b32 jk_q16_vec3_equal(JkQ16Vec3 a, JkQ16Vec3 b);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_add(JkQ16Vec3 a, JkQ16Vec3 b);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_sub(JkQ16Vec3 a, JkQ16Vec3 b);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_mul(int32_t scalar, JkQ16Vec3 vector);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 vector);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_f32(JkVec3 v);
+
+JK_PUBLIC JkVec3 jk_q16_vec3_to_f32(JkQ16Vec3 v);
+
+// ---- JkQ16Vec3 end ----------------------------------------------------------
 
 // ---- JkVec2 begin -----------------------------------------------------------
 
