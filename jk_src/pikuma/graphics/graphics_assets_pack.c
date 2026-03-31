@@ -1,8 +1,3 @@
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
