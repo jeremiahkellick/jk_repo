@@ -43,7 +43,7 @@ JK_PUBLIC void jk_platform_print(JkBuffer string)
     if (0 < string.size) {
         JK_ARENA_SCRATCH(scratch)
         {
-            OutputDebugStringA(jk_buffer_to_null_terminated(scratch.arena, string));
+            OutputDebugStringA(jk_null_terminated_from_buffer(scratch.arena, string));
         }
     }
 }
@@ -1357,8 +1357,8 @@ JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
 
     JkArenaScope scratch = jk_arena_scratch_begin();
 
-    char *file_path_nt = jk_buffer_to_null_terminated(scratch.arena, file_path);
-    char *array_name_nt = jk_buffer_to_null_terminated(scratch.arena, array_name);
+    char *file_path_nt = jk_null_terminated_from_buffer(scratch.arena, file_path);
+    char *array_name_nt = jk_null_terminated_from_buffer(scratch.arena, array_name);
     if (file_path_nt && array_name_nt) {
         FILE *file = fopen(file_path_nt, "wb");
         if (file) {

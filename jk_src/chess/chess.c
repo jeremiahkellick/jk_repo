@@ -2465,10 +2465,10 @@ void render(ChessAssets *assets, Chess *chess)
                 uint64_t rand64 = jk_random_u64(&generator);
                 JkIntVec2 rand_offset_i = {
                     (int32_t)(rand64 % 256) - 128, (uint32_t)((rand64 >> 32) % 256) - 128};
-                JkVec2 rand_offset = jk_vec2_mul(1.0f / 128.0f, jk_vec2_from_int(rand_offset_i));
+                JkVec2 rand_offset = jk_vec2_mul(1.0f / 128.0f, jk_vec2_from_i32(rand_offset_i));
 
                 JkVec2 offset = jk_vec2_mul(
-                        1.0f / pixels_per_unit, jk_vec2_add(jk_vec2_from_int(pos), rand_offset));
+                        1.0f / pixels_per_unit, jk_vec2_add(jk_vec2_from_i32(pos), rand_offset));
                 JkVec2 pixel_pos = jk_vec2_add(canvas_pos, offset);
                 JkVec2 direction = jk_vec2_normalized(jk_vec2_sub(pixel_pos, blast_center));
                 JkVec2 delta = jk_vec2_mul(distance, direction);

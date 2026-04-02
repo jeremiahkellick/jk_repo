@@ -196,33 +196,32 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
     printf("\n");
 
-    expect_string(JKS("8699171359359057110"), jk_int_to_string(&arena, 8699171359359057110ll));
-    expect_string(JKS("-12"), jk_int_to_string(&arena, -12));
-    expect_string(JKS("1"), jk_int_to_string(&arena, 1));
-    expect_string(JKS("0"), jk_int_to_string(&arena, 0));
+    expect_string(JKS("8699171359359057110"), jk_string_from_int(&arena, 8699171359359057110ll));
+    expect_string(JKS("-12"), jk_string_from_int(&arena, -12));
+    expect_string(JKS("1"), jk_string_from_int(&arena, 1));
+    expect_string(JKS("0"), jk_string_from_int(&arena, 0));
 
-    expect_string(
-            JKS("16210279753379821762"), jk_unsigned_to_string(&arena, 16210279753379821762llu, 0));
-    expect_string(JKS("1"), jk_unsigned_to_string(&arena, 1, 0));
-    expect_string(JKS("0001"), jk_unsigned_to_string(&arena, 1, 4));
-    expect_string(JKS("0"), jk_unsigned_to_string(&arena, 0, 0));
+    expect_string(JKS("16210279753379821762"),
+            jk_string_from_unsigned(&arena, 16210279753379821762llu, 0));
+    expect_string(JKS("1"), jk_string_from_unsigned(&arena, 1, 0));
+    expect_string(JKS("0001"), jk_string_from_unsigned(&arena, 1, 4));
+    expect_string(JKS("0"), jk_string_from_unsigned(&arena, 0, 0));
 
-    expect_string(JKS("c5d530ba1de82861"),
-            jk_unsigned_to_hexadecimal_string(&arena, 0xc5d530ba1de82861llu, 0));
-    expect_string(JKS("0001"), jk_unsigned_to_hexadecimal_string(&arena, 1, 4));
-    expect_string(JKS("0"), jk_unsigned_to_hexadecimal_string(&arena, 0, 0));
+    expect_string(JKS("c5d530ba1de82861"), jk_string_from_hex(&arena, 0xc5d530ba1de82861llu, 0));
+    expect_string(JKS("0001"), jk_string_from_hex(&arena, 1, 4));
+    expect_string(JKS("0"), jk_string_from_hex(&arena, 0, 0));
 
     expect_string(JKS("1101101010010110001100101010110110111111110101011001011110011011"),
-            jk_unsigned_to_binary_string(&arena, 0xda9632adbfd5979b, 0));
-    expect_string(JKS("0001"), jk_unsigned_to_binary_string(&arena, 1, 4));
-    expect_string(JKS("0"), jk_unsigned_to_binary_string(&arena, 0, 0));
+            jk_string_from_binary(&arena, 0xda9632adbfd5979b, 0));
+    expect_string(JKS("0001"), jk_string_from_binary(&arena, 1, 4));
+    expect_string(JKS("0"), jk_string_from_binary(&arena, 0, 0));
 
-    expect_string(JKS("inf"), jk_f64_to_string(&arena, jk_infinity_f64.f64, 8));
-    expect_string(JKS("-inf"), jk_f64_to_string(&arena, -jk_infinity_f64.f64, 8));
-    expect_string(JKS("nan"), jk_f64_to_string(&arena, some_nan_64.f64, 8));
-    expect_string(JKS("-nan"), jk_f64_to_string(&arena, -some_nan_64.f64, 8));
-    expect_string(JKS("unprintable"), jk_f64_to_string(&arena, unprintable_64.f64, 8));
-    expect_string(JKS("-unprintable"), jk_f64_to_string(&arena, -unprintable_64.f64, 8));
+    expect_string(JKS("inf"), jk_string_from_f64(&arena, jk_infinity_f64.f64, 8));
+    expect_string(JKS("-inf"), jk_string_from_f64(&arena, -jk_infinity_f64.f64, 8));
+    expect_string(JKS("nan"), jk_string_from_f64(&arena, some_nan_64.f64, 8));
+    expect_string(JKS("-nan"), jk_string_from_f64(&arena, -some_nan_64.f64, 8));
+    expect_string(JKS("unprintable"), jk_string_from_f64(&arena, unprintable_64.f64, 8));
+    expect_string(JKS("-unprintable"), jk_string_from_f64(&arena, -unprintable_64.f64, 8));
     expect_string(JKS("nan inf -unprintable"),
             JK_FORMAT(&arena,
                     jkff(some_nan_64.f64, 8),
@@ -230,11 +229,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     jkff(jk_infinity_f64.f64, 8),
                     jkfn(" "),
                     jkff(-unprintable_64.f64, 8)));
-    expect_string(JKS("1.3333333"), jk_f64_to_string(&arena, 4.0 / 3.0, 7));
-    expect_string(JKS("2.666667"), jk_f64_to_string(&arena, 8.0 / 3.0, 6));
-    expect_string(JKS("60.00"), jk_f64_to_string(&arena, 59.99999, 2));
-    expect_string(JKS("123"), jk_f64_to_string(&arena, 123.25, 0));
-    expect_string(JKS("124"), jk_f64_to_string(&arena, 123.5, 0));
+    expect_string(JKS("1.3333333"), jk_string_from_f64(&arena, 4.0 / 3.0, 7));
+    expect_string(JKS("2.666667"), jk_string_from_f64(&arena, 8.0 / 3.0, 6));
+    expect_string(JKS("60.00"), jk_string_from_f64(&arena, 59.99999, 2));
+    expect_string(JKS("123"), jk_string_from_f64(&arena, 123.25, 0));
+    expect_string(JKS("124"), jk_string_from_f64(&arena, 123.5, 0));
 
     expect_string(JKS("5 + -3 = 2"),
             JK_FORMAT(&arena, jkfu(5), jkfn(" + "), jkfi(-3), jkfn(" = "), jkfi(2)));

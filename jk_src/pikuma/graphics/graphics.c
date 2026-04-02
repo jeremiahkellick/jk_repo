@@ -238,10 +238,10 @@ typedef struct TexturedVertexArray {
 static JkIntRect q16_triangle_bounding_box(Q16Triangle tri)
 {
     return (JkIntRect){
-        .min.x = jk_q16_to_i32(JK_MIN3(tri.v[0].x, tri.v[1].x, tri.v[2].x)),
-        .min.y = jk_q16_to_i32(JK_MIN3(tri.v[0].y, tri.v[1].y, tri.v[2].y)),
-        .max.x = jk_q16_to_i32(JK_MAX3(tri.v[0].x, tri.v[1].x, tri.v[2].x)) + 1,
-        .max.y = jk_q16_to_i32(JK_MAX3(tri.v[0].y, tri.v[1].y, tri.v[2].y)) + 1,
+        .min.x = jk_i32_from_q16_floor(JK_MIN3(tri.v[0].x, tri.v[1].x, tri.v[2].x)),
+        .min.y = jk_i32_from_q16_floor(JK_MIN3(tri.v[0].y, tri.v[1].y, tri.v[2].y)),
+        .max.x = jk_i32_from_q16_floor(JK_MAX3(tri.v[0].x, tri.v[1].x, tri.v[2].x)) + 1,
+        .max.y = jk_i32_from_q16_floor(JK_MAX3(tri.v[0].y, tri.v[1].y, tri.v[2].y)) + 1,
     };
 }
 
@@ -361,8 +361,8 @@ static JkQ16Vec2 nav_corner_pos(NavRing *ring, int64_t corner_index)
 static JkVec3 world_from_nav(JkVec2 nav_origin, JkQ16Vec3 v)
 {
     JkVec2 xy = jk_vec2_mul(
-            nav_density, jk_vec2_add(jk_q16_vec2_to_f32(jk_q16_vec2_from_3(v)), nav_origin));
-    return jk_vec2_to_3(xy, jk_q16_to_f32(v.z));
+            nav_density, jk_vec2_add(jk_vec2_from_q16(jk_q16_vec2_from_3(v)), nav_origin));
+    return jk_vec3_from_2(xy, jk_f32_from_q16(v.z));
 }
 
 typedef enum NavInterpolant {
@@ -637,11 +637,11 @@ static void triangle_fill(Environment *env, TriangleNode *node, JkIntRect boundi
         return;
     }
     bounds.min.x &= ~(8 - 1);
-    JkVec2 tex_float_dimensions = jk_vec2_from_int(node->texture.dimensions);
+    JkVec2 tex_float_dimensions = jk_vec2_from_i32(node->texture.dimensions);
 
     JkVec2 verts_2d[3];
     for (int64_t i = 0; i < 3; i++) {
-        verts_2d[i] = jk_vec3_to_2(tri.v[i]);
+        verts_2d[i] = jk_vec2_from_3(tri.v[i]);
     }
 
     Interpolants interpolants_row[SAMPLE_COUNT] = {0};
@@ -734,7 +734,7 @@ static void triangle_fill(Environment *env, TriangleNode *node, JkIntRect boundi
 
                         JkF32x8 color_buffer = jk_f32x8_load((float *)(env->draw_buffer + index));
                         JkF32x8 color = jk_f32x8_gather(node->texture.memory,
-                                jk_truncate_f32x8_to_i32x8(tex_index),
+                                jk_i32x8_from_f32x8_truncate(tex_index),
                                 visible);
                         jk_f32x8_store((float *)(env->draw_buffer + index),
                                 jk_f32x8_blend(color_buffer, color, visible));
@@ -820,7 +820,7 @@ static JkMat4 object_compute_world_from_local(ObjectArray objects, ObjectId id)
     JkMat4 result = jk_mat4_i;
     for (ObjectId parent_id = id; parent_id.i; parent_id = objects.e[parent_id.i].parent) {
         Object *parent = objects.e + parent_id.i;
-        result = jk_mat4_mul(jk_transform_to_mat4(parent->transform), result);
+        result = jk_mat4_mul(jk_mat4_from_transform(parent->transform), result);
     }
     return result;
 }
@@ -838,8 +838,8 @@ static void draw_world_segment(Environment *env,
         JkVec3 b)
 {
     JkVec4 clip[2] = {
-        jk_mat4_mul_vec4(clip_from_world, jk_vec3_to_4(a, 1)),
-        jk_mat4_mul_vec4(clip_from_world, jk_vec3_to_4(b, 1)),
+        jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(a, 1)),
+        jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(b, 1)),
     };
     b32 inside[2];
     for (int64_t i = 0; i < 2; i++) {
@@ -857,7 +857,7 @@ static void draw_world_segment(Environment *env,
     }
     JkVec2 screen[2];
     for (int64_t i = 0; i < 2; i++) {
-        screen[i] = jk_vec3_to_2(
+        screen[i] = jk_vec2_from_3(
                 jk_mat4_mul_point(screen_from_ndc, jk_vec4_perspective_divide(clip[i])));
     }
     draw_line(env, color, screen[0], screen[1]);
@@ -911,8 +911,8 @@ void render(JkContext *context, Environment *env)
     JkMat4 screen_from_ndc = jk_mat4_i;
 
     JkVec2 nav_origin =
-            jk_vec2_sub(jk_vec2_mul(1 / nav_density, jk_vec3_to_2(env->state.player_position)),
-                    jk_vec2_mul(0.5, jk_vec2_from_int(nav_dimensions)));
+            jk_vec2_sub(jk_vec2_mul(1 / nav_density, jk_vec2_from_3(env->state.player_position)),
+                    jk_vec2_mul(0.5, jk_vec2_from_i32(nav_dimensions)));
     nav_origin.x = jk_floor_f32(nav_origin.x);
     nav_origin.y = jk_floor_f32(nav_origin.y);
     NavContact **nav_contacts = 0;
@@ -1021,7 +1021,7 @@ void render(JkContext *context, Environment *env)
 
         JkMat4 nav_from_world = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
         nav_from_world = jk_mat4_mul(
-                jk_mat4_translate(jk_vec2_to_3(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
+                jk_mat4_translate(jk_vec3_from_2(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
 
         // Collect navigation triangles
         JkArenaScope nav_triangle_transform_scope = jk_arena_scope_begin(scratch1.arena);
@@ -1041,7 +1041,7 @@ void render(JkContext *context, Environment *env)
             int32_t *nav_zs = jk_arena_push(scratch1.arena, vertices.count * JK_SIZEOF(*nav_zs));
             for (int64_t i = 0; i < vertices.count; i++) {
                 JkVec3 vert_f32 = jk_mat4_mul_point(nav_from_local, vertices.e[i]);
-                nav_vertices[i] = jk_q16_vec2_from_f32(jk_vec3_to_2(vert_f32));
+                nav_vertices[i] = jk_q16_vec2_from_f32(jk_vec2_from_3(vert_f32));
                 nav_zs[i] = jk_q16_from_f32(vert_f32.z);
             }
 
@@ -1161,7 +1161,7 @@ void render(JkContext *context, Environment *env)
 
             JkVec2 world_pos[4];
             world_pos[0] =
-                    jk_vec2_mul(nav_density, jk_vec2_add(jk_vec2_from_int(ring->pos), nav_origin));
+                    jk_vec2_mul(nav_density, jk_vec2_add(jk_vec2_from_i32(ring->pos), nav_origin));
             world_pos[1] = jk_vec2_add(world_pos[0], (JkVec2){nav_density, 0});
             world_pos[2] = jk_vec2_add(world_pos[0], (JkVec2){nav_density, nav_density});
             world_pos[3] = jk_vec2_add(world_pos[0], (JkVec2){0, nav_density});
@@ -1248,8 +1248,8 @@ void render(JkContext *context, Environment *env)
                 int64_t edge_index = JK_MOD(i + first_inside, 4);
 
                 if (ring->corners[edge_index] != &nil_contact) {
-                    points[ring->vertex_count++] = jk_vec2_to_3(
-                            world_pos[edge_index], jk_q16_to_f32(ring->corners[edge_index]->z));
+                    points[ring->vertex_count++] = jk_vec3_from_2(
+                            world_pos[edge_index], jk_f32_from_q16(ring->corners[edge_index]->z));
                 }
                 if (JK_FLAG_GET(ring->flags, NAV_RING_FOUND_EDGE_UP + edge_index)) {
                     points[ring->vertex_count++] = ring->found_points[edge_index];
@@ -1374,7 +1374,7 @@ void render(JkContext *context, Environment *env)
             .scale = {1, 1, 1},
         };
 
-        clip_from_world = jk_transform_to_mat4_inv(camera_transform);
+        clip_from_world = jk_mat4_from_transform_inv(camera_transform);
         clip_from_world = jk_mat4_mul(
                 jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
                 clip_from_world);
@@ -1409,7 +1409,7 @@ void render(JkContext *context, Environment *env)
             JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
             JkMat4 clip_from_local = jk_mat4_mul(clip_from_world, world_from_local);
 
-            // jk_mat4_mul_vec4(clip_from_local, jk_vec3_to_4(vertices.e[i], 1));
+            // jk_mat4_mul_vec4(clip_from_local, jk_vec4_from_3(vertices.e[i], 1));
 
             // Clip and bin faces for later rendering
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
@@ -1468,9 +1468,9 @@ void render(JkContext *context, Environment *env)
                 for (int64_t i = 0; i < 3; i++) {
                     int64_t b_i = (i + 1) % 3;
                     JkVec4 a = jk_mat4_mul_vec4(
-                            clip_from_local, jk_vec3_to_4(vertices.e[face.v[i]], 1));
+                            clip_from_local, jk_vec4_from_3(vertices.e[face.v[i]], 1));
                     JkVec4 b = jk_mat4_mul_vec4(
-                            clip_from_local, jk_vec3_to_4(vertices.e[face.v[b_i]], 1));
+                            clip_from_local, jk_vec4_from_3(vertices.e[face.v[b_i]], 1));
                     b32 a_inside = !!(a.z < a.w);
                     b32 b_inside = !!(b.z < b.w);
                     if (a_inside != b_inside) { // Crosses clip plane, add interpolated vertex
@@ -1636,7 +1636,7 @@ void render(JkContext *context, Environment *env)
                 .count = JK_ARRAY_COUNT(env->assets->shapes), .e = env->assets->shapes};
             float pixels_per_unit = JK_MIN(dimensions.x, dimensions.y) / 64.0f;
             JkVec2 ui_dimensions =
-                    jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_int(dimensions));
+                    jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_i32(dimensions));
             jk_shapes_renderer_init(
                     &renderer, pixels_per_unit, env->assets, shapes, scratch0.arena);
 

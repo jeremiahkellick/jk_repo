@@ -227,7 +227,7 @@ static BitmapSpan bitmap_get(Context *c, JkBuffer image_file_name)
         JkBuffer image_path =
                 JK_FORMAT(c->scratch_arena, jkfs(c->directory), jkfn("/"), jkfs(image_file_name));
         JkBuffer image_file = jk_platform_file_read_full(
-                c->scratch_arena, jk_buffer_to_null_terminated(c->scratch_arena, image_path));
+                c->scratch_arena, jk_null_terminated_from_buffer(c->scratch_arena, image_path));
 
         b32 valid = 1;
         int64_t source_size = 0;
@@ -253,7 +253,7 @@ static BitmapSpan bitmap_get(Context *c, JkBuffer image_file_name)
             JkColor *dest_pointer = jk_arena_push(
                     c->result_arena, JK_SIZEOF(JkColor) * span->dimensions.x * span->dimensions.y);
             while (src_pointer < src_endpoint) {
-                *dest_pointer++ = jk_color3_to_4(*src_pointer++, 0xff);
+                *dest_pointer++ = jk_color4_from_3(*src_pointer++, 0xff);
             }
         } else {
             fprintf(stderr, "bitmap_get: Invalid image file format, expects 24-bit BMP\n");
@@ -564,7 +564,7 @@ static void process_thing(JkArenaScope objects_scope, Thing *thing, ObjectId obj
             }
         }
 
-        object->transform.rotation = jk_mat4_to_quat(local_matrix);
+        object->transform.rotation = jk_quat_from_mat4(local_matrix);
     }
 
     if (object_id.i) {

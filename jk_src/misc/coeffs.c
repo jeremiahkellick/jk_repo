@@ -11,7 +11,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     JkArena *arena = jk_arena_scratch_begin().arena;
 
     for (int64_t n = 4; n <= 9; n++) {
-        char *file_name = jk_buffer_to_null_terminated(
+        char *file_name = jk_null_terminated_from_buffer(
                 arena, JK_FORMAT(arena, jkfn("coefficients_"), jkfi(n)));
         JkBuffer file = jk_platform_file_read_full(arena, file_name);
         float *coeffs = (float *)file.data;

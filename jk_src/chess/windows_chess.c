@@ -278,7 +278,7 @@ static void debug_print(JkBuffer string)
     AcquireSRWLockExclusive(&g_shared.debug_print_lock);
     JK_ARENA_SCRATCH(scratch)
     {
-        OutputDebugStringA(jk_buffer_to_null_terminated(scratch.arena, string));
+        OutputDebugStringA(jk_null_terminated_from_buffer(scratch.arena, string));
     }
     ReleaseSRWLockExclusive(&g_shared.debug_print_lock);
 }

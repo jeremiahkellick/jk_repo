@@ -229,17 +229,13 @@ typedef struct JkBufferArray {
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal)                    \
-    {                                                            \
-        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
-    }
+#define JK_STRING_INITIALIZER(string_literal) \
+    {JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal}
 
 #define JKSI JK_STRING_INITIALIZER
 
-#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)        \
-    {                                                     \
-        .size = JK_SIZEOF(byte_array), .data = byte_array \
-    }
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array) \
+    {.size = JK_SIZEOF(byte_array), .data = byte_array}
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
@@ -255,7 +251,7 @@ JK_PUBLIC int64_t jk_strlen(char *string);
 
 JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
-JK_PUBLIC char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer);
+JK_PUBLIC char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer);
 
 JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos);
 
@@ -290,18 +286,17 @@ JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string);
 
 JK_PUBLIC int64_t jk_string_find(JkBuffer string, JkBuffer substring);
 
-JK_PUBLIC JkBuffer jk_int_to_string(JkArena *arena, int64_t value);
+JK_PUBLIC JkBuffer jk_string_from_int(JkArena *arena, int64_t value);
 
-JK_PUBLIC JkBuffer jk_unsigned_to_string(JkArena *arena, uint64_t value, int64_t min_width);
+JK_PUBLIC JkBuffer jk_string_from_unsigned(JkArena *arena, uint64_t value, int64_t min_width);
 
 JK_GLOBAL_DECLARE uint8_t jk_hex_char[16];
 
-JK_PUBLIC JkBuffer jk_unsigned_to_hexadecimal_string(
-        JkArena *arena, uint64_t value, int16_t min_width);
+JK_PUBLIC JkBuffer jk_string_from_hex(JkArena *arena, uint64_t value, int16_t min_width);
 
-JK_PUBLIC JkBuffer jk_unsigned_to_binary_string(JkArena *arena, uint64_t value, int16_t min_width);
+JK_PUBLIC JkBuffer jk_string_from_binary(JkArena *arena, uint64_t value, int16_t min_width);
 
-JK_PUBLIC JkBuffer jk_f64_to_string(JkArena *arena, double value, int64_t decimal_places);
+JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t decimal_places);
 
 typedef enum JkFormatItemType {
     JK_FORMAT_ITEM_NULL_TERMINATED,
@@ -586,7 +581,7 @@ JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x);
 
 JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x);
 
-JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x);
+JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x);
 
 // ---- SIMD end ---------------------------------------------------------------
 
@@ -594,15 +589,15 @@ JK_PUBLIC JkI256 jk_truncate_f32x8_to_i32x8(JkF32x8 x);
 
 JK_PUBLIC int32_t jk_q16_from_i32(int32_t x);
 
-JK_PUBLIC int32_t jk_q16_to_i32(int32_t x);
+JK_PUBLIC int32_t jk_i32_from_q16_truncate(int32_t x);
 
-JK_PUBLIC int32_t jk_q16_truncate_to_i32(int32_t x);
+JK_PUBLIC int32_t jk_i32_from_q16_floor(int32_t x);
 
-JK_PUBLIC int32_t jk_q16_ceil_to_i32(int32_t x);
+JK_PUBLIC int32_t jk_i32_from_q16_ceil(int32_t x);
 
 JK_PUBLIC int32_t jk_q16_from_f32(float x);
 
-JK_PUBLIC float jk_q16_to_f32(int32_t x);
+JK_PUBLIC float jk_f32_from_q16(int32_t x);
 
 JK_PUBLIC int32_t jk_q16_mul(int32_t a, int32_t b);
 
@@ -790,7 +785,7 @@ JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v);
 
 JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v);
 
-JK_PUBLIC JkVec2 jk_q16_vec2_to_f32(JkQ16Vec2 v);
+JK_PUBLIC JkVec2 jk_vec2_from_q16(JkQ16Vec2 v);
 
 // ---- JkQ16Vec2 end ----------------------------------------------------------
 
@@ -817,7 +812,7 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_f32(JkVec3 v);
 
-JK_PUBLIC JkVec3 jk_q16_vec3_to_f32(JkQ16Vec3 v);
+JK_PUBLIC JkVec3 jk_vec3_from_q16(JkQ16Vec3 v);
 
 // ---- JkQ16Vec3 end ----------------------------------------------------------
 
@@ -856,11 +851,11 @@ JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t);
 
 JK_PUBLIC float jk_vec2_distance_squared(JkVec2 a, JkVec2 b);
 
-JK_PUBLIC JkVec2 jk_vec2_from_int(JkIntVec2 int_vector);
+JK_PUBLIC JkVec2 jk_vec2_from_i32(JkIntVec2 int_vector);
 
 JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector);
 
-JK_PUBLIC JkVec3 jk_vec2_to_3(JkVec2 v, float z);
+JK_PUBLIC JkVec2 jk_vec2_from_3(JkVec3 v);
 
 JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector);
 
@@ -905,7 +900,7 @@ JK_PUBLIC float jk_vec3_distance_squared(JkVec3 a, JkVec3 b);
 
 JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector);
 
-JK_PUBLIC JkVec2 jk_vec3_to_2(JkVec3 v);
+JK_PUBLIC JkVec3 jk_vec3_from_2(JkVec2 v, float z);
 
 // ---- JkVec3 end -------------------------------------------------------------
 
@@ -928,11 +923,11 @@ JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v);
 
 JK_PUBLIC JkVec4 jk_vec4_lerp(JkVec4 a, JkVec4 b, float t);
 
-JK_PUBLIC JkVec4 jk_vec3_to_4(JkVec3 v, float w);
+JK_PUBLIC JkVec4 jk_vec4_from_3(JkVec3 v, float w);
 
-JK_PUBLIC JkVec2 jk_vec4_to_2(JkVec4 v);
+JK_PUBLIC JkVec2 jk_vec2_from_4(JkVec4 v);
 
-JK_PUBLIC JkVec3 jk_vec4_to_3(JkVec4 v);
+JK_PUBLIC JkVec3 jk_vec3_from_4(JkVec4 v);
 
 JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v);
 
@@ -1007,9 +1002,9 @@ JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b);
 
 JkVec3 jk_quat_rotate(JkVec4 q, JkVec3 v);
 
-JkMat4 jk_quat_to_mat4(JkVec4 q);
+JkMat4 jk_mat4_from_quat(JkVec4 q);
 
-JkVec4 jk_mat4_to_quat(JkMat4 m);
+JkVec4 jk_quat_from_mat4(JkMat4 m);
 
 // ---- Quaternion end ---------------------------------------------------------
 
@@ -1021,9 +1016,9 @@ typedef struct JkTransform {
     JkVec3 scale;
 } JkTransform;
 
-JK_PUBLIC JkMat4 jk_transform_to_mat4(JkTransform t);
+JK_PUBLIC JkMat4 jk_mat4_from_transform(JkTransform t);
 
-JK_PUBLIC JkMat4 jk_transform_to_mat4_inv(JkTransform t);
+JK_PUBLIC JkMat4 jk_mat4_from_transform_inv(JkTransform t);
 
 // ---- JkTransform end --------------------------------------------------------
 
@@ -1059,7 +1054,7 @@ typedef struct JkEdgeArray {
     JkEdge *e;
 } JkEdgeArray;
 
-JK_PUBLIC JkEdge jk_points_to_edge(JkVec2 a, JkVec2 b);
+JK_PUBLIC JkEdge jk_edge_from_points(JkVec2 a, JkVec2 b);
 
 typedef struct JkRect {
     JkVec2 min;
@@ -1537,7 +1532,7 @@ typedef struct JkColor {
     };
 } JkColor;
 
-JK_PUBLIC JkColor jk_color3_to_4(JkColor3 color, uint8_t alpha);
+JK_PUBLIC JkColor jk_color4_from_3(JkColor3 color, uint8_t alpha);
 
 JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha);
 

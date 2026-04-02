@@ -368,7 +368,7 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
     for (JkShapesPointListNode *node = start_node; node && node->next; node = node->next) {
         if (!node->next->is_cursor_movement && node->point.y != node->next->point.y) {
             JkEdge *new_edge = jk_arena_push(arena, JK_SIZEOF(*new_edge));
-            *new_edge = jk_points_to_edge(node->point, node->next->point);
+            *new_edge = jk_edge_from_points(node->point, node->next->point);
         }
     }
     edges.count = (JkEdge *)jk_arena_pointer_current(arena) - edges.e;

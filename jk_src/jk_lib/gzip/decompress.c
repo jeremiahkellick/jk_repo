@@ -23,7 +23,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         result.name = JK_FORMAT(arena, jkfn("decompressed_"), jkfn(argv[0]));
     }
 
-    char *output_file_name = jk_buffer_to_null_terminated(arena, result.name);
+    char *output_file_name = jk_null_terminated_from_buffer(arena, result.name);
     FILE *output_file = fopen(output_file_name, "wb");
     if (output_file) {
         fwrite(result.contents.data, 1, result.contents.size, output_file);

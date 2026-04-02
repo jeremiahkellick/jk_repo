@@ -217,7 +217,7 @@ static JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer)
     return result;
 }
 
-static char *jk_buffer_to_null_terminated(JkArena *arena, JkBuffer buffer)
+static char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer)
 {
     char *result = jk_arena_push(arena, buffer.size + 1);
     result[buffer.size] = '\0';
@@ -825,7 +825,7 @@ static Paths paths_get(JkArena *arena, JkArena *scratch_arena, JkBuffer source_f
 
     { // Get absolute path of the source file
         JkArena tmp_arena = jk_arena_child_get(scratch_arena);
-        char *relative_path = jk_buffer_to_null_terminated(&tmp_arena, source_file_relative_path);
+        char *relative_path = jk_null_terminated_from_buffer(&tmp_arena, source_file_relative_path);
         char *absolute_path = realpath(relative_path, jk_arena_push(arena, PATH_MAX));
         paths.source_file = jk_buffer_from_null_terminated(absolute_path);
         if (!paths.source_file.size) {
@@ -976,7 +976,7 @@ static int64_t parse_files(JkArena *storage,
     do {
         JkArena file_arena = jk_arena_child_get(scratch_arena);
         JkBuffer file = jk_platform_file_read_full(
-                &file_arena, jk_buffer_to_null_terminated(&file_arena, path));
+                &file_arena, jk_null_terminated_from_buffer(&file_arena, path));
 
         int64_t pos = 0;
         b32 dependencies_open = 0;
@@ -1432,7 +1432,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
     ensure_directory_exists(paths.build);
     {
         JkArena tmp_arena = jk_arena_child_get(&scratch_arena);
-        if (chdir(jk_buffer_to_null_terminated(&tmp_arena, paths.build)) == -1) {
+        if (chdir(jk_null_terminated_from_buffer(&tmp_arena, paths.build)) == -1) {
             fprintf(stderr,
                     "%s: Failed to change working directory to \"%.*s\": %s\n",
                     program_name,
@@ -1669,7 +1669,7 @@ static int jk_build(Options options, JkBuffer source_file_relative_path)
 
         ensure_directory_exists(stu_directory);
 
-        FILE *stu_file = fopen(jk_buffer_to_null_terminated(&storage, stu_file_path), "wb");
+        FILE *stu_file = fopen(jk_null_terminated_from_buffer(&storage, stu_file_path), "wb");
         if (stu_file == NULL) {
             fprintf(stderr,
                     "%s: Failed to open '%.*s': %s\n",
