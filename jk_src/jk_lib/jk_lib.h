@@ -229,13 +229,17 @@ typedef struct JkBufferArray {
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal) \
-    {JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal}
+#define JK_STRING_INITIALIZER(string_literal)                    \
+    {                                                            \
+        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
+    }
 
 #define JKSI JK_STRING_INITIALIZER
 
-#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array) \
-    {.size = JK_SIZEOF(byte_array), .data = byte_array}
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)        \
+    {                                                     \
+        .size = JK_SIZEOF(byte_array), .data = byte_array \
+    }
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
@@ -806,7 +810,11 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_mul(int32_t scalar, JkQ16Vec3 vector);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 vector);
 
+JK_PUBLIC int32_t jk_q16_vec3_dot(JkQ16Vec3 u, JkQ16Vec3 v);
+
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v);
+
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_lerp(JkQ16Vec3 a, JkQ16Vec3 b, int32_t t);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z);
 
