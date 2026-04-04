@@ -815,6 +815,8 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_mul(int32_t scalar, JkQ16Vec3 vector);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 vector);
 
+JK_PUBLIC int32_t jk_q16_vec3_magnitude_sqr(JkQ16Vec3 v);
+
 JK_PUBLIC int32_t jk_q16_vec3_dot(JkQ16Vec3 u, JkQ16Vec3 v);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v);

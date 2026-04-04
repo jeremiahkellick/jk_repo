@@ -1974,6 +1974,11 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 v)
     };
 }
 
+JK_PUBLIC int32_t jk_q16_vec3_magnitude_sqr(JkQ16Vec3 v)
+{
+    return jk_q16_mul(v.x, v.x) + jk_q16_mul(v.y, v.y) + jk_q16_mul(v.z, v.z);
+}
+
 JK_PUBLIC int32_t jk_q16_vec3_dot(JkQ16Vec3 u, JkQ16Vec3 v)
 {
     return jk_q16_mul(u.x, v.x) + jk_q16_mul(u.y, v.y) + jk_q16_mul(u.z, v.z);
