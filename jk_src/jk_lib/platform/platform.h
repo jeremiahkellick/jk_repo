@@ -36,7 +36,7 @@ typedef struct JkPlatformBarrier {
 
 // ---- OS functions begin -----------------------------------------------------
 
-JK_PUBLIC int64_t jk_platform_file_size(char *file_name);
+JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path);
 
 JK_PUBLIC int64_t jk_platform_page_size(void);
 
@@ -319,6 +319,10 @@ JK_PUBLIC JkLog *jk_platform_log_create(int64_t size);
 JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n);
 
 JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n);
+
+JK_PUBLIC JkBuffer jk_platform_file_read(JkArena *arena, JkBuffer path);
+
+JK_PUBLIC b32 jk_platform_file_write(JkBuffer path, JkBuffer contents);
 
 JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name);
 

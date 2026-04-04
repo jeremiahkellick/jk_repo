@@ -257,6 +257,8 @@ JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string);
 
 JK_PUBLIC char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer);
 
+JK_PUBLIC JkBuffer jk_buffer_from_arena(JkArena *arena);
+
 JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos);
 
 JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos);
@@ -303,6 +305,7 @@ JK_PUBLIC JkBuffer jk_string_from_binary(JkArena *arena, uint64_t value, int16_t
 JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t decimal_places);
 
 typedef enum JkFormatItemType {
+    JK_FORMAT_ITEM_CHARACTER,
     JK_FORMAT_ITEM_NULL_TERMINATED,
     JK_FORMAT_ITEM_STRING,
     JK_FORMAT_ITEM_INT,
@@ -337,6 +340,8 @@ typedef struct JkFormatItemArray {
     int64_t count;
     JkFormatItem *e;
 } JkFormatItemArray;
+
+JK_PUBLIC JkFormatItem jkfc(uint8_t character);
 
 JK_PUBLIC JkFormatItem jkfn(char *null_termianted);
 
@@ -630,8 +635,6 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size);
 
 JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size);
 
-JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena);
-
 #define JK_ARENA_PUSH_ARRAY(arena, array, item_count)                           \
     do {                                                                        \
         (array).count = item_count;                                             \
@@ -733,6 +736,14 @@ typedef struct JkIntVec2Array {
     JkIntVec2 *e;
 } JkIntVec2Array;
 
+typedef union JkQ16Vec2 {
+    int32_t v[2];
+    struct {
+        int32_t x;
+        int32_t y;
+    };
+} JkQ16Vec2;
+
 JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b);
 
 JK_PUBLIC JkIntVec2 jk_int_vec2_add(JkIntVec2 a, JkIntVec2 b);
@@ -745,17 +756,11 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector);
 
 JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector);
 
+JK_PUBLIC JkIntVec2 jk_int_vec2_from_q16_floor(JkQ16Vec2 v);
+
 // ---- JkIntVec2 end ----------------------------------------------------------
 
 // ---- JkQ16Vec2 begin --------------------------------------------------------
-
-typedef union JkQ16Vec2 {
-    int32_t v[2];
-    struct {
-        int32_t x;
-        int32_t y;
-    };
-} JkQ16Vec2;
 
 typedef struct JkQ16Vec2Array {
     int64_t count;
@@ -815,6 +820,8 @@ JK_PUBLIC int32_t jk_q16_vec3_dot(JkQ16Vec3 u, JkQ16Vec3 v);
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_lerp(JkQ16Vec3 a, JkQ16Vec3 b, int32_t t);
+
+JK_PUBLIC int32_t jk_q16_vec3_distance_sqr(JkQ16Vec3 a, JkQ16Vec3 b);
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z);
 

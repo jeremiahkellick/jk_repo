@@ -498,14 +498,24 @@ int32_t main(int32_t argc, char **argv)
     return jk_platform_init_common(argc, argv);
 }
 
-JK_PUBLIC int64_t jk_platform_file_size(char *file_name)
+JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path)
 {
     struct stat stat_struct = {0};
-    if (stat(file_name, &stat_struct)) {
-        fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
-        return 0;
+    int error_code = 0;
+    JK_ARENA_SCRATCH(scratch)
+    {
+        error_code = stat(jk_null_terminated_from_buffer(scratch.arena, path), &stat_struct);
     }
-    return (int64_t)stat_struct.st_size;
+    if (error_code) {
+        JK_LOGF(JK_LOG_ERROR,
+                jkfn("Could not determine the size of '"),
+                jkfs(path),
+                jkfn("': "),
+                jkfn(strerror(errno)));
+        return 0;
+    } else {
+        return (int64_t)stat_struct.st_size;
+    }
 }
 
 JK_PUBLIC int64_t jk_platform_page_size(void)
@@ -1275,6 +1285,73 @@ JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n)
     return n & ~(page_size - 1);
 }
 
+JK_PUBLIC JkBuffer jk_platform_file_read(JkArena *arena, JkBuffer path)
+{
+    JkBuffer result = {0};
+
+    b32 errno_error = 0;
+
+    FILE *file = 0;
+    JK_ARENA_SCRATCH_NOT(scratch, arena)
+    {
+        char *path_nt = jk_null_terminated_from_buffer(scratch.arena, path);
+        file = fopen(path_nt, "rb");
+    }
+    if (file) {
+        JkBuffer buffer = {.size = jk_platform_file_size(path)};
+        buffer.data = jk_arena_push(arena, buffer.size);
+        if (buffer.data) {
+            if (fread(buffer.data, buffer.size, 1, file) == 1) {
+                result = buffer;
+            } else {
+                errno_error = 1;
+            }
+        }
+
+        fclose(file);
+    } else {
+        errno_error = 1;
+    }
+
+    if (errno_error) {
+        JK_LOGF(JK_LOG_ERROR,
+                jkfn("Failed to read file '"),
+                jkfs(path),
+                jkfn("': "),
+                jkfn(strerror(errno)));
+    }
+
+    return result;
+}
+
+JK_PUBLIC b32 jk_platform_file_write(JkBuffer path, JkBuffer contents)
+{
+    b32 success = 1;
+
+    FILE *file = 0;
+    JK_ARENA_SCRATCH(scratch)
+    {
+        file = fopen(jk_null_terminated_from_buffer(scratch.arena, path), "wb");
+    }
+    if (file) {
+        if (fwrite(contents.data, contents.size, 1, file) != 1) {
+            success = 0;
+        }
+    } else {
+        success = 0;
+    }
+
+    if (!success) {
+        JK_LOGF(JK_LOG_ERROR,
+                jkfn("Failed to write file '"),
+                jkfs(path),
+                jkfn("': "),
+                jkfn(strerror(errno)));
+    }
+
+    return success;
+}
+
 JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
 {
     JK_PROFILE_ZONE_TIME_BEGIN(jk_platform_file_read_full);
@@ -1289,7 +1366,7 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
         exit(1);
     }
 
-    JkBuffer buffer = {.size = jk_platform_file_size(file_name)};
+    JkBuffer buffer = {.size = jk_platform_file_size(jk_buffer_from_null_terminated(file_name))};
     buffer.data = jk_arena_push(arena, buffer.size);
     if (!buffer.data) {
         JK_PROFILE_ZONE_END(jk_platform_file_read_full);

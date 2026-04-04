@@ -345,7 +345,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     fclose(binary_file);
 
     // Write as C byte array to jk_gen/chess/assets.c
-    jk_platform_write_as_c_byte_array(jk_arena_as_buffer(&storage),
+    jk_platform_write_as_c_byte_array(jk_buffer_from_arena(&storage),
             JKS("../jk_gen/chess/assets.c"),
             JKS("chess_assets_byte_array"));
 

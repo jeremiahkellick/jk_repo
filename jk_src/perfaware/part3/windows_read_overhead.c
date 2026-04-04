@@ -281,7 +281,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         exit(1);
     }
 
-    ReadParams params = {.file_name = argv[1], .dest = {.size = jk_platform_file_size(argv[1])}};
+    ReadParams params = {.file_name = argv[1],
+        .dest = {.size = jk_platform_file_size(jk_buffer_from_null_terminated(argv[1]))}};
     global_buffer = malloc(params.dest.size);
     if (!global_buffer) {
         fprintf(stderr, "%s: Failed to allocate memory\n", argv[0]);

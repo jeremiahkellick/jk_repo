@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 // #jk_build single_translation_unit
@@ -39,7 +40,7 @@ static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params
         handle_allocation(&params);
 
         jk_platform_repetition_test_time_begin(test);
-        for ( i = 0; i < params.dest.size; i++) {
+        for (int64_t i = 0; i < params.dest.size; i++) {
             params.dest.data[i] = (uint8_t)i;
         }
         jk_platform_repetition_test_time_end(test);
@@ -56,7 +57,7 @@ static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadPar
         handle_allocation(&params);
 
         jk_platform_repetition_test_time_begin(test);
-        for ( i = 0; i < params.dest.size; i++) {
+        for (int64_t i = 0; i < params.dest.size; i++) {
             params.dest.data[params.dest.size - 1 - i] = (uint8_t)i;
         }
         jk_platform_repetition_test_time_end(test);
@@ -140,7 +141,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         exit(1);
     }
 
-    ReadParams params = {.file_name = argv[1], .dest = {.size = jk_platform_file_size(argv[1])}};
+    ReadParams params = {.file_name = argv[1],
+        .dest = {.size = jk_platform_file_size(jk_buffer_from_null_terminated(argv[1]))}};
     params.dest.data =
             mmap(NULL, params.dest.size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (!params.dest.data) {

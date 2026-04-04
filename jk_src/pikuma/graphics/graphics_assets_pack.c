@@ -256,7 +256,7 @@ static BitmapSpan bitmap_get(Context *c, JkBuffer image_file_name)
                 *dest_pointer++ = jk_color4_from_3(*src_pointer++, 0xff);
             }
         } else {
-            fprintf(stderr, "bitmap_get: Invalid image file format, expects 24-bit BMP\n");
+            jk_log(JK_LOG_ERROR, JKS("bitmap_get: Invalid image file format, expects 24-bit BMP"));
             *span = error_bitmap(c);
         }
 
@@ -280,16 +280,19 @@ static JkDoubleArray read_doubles(Context *c, JkFbxNode *node)
             if (decompressed_data.size == byte_count) {
                 result.e = (double *)decompressed_data.data;
             } else {
-                fprintf(stderr, "read_doubles: Failed to decompress\n");
+                jk_log(JK_LOG_ERROR, JKS("read_doubles: Failed to decompress"));
             }
         } else {
-            fprintf(stderr, "read_doubles: Unrecognized array encoding\n");
+            jk_log(JK_LOG_ERROR, JKS("read_doubles: Unrecognized array encoding"));
         }
         if (result.e) {
             result.count = array->length;
         }
     } else {
-        fprintf(stderr, "read_doubles: expected type 'd', got '%c'\n", type);
+        JK_LOGF(JK_LOG_ERROR,
+                jkfn("read_doubles: expected type 'd', got '"),
+                jkfc(type),
+                jkfn("'"));
     }
     return result;
 }
@@ -310,16 +313,16 @@ static JkInt32Array read_ints(Context *c, JkFbxNode *node)
             if (decompressed_data.size == byte_count) {
                 result.e = (int32_t *)decompressed_data.data;
             } else {
-                fprintf(stderr, "read_ints: Failed to decompress\n");
+                jk_log(JK_LOG_ERROR, JKS("read_ints: Failed to decompress"));
             }
         } else {
-            fprintf(stderr, "read_ints: Unrecognized array encoding\n");
+            jk_log(JK_LOG_ERROR, JKS("read_ints: Unrecognized array encoding"));
         }
         if (result.e) {
             result.count = array->length;
         }
     } else {
-        fprintf(stderr, "read_ints: expected type 'i', got '%c'\n", type);
+        JK_LOGF(JK_LOG_ERROR, jkfn("read_ints: expected type 'i', got '"), jkfc(type), jkfn("'"));
     }
     return result;
 }
@@ -368,7 +371,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     thing->texcoord_indexes = indexes;
                 }
             } else {
-                fprintf(stderr, "process_fbx_nodes: Nothing to write indexes to\n");
+                jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Nothing to write indexes to"));
             }
         } else if (jk_buffer_compare(name, JKS("C")) == 0) {
             b32 valid = 1;
@@ -393,7 +396,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 parent_fbx_id = *(int64_t *)(node->name + cursor);
                 thing_connect(child_fbx_id, parent_fbx_id);
             } else {
-                fprintf(stderr, "process_fbx_nodes: Problem parsing connection\n");
+                jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Problem parsing connection"));
             }
         } else if (jk_buffer_compare(name, JKS("RelativeFilename")) == 0) {
             int64_t cursor = node->name_length;
@@ -405,7 +408,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     thing->image = bitmap_get(c, image_file_name);
                 }
             } else {
-                fprintf(stderr, "process_fbx_nodes: Problem parsing RelativeFilename\n");
+                jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Problem parsing RelativeFilename"));
             }
         } else if (jk_buffer_compare(name, JKS("P")) == 0) {
             b32 proceed = 1;
@@ -499,7 +502,10 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 new_thing->texcoords_base = c->texcoords_arena->pos / JK_SIZEOF(JkVec2);
                 process_fbx_nodes(c, file, pos_children, new_thing);
             } else {
-                fprintf(stderr, "read_doubles: For object ID, expected type 'L', got '%c'\n", type);
+                JK_LOGF(JK_LOG_ERROR,
+                        jkfn("read_doubles: For object ID, expected type 'L', got '"),
+                        jkfc(type),
+                        jkfn("'"));
             }
         }
 
@@ -639,8 +645,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     if (jk_buffer_compare((JkBuffer){.size = JK_SIZEOF(header->magic), .data = header->magic},
                 JKS("Kaydara FBX Binary  "))
             != 0) {
-        fprintf(stderr, "'%s': unrecognized file format\n", (char *)file_path.data);
-        exit(1);
+        JK_LOGF(JK_LOG_ERROR, jkfn("'"), jkfs(file_path), jkfn("': unrecognized file format"));
+        return 1;
     }
 
     Assets *assets = jk_arena_push(&result_arena, JK_SIZEOF(*assets));
@@ -651,8 +657,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         char *ttf_file_name = "../jk_assets/pikuma/graphics/Inconsolata-Regular.ttf";
         JkBuffer ttf_file = jk_platform_file_read_full(&scratch_arena, ttf_file_name);
         if (!ttf_file.size) {
-            fprintf(stderr, "Failed to read file '%s'\n", ttf_file_name);
-            exit(1);
+            JK_LOGF(JK_LOG_ERROR, jkfn("Failed to read file '"), jkfn(ttf_file_name), jkfn("'"));
+            return 1;
         }
 
         stbtt_fontinfo font;
@@ -758,9 +764,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 int32_t vertex_index = thing->vertex_indexes.e[i];
                 if (vertex_index < 0) {
                     if (point_index != 2) {
-                        fprintf(stderr,
-                                "process_fbx_nodes: Encountered non-triangle "
-                                "polygon\n");
+                        fprintf(stderr, "process_fbx_nodes: Encountered non-triangle polygon");
                     }
                     end_of_polygon = 1;
                     vertex_index = ~vertex_index;
@@ -772,7 +776,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     }
                     point_index++;
                 } else {
-                    fprintf(stderr, "process_fbx_nodes: Encountered non-triangle polygon\n");
+                    jk_log(JK_LOG_ERROR,
+                            JKS("process_fbx_nodes: Encountered non-triangle polygon"));
                 }
                 i++;
             }
@@ -793,19 +798,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
     assets->objects = arena_scope_span(objects_scope);
 
-    char *binary_file_name = "graphics_assets";
-    FILE *binary_file = fopen(binary_file_name, "wb");
-    if (binary_file) {
-        fwrite(result_arena.memory.data, result_arena.pos, 1, binary_file);
-    } else {
-        fprintf(stderr,
-                "%s: Failed to open '%s': %s\n",
-                argv[0],
-                binary_file_name,
-                strerror(errno));
-    }
+    jk_platform_file_write(JKS("graphics_assets"), jk_buffer_from_arena(&result_arena));
 
-    jk_platform_write_as_c_byte_array(jk_arena_as_buffer(&result_arena),
+    jk_platform_write_as_c_byte_array(jk_buffer_from_arena(&result_arena),
             JKS("../jk_gen/pikuma/graphics/assets.c"),
             JKS("assets_byte_array"));
 

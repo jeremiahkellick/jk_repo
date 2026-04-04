@@ -536,6 +536,11 @@ JK_PUBLIC char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer)
     return result;
 }
 
+JK_PUBLIC JkBuffer jk_buffer_from_arena(JkArena *arena)
+{
+    return (JkBuffer){.size = arena->pos, .data = arena->memory.data};
+}
+
 JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos)
 {
     return (0 <= pos && pos < buffer.size) ? buffer.data[pos] : JK_OOB;
@@ -832,6 +837,14 @@ JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t deci
     }
 }
 
+JK_PUBLIC JkFormatItem jkfc(uint8_t character)
+{
+    return (JkFormatItem){
+        .type = JK_FORMAT_ITEM_CHARACTER,
+        .unsigned_value = character,
+    };
+}
+
 // Include a null terminated string in JK_FORMAT
 JK_PUBLIC JkFormatItem jkfn(char *null_terminated)
 {
@@ -922,6 +935,11 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
     for (int64_t i = 0; i < items.count; i++) {
         JkFormatItem *item = items.e + i;
         switch (item->type) {
+        case JK_FORMAT_ITEM_CHARACTER: {
+            uint8_t *character = jk_arena_push(arena, sizeof(*character));
+            *character = (uint8_t)item->unsigned_value;
+        } break;
+
         case JK_FORMAT_ITEM_NULL_TERMINATED: {
             jk_buffer_copy(arena, jk_buffer_from_null_terminated(item->null_terminated));
         } break;
@@ -1570,6 +1588,7 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
     int64_t new_pos = arena->pos + size;
     if (arena->memory.size < new_pos) {
         if (!(arena->grow && arena->grow(arena, new_pos))) {
+            jk_log(JK_LOG_ERROR, JKS("An arena allocation failed"));
             return 0;
         }
     }
@@ -1595,14 +1614,6 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size)
 JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size)
 {
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
-}
-
-JK_PUBLIC JkBuffer jk_arena_as_buffer(JkArena *arena)
-{
-    return (JkBuffer){
-        .size = arena->pos,
-        .data = arena->memory.data,
-    };
 }
 
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size)
@@ -1870,6 +1881,11 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector)
     return (JkIntVec2){.x = vector.x % divisor, .y = vector.y % divisor};
 }
 
+JK_PUBLIC JkIntVec2 jk_int_vec2_from_q16_floor(JkQ16Vec2 v)
+{
+    return (JkIntVec2){.x = jk_i32_from_q16_floor(v.x), .y = jk_i32_from_q16_floor(v.y)};
+}
+
 // ---- JkIntVec2 end ----------------------------------------------------------
 
 // ---- JkQ16Vec2 begin --------------------------------------------------------
@@ -1975,6 +1991,14 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v)
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_lerp(JkQ16Vec3 a, JkQ16Vec3 b, int32_t t)
 {
     return jk_q16_vec3_add(jk_q16_vec3_mul(jk_q16_from_i32(1) - t, a), jk_q16_vec3_mul(t, b));
+}
+
+JK_PUBLIC int32_t jk_q16_vec3_distance_sqr(JkQ16Vec3 a, JkQ16Vec3 b)
+{
+    int32_t dx = b.x - a.x;
+    int32_t dy = b.y - a.y;
+    int32_t dz = b.z - a.z;
+    return jk_q16_mul(dx, dx) + jk_q16_mul(dy, dy) + jk_q16_mul(dz, dz);
 }
 
 JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z)

@@ -246,7 +246,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         exit(1);
     }
 
-    int64_t file_size = jk_platform_file_size(argv[1]);
+    int64_t file_size = jk_platform_file_size(jk_buffer_from_null_terminated(argv[1]));
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     JkBuffer full_file_buffer = jk_platform_file_read_full(jk_arena_scratch_begin().arena, argv[1]);
