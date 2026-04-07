@@ -19,7 +19,7 @@
 #define NAV_STEP_HEIGHT jk_q16_from_f32(0.75f)
 #define NAV_HEIGHT jk_q16_from_f32(1.875f)
 
-static float const nav_density = 0.25f;
+static float const nav_density = 0.125f;
 static JkIntVec2 const nav_dimensions = {32, 32};
 
 static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
@@ -197,8 +197,7 @@ static void draw_line(Environment *env, JkColor color, JkVec2 a, JkVec2 b)
 // ---- Xiaolin Wu's line algorithm end ----------------------------------------
 
 typedef struct Q16Triangle {
-    JkQ16Vec2 v[3];
-    int32_t z[3];
+    JkQ16Vec3 v[3];
 } Q16Triangle;
 
 typedef struct TexturedTriangle {
@@ -427,13 +426,19 @@ static void nav_triangle_setup(JkArena *arena, JkIntVec2 nav_dimensions, Q16Tria
         return;
     }
 
+    JkQ16Vec2 verts_2d[3];
+    for (int64_t i = 0; i < 3; i++) {
+        verts_2d[i] = jk_q16_vec2_from_3(tri.v[i]);
+    }
+
     int32_t up = jk_q16_vec2_cross(
-            jk_q16_vec2_sub(tri.v[1], tri.v[0]), jk_q16_vec2_sub(tri.v[2], tri.v[0]));
+            jk_q16_vec2_sub(verts_2d[1], verts_2d[0]), jk_q16_vec2_sub(verts_2d[2], verts_2d[0]));
     if (up < 0) {
-        JK_SWAP(tri.v[1], tri.v[2], JkQ16Vec2);
+        JK_SWAP(verts_2d[1], verts_2d[2], JkQ16Vec2);
     } else if (0 < up) {
         JK_FLAG_SET(result->flags, NAV_CONTACT_UP, 1);
     } else {
+        jk_arena_pop(arena, sizeof(*result));
         return;
     }
 
@@ -442,14 +447,14 @@ static void nav_triangle_setup(JkArena *arena, JkIntVec2 nav_dimensions, Q16Tria
     for (int64_t i = 0; i < 3; i++) {
         int64_t a = (i + 1) % 3;
         int64_t b = (i + 2) % 3;
-        int32_t cross = jk_q16_vec2_cross(tri.v[a], tri.v[b]);
+        int32_t cross = jk_q16_vec2_cross(verts_2d[a], verts_2d[b]);
         barycentric_divisor += cross;
-        int32_t x_delta = tri.v[a].y - tri.v[b].y;
-        int32_t y_delta = tri.v[b].x - tri.v[a].x;
+        int32_t x_delta = verts_2d[a].y - verts_2d[b].y;
+        int32_t y_delta = verts_2d[b].x - verts_2d[a].x;
         result->deltas[0].e[NAV_BARYCENTRIC_0 + i] = x_delta;
         result->deltas[1].e[NAV_BARYCENTRIC_0 + i] = y_delta;
-        b32 top = tri.v[b].x < tri.v[a].x && tri.v[a].y == tri.v[b].y;
-        b32 left = tri.v[b].y < tri.v[a].y;
+        b32 top = verts_2d[b].x < verts_2d[a].x && verts_2d[a].y == verts_2d[b].y;
+        b32 left = verts_2d[b].y < verts_2d[a].y;
         int32_t bias = (top || left) ? 0 : -1;
         result->interpolants.e[NAV_BARYCENTRIC_0 + i] = cross + bias;
     }
@@ -460,12 +465,12 @@ static void nav_triangle_setup(JkArena *arena, JkIntVec2 nav_dimensions, Q16Tria
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t axis_index = 0; axis_index < 2; axis_index++) {
             result->deltas[axis_index].e[NAV_Z] += jk_q16_div(
-                    jk_q16_mul(result->deltas[axis_index].e[NAV_BARYCENTRIC_0 + i], tri.z[i]),
+                    jk_q16_mul(result->deltas[axis_index].e[NAV_BARYCENTRIC_0 + i], tri.v[i].z),
                     barycentric_divisor);
         }
-        result->interpolants.e[NAV_Z] +=
-                jk_q16_div(jk_q16_mul(result->interpolants.e[NAV_BARYCENTRIC_0 + i], tri.z[i]),
-                        barycentric_divisor);
+        result->interpolants.e[NAV_Z] += jk_q16_mul(
+                jk_q16_div(result->interpolants.e[NAV_BARYCENTRIC_0 + i], barycentric_divisor),
+                tri.v[i].z);
     }
 }
 
@@ -1188,11 +1193,6 @@ void render(JkContext *context, Environment *env)
     JkMat4 clip_from_world = jk_mat4_i;
     JkMat4 screen_from_ndc = jk_mat4_i;
 
-    JkVec2 nav_origin =
-            jk_vec2_sub(jk_vec2_mul(1 / nav_density, jk_vec2_from_3(env->state.player_position)),
-                    jk_vec2_mul(0.5, jk_vec2_from_i32(nav_dimensions)));
-    nav_origin.x = jk_floor_f32(nav_origin.x);
-    nav_origin.y = jk_floor_f32(nav_origin.y);
     NavContact **nav_contacts = 0;
     NavRingArray nav_rings = {0};
 
@@ -1297,6 +1297,12 @@ void render(JkContext *context, Environment *env)
 
         // ---- Navigation begin ----------------------------------------------
 
+        JkVec2 nav_origin = jk_vec2_sub(
+                jk_vec2_mul(1 / nav_density, jk_vec2_from_3(env->state.player_position)),
+                jk_vec2_mul(0.5, jk_vec2_from_i32(nav_dimensions)));
+        nav_origin.x = jk_floor_f32(nav_origin.x);
+        nav_origin.y = jk_floor_f32(nav_origin.y);
+
         JkMat4 nav_from_world = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
         nav_from_world = jk_mat4_mul(
                 jk_mat4_translate(jk_vec3_from_2(jk_vec2_mul(-1, nav_origin), 0)), nav_from_world);
@@ -1304,9 +1310,10 @@ void render(JkContext *context, Environment *env)
         int32_t nav_player_radius = jk_q16_from_f32(player_radius / nav_density);
         int32_t nav_player_radius_sqr = jk_q16_mul(nav_player_radius, nav_player_radius);
 
+        JkArenaScope build_navmesh_scope = jk_arena_scope_begin(scratch0.arena);
+
         // Collect navigation triangles
         JkArenaScope nav_triangle_transform_scope = jk_arena_scope_begin(scratch1.arena);
-        JkArenaScope build_navmesh_scope = jk_arena_scope_begin(scratch0.arena);
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
@@ -1317,30 +1324,30 @@ void render(JkContext *context, Environment *env)
             JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
             JkMat4 nav_from_local = jk_mat4_mul(nav_from_world, world_from_local);
 
-            JkQ16Vec2 *nav_vertices =
+            JkQ16Vec3 *nav_vertices =
                     jk_arena_push(scratch1.arena, vertices.count * JK_SIZEOF(*nav_vertices));
-            int32_t *nav_zs = jk_arena_push(scratch1.arena, vertices.count * JK_SIZEOF(*nav_zs));
             for (int64_t i = 0; i < vertices.count; i++) {
                 JkVec3 vert_f32 = jk_mat4_mul_point(nav_from_local, vertices.e[i]);
-                nav_vertices[i] = jk_q16_vec2_from_f32(jk_vec2_from_3(vert_f32));
-                nav_zs[i] = jk_q16_from_f32(vert_f32.z);
+                nav_vertices[i] = jk_q16_vec3_from_f32(vert_f32);
             }
 
             // Process faces in world space for navigation grid
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
                 Face face = faces.e[face_index];
+
                 Q16Triangle triangle = {0};
                 for (int64_t i = 0; i < 3; i++) {
                     triangle.v[i] = nav_vertices[face.v[i]];
-                    triangle.z[i] = nav_zs[face.v[i]];
                 }
+
                 nav_triangle_setup(scratch0.arena, nav_dimensions, triangle);
             }
         }
 
+        jk_arena_scope_end(nav_triangle_transform_scope);
+
         NavTriangleArray nav_triangles;
         JK_ARRAY_FROM_ARENA_SCOPE(nav_triangles, build_navmesh_scope);
-        jk_arena_scope_end(nav_triangle_transform_scope);
 
         // Rasterize navigation triangles
         nav_contacts = jk_arena_push(
@@ -1437,6 +1444,11 @@ void render(JkContext *context, Environment *env)
                         points[pivot] = ring->corner;
                     }
                 }
+            }
+
+            if (pivot == 0 && 4 <= ring->vertex_count
+                    && JK_ABS(points[1].z - points[3].z) < JK_ABS(points[0].z - points[2].z)) {
+                pivot = 1;
             }
 
             for (int64_t dest = 0; dest < ring->vertex_count; dest++) {
@@ -1799,13 +1811,27 @@ void render(JkContext *context, Environment *env)
         if (JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY)) {
             for (int64_t ring_index = 0; ring_index < nav_rings.count; ring_index++) {
                 NavRing ring = nav_rings.e[ring_index];
-                for (int64_t i = 0; i < ring.vertex_count; i++) {
+                for (int64_t i = 2; i < ring.vertex_count; i++) {
                     draw_world_segment(env,
                             screen_from_ndc,
                             clip_from_world,
                             component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
-                            ring.vertices[i],
-                            ring.vertices[(i + 1) % ring.vertex_count]);
+                            ring.vertices[0],
+                            ring.vertices[i - 1]);
+                    draw_world_segment(env,
+                            screen_from_ndc,
+                            clip_from_world,
+                            component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
+                            ring.vertices[i - 1],
+                            ring.vertices[i]);
+                    if (i == ring.vertex_count - 1) {
+                        draw_world_segment(env,
+                                screen_from_ndc,
+                                clip_from_world,
+                                component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
+                                ring.vertices[i],
+                                ring.vertices[0]);
+                    }
                 }
             }
 
