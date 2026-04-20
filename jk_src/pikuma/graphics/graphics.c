@@ -12,7 +12,7 @@
 #define NEAR_CLIP 0.2f
 #define SPEED 5.0f
 
-#define Q16_EPSILON (1 << 8)
+#define Q16_EPSILON (1 << 10)
 #define EPSILON 0x1.0p-14
 #define SYNTHETIC_OFFSET (1 << 13)
 
@@ -711,18 +711,22 @@ static NavRingArray nav_find_rings(JkArena *arena, NavContact **nav_contacts)
                         max_index = i;
                     }
                 }
-                int32_t max_z = contacts.e[max_index]->z;
-                int32_t min_z = max_z - NAV_STEP_HEIGHT;
+                int32_t original_min_z = contacts.e[max_index]->z - NAV_STEP_HEIGHT;
 
-                NavContacts candidates = contacts;
+                // Potentially expand the min_z a bit to avoid the awkward case where one lower
+                // corner barely makes it and the other one barely doesn't
+                int32_t min_z = original_min_z;
+                for (int64_t i = 0; i < 4; i++) {
+                    if (original_min_z < contacts.e[i]->z) {
+                        min_z = JK_MIN(min_z, contacts.e[i]->z - (NAV_STEP_HEIGHT >> 2));
+                    }
+                }
+
                 uint8_t mask = 0;
                 for (int64_t i = 0; i < 4; i++) {
-                    for (; ring.corners[i] == &nil_contact && candidates.e[i] != &nil_contact;
-                            candidates.e[i] = candidates.e[i]->next) {
-                        if (min_z < candidates.e[i]->z && candidates.e[i]->z <= max_z) {
-                            ring.corners[i] = candidates.e[i];
-                            mask |= (1 << i);
-                        }
+                    if (min_z < contacts.e[i]->z) {
+                        ring.corners[i] = contacts.e[i];
+                        mask |= (1 << i);
                     }
                 }
 
@@ -754,7 +758,7 @@ static NavRingArray nav_find_rings(JkArena *arena, NavContact **nav_contacts)
                                 neighbor1->neighbors[opposite] = self;
                             }
 
-                            contacts.e[i] = candidates.e[i];
+                            contacts.e[i] = contacts.e[i]->next;
                         }
                     }
                 } else {
