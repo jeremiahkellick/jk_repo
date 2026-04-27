@@ -65,12 +65,19 @@ JK_PUBLIC void jk_platform_print(JkBuffer string)
 
 #endif
 
-JK_PUBLIC int64_t jk_platform_file_size(char *file_name)
+JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path)
 {
     struct __stat64 info = {0};
-    if (_stat64(file_name, &info)) {
-        fprintf(stderr, "jk_platform_file_size: stat returned an error\n");
-        return 0;
+    JK_ARENA_SCRATCH(scratch)
+    {
+        if (_stat64(jk_null_terminated_from_buffer(scratch.arena, path), &info)) {
+            JK_LOGF(JK_LOG_ERROR,
+                    jkfn("Could not determine the size of '"),
+                    jkfs(path),
+                    jkfn("': "),
+                    jkfn(strerror(errno)));
+            return 0;
+        }
     }
     return (int64_t)info.st_size;
 }
@@ -1236,20 +1243,6 @@ JK_PUBLIC double jk_parse_double(JkBuffer number_string)
 
 // ---- Command line arguments parsing end -------------------------------------
 
-// ---- File formats begin -----------------------------------------------------
-
-JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk)
-{
-    return ((uint8_t *)chunk - (uint8_t *)&chunk_main->form_type) < chunk_main->size;
-}
-
-JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
-{
-    return (JkRiffChunk *)(chunk->data + ((chunk->size + 1) & ~1));
-}
-
-// ---- File formats end -------------------------------------------------------
-
 static void jk_platform_barrier_wait_void(void *pointer)
 {
     jk_platform_barrier_wait(pointer);
@@ -1398,13 +1391,18 @@ JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_n
     int64_t start = 0;
     int64_t i = 0;
     for (; i < file.size; i++) {
-        if (file.data[i] == '\n') {
+        if (file.data[i] == '\n'
+                || (file.data[i] == '\r' && (i + 1) < file.size && file.data[i + 1] == '\n')) {
             JkBuffer *line = jk_arena_push(arena, JK_SIZEOF(*line));
             if (!line) {
                 goto end;
             }
             line->data = file.data + start;
             line->size = i - start;
+
+            if (file.data[i] == '\r') {
+                i++;
+            }
             start = i + 1;
         }
     }

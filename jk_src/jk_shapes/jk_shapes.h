@@ -118,6 +118,13 @@ JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
         JkShapeArray shapes,
         JkArena *arena);
 
+JK_PUBLIC JkEdgeArray jk_shapes_edges_get(JkArena *arena,
+        JkShapesPenCommandArray commands,
+        JkVec2 offset,
+        float scale,
+        float tolerance,
+        b32 skip_horizontal);
+
 JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect);
 
 JK_PUBLIC void jk_shapes_pixel_rect_draw(

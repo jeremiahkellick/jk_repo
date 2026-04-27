@@ -272,7 +272,7 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVec2 point)
     JkShapesPointListNode *next = (*l->current_node)->next;
     JkVec2 approx_point = jk_vec2_lerp((*l->current_node)->point, next->point, 0.5f);
 
-    if (jk_vec2_distance_squared(approx_point, point) <= l->tolerance_squared) {
+    if (jk_vec2_distance_sqr(approx_point, point) <= l->tolerance_squared) {
         *l->current_node = next;
     } else {
         JkShapesPointListNode *new_node = jk_arena_push(l->arena, JK_SIZEOF(*new_node));
@@ -285,11 +285,12 @@ static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVec2 point)
     }
 }
 
-static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
+JK_PUBLIC JkEdgeArray jk_shapes_edges_get(JkArena *arena,
         JkShapesPenCommandArray commands,
         JkVec2 offset,
         float scale,
-        float tolerance)
+        float tolerance,
+        b32 skip_horizontal)
 {
     JkShapesPointListNode *start_node = jk_arena_push(arena, JK_SIZEOF(*start_node));
     start_node->next = 0;
@@ -366,10 +367,14 @@ static JkEdgeArray jk_shapes_edges_get(JkArena *arena,
     // The linearization is finished. Create an array of edges from the point list.
     JkEdgeArray edges = {.e = jk_arena_pointer_current(arena)};
     for (JkShapesPointListNode *node = start_node; node && node->next; node = node->next) {
-        if (!node->next->is_cursor_movement && node->point.y != node->next->point.y) {
-            JkEdge *new_edge = jk_arena_push(arena, JK_SIZEOF(*new_edge));
-            *new_edge = jk_edge_from_points(node->point, node->next->point);
+        if (node->next->is_cursor_movement) {
+            continue;
         }
+        if (skip_horizontal && node->point.y == node->next->point.y) {
+            continue;
+        }
+        JkEdge *new_edge = jk_arena_push(arena, JK_SIZEOF(*new_edge));
+        *new_edge = jk_edge_from_points(node->point, node->next->point);
     }
     edges.count = (JkEdge *)jk_arena_pointer_current(arena) - edges.e;
 
@@ -498,7 +503,7 @@ JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
             commands.count = shape.commands.size / JK_SIZEOF(commands.e[0]);
             commands.e = (JkShapesPenCommand *)(renderer->base_pointer + shape.commands.offset);
             JkEdgeArray edges = jk_shapes_edges_get(
-                    renderer->arena, commands, negative_offset_ceil, pixel_scale, 0.25f);
+                    renderer->arena, commands, negative_offset_ceil, pixel_scale, 0.25f, 1);
 
             for (int32_t y = 0; y < bitmap.dimensions.y; y++) {
                 jk_memset(coverage, 0, coverage_size * 2);

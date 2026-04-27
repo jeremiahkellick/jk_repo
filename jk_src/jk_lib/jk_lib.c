@@ -553,6 +553,28 @@ JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos)
     return c;
 }
 
+JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c)
+{
+    switch (c) {
+    case ' ':
+    case '\t':
+    case '\v':
+    case '\f':
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+JK_PUBLIC int32_t jk_buffer_token_character_next(JkBuffer buffer, int64_t *pos)
+{
+    int32_t c;
+    do {
+        c = jk_buffer_character_next(buffer, pos);
+    } while (jk_is_space_exclude_newlines(c));
+    return c;
+}
+
 JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count)
 {
     JK_DEBUG_ASSERT(0 <= bit_count && bit_count <= 32);
@@ -1463,72 +1485,22 @@ JK_PUBLIC float jk_acos_f32(float x)
     return result;
 }
 
-// ---- Math end ---------------------------------------------------------------
-
-// ---- Geometry begin ---------------------------------------------------------
-
-JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c)
+JK_PUBLIC float jk_remap_f32(
+        float value, float min_from, float max_from, float min_to, float max_to)
 {
-    JkVec3 ap = jk_vec3_sub(p, a);
-    JkVec3 bp = jk_vec3_sub(p, b);
-    JkVec3 cp = jk_vec3_sub(p, c);
-
-    JkVec3 ab = jk_vec3_sub(b, a);
-    JkVec3 bc = jk_vec3_sub(c, b);
-    JkVec3 ca = jk_vec3_sub(a, c);
-
-    float dot_ab = jk_vec3_dot(ap, ab);
-    float dot_ba = jk_vec3_dot(bp, jk_vec3_negate(ab));
-    float dot_bc = jk_vec3_dot(bp, bc);
-    float dot_cb = jk_vec3_dot(cp, jk_vec3_negate(bc));
-    float dot_ca = jk_vec3_dot(cp, ca);
-    float dot_ac = jk_vec3_dot(ap, jk_vec3_negate(ca));
-
-    // If p is in a vertex voronoi region, return that vertex
-    if (dot_ab <= 0 && dot_ac <= 0) {
-        return a;
-    }
-    if (dot_ba <= 0 && dot_bc <= 0) {
-        return b;
-    }
-    if (dot_ca <= 0 && dot_cb <= 0) {
-        return c;
-    }
-
-    // Compute edge weights
-    float w_ab = dot_bc * dot_ab + dot_ba * (dot_ac - dot_ab);
-    float w_bc = dot_ba * dot_cb - dot_bc * (dot_cb - dot_ca);
-    float w_ca = dot_ab * dot_ca + dot_ac * (dot_cb - dot_ca);
-
-    // If p is in an edge voronoi region, project p to that edge
-    if (w_ab <= 0 && 0 <= dot_ab && 0 <= dot_ba) {
-        float t = dot_ab / (dot_ab + dot_ba);
-        return jk_vec3_add(a, jk_vec3_mul(t, ab));
-    }
-    if (w_bc <= 0 && 0 <= dot_bc && 0 <= dot_cb) {
-        float t = dot_bc / (dot_bc + dot_cb);
-        return jk_vec3_add(b, jk_vec3_mul(t, bc));
-    }
-    if (w_ca <= 0 && 0 <= dot_ca && 0 <= dot_ac) {
-        float t = dot_ca / (dot_ca + dot_ac);
-        return jk_vec3_add(c, jk_vec3_mul(t, ca));
-    }
-
-    // If we made it this far, then p is in the triangle voronoi region. Project p to the triangle
-    // using barycentric coordinates.
-
-    float bary_a = w_bc / (w_ab + w_bc + w_ca);
-    float bary_b = w_ca / (w_ab + w_bc + w_ca);
-    float bary_c = 1 - bary_a - bary_b;
-
-    JkVec3 result = jk_vec3_mul(bary_a, a);
-    result = jk_vec3_add(result, jk_vec3_mul(bary_b, b));
-    result = jk_vec3_add(result, jk_vec3_mul(bary_c, c));
-
-    return result;
+    float delta_from = max_from - min_from;
+    float delta_to = max_to - min_to;
+    return min_to + delta_to * ((value - min_from) / delta_from);
 }
 
-// ---- Geometry end -----------------------------------------------------------
+JK_PUBLIC float jk_remap_clamped_f32(
+        float value, float min_from, float max_from, float min_to, float max_to)
+{
+    float result = jk_remap_f32(value, min_from, max_from, min_to, max_to);
+    return JK_CLAMP(result, min_to, max_to);
+}
+
+// ---- Math end ---------------------------------------------------------------
 
 // ---- Fixed-point begin ------------------------------------------------------
 
@@ -2094,7 +2066,7 @@ JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t)
     return jk_vec2_add(jk_vec2_mul(1.0f - t, a), jk_vec2_mul(t, b));
 }
 
-JK_PUBLIC float jk_vec2_distance_squared(JkVec2 a, JkVec2 b)
+JK_PUBLIC float jk_vec2_distance_sqr(JkVec2 a, JkVec2 b)
 {
     float dx = b.x - a.x;
     float dy = b.y - a.y;
@@ -2621,7 +2593,7 @@ JK_PUBLIC JkMat4 jk_mat4_from_transform_inv(JkTransform t)
 
 // ---- JkTransform end --------------------------------------------------------
 
-// ---- Shapes begin -----------------------------------------------------------
+// ---- Geometry begin ---------------------------------------------------------
 
 JK_PUBLIC float jk_segment_y_intersection(JkSegment2d segment, float y)
 {
@@ -2678,7 +2650,85 @@ JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b)
     };
 }
 
-// ---- Shapes end -------------------------------------------------------------
+JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s)
+{
+    JkVec2 v01 = jk_vec2_sub(s.e[1], s.e[0]);
+    JkVec2 v0p = jk_vec2_sub(p, s.e[0]);
+    float dot = jk_vec2_dot(v01, v0p);
+    if (dot <= 0) {
+        return jk_vec2_magnitude_sqr(v0p);
+    }
+    float mag = jk_vec2_magnitude_sqr(v01);
+    if (mag <= dot) {
+        return jk_vec2_distance_sqr(s.e[1], p);
+    } else {
+        float cross = jk_vec2_cross(v01, v0p);
+        return (cross * cross) / mag;
+    }
+}
+
+JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c)
+{
+    JkVec3 ap = jk_vec3_sub(p, a);
+    JkVec3 bp = jk_vec3_sub(p, b);
+    JkVec3 cp = jk_vec3_sub(p, c);
+
+    JkVec3 ab = jk_vec3_sub(b, a);
+    JkVec3 bc = jk_vec3_sub(c, b);
+    JkVec3 ca = jk_vec3_sub(a, c);
+
+    float dot_ab = jk_vec3_dot(ap, ab);
+    float dot_ba = jk_vec3_dot(bp, jk_vec3_negate(ab));
+    float dot_bc = jk_vec3_dot(bp, bc);
+    float dot_cb = jk_vec3_dot(cp, jk_vec3_negate(bc));
+    float dot_ca = jk_vec3_dot(cp, ca);
+    float dot_ac = jk_vec3_dot(ap, jk_vec3_negate(ca));
+
+    // If p is in a vertex voronoi region, return that vertex
+    if (dot_ab <= 0 && dot_ac <= 0) {
+        return a;
+    }
+    if (dot_ba <= 0 && dot_bc <= 0) {
+        return b;
+    }
+    if (dot_ca <= 0 && dot_cb <= 0) {
+        return c;
+    }
+
+    // Compute edge weights
+    float w_ab = dot_bc * dot_ab + dot_ba * (dot_ac - dot_ab);
+    float w_bc = dot_ba * dot_cb - dot_bc * (dot_cb - dot_ca);
+    float w_ca = dot_ab * dot_ca + dot_ac * (dot_cb - dot_ca);
+
+    // If p is in an edge voronoi region, project p to that edge
+    if (w_ab <= 0 && 0 <= dot_ab && 0 <= dot_ba) {
+        float t = dot_ab / (dot_ab + dot_ba);
+        return jk_vec3_add(a, jk_vec3_mul(t, ab));
+    }
+    if (w_bc <= 0 && 0 <= dot_bc && 0 <= dot_cb) {
+        float t = dot_bc / (dot_bc + dot_cb);
+        return jk_vec3_add(b, jk_vec3_mul(t, bc));
+    }
+    if (w_ca <= 0 && 0 <= dot_ca && 0 <= dot_ac) {
+        float t = dot_ca / (dot_ca + dot_ac);
+        return jk_vec3_add(c, jk_vec3_mul(t, ca));
+    }
+
+    // If we made it this far, then p is in the triangle voronoi region. Project p to the triangle
+    // using barycentric coordinates.
+
+    float bary_a = w_bc / (w_ab + w_bc + w_ca);
+    float bary_b = w_ca / (w_ab + w_bc + w_ca);
+    float bary_c = 1 - bary_a - bary_b;
+
+    JkVec3 result = jk_vec3_mul(bary_a, a);
+    result = jk_vec3_add(result, jk_vec3_mul(bary_b, b));
+    result = jk_vec3_add(result, jk_vec3_mul(bary_c, c));
+
+    return result;
+}
+
+// ---- Geometry end -----------------------------------------------------------
 
 // ---- Random generator begin -------------------------------------------------
 
@@ -3005,6 +3055,20 @@ JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
 #endif
 
 // ---- Profile end ------------------------------------------------------------
+
+// ---- File formats begin -----------------------------------------------------
+
+JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk)
+{
+    return ((uint8_t *)chunk - (uint8_t *)&chunk_main->form_type) < chunk_main->size;
+}
+
+JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
+{
+    return (JkRiffChunk *)(chunk->data + ((chunk->size + 1) & ~1));
+}
+
+// ---- File formats end -------------------------------------------------------
 
 JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f64 = {
     .uint64_v = 0x7ff0000000000000llu};

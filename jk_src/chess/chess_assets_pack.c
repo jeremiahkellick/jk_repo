@@ -78,7 +78,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             JkVec2 first_pos = {0};
             int64_t pos = 0;
             int c;
-            while ((c = jk_buffer_character_next(piece_string, &pos)) != EOF) {
+            while ((c = jk_buffer_token_character_next(piece_string, &pos)) != EOF) {
                 JkArenaScope command_scope = jk_arena_scope_begin(&scratch_arena);
 
                 switch (c) {

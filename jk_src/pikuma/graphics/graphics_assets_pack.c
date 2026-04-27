@@ -98,32 +98,6 @@ void thing_connect(int64_t child_fbx_id, int64_t parent_fbx_id)
 
 #if _MSC_VER && !__clang__
 #pragma pack(push, 1)
-typedef struct BitmapHeader {
-#else
-typedef struct __attribute__((packed)) BitmapHeader {
-#endif
-    uint16_t identifier;
-    uint32_t size;
-    uint32_t reserved;
-    uint32_t data_offset;
-    uint32_t dib_header_size;
-    int32_t width;
-    int32_t height;
-    uint16_t color_plane_count;
-    uint16_t bits_per_pixel;
-    uint32_t compression_method;
-    uint32_t data_size;
-    int32_t h_pixels_per_meter;
-    int32_t v_pixels_per_meter;
-    uint32_t color_count;
-    uint32_t important_color_count;
-} BitmapHeader;
-#if _MSC_VER && !__clang__
-#pragma pack(pop)
-#endif
-
-#if _MSC_VER && !__clang__
-#pragma pack(push, 1)
 typedef struct JkFbxNode {
 #else
 typedef struct __attribute__((packed)) JkFbxNode {
@@ -231,10 +205,10 @@ static BitmapSpan bitmap_get(Context *c, JkBuffer image_file_name)
 
         b32 valid = 1;
         int64_t source_size = 0;
-        BitmapHeader *header = 0;
-        valid = valid && JK_SIZEOF(BitmapHeader) <= image_file.size;
+        JkBitmapHeader *header = 0;
+        valid = valid && JK_SIZEOF(JkBitmapHeader) <= image_file.size;
         if (valid) {
-            header = (BitmapHeader *)image_file.data;
+            header = (JkBitmapHeader *)image_file.data;
             source_size = JK_SIZEOF(JkColor3) * header->width * header->height;
         }
 

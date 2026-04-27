@@ -25,12 +25,6 @@ static JkIntVec2 const nav_dimensions = {32, 32};
 static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 255};
 
-static JkColor component_colors[] = {
-    {.r = 0xff, .g = 0x00, .b = 0x00, .a = 0xff},
-    {.r = 0x00, .g = 0xff, .b = 0x00, .a = 0xff},
-    {.r = 0x00, .g = 0xff, .b = 0xff, .a = 0xff},
-};
-
 static float const player_radius = 0.33f;
 static float const player_height = 1.75f;
 static float const player_eye_height = 1.4f;
@@ -302,6 +296,7 @@ typedef enum NavRingFlag {
     NAV_RING_FOUND_EDGE_LEFT,
     NAV_RING_ENQUEUED,
     NAV_RING_HAS_CORNER,
+    NAV_RING_DRAWN,
     NAV_RING_FLAG_COUNT,
 } NavRingFlag;
 
@@ -312,7 +307,6 @@ struct NavRing {
     JkIntVec2 pos;
     JkQ16Vec3 found_points[4];
     JkQ16Vec3 corner;
-    int8_t component;
     int8_t vertex_count;
     JkVec3 vertices[8];
     uint32_t flags;
@@ -338,8 +332,7 @@ typedef struct NavEdge {
 static JK_READONLY NavContact nil_contact;
 
 static JK_READONLY NavRing nil_ring = {
-    .flags = JK_MASK(NAV_RING_ENQUEUED),
-    .component = 1,
+    .flags = JK_MASK(NAV_RING_ENQUEUED) | JK_MASK(NAV_RING_DRAWN),
     .neighbors = {&nil_ring, &nil_ring, &nil_ring, &nil_ring},
     .corners = {&nil_contact, &nil_contact, &nil_contact, &nil_contact},
 };
@@ -502,6 +495,78 @@ static void nav_triangle_generate_contact(
 
         contact->next = *link;
         *link = contact;
+    }
+}
+
+static void draw_world_segment(Environment *env,
+        JkMat4 screen_from_ndc,
+        JkMat4 clip_from_world,
+        JkColor color,
+        JkVec3 a,
+        JkVec3 b)
+{
+    JkVec4 clip[2] = {
+        jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(a, 1)),
+        jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(b, 1)),
+    };
+    b32 inside[2];
+    for (int64_t i = 0; i < 2; i++) {
+        inside[i] = !!(clip[i].z < clip[i].w);
+    }
+    if (!inside[0]) {
+        if (!inside[1]) {
+            return;
+        }
+        JK_SWAP(clip[0], clip[1], JkVec4);
+    }
+    if (inside[0] != inside[1]) { // Crosses clip plane, add interpolated vertex
+        float t = (NEAR_CLIP - clip[0].w) / (clip[1].w - clip[0].w);
+        clip[1] = jk_vec4_lerp(clip[0], clip[1], t);
+    }
+    JkVec2 screen[2];
+    for (int64_t i = 0; i < 2; i++) {
+        screen[i] = jk_vec2_from_3(
+                jk_mat4_mul_point(screen_from_ndc, jk_vec4_perspective_divide(clip[i])));
+    }
+    draw_line(env, color, screen[0], screen[1]);
+}
+
+static void nav_draw_rings(Environment *env,
+        JkMat4 screen_from_ndc,
+        JkMat4 clip_from_world,
+        JkColor nav_color,
+        NavRing *ring)
+{
+    if (JK_FLAG_GET(ring->flags, NAV_RING_DRAWN)) {
+        return;
+    }
+    JK_FLAG_SET(ring->flags, NAV_RING_DRAWN, 1);
+
+    for (int64_t i = 2; i < ring->vertex_count; i++) {
+        draw_world_segment(env,
+                screen_from_ndc,
+                clip_from_world,
+                nav_color,
+                ring->vertices[0],
+                ring->vertices[i - 1]);
+        draw_world_segment(env,
+                screen_from_ndc,
+                clip_from_world,
+                nav_color,
+                ring->vertices[i - 1],
+                ring->vertices[i]);
+        if (i == ring->vertex_count - 1) {
+            draw_world_segment(env,
+                    screen_from_ndc,
+                    clip_from_world,
+                    nav_color,
+                    ring->vertices[i],
+                    ring->vertices[0]);
+        }
+    }
+
+    for (int64_t i = 0; i < 4; i++) {
+        nav_draw_rings(env, screen_from_ndc, clip_from_world, nav_color, ring->neighbors[i]);
     }
 }
 
@@ -703,7 +768,6 @@ static NavRingArray nav_find_rings(JkArena *arena, NavContact **nav_contacts)
                 NavRing ring = nil_ring;
                 ring.pos = pos;
                 ring.flags = 0;
-                ring.component = 0;
 
                 int64_t max_index = 0;
                 for (int64_t i = 1; i < 4; i++) {
@@ -1117,51 +1181,6 @@ typedef struct ScreenFromWorldResult {
     JkVec3 v;
 } ScreenFromWorldResult;
 
-static void draw_world_segment(Environment *env,
-        JkMat4 screen_from_ndc,
-        JkMat4 clip_from_world,
-        JkColor color,
-        JkVec3 a,
-        JkVec3 b)
-{
-    JkVec4 clip[2] = {
-        jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(a, 1)),
-        jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(b, 1)),
-    };
-    b32 inside[2];
-    for (int64_t i = 0; i < 2; i++) {
-        inside[i] = !!(clip[i].z < clip[i].w);
-    }
-    if (!inside[0]) {
-        if (!inside[1]) {
-            return;
-        }
-        JK_SWAP(clip[0], clip[1], JkVec4);
-    }
-    if (inside[0] != inside[1]) { // Crosses clip plane, add interpolated vertex
-        float t = (NEAR_CLIP - clip[0].w) / (clip[1].w - clip[0].w);
-        clip[1] = jk_vec4_lerp(clip[0], clip[1], t);
-    }
-    JkVec2 screen[2];
-    for (int64_t i = 0; i < 2; i++) {
-        screen[i] = jk_vec2_from_3(
-                jk_mat4_mul_point(screen_from_ndc, jk_vec4_perspective_divide(clip[i])));
-    }
-    draw_line(env, color, screen[0], screen[1]);
-}
-
-void assign_component(NavRing *ring, int64_t component)
-{
-    if (ring == &nil_ring || ring->component) {
-        return;
-    }
-
-    ring->component = component;
-    for (int64_t i = 0; i < 4; i++) {
-        assign_component(ring->neighbors[i], component);
-    }
-}
-
 static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring)
 {
     NavPoint result = {.distance_sqr = jk_infinity_f32.f32, .ring = ring};
@@ -1199,6 +1218,7 @@ void render(JkContext *context, Environment *env)
 
     NavContact **nav_contacts = 0;
     NavRingArray nav_rings = {0};
+    NavPoint start = {.distance_sqr = jk_infinity_f32.f32};
 
     JK_CHANNEL_NARROW(0)
     {
@@ -1463,7 +1483,6 @@ void render(JkContext *context, Environment *env)
 
         jk_arena_scope_end(build_navmesh_scope);
 
-        NavPoint start = {.distance_sqr = jk_infinity_f32.f32};
         {
             for (int64_t i = 0; i < nav_rings.count; i++) {
                 NavRing *ring = nav_rings.e + i;
@@ -1515,14 +1534,6 @@ void render(JkContext *context, Environment *env)
             if (EPSILON < jk_vec3_magnitude_sqr(direction)) {
                 direction = jk_vec3_normalized(direction);
                 target = jk_vec3_add(target, jk_vec3_mul(SPEED * DELTA_TIME, direction));
-            }
-        }
-
-        int64_t component = 1;
-        for (int64_t i = 0; i < nav_rings.count; i++) {
-            NavRing *ring = nav_rings.e + i;
-            if (!ring->component) {
-                assign_component(ring, component++);
             }
         }
 
@@ -1813,30 +1824,10 @@ void render(JkContext *context, Environment *env)
         }
 
         if (JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY)) {
+            JkColor nav_color = {.r = 0, .g = 255, .b = 0, .a = 255};
+            nav_draw_rings(env, screen_from_ndc, clip_from_world, nav_color, start.ring);
+
             for (int64_t ring_index = 0; ring_index < nav_rings.count; ring_index++) {
-                NavRing ring = nav_rings.e[ring_index];
-                for (int64_t i = 2; i < ring.vertex_count; i++) {
-                    draw_world_segment(env,
-                            screen_from_ndc,
-                            clip_from_world,
-                            component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
-                            ring.vertices[0],
-                            ring.vertices[i - 1]);
-                    draw_world_segment(env,
-                            screen_from_ndc,
-                            clip_from_world,
-                            component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
-                            ring.vertices[i - 1],
-                            ring.vertices[i]);
-                    if (i == ring.vertex_count - 1) {
-                        draw_world_segment(env,
-                                screen_from_ndc,
-                                clip_from_world,
-                                component_colors[ring.component % JK_ARRAY_COUNT(component_colors)],
-                                ring.vertices[i],
-                                ring.vertices[0]);
-                    }
-                }
             }
 
             JkShapesRenderer renderer;

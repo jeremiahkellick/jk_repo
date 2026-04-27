@@ -263,6 +263,10 @@ JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos);
 
 JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos);
 
+JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c);
+
+JK_PUBLIC int32_t jk_buffer_token_character_next(JkBuffer buffer, int64_t *pos);
+
 JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count);
 
 JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count);
@@ -522,13 +526,13 @@ JK_PUBLIC float jk_acos_core_f32(float value);
 
 JK_PUBLIC float jk_acos_f32(float value);
 
+JK_PUBLIC float jk_remap_f32(
+        float value, float min_from, float max_from, float min_to, float max_to);
+
+JK_PUBLIC float jk_remap_clamped_f32(
+        float value, float min_from, float max_from, float min_to, float max_to);
+
 // ---- Math end ---------------------------------------------------------------
-
-// ---- Geometry begin ---------------------------------------------------------
-
-JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c);
-
-// ---- Geometry end -----------------------------------------------------------
 
 // ---- SIMD begin -------------------------------------------------------------
 
@@ -866,7 +870,7 @@ JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v);
 
 JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t);
 
-JK_PUBLIC float jk_vec2_distance_squared(JkVec2 a, JkVec2 b);
+JK_PUBLIC float jk_vec2_distance_sqr(JkVec2 a, JkVec2 b);
 
 JK_PUBLIC JkVec2 jk_vec2_from_i32(JkIntVec2 int_vector);
 
@@ -1039,10 +1043,10 @@ JK_PUBLIC JkMat4 jk_mat4_from_transform_inv(JkTransform t);
 
 // ---- JkTransform end --------------------------------------------------------
 
-// ---- Shapes begin -----------------------------------------------------------
+// ---- Geometry begin ---------------------------------------------------------
 
 typedef union JkSegment2d {
-    JkVec2 endpoints[2];
+    JkVec2 e[2];
     struct {
         JkVec2 p0;
         JkVec2 p1;
@@ -1050,7 +1054,7 @@ typedef union JkSegment2d {
 } JkSegment2d;
 
 typedef union JkSegment3d {
-    JkVec3 endpoints[2];
+    JkVec3 e[2];
     struct {
         JkVec3 p0;
         JkVec3 p1;
@@ -1091,7 +1095,11 @@ JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point);
 
 JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b);
 
-// ---- Shapes end -------------------------------------------------------------
+JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s);
+
+JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c);
+
+// ---- Geometry end -----------------------------------------------------------
 
 // ---- Random generator begin -------------------------------------------------
 
@@ -1478,6 +1486,103 @@ JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency);
 JK_PUBLIC void jk_profile_reset(void);
 
 // ---- Profile end ------------------------------------------------------------
+
+// ---- File formats begin -----------------------------------------------------
+
+#if _MSC_VER && !__clang__
+#pragma pack(push, 1)
+typedef struct JkBitmapHeader {
+#else
+typedef struct __attribute__((packed)) JkBitmapHeader {
+#endif
+    uint16_t identifier;
+    uint32_t size;
+    uint32_t reserved;
+    uint32_t data_offset;
+    uint32_t dib_header_size;
+    int32_t width;
+    int32_t height;
+    uint16_t color_plane_count;
+    uint16_t bits_per_pixel;
+    uint32_t compression_method;
+    uint32_t data_size;
+    int32_t h_pixels_per_meter;
+    int32_t v_pixels_per_meter;
+    uint32_t color_count;
+    uint32_t important_color_count;
+} JkBitmapHeader;
+#if _MSC_VER && !__clang__
+#pragma pack(pop)
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkRiffChunk {
+#else
+typedef struct __attribute__((packed)) JkRiffChunk {
+#endif
+    uint32_t id;
+    uint32_t size;
+    uint8_t data[];
+} JkRiffChunk;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkRiffChunkMain {
+#else
+typedef struct __attribute__((packed)) JkRiffChunkMain {
+#endif
+    uint32_t id;
+    uint32_t size;
+    uint32_t form_type;
+    uint8_t chunk_first[];
+} JkRiffChunkMain;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#ifdef _MSC_VER
+#pragma pack(push, 1)
+typedef struct JkWavFormat {
+#else
+typedef struct __attribute__((packed)) JkWavFormat {
+#endif
+    uint16_t format_tag;
+    uint16_t channel_count;
+    uint32_t samples_per_second;
+    uint32_t average_bytes_per_second;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+    uint16_t size;
+    uint16_t valid_bits_per_sample;
+    uint32_t channel_mask;
+    uint8_t sub_format[16];
+} JkWavFormat;
+#ifdef _MSC_VER
+#pragma pack(pop)
+#endif
+
+#define JK_RIFF_ID(c0, c1, c2, c3)                                          \
+    (((uint32_t)(c0) << 0) | ((uint32_t)(c1) << 8) | ((uint32_t)(c2) << 16) \
+            | ((uint32_t)(c3) << 24))
+
+typedef enum RiffId {
+    JK_RIFF_ID_RIFF = JK_RIFF_ID('R', 'I', 'F', 'F'),
+    JK_RIFF_ID_WAV = JK_RIFF_ID('W', 'A', 'V', 'E'),
+    JK_RIFF_ID_FMT = JK_RIFF_ID('f', 'm', 't', ' '),
+    JK_RIFF_ID_DATA = JK_RIFF_ID('d', 'a', 't', 'a'),
+} RiffId;
+
+#define JK_WAV_FORMAT_PCM 0x1
+
+JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk);
+
+JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk);
+
+// ---- File formats end -------------------------------------------------------
 
 #define JK_KILOBYTE (1ll << 10)
 #define JK_MEGABYTE (1ll << 20)
