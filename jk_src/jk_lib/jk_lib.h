@@ -1510,6 +1510,10 @@ typedef struct __attribute__((packed)) JkBitmapHeader {
     int32_t v_pixels_per_meter;
     uint32_t color_count;
     uint32_t important_color_count;
+    uint32_t masks[4];
+    uint32_t color_space_type;
+    uint32_t endpoints[3][3];
+    uint32_t gamma[3];
 } JkBitmapHeader;
 #if _MSC_VER && !__clang__
 #pragma pack(pop)
