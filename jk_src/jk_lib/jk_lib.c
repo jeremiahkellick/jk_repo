@@ -155,9 +155,9 @@ JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask)
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets)
 {
-    return (JkF32x8){_mm256_mask_i32gather_ps(jk_f32x8_zero().v, pointer, offsets.v, mask.v, 4)};
+    return (JkF32x8){_mm256_i32gather_ps(pointer, offsets.v, 4)};
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
@@ -180,9 +180,35 @@ JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b)
     return (JkF32x8){_mm256_div_ps(a.v, b.v)};
 }
 
+JK_PUBLIC JkF32x8 jk_f32x8_reciprocal_approx(JkF32x8 x)
+{
+    return (JkF32x8){_mm256_rcp_ps(x.v)};
+}
+
 JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x)
 {
     return (JkF32x8){_mm256_round_ps(x.v, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_min(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_min_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_max(JkF32x8 a, JkF32x8 b)
+{
+    return (JkF32x8){_mm256_max_ps(a.v, b.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_abs(JkF32x8 x)
+{
+    return (JkF32x8){_mm256_andnot_ps(_mm256_set1_ps(-0.0f), x.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_lerp(JkF32x8 a, JkF32x8 b, JkF32x8 t)
+{
+    return jk_f32x8_add(
+            jk_f32x8_mul(jk_f32x8_sub(jk_f32x8_broadcast(1), t), a), jk_f32x8_mul(t, b));
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b)
@@ -226,12 +252,17 @@ JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
     return _mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
 }
 
-JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x)
+JK_PUBLIC JkF32x8 jk_f32x8_from_i32x8(JkI256 x)
+{
+    return (JkF32x8){_mm256_cvtepi32_ps(x.v)};
+}
+
+JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x)
 {
     return (JkF32x8){_mm256_castsi256_ps(x.v)};
 }
 
-JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x)
+JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x)
 {
     return (JkI256){_mm256_castps_si256(x.v)};
 }
@@ -331,7 +362,7 @@ JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask)
 {
     float *ptr = pointer;
     float32x4x2_t r = jk_f32x8_zero();
-    offsets = jk_i256_and(offsets, jk_reinterpret_f32x8_as_i256(mask));
+    offsets = jk_i256_and(offsets, jk_i256_from_f32x8_reinterpret(mask));
 
     r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 0), r.val[0], 0);
     r.val[0] = vld1q_lane_f32(ptr + vgetq_lane_s32(offsets.val[0], 1), r.val[0], 1);
@@ -373,22 +404,22 @@ JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x)
 
 JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b)
 {
-    return jk_reinterpret_i256_as_f32x8(
-            jk_i256_and(jk_reinterpret_f32x8_as_i256(a), jk_reinterpret_f32x8_as_i256(b)));
+    return jk_f32x8_from_i256_reinterpret(
+            jk_i256_and(jk_i256_from_f32x8_reinterpret(a), jk_i256_from_f32x8_reinterpret(b)));
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b)
 {
-    return jk_reinterpret_i256_as_f32x8(
-            jk_i256_or(jk_reinterpret_f32x8_as_i256(a), jk_reinterpret_f32x8_as_i256(b)));
+    return jk_f32x8_from_i256_reinterpret(
+            jk_i256_or(jk_i256_from_f32x8_reinterpret(a), jk_i256_from_f32x8_reinterpret(b)));
 }
 
 // ~a & b
 JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b)
 {
-    int32x4x2_t ai = jk_reinterpret_f32x8_as_i256(a);
+    int32x4x2_t ai = jk_i256_from_f32x8_reinterpret(a);
     int32x4x2_t not_a = {vmvnq_s32(ai.val[0]), vmvnq_s32(ai.val[1])};
-    return jk_reinterpret_i256_as_f32x8(jk_i256_and(not_a, jk_reinterpret_f32x8_as_i256(b)));
+    return jk_f32x8_from_i256_reinterpret(jk_i256_and(not_a, jk_i256_from_f32x8_reinterpret(b)));
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
@@ -401,8 +432,8 @@ JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
 
 JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x)
 {
-    return jk_reinterpret_i256_as_f32x8(
-            JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_reinterpret_f32x8_as_i256(x), 31));
+    return jk_f32x8_from_i256_reinterpret(
+            JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_i256_from_f32x8_reinterpret(x), 31));
 }
 
 JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
@@ -425,12 +456,12 @@ JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
             && vminvq_u32(vreinterpretq_u32_s32(x.val[1]));
 }
 
-JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x)
+JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x)
 {
     return (float32x4x2_t){vreinterpretq_f32_s32(x.val[0]), vreinterpretq_f32_s32(x.val[1])};
 }
 
-JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x)
+JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x)
 {
     return (int32x4x2_t){vreinterpretq_s32_f32(x.val[0]), vreinterpretq_s32_f32(x.val[1])};
 }

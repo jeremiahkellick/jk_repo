@@ -561,7 +561,7 @@ JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer);
 JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x);
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask);
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets);
 
 JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b);
 
@@ -571,7 +571,20 @@ JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b);
 
 JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b);
 
+JK_PUBLIC JkF32x8 jk_f32x8_reciprocal_approx(JkF32x8 x);
+
+JK_PUBLIC JkF32x8 jk_f32x8_remap_approx(
+        JkF32x8 value, JkF32x8 min_from, JkF32x8 max_from, JkF32x8 min_to, JkF32x8 max_to);
+
 JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x);
+
+JK_PUBLIC JkF32x8 jk_f32x8_min(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_max(JkF32x8 a, JkF32x8 b);
+
+JK_PUBLIC JkF32x8 jk_f32x8_abs(JkF32x8 x);
+
+JK_PUBLIC JkF32x8 jk_f32x8_lerp(JkF32x8 a, JkF32x8 b, JkF32x8 t);
 
 JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b);
 
@@ -590,9 +603,11 @@ JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x);
 
 JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x);
 
-JK_PUBLIC JkF32x8 jk_reinterpret_i256_as_f32x8(JkI256 x);
+JK_PUBLIC JkF32x8 jk_f32x8_from_i32x8(JkI256 x);
 
-JK_PUBLIC JkI256 jk_reinterpret_f32x8_as_i256(JkF32x8 x);
+JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x);
+
+JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x);
 
 JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x);
 
