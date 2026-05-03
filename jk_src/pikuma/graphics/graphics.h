@@ -4,6 +4,8 @@
 #include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_shapes/jk_shapes.h>
 
+#define SDF_SPREAD 8.0f
+
 #define FPS 60
 #define DELTA_TIME (1.0f / FPS)
 
