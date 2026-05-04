@@ -3,13 +3,13 @@
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/platform/platform.h>
 #include <jk_src/jk_shapes/jk_shapes.h>
+#include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
 #define INPUT_SIDE_LENGTH 64
 #define OUTPUT_SIDE_LENGTH 256
-#define PIXEL_COUNT (OUTPUT_SIDE_LENGTH * OUTPUT_SIDE_LENGTH)
+#define SDF_PIXEL_COUNT (OUTPUT_SIDE_LENGTH * OUTPUT_SIDE_LENGTH)
 #define SUBPIXEL_PRECISION (1 / 64.0f)
-#define SPREAD 8.0f
 
 static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
 {
@@ -37,25 +37,191 @@ static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t
     return result;
 }
 
+JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim)
+{
+    int64_t start = *cursor;
+    int c;
+    do {
+        c = jk_buffer_character_next(buffer, cursor);
+    } while (!(c == delim || c == JK_OOB));
+    return c == delim ? (JkBuffer){.data = buffer.data + start, .size = *cursor - start - 1}
+                      : (JkBuffer){0};
+}
+
+b32 is_xml_tag_name_character(int32_t c)
+{
+    c = jk_char_to_lower(c);
+    return ('a' <= c && c <= 'z') || jk_char_is_digit(c) || c == '-' || c == '_' || c == ':'
+            || c == '.';
+}
+
+b32 is_css_attribute_name_character(int32_t c)
+{
+    c = jk_char_to_lower(c);
+    return ('a' <= c && c <= 'z') || jk_char_is_digit(c) || c == '-' || c == '_';
+}
+
+uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor)
+{
+    uint8_t result = 0;
+    for (int64_t i = 0; i < 2; i++) {
+        result <<= 4;
+        int32_t c = jk_char_to_lower(jk_buffer_character_next(buffer, cursor));
+        if (!jk_char_is_hex_digit(c)) {
+            return 0;
+        }
+        result |= jk_char_hex_value(c);
+    }
+    return result;
+}
+
+b32 iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuffer *value)
+{
+    // Name
+    jk_buffer_skip_whitespace(svg, cursor);
+    int64_t start = *cursor;
+    int32_t c;
+    while ((c = jk_buffer_character_get(svg, *cursor)) != '=' && !jk_is_space(c) && c != '"'
+            && c != '\'' && c != JK_OOB) {
+        *cursor += 1;
+    }
+    *name = (JkBuffer){.data = svg.data + start, .size = *cursor - start};
+
+    // =
+    jk_buffer_skip_whitespace(svg, cursor);
+    if (jk_buffer_character_get(svg, *cursor) != '=') {
+        return 0;
+    }
+    *cursor += 1;
+
+    // value
+    jk_buffer_skip_whitespace(svg, cursor);
+    int32_t delim = jk_buffer_character_next(svg, cursor);
+    if (delim != '"' && delim != '\'') {
+        return 0;
+    }
+    *value = read_string(svg, cursor, delim);
+
+    return 1;
+}
+
 int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     jk_platform_set_working_directory_to_executable_directory();
 
     JkArena *arena = jk_arena_scratch_begin().arena;
-    JkShapeArray shapes = {0};
 
-    // Fill out shapes array with shapes.txt
+    JkColor background_color = {.a = 0xff};
+    JkBuffer shape_strings[4] = {0};
+    JkColor3 shape_colors[4] = {0};
+    JkShape shapes[4] = {0};
+
     JK_ARENA_SCRATCH_NOT(scratch, arena)
     {
-        JkBufferArray shape_strings = jk_platform_file_read_lines(
-                scratch.arena, "../jk_assets/pikuma/graphics/shapes.txt");
-        JK_ASSERT(0 <= shape_strings.count && shape_strings.count < 4096);
+        // Find path data in SVG file
+        JkBuffer svg =
+                jk_platform_file_read(scratch.arena, JKS("../jk_assets/pikuma/graphics/abcd.svg"));
+        if (svg.size == 0) {
+            exit(1);
+        }
+        int64_t cursor = 0;
+        while (cursor < svg.size) {
+            int first = jk_buffer_character_next(svg, &cursor);
+            switch (first) {
+            case '"':
+            case '\'': {
+                read_string(svg, &cursor, first);
+            } break;
 
-        JK_ARENA_PUSH_ARRAY(arena, shapes, shape_strings.count);
+            case '<': {
+                jk_buffer_skip_whitespace(svg, &cursor);
+                int64_t tag_start = cursor;
+                while (is_xml_tag_name_character(jk_buffer_character_get(svg, cursor))) {
+                    cursor++;
+                }
+                JkBuffer tag = {.data = svg.data + tag_start, .size = cursor - tag_start};
+                if (jk_string_equal(tag, JKS("path"))) {
+                    int64_t id = -1;
+                    JkBuffer shape_string = {0};
+                    JkColor3 color = {0};
 
-        for (int32_t shape_index = 0; shape_index < shapes.count; shape_index++) {
-            JkBuffer piece_string = shape_strings.e[shape_index];
-            JkShape *shape = shapes.e + shape_index;
+                    cursor += 4;
+                    JkBuffer name;
+                    JkBuffer value;
+                    while (iterate_attributes(svg, &cursor, &name, &value)) {
+                        if (jk_string_equal(name, JKS("d"))) {
+                            shape_string = value;
+                        } else if (jk_string_equal(name, JKS("id"))) {
+                            if (value.size == 1) {
+                                int64_t num = value.data[0] - '0';
+                                if (0 <= num && num < 4) {
+                                    id = num;
+                                }
+                            }
+                        } else if (jk_string_equal(name, JKS("style"))) {
+                            int64_t style_cursor = 0;
+                            while (style_cursor < value.size) {
+                                while (!is_css_attribute_name_character(
+                                               jk_buffer_character_get(value, style_cursor))
+                                        && style_cursor < value.size) {
+                                    style_cursor++;
+                                }
+                                int64_t start = style_cursor;
+                                while (is_css_attribute_name_character(
+                                        jk_buffer_character_get(value, style_cursor))) {
+                                    style_cursor++;
+                                }
+                                JkBuffer attribute_name = {
+                                    .data = value.data + start, .size = style_cursor - start};
+
+                                if (jk_string_equal(attribute_name, JKS("fill"))) {
+                                    jk_buffer_skip_whitespace(value, &style_cursor);
+                                    if (jk_buffer_character_get(value, style_cursor) != ':') {
+                                        continue;
+                                    }
+                                    style_cursor++;
+                                    jk_buffer_skip_whitespace(value, &style_cursor);
+                                    if (jk_buffer_character_get(value, style_cursor) != '#') {
+                                        continue;
+                                    }
+                                    style_cursor++;
+                                    color.r = read_hex_byte(value, &style_cursor);
+                                    color.g = read_hex_byte(value, &style_cursor);
+                                    color.b = read_hex_byte(value, &style_cursor);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (id != -1) {
+                        shape_strings[id] = shape_string;
+                        shape_colors[id] = color;
+                    }
+                } else if (jk_string_equal(tag, JKS("sodipodi:namedview"))) {
+                    JkBuffer name;
+                    JkBuffer value;
+                    while (iterate_attributes(svg, &cursor, &name, &value)) {
+                        if (jk_string_equal(name, JKS("pagecolor"))) {
+                            int64_t value_cursor = 0;
+                            jk_buffer_skip_whitespace(value, &value_cursor);
+                            if (jk_buffer_character_get(value, value_cursor) == '#') {
+                                value_cursor++;
+                                background_color.r = read_hex_byte(value, &value_cursor);
+                                background_color.g = read_hex_byte(value, &value_cursor);
+                                background_color.b = read_hex_byte(value, &value_cursor);
+                            }
+                        }
+                    }
+                }
+            } break;
+            }
+        }
+
+        // Parse the path data
+        for (int32_t shape_index = 0; shape_index < 4; shape_index++) {
+            JkBuffer piece_string = shape_strings[shape_index];
+            JkShape *shape = shapes + shape_index;
 
             shape->dimensions.x = 64.0f;
             shape->dimensions.y = 64.0f;
@@ -173,12 +339,13 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         }
     }
 
+    JkColor *sdf = jk_arena_push(arena, SDF_PIXEL_COUNT * sizeof(*sdf));
+
     float pixels_per_unit = (float)OUTPUT_SIDE_LENGTH / INPUT_SIDE_LENGTH;
-    for (int64_t shape_index = 0; shape_index < shapes.count; shape_index++) {
+    for (int64_t shape_index = 0; shape_index < 4; shape_index++) {
         JkArenaScope shape_scope = jk_arena_scope_begin(arena);
 
-        JkShape *shape = shapes.e + shape_index;
-        uint8_t *sdf = jk_arena_push(arena, PIXEL_COUNT * sizeof(*sdf));
+        JkShape *shape = shapes + shape_index;
 
         JkShapesPenCommandArray commands;
         commands.count = shape->commands.size / JK_SIZEOF(commands.e[0]);
@@ -225,38 +392,44 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 float value = 127.5f;
                 if ((SUBPIXEL_PRECISION * SUBPIXEL_PRECISION) < distance_sqr) {
                     float signed_distance = sign * jk_sqrt_f32(distance_sqr);
-                    value = jk_remap_clamped_f32(signed_distance, -SPREAD, SPREAD, 0, 255);
+                    value = jk_remap_clamped_f32(signed_distance, SDF_SPREAD, -SDF_SPREAD, 0, 255);
                 }
-                sdf[OUTPUT_SIDE_LENGTH * pos.y + pos.x] = (uint8_t)value;
+                sdf[OUTPUT_SIDE_LENGTH * pos.y + pos.x].v[shape_index] = (uint8_t)value;
             }
         }
-
-        // Write sdf to a bitmap file
-        JkBuffer bitmap_buffer = jk_arena_push_buffer(
-                arena, sizeof(JkBitmapHeader) + sizeof(JkColor3) * PIXEL_COUNT);
-        JkBitmapHeader *bitmap = (JkBitmapHeader *)bitmap_buffer.data;
-        jk_memset(bitmap, 0, sizeof(*bitmap));
-        bitmap->identifier = 0x4d42;
-        bitmap->size = bitmap_buffer.size;
-        bitmap->data_offset = sizeof(JkBitmapHeader);
-        bitmap->dib_header_size = 40;
-        bitmap->width = OUTPUT_SIDE_LENGTH;
-        bitmap->height = OUTPUT_SIDE_LENGTH;
-        bitmap->color_plane_count = 1;
-        bitmap->bits_per_pixel = 24;
-        JkColor3 *bitmap_data = (JkColor3 *)(bitmap_buffer.data + bitmap->data_offset);
-        for (JkIntVec2 pos = {0}; pos.y < OUTPUT_SIDE_LENGTH; pos.y++) {
-            for (pos.x = 0; pos.x < OUTPUT_SIDE_LENGTH; pos.x++) {
-                int32_t index = OUTPUT_SIDE_LENGTH * pos.y + pos.x;
-                int32_t bmp_index = OUTPUT_SIDE_LENGTH * (OUTPUT_SIDE_LENGTH - 1 - pos.y) + pos.x;
-                bitmap_data[bmp_index] = (JkColor3){sdf[index], sdf[index], sdf[index]};
-            }
-        }
-        jk_platform_file_write(
-                JK_FORMAT(arena, jkfn("sdf"), jkfi(shape_index), jkfn(".bmp")), bitmap_buffer);
 
         jk_arena_scope_end(shape_scope);
     }
+
+    // Write sdf to a bitmap file
+    JkBuffer bitmap_buffer =
+            jk_arena_push_buffer(arena, sizeof(JkBitmapHeader) + sizeof(JkColor) * SDF_PIXEL_COUNT);
+    JkBitmapHeader *bitmap = (JkBitmapHeader *)bitmap_buffer.data;
+    jk_memset(bitmap, 0, sizeof(*bitmap));
+    bitmap->identifier = 0x4d42;
+    bitmap->size = bitmap_buffer.size;
+    bitmap->data_offset = sizeof(JkBitmapHeader);
+    bitmap->dib_header_size = 108;
+    bitmap->width = OUTPUT_SIDE_LENGTH;
+    bitmap->height = OUTPUT_SIDE_LENGTH;
+    bitmap->color_plane_count = 1;
+    bitmap->bits_per_pixel = 32;
+    bitmap->compression_method = 3;
+    bitmap->data_size = sizeof(JkColor) * SDF_PIXEL_COUNT;
+    bitmap->masks[0] = 0x00ff0000;
+    bitmap->masks[1] = 0x0000ff00;
+    bitmap->masks[2] = 0x000000ff;
+    bitmap->masks[3] = 0xff000000;
+    bitmap->color_space_type = 0x73524742; // 'sRGB' (LCS_sRGB)
+    JkColor *bitmap_data = (JkColor *)(bitmap_buffer.data + bitmap->data_offset);
+    for (JkIntVec2 pos = {0}; pos.y < OUTPUT_SIDE_LENGTH; pos.y++) {
+        for (pos.x = 0; pos.x < OUTPUT_SIDE_LENGTH; pos.x++) {
+            int32_t index = OUTPUT_SIDE_LENGTH * pos.y + pos.x;
+            int32_t bmp_index = OUTPUT_SIDE_LENGTH * (OUTPUT_SIDE_LENGTH - 1 - pos.y) + pos.x;
+            bitmap_data[bmp_index] = sdf[index];
+        }
+    }
+    jk_platform_file_write(JKS("sdf.bmp"), bitmap_buffer);
 
     return 0;
 }

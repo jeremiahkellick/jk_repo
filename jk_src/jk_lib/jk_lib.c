@@ -584,6 +584,13 @@ JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos)
     return c;
 }
 
+JK_PUBLIC void jk_buffer_skip_whitespace(JkBuffer buffer, int64_t *cursor)
+{
+    while (jk_is_space(jk_buffer_character_get(buffer, *cursor))) {
+        *cursor += 1;
+    }
+}
+
 JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c)
 {
     switch (c) {
@@ -646,11 +653,26 @@ JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)
     return result;
 }
 
-JK_PUBLIC int jk_buffer_compare(JkBuffer a, JkBuffer b)
+JK_PUBLIC b32 jk_string_equal(JkBuffer a, JkBuffer b)
+{
+    if (a.size != b.size) {
+        return 0;
+    }
+
+    for (int64_t i = 0; i < a.size; i++) {
+        if (a.data[i] != b.data[i]) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b)
 {
     for (int64_t pos = 0; 1; pos++) {
-        int a_char = jk_buffer_character_get(a, pos);
-        int b_char = jk_buffer_character_get(b, pos);
+        int32_t a_char = jk_buffer_character_get(a, pos);
+        int32_t b_char = jk_buffer_character_get(b, pos);
         if (a_char < b_char) {
             return -1;
         } else if (a_char > b_char) {
@@ -676,17 +698,33 @@ JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer)
     return result;
 }
 
-JK_PUBLIC b32 jk_char_is_whitespace(int c)
+JK_PUBLIC b32 jk_is_space(int32_t c)
 {
     return c == ' ' || ('\t' <= c && c <= '\r');
 }
 
-JK_PUBLIC b32 jk_char_is_digit(int c)
+JK_PUBLIC b32 jk_char_is_digit(int32_t c)
 {
     return '0' <= c && c <= '9';
 }
 
-JK_PUBLIC int jk_char_to_lower(int c)
+JK_PUBLIC b32 jk_char_is_hex_digit(int32_t c)
+{
+    c = jk_char_to_lower(c);
+    return jk_char_is_digit(c) || ('a' <= c && c <= 'f');
+}
+
+JK_PUBLIC uint8_t jk_char_hex_value(int32_t c)
+{
+    c = jk_char_to_lower(c);
+    if ('a' <= c && c <= 'f') {
+        return 10 + (c - 'a');
+    } else {
+        return c - '0';
+    }
+}
+
+JK_PUBLIC int32_t jk_char_to_lower(int32_t c)
 {
     if ('A' <= c && c <= 'Z') {
         return c + ('a' - 'A');
@@ -698,7 +736,7 @@ JK_PUBLIC int jk_char_to_lower(int c)
 JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
 {
     for (int64_t i = 0; i < string.size; i++) {
-        if (jk_char_is_whitespace(string.data[i])) {
+        if (jk_is_space(string.data[i])) {
             return 1;
         }
     }
@@ -1719,7 +1757,8 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
         return JK_UTF8_CODEPOINT_GET_UNEXPECTED_BYTE;
     }
     codepoint->b[0] = buffer.data[(*pos)++];
-    for (int i = 1; i < 4 && *pos < buffer.size && jk_utf8_byte_is_continuation(buffer.data[*pos]);
+    for (int32_t i = 1;
+            i < 4 && *pos < buffer.size && jk_utf8_byte_is_continuation(buffer.data[*pos]);
             i++) {
         codepoint->b[i] = buffer.data[(*pos)++];
     }
@@ -1743,7 +1782,7 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
         int64_t element_size,
         void *tmp,
         void *data,
-        int (*compare)(void *data, void *a, void *b))
+        int32_t (*compare)(void *data, void *a, void *b))
 {
     JK_DEBUG_ASSERT(0 <= element_size);
 
@@ -1762,7 +1801,7 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
 
     while (mid <= high) {
         // Compare mid with pivot. Pivot is always 1 element before mid.
-        int comparison = compare(data, mid, mid - element_size);
+        int32_t comparison = compare(data, mid, mid - element_size);
 
         if (comparison < 0) {
             jk_bytes_swap(low, mid, element_size, tmp);
@@ -1800,36 +1839,36 @@ JK_PUBLIC void jk_quicksort(void *array_void,
         int64_t element_size,
         void *tmp,
         void *data,
-        int (*compare)(void *data, void *a, void *b))
+        int32_t (*compare)(void *data, void *a, void *b))
 {
     JkRandomGeneratorU64 generator = jk_random_generator_new_u64(0x9646e4db8d81f399);
     jk_quicksort_internal(&generator, array_void, element_count, element_size, tmp, data, compare);
 }
 
-static int jk_int_compare(void *data, void *a, void *b)
+static int32_t jk_int_compare(void *data, void *a, void *b)
 {
-    return *(int *)a - *(int *)b;
+    return *(int32_t *)a - *(int32_t *)b;
 }
 
-JK_PUBLIC void jk_quicksort_ints(int *array, int length)
+JK_PUBLIC void jk_quicksort_ints(int32_t *array, int32_t length)
 {
-    int tmp;
-    jk_quicksort(array, length, JK_SIZEOF(int), &tmp, 0, jk_int_compare);
+    int32_t tmp;
+    jk_quicksort(array, length, JK_SIZEOF(int32_t), &tmp, 0, jk_int_compare);
 }
 
-static int jk_float_compare(void *data, void *a, void *b)
+static int32_t jk_float_compare(void *data, void *a, void *b)
 {
     float delta = *(float *)a - *(float *)b;
     return delta == 0.0f ? 0 : (delta < 0.0f ? -1 : 1);
 }
 
-JK_PUBLIC void jk_quicksort_floats(float *array, int length)
+JK_PUBLIC void jk_quicksort_floats(float *array, int32_t length)
 {
     float tmp;
     jk_quicksort(array, length, JK_SIZEOF(float), &tmp, 0, jk_float_compare);
 }
 
-static int jk_string_compare(void *data, void *a, void *b)
+static int32_t jk_string_compare(void *data, void *a, void *b)
 {
     uint8_t *a_ptr = *(uint8_t **)a;
     uint8_t *b_ptr = *(uint8_t **)b;
@@ -1844,7 +1883,7 @@ static int jk_string_compare(void *data, void *a, void *b)
     return 0;
 }
 
-JK_PUBLIC void jk_quicksort_strings(char **array, int length)
+JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length)
 {
     char *tmp;
     jk_quicksort(array, length, JK_SIZEOF(char *), &tmp, 0, jk_string_compare);
@@ -3175,10 +3214,10 @@ JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line)
  *
  * @return The parsed integer if successful, -1 if failed
  */
-JK_PUBLIC int jk_parse_positive_integer(char *string)
+JK_PUBLIC int32_t jk_parse_positive_integer(char *string)
 {
-    int multiplier = 1;
-    int result = 0;
+    int32_t multiplier = 1;
+    int32_t result = 0;
     for (int64_t i = jk_strlen(string) - 1; i >= 0; i--) {
         if (jk_char_is_digit(string[i])) {
             result += (string[i] - '0') * multiplier;

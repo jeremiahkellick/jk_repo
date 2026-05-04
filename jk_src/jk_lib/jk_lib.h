@@ -263,6 +263,8 @@ JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos);
 
 JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos);
 
+JK_PUBLIC void jk_buffer_skip_whitespace(JkBuffer buffer, int64_t *cursor);
+
 JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c);
 
 JK_PUBLIC int32_t jk_buffer_token_character_next(JkBuffer buffer, int64_t *pos);
@@ -282,13 +284,19 @@ JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)
             (*(pos) < (buffer).size ? *(type *)((buffer).data + (*(pos) - JK_SIZEOF(type))) \
                                     : (default)))
 
+JK_PUBLIC b32 jk_string_equal(JkBuffer a, JkBuffer b);
+
 JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b);
 
 JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer);
 
-JK_PUBLIC b32 jk_char_is_whitespace(int32_t c);
+JK_PUBLIC b32 jk_is_space(int32_t c);
 
 JK_PUBLIC b32 jk_char_is_digit(int32_t c);
+
+JK_PUBLIC b32 jk_char_is_hex_digit(int32_t c);
+
+JK_PUBLIC uint8_t jk_char_hex_value(int32_t c);
 
 JK_PUBLIC int32_t jk_char_to_lower(int32_t c);
 

@@ -257,12 +257,12 @@ static Board parse_fen(JkBuffer fen)
     int64_t i = 0;
     JkIntVec2 pos = {0, 7};
 
-    while (jk_char_is_whitespace(fen.data[i])) {
+    while (jk_is_space(fen.data[i])) {
         i++;
     }
 
     // Parse piece positions
-    for (; i < fen.size && !jk_char_is_whitespace(fen.data[i]); i++) {
+    for (; i < fen.size && !jk_is_space(fen.data[i]); i++) {
         uint8_t c = fen.data[i];
         Team team = WHITE;
         if (c >= 'a') {
@@ -298,7 +298,7 @@ static Board parse_fen(JkBuffer fen)
         }
     }
 
-    while (jk_char_is_whitespace(fen.data[i])) {
+    while (jk_is_space(fen.data[i])) {
         i++;
     }
 
@@ -307,13 +307,13 @@ static Board parse_fen(JkBuffer fen)
         board.flags |= JK_MASK(BOARD_FLAG_CURRENT_PLAYER);
     }
 
-    while (jk_char_is_whitespace(fen.data[i])) {
+    while (jk_is_space(fen.data[i])) {
         i++;
     }
 
     // Parse castling rights. Flag set means disallowed.
     uint8_t c;
-    while (!jk_char_is_whitespace(c = fen.data[i++])) {
+    while (!jk_is_space(c = fen.data[i++])) {
         if (c == 'Q') {
             board.flags &= ~JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS);
         } else if (c == 'K') {
@@ -325,7 +325,7 @@ static Board parse_fen(JkBuffer fen)
         }
     }
 
-    while (jk_char_is_whitespace(fen.data[i])) {
+    while (jk_is_space(fen.data[i])) {
         i++;
     }
 

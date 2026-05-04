@@ -102,7 +102,7 @@ static int32_t jk_buffer_compare(JkBuffer a, JkBuffer b)
     }
 }
 
-static b32 jk_char_is_whitespace(uint8_t c)
+static b32 jk_is_space(uint8_t c)
 {
     return c == ' ' || ('\t' <= c && c <= '\r');
 }
@@ -110,7 +110,7 @@ static b32 jk_char_is_whitespace(uint8_t c)
 static b32 jk_string_contains_whitespace(JkBuffer string)
 {
     for (int64_t i = 0; i < string.size; i++) {
-        if (jk_char_is_whitespace(string.data[i])) {
+        if (jk_is_space(string.data[i])) {
             return 1;
         }
     }
