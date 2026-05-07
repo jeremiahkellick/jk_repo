@@ -1039,7 +1039,8 @@ static void disjoint_over(ColorF32x8x4 *fg, ColorF32x8x4 bg)
     for (int64_t i = 0; i < 3; i++) {
         JkF32x8 fg_chan = jk_f32x8_mul(fg->e[i], fg->e[3]);
         JkF32x8 bg_chan = jk_f32x8_mul(bg.e[i], bg.e[3]);
-        fg->e[i] = jk_f32x8_div(jk_f32x8_add(fg_chan, bg_chan), jk_f32x8_max(alpha, jk_f32x8_broadcast(0.001)));
+        fg->e[i] = jk_f32x8_div(
+                jk_f32x8_add(fg_chan, bg_chan), jk_f32x8_max(alpha, jk_f32x8_broadcast(0.001)));
     }
     fg->e[3] = alpha;
 }
@@ -1128,11 +1129,16 @@ static void triangle_fill(
                         jk_f32x8_broadcast(tri->t[i].y)));
     }
 
-    float inv_deriv[2][2]; // Usage: inv_d[axis][is_depth];
-    inv_deriv[0][0] = deltas[0][SAMPLE_INTERPOLANT_COUNT + P_U] / 8; // dU/dx
-    inv_deriv[0][1] = deltas[0][S_Z] / 8; // dZ/dx
-    inv_deriv[1][0] = deltas[1][SAMPLE_INTERPOLANT_COUNT + P_V]; // dV/dy
-    inv_deriv[1][1] = deltas[1][S_Z]; // dZ/dy
+    float inv_deriv_z[2] = {
+        deltas[0][S_Z] / 8,
+        deltas[1][S_Z],
+    };
+
+    float inv_deriv[4]; // Usage: inv_deriv[2 * axis + tex_axis]
+    inv_deriv[0] = deltas[0][SAMPLE_INTERPOLANT_COUNT + P_U] / 8; // dU/dx
+    inv_deriv[1] = deltas[0][SAMPLE_INTERPOLANT_COUNT + P_V] / 8; // dV/dx
+    inv_deriv[2] = deltas[1][SAMPLE_INTERPOLANT_COUNT + P_U]; // dU/dy
+    inv_deriv[3] = deltas[1][SAMPLE_INTERPOLANT_COUNT + P_V]; // dV/dy
 
     for (int32_t y = bounds.min.y; y < bounds.max.y; y++) {
         PixelInterpolants p_interpolants = p_interpolants_row;
@@ -1161,17 +1167,14 @@ static void triangle_fill(
                             JkF32x8 inv_z = jk_f32x8_div(
                                     jk_f32x8_broadcast(1), s_interpolants_col[0].e[S_Z]);
 
+                            JkF32x8 uv[2];
                             JkF32x8 frac[2];
                             JkI256 coords[2][2];
-                            JkF32x8 deriv[2];
                             for (int32_t axis = 0; axis < 2; axis++) {
-                                JkF32x8 uv = jk_f32x8_mul(p_interpolants.e[P_U + axis], inv_z);
-                                JkF32x8 dUV = jk_f32x8_broadcast(inv_deriv[axis][0]);
-                                JkF32x8 dZ = jk_f32x8_broadcast(inv_deriv[axis][1]);
-                                deriv[axis] = jk_f32x8_mul(
-                                        inv_z, jk_f32x8_sub(dUV, jk_f32x8_mul(uv, dZ)));
+                                uv[axis] = jk_f32x8_mul(p_interpolants.e[P_U + axis], inv_z);
+
                                 JkF32x8 tex = jk_f32x8_mul(jk_f32x8_broadcast(TEXTURE_SIDE_LENGTH),
-                                        jk_f32x8_sub(uv, jk_f32x8_floor(uv)));
+                                        jk_f32x8_sub(uv[axis], jk_f32x8_floor(uv[axis])));
                                 frac[axis] = jk_f32x8_sub(tex, jk_f32x8_floor(tex));
                                 coords[axis][0] = jk_i256_and(jk_i32x8_from_f32x8_truncate(tex),
                                         jk_i256_broadcast_i32(TEXTURE_MASK));
@@ -1180,10 +1183,18 @@ static void triangle_fill(
                                         jk_i256_broadcast_i32(TEXTURE_MASK));
                             }
 
-                            JkF32x8 pixel_size = jk_f32x8_mul(jk_f32x8_broadcast(0.5),
-                                    jk_f32x8_add(jk_f32x8_abs(deriv[0]), jk_f32x8_abs(deriv[1])));
-                            pixel_size = jk_f32x8_min(
-                                    pixel_size, jk_f32x8_broadcast(16.0f / TEXTURE_SIDE_LENGTH));
+                            JkF32x8 pixel_size = jk_f32x8_broadcast(0);
+                            for (int32_t axis = 0; axis < 2; axis++) {
+                                for (int32_t tex_axis = 0; tex_axis < 2; tex_axis++) {
+                                    JkF32x8 dUV =
+                                            jk_f32x8_broadcast(inv_deriv[2 * axis + tex_axis]);
+                                    JkF32x8 dZ = jk_f32x8_broadcast(inv_deriv_z[axis]);
+                                    JkF32x8 deriv = jk_f32x8_mul(inv_z,
+                                            jk_f32x8_sub(dUV, jk_f32x8_mul(uv[tex_axis], dZ)));
+                                    pixel_size = jk_f32x8_add(pixel_size, jk_f32x8_abs(deriv));
+                                }
+                            }
+                            pixel_size = jk_f32x8_mul(pixel_size, jk_f32x8_broadcast(0.5));
 
                             JkI256 dist[4];
                             for (int32_t row_i = 0; row_i < 2; row_i++) {
