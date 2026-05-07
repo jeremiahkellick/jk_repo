@@ -13,6 +13,11 @@
 #define LANE_COUNT 8
 #define TILE_SIDE_LENGTH 32
 
+#define TEXTURE_POW_2 8
+#define TEXTURE_SIDE_LENGTH (1 << 8)
+#define TEXTURE_PIXEL_COUNT (TEXTURE_SIDE_LENGTH * TEXTURE_SIDE_LENGTH)
+#define TEXTURE_MASK (TEXTURE_SIDE_LENGTH - 1)
+
 #define DRAW_BUFFER_SIDE_LENGTH 4096ll
 #define PIXEL_COUNT (DRAW_BUFFER_SIDE_LENGTH * DRAW_BUFFER_SIDE_LENGTH)
 #define DRAW_BUFFER_SIZE (SAMPLE_COUNT * PIXEL_COUNT * JK_SIZEOF(JkColor))
@@ -48,15 +53,16 @@ typedef struct FaceArray {
     Face *e;
 } FaceArray;
 
-typedef struct Bitmap {
-    JkIntVec2 dimensions;
-    JkColor *memory;
-} Bitmap;
+typedef struct Texture {
+    JkColor bg;
+    JkColor3 colors[4];
+    JkColor data[TEXTURE_PIXEL_COUNT];
+} Texture;
 
-typedef struct BitmapSpan {
-    JkIntVec2 dimensions;
-    int64_t offset;
-} BitmapSpan;
+typedef struct TextureArray {
+    int64_t count;
+    Texture *e;
+} TextureArray;
 
 typedef enum ObjectFlag {
     OBJ_COLLIDE,
@@ -73,7 +79,7 @@ typedef struct Object {
     ObjectId parent;
     JkTransform transform;
     JkSpan faces; // FaceArray
-    BitmapSpan texture;
+    int32_t texture_id;
     float repeat_size;
 } Object;
 
@@ -86,6 +92,8 @@ typedef struct Assets {
     JkSpan vertices; // JkVec3Array
     JkSpan texcoords; // JkVec2Array
     JkSpan objects; // ObjectArray
+    JkSpan textures; // TextureArray
+
     float font_ascent;
     float font_descent;
     float font_monospace_advance_width;

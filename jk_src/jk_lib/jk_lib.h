@@ -393,6 +393,8 @@ JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path);
 
 JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path);
 
+JK_PUBLIC JkBuffer jk_path_stem(JkBuffer path);
+
 JK_PUBLIC JkBuffer jk_path_extension(JkBuffer path);
 
 // ---- Buffer end -------------------------------------------------------------
@@ -1680,6 +1682,8 @@ typedef struct JkColor {
         uint8_t v[4];
     };
 } JkColor;
+
+JK_PUBLIC JkColor3 jk_color3_from_4(JkColor color);
 
 JK_PUBLIC JkColor jk_color4_from_3(JkColor3 color, uint8_t alpha);
 

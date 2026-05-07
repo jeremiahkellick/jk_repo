@@ -1144,6 +1144,29 @@ JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path)
     return result;
 }
 
+JK_PUBLIC JkBuffer jk_path_stem(JkBuffer path)
+{
+    JkBuffer result = path;
+    int64_t dot = -1;
+
+    for (int64_t i = path.size - 1; 0 <= i; i--) {
+        if (path.data[i] == '.' && dot == -1) {
+            dot = i;
+        }
+        if (path.data[i] == '/' || path.data[i] == '\\') {
+            result.size -= i + 1;
+            result.data += i + 1;
+            break;
+        }
+    }
+
+    if (dot != -1) {
+        result.size -= result.size - dot;
+    }
+
+    return result;
+}
+
 JK_PUBLIC JkBuffer jk_path_extension(JkBuffer path)
 {
     for (int64_t i = path.size - 1; 0 <= i && path.data[i] != '/' && path.data[i] != '\\'; i--) {
@@ -3143,6 +3166,11 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
 JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f64 = {
     .uint64_v = 0x7ff0000000000000llu};
 JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};
+
+JK_PUBLIC JkColor3 jk_color3_from_4(JkColor color)
+{
+    return (JkColor3){.r = color.r, .g = color.g, .b = color.b};
+}
 
 JK_PUBLIC JkColor jk_color4_from_3(JkColor3 color, uint8_t alpha)
 {

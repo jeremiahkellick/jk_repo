@@ -6,12 +6,7 @@
 #include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
-#define INPUT_SIDE_LENGTH 64
-#define OUTPUT_SIDE_LENGTH 256
-#define SDF_PIXEL_COUNT (OUTPUT_SIDE_LENGTH * OUTPUT_SIDE_LENGTH)
-#define SUBPIXEL_PRECISION (1 / 64.0f)
-
-static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
+static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
 {
     JkFloatArray result = {.e = jk_arena_pointer_current(arena)};
     int c;
@@ -75,7 +70,7 @@ uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor)
     return result;
 }
 
-b32 iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuffer *value)
+b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuffer *value)
 {
     // Name
     jk_buffer_skip_whitespace(svg, cursor);
@@ -105,22 +100,22 @@ b32 iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuffer *
     return 1;
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
+Texture generate_sdf_texture(JkArena *arena, JkBuffer name)
 {
+    Texture r = {.offset = -1, .bg = {.a = 0xff}};
+
     jk_platform_set_working_directory_to_executable_directory();
 
-    JkArena *arena = jk_arena_scratch_begin().arena;
-
-    JkColor background_color = {.a = 0xff};
     JkBuffer shape_strings[4] = {0};
-    JkColor3 shape_colors[4] = {0};
     JkShape shapes[4] = {0};
 
-    JK_ARENA_SCRATCH_NOT(scratch, arena)
+    JkArenaScope scratch = jk_arena_scratch_begin_not(arena);
+
+    // Parse SVG data
+    JK_ARENA_SCOPE(arena)
     {
-        // Find path data in SVG file
-        JkBuffer svg =
-                jk_platform_file_read(scratch.arena, JKS("../jk_assets/pikuma/graphics/abcd.svg"));
+        JkBuffer svg = jk_platform_file_read(arena,
+                JK_FORMAT(arena, jkfn("../jk_assets/pikuma/graphics/"), jkfs(name), jkfn(".svg")));
         if (svg.size == 0) {
             exit(1);
         }
@@ -148,7 +143,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     cursor += 4;
                     JkBuffer name;
                     JkBuffer value;
-                    while (iterate_attributes(svg, &cursor, &name, &value)) {
+                    while (svg_iterate_attributes(svg, &cursor, &name, &value)) {
                         if (jk_string_equal(name, JKS("d"))) {
                             shape_string = value;
                         } else if (jk_string_equal(name, JKS("id"))) {
@@ -196,20 +191,20 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
                     if (id != -1) {
                         shape_strings[id] = shape_string;
-                        shape_colors[id] = color;
+                        r.colors[id] = color;
                     }
                 } else if (jk_string_equal(tag, JKS("sodipodi:namedview"))) {
                     JkBuffer name;
                     JkBuffer value;
-                    while (iterate_attributes(svg, &cursor, &name, &value)) {
+                    while (svg_iterate_attributes(svg, &cursor, &name, &value)) {
                         if (jk_string_equal(name, JKS("pagecolor"))) {
                             int64_t value_cursor = 0;
                             jk_buffer_skip_whitespace(value, &value_cursor);
                             if (jk_buffer_character_get(value, value_cursor) == '#') {
                                 value_cursor++;
-                                background_color.r = read_hex_byte(value, &value_cursor);
-                                background_color.g = read_hex_byte(value, &value_cursor);
-                                background_color.b = read_hex_byte(value, &value_cursor);
+                                r.bg.r = read_hex_byte(value, &value_cursor);
+                                r.bg.g = read_hex_byte(value, &value_cursor);
+                                r.bg.b = read_hex_byte(value, &value_cursor);
                             }
                         }
                     }
@@ -225,7 +220,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
             shape->dimensions.x = 64.0f;
             shape->dimensions.y = 64.0f;
-            shape->commands.offset = arena->pos;
+            shape->commands.offset = scratch.arena->pos;
 
             JkVec2 prev_pos = {0};
 
@@ -233,16 +228,16 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
             int64_t pos = 0;
             int c;
             while ((c = jk_buffer_token_character_next(piece_string, &pos)) != EOF) {
-                JkArenaScope command_scope = jk_arena_scope_begin(scratch.arena);
+                JkArenaScope command_scope = jk_arena_scope_begin(arena);
 
                 switch (c) {
                 case 'M':
                 case 'L': {
-                    JkFloatArray numbers = parse_numbers(scratch.arena, piece_string, &pos);
+                    JkFloatArray numbers = svg_parse_numbers(arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 2 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 2) {
                         JkShapesPenCommand *new_command =
-                                jk_arena_push_zero(arena, JK_SIZEOF(*new_command));
+                                jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type =
                                 c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
                         new_command->v[0] = (JkVec2){numbers.e[i], numbers.e[i + 1]};
@@ -256,11 +251,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
                 case 'H':
                 case 'V': {
-                    JkFloatArray numbers = parse_numbers(scratch.arena, piece_string, &pos);
+                    JkFloatArray numbers = svg_parse_numbers(arena, piece_string, &pos);
                     JK_ASSERT(numbers.count);
                     for (int64_t i = 0; i < numbers.count; i++) {
                         JkShapesPenCommand *new_command =
-                                jk_arena_push_zero(arena, JK_SIZEOF(*new_command));
+                                jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
                         new_command->v[0] = c == 'H' ? (JkVec2){numbers.e[i], prev_pos.y}
                                                      : (JkVec2){prev_pos.x, numbers.e[i]};
@@ -269,11 +264,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 } break;
 
                 case 'Q': {
-                    JkFloatArray numbers = parse_numbers(scratch.arena, piece_string, &pos);
+                    JkFloatArray numbers = svg_parse_numbers(arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 4 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 4) {
                         JkShapesPenCommand *new_command =
-                                jk_arena_push_zero(arena, JK_SIZEOF(*new_command));
+                                jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
                         for (int32_t j = 0; j < 2; j++) {
                             new_command->v[j] =
@@ -284,11 +279,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 } break;
 
                 case 'C': {
-                    JkFloatArray numbers = parse_numbers(scratch.arena, piece_string, &pos);
+                    JkFloatArray numbers = svg_parse_numbers(arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 6 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 6) {
                         JkShapesPenCommand *new_command =
-                                jk_arena_push(arena, JK_SIZEOF(*new_command));
+                                jk_arena_push(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                         for (int32_t j = 0; j < 3; j++) {
                             new_command->v[j] =
@@ -299,11 +294,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 } break;
 
                 case 'A': {
-                    JkFloatArray numbers = parse_numbers(scratch.arena, piece_string, &pos);
+                    JkFloatArray numbers = svg_parse_numbers(arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 7 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 7) {
                         JkShapesPenCommand *new_command =
-                                jk_arena_push_zero(arena, JK_SIZEOF(*new_command));
+                                jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_ARC;
                         new_command->arc.dimensions.x = numbers.e[i];
                         new_command->arc.dimensions.y = numbers.e[i + 1];
@@ -322,7 +317,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
                 case 'Z': {
                     JkShapesPenCommand *new_command =
-                            jk_arena_push_zero(arena, JK_SIZEOF(*new_command));
+                            jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                     new_command->type = JK_SHAPES_PEN_COMMAND_LINE;
                     new_command->v[0] = first_pos;
                 } break;
@@ -335,27 +330,28 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 jk_arena_scope_end(command_scope);
             }
 
-            shape->commands.size = arena->pos - shape->commands.offset;
+            shape->commands.size = scratch.arena->pos - shape->commands.offset;
         }
     }
 
-    JkColor *sdf = jk_arena_push(arena, SDF_PIXEL_COUNT * sizeof(*sdf));
+    r.offset = arena->pos;
+    JkColor *sdf = jk_arena_push(arena, TEXTURE_PIXEL_COUNT * sizeof(*sdf));
 
-    float pixels_per_unit = (float)OUTPUT_SIDE_LENGTH / INPUT_SIDE_LENGTH;
+    float pixels_per_unit = (float)TEXTURE_SIDE_LENGTH / SVG_SIDE_LENGTH;
     for (int64_t shape_index = 0; shape_index < 4; shape_index++) {
-        JkArenaScope shape_scope = jk_arena_scope_begin(arena);
+        JkArenaScope shape_scope = jk_arena_scope_begin(scratch.arena);
 
         JkShape *shape = shapes + shape_index;
 
         JkShapesPenCommandArray commands;
         commands.count = shape->commands.size / JK_SIZEOF(commands.e[0]);
-        commands.e = (JkShapesPenCommand *)(arena->memory.data + shape->commands.offset);
+        commands.e = (JkShapesPenCommand *)(scratch.arena->memory.data + shape->commands.offset);
         JkEdgeArray edges = jk_shapes_edges_get(
-                arena, commands, (JkVec2){0}, pixels_per_unit, SUBPIXEL_PRECISION, 0);
+                scratch.arena, commands, (JkVec2){0}, pixels_per_unit, SDF_SUBPIXEL_PRECISION, 0);
 
-        float *fill_right = jk_arena_push(arena, OUTPUT_SIDE_LENGTH * sizeof(*fill_right));
-        for (JkIntVec2 pos = {0}; pos.y < OUTPUT_SIDE_LENGTH; pos.y++) {
-            jk_memset(fill_right, 0, OUTPUT_SIDE_LENGTH * sizeof(*fill_right));
+        float *fill_right = jk_arena_push(scratch.arena, TEXTURE_SIDE_LENGTH * sizeof(*fill_right));
+        for (JkIntVec2 pos = {0}; pos.y < TEXTURE_SIDE_LENGTH; pos.y++) {
+            jk_memset(fill_right, 0, TEXTURE_SIDE_LENGTH * sizeof(*fill_right));
             float sample_y = pos.y + 0.5f;
 
             for (int64_t edge_index = 0; edge_index < edges.count; edge_index++) {
@@ -370,13 +366,13 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
                 float scanline_intersect_x = jk_segment_y_intersection(edge->segment, sample_y);
                 float leftmost_sample_x = jk_ceil_f32(scanline_intersect_x - 0.5f);
-                if (0 <= leftmost_sample_x && leftmost_sample_x < OUTPUT_SIDE_LENGTH) {
+                if (0 <= leftmost_sample_x && leftmost_sample_x < TEXTURE_SIDE_LENGTH) {
                     fill_right[(int32_t)leftmost_sample_x] += edge->direction;
                 }
             }
 
             float winding = 0;
-            for (pos.x = 0; pos.x < OUTPUT_SIDE_LENGTH; pos.x++) {
+            for (pos.x = 0; pos.x < TEXTURE_SIDE_LENGTH; pos.x++) {
                 winding += fill_right[pos.x];
                 float sign = winding == 0 ? 1 : -1;
 
@@ -390,46 +386,18 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                 }
 
                 float value = 127.5f;
-                if ((SUBPIXEL_PRECISION * SUBPIXEL_PRECISION) < distance_sqr) {
+                if ((SDF_SUBPIXEL_PRECISION * SDF_SUBPIXEL_PRECISION) < distance_sqr) {
                     float signed_distance = sign * jk_sqrt_f32(distance_sqr);
                     value = jk_remap_clamped_f32(signed_distance, SDF_SPREAD, -SDF_SPREAD, 0, 255);
                 }
-                sdf[OUTPUT_SIDE_LENGTH * pos.y + pos.x].v[shape_index] = (uint8_t)value;
+                sdf[TEXTURE_SIDE_LENGTH * pos.y + pos.x].v[shape_index] = (uint8_t)value;
             }
         }
 
         jk_arena_scope_end(shape_scope);
     }
 
-    // Write sdf to a bitmap file
-    JkBuffer bitmap_buffer =
-            jk_arena_push_buffer(arena, sizeof(JkBitmapHeader) + sizeof(JkColor) * SDF_PIXEL_COUNT);
-    JkBitmapHeader *bitmap = (JkBitmapHeader *)bitmap_buffer.data;
-    jk_memset(bitmap, 0, sizeof(*bitmap));
-    bitmap->identifier = 0x4d42;
-    bitmap->size = bitmap_buffer.size;
-    bitmap->data_offset = sizeof(JkBitmapHeader);
-    bitmap->dib_header_size = 108;
-    bitmap->width = OUTPUT_SIDE_LENGTH;
-    bitmap->height = OUTPUT_SIDE_LENGTH;
-    bitmap->color_plane_count = 1;
-    bitmap->bits_per_pixel = 32;
-    bitmap->compression_method = 3;
-    bitmap->data_size = sizeof(JkColor) * SDF_PIXEL_COUNT;
-    bitmap->masks[0] = 0x00ff0000;
-    bitmap->masks[1] = 0x0000ff00;
-    bitmap->masks[2] = 0x000000ff;
-    bitmap->masks[3] = 0xff000000;
-    bitmap->color_space_type = 0x73524742; // 'sRGB' (LCS_sRGB)
-    JkColor *bitmap_data = (JkColor *)(bitmap_buffer.data + bitmap->data_offset);
-    for (JkIntVec2 pos = {0}; pos.y < OUTPUT_SIDE_LENGTH; pos.y++) {
-        for (pos.x = 0; pos.x < OUTPUT_SIDE_LENGTH; pos.x++) {
-            int32_t index = OUTPUT_SIDE_LENGTH * pos.y + pos.x;
-            int32_t bmp_index = OUTPUT_SIDE_LENGTH * (OUTPUT_SIDE_LENGTH - 1 - pos.y) + pos.x;
-            bitmap_data[bmp_index] = sdf[index];
-        }
-    }
-    jk_platform_file_write(JKS("sdf.bmp"), bitmap_buffer);
+    jk_arena_scope_end(scratch);
 
-    return 0;
+    return r;
 }
