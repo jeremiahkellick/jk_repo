@@ -28,7 +28,8 @@ static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 255};
 static float const player_radius = 0.33f;
 static float const player_height = 1.75f;
 static float const player_eye_height = 1.4f;
-static JkVec3 light_dir = {-1, 4, -1};
+static JkVec3 light_dir = {-1, 2, -1};
+static JkVec3 light_normal;
 static int32_t rotation_seconds = 8;
 
 static float sample_offsets[2][SAMPLE_COUNT] = {
@@ -208,6 +209,7 @@ typedef struct TriangleNode {
     struct TriangleNode *next;
     int32_t texture_id;
     TexturedTriangle tri;
+    float light_multiplier;
 } TriangleNode;
 
 typedef struct Tile {
@@ -1043,8 +1045,10 @@ static void color_blend(ColorF32x8x4 *fg, ColorF32x8x4 bg)
 }
 
 static void triangle_fill(
-        Environment *env, TexturedTriangle *tri, Texture *texture, JkIntRect bounding_box)
+        Environment *env, TriangleNode *node, Texture *texture, JkIntRect bounding_box)
 {
+    TexturedTriangle *tri = &node->tri;
+
     JkIntRect bounds = jk_int_rect_intersect(
             bounding_box, triangle_bounding_box(tri->v[0], tri->v[1], tri->v[2]));
     if (!(bounds.min.x < bounds.max.x && bounds.min.y < bounds.max.y)) {
@@ -1052,10 +1056,21 @@ static void triangle_fill(
     }
     bounds.min.x &= ~(8 - 1);
 
-    ColorF32x8x4 bg = color_broadcast(texture->bg);
-    ColorF32x8x4 tex_colors[4];
+    ColorF32x8x4 colors[5];
     for (int64_t i = 0; i < 4; i++) {
-        tex_colors[i] = color_broadcast(texture->colors[i]);
+        colors[i] = color_broadcast(texture->colors[i]);
+    }
+    colors[4] = color_broadcast(texture->bg);
+
+    for (int64_t color_index = 0; color_index < JK_ARRAY_COUNT(colors); color_index++) {
+        for (int64_t i = 0; i < 3; i++) {
+            colors[color_index].e[i] = jk_f32x8_mul(
+                    colors[color_index].e[i], jk_f32x8_broadcast(node->light_multiplier));
+            colors[color_index].e[i] =
+                    jk_f32x8_min(colors[color_index].e[i], jk_f32x8_broadcast(255));
+            colors[color_index].e[i] =
+                    jk_f32x8_max(colors[color_index].e[i], jk_f32x8_broadcast(0));
+        }
     }
 
     JkVec2 verts_2d[3];
@@ -1224,13 +1239,13 @@ static void triangle_fill(
                                         jk_f32x8_broadcast(0.5), jk_f32x8_mul(dir, spread_pixels));
                                 coverage = jk_f32x8_max(coverage, jk_f32x8_broadcast(0));
                                 coverage = jk_f32x8_min(coverage, jk_f32x8_broadcast(1));
-                                ColorF32x8x4 color = tex_colors[channel_index];
+                                ColorF32x8x4 color = colors[channel_index];
                                 color.e[3] = jk_f32x8_mul(color.e[3], coverage);
                                 color_blend(&pixel_color, color);
                             }
                             if (jk_f32x8_any(jk_f32x8_less_than(
                                         pixel_color.e[3], jk_f32x8_broadcast(1)))) {
-                                color_blend(&pixel_color, bg);
+                                color_blend(&pixel_color, colors[4]);
                             }
                             if (jk_f32x8_any(jk_f32x8_less_than(
                                         pixel_color.e[3], jk_f32x8_broadcast(0.95)))) {
@@ -1375,6 +1390,8 @@ void render(JkContext *context, Environment *env)
 
     jk_context = context;
 
+    light_normal = jk_vec3_normalized(light_dir);
+
     static JkIntRect volatile tiles_rect_shared;
     static TileArray volatile tiles_shared;
 
@@ -1472,8 +1489,6 @@ void render(JkContext *context, Environment *env)
         dimensions =
                 0 < env->state.test_frames_remaining ? (JkIntVec2){1902, 970} : input.dimensions;
 
-        JkVec3Array vertices;
-        JK_ARRAY_FROM_SPAN(vertices, env->assets, env->assets->vertices);
         JkVec2Array texcoords;
         JK_ARRAY_FROM_SPAN(texcoords, env->assets, env->assets->texcoords);
         ObjectArray objects;
@@ -1516,6 +1531,9 @@ void render(JkContext *context, Environment *env)
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
+
+            JkVec3Array vertices;
+            JK_ARRAY_FROM_SPAN(vertices, env->assets, object->vertices);
 
             FaceArray faces;
             JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
@@ -1782,13 +1800,36 @@ void render(JkContext *context, Environment *env)
             Object *object = objects.e + object_id.i;
             JkArenaScope object_scope = jk_arena_scope_begin(scratch0.arena);
 
+            JkVec3Array vertices;
+            JK_ARRAY_FROM_SPAN(vertices, env->assets, object->vertices);
+
             FaceArray faces;
             JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
 
             JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
             JkMat4 clip_from_local = jk_mat4_mul(clip_from_world, world_from_local);
 
-            // jk_mat4_mul_vec4(clip_from_local, jk_vec4_from_3(vertices.e[i], 1));
+            JkVec3Array world_vertices;
+            JK_ARENA_PUSH_ARRAY(scratch0.arena, world_vertices, vertices.count);
+            for (int64_t i = 0; i < world_vertices.count; i++) {
+                world_vertices.e[i] = jk_mat4_mul_point(world_from_local, vertices.e[i]);
+            }
+
+            JkVec4Array clip_vertices;
+            JK_ARENA_PUSH_ARRAY(scratch0.arena, clip_vertices, vertices.count);
+            for (int64_t i = 0; i < clip_vertices.count; i++) {
+                clip_vertices.e[i] =
+                        jk_mat4_mul_vec4(clip_from_local, jk_vec4_from_3(vertices.e[i], 1));
+            }
+
+            JkVec3Array local_scale_verts = vertices;
+            if (object->repeat_size) {
+                JK_ARENA_PUSH_ARRAY(scratch0.arena, local_scale_verts, vertices.count);
+                for (int64_t i = 0; i < local_scale_verts.count; i++) {
+                    local_scale_verts.e[i] = jk_vec3_mul(1 / object->repeat_size,
+                            jk_vec3_hadamard_prod(vertices.e[i], object->transform.scale));
+                }
+            }
 
             // Clip and bin faces for later rendering
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
@@ -1799,9 +1840,7 @@ void render(JkContext *context, Environment *env)
                 if (object->repeat_size) {
                     JkVec3 local_points[3];
                     for (int64_t i = 0; i < 3; i++) {
-                        local_points[i] = jk_vec3_mul(1 / object->repeat_size,
-                                jk_vec3_hadamard_prod(
-                                        vertices.e[face.v[i]], object->transform.scale));
+                        local_points[i] = local_scale_verts.e[face.v[i]];
                     }
                     JkVec3 normal = jk_vec3_cross(jk_vec3_sub(local_points[1], local_points[0]),
                             jk_vec3_sub(local_points[2], local_points[0]));
@@ -1842,14 +1881,31 @@ void render(JkContext *context, Environment *env)
                     }
                 }
 
+                // Calculate lighting
+                float light_multiplier = 1.0f;
+                {
+                    JkVec3 world_verts[3];
+                    for (int64_t i = 0; i < 3; i++) {
+                        world_verts[i] = world_vertices.e[face.v[i]];
+                    }
+                    JkVec3 normal = jk_vec3_normalized(
+                            jk_vec3_cross(jk_vec3_sub(world_verts[1], world_verts[0]),
+                                    jk_vec3_sub(world_verts[2], world_verts[0])));
+                    float lightness = -jk_vec3_dot(normal, light_normal);
+                    if (lightness < -0.1) {
+                        light_multiplier = 0.9;
+                    }
+                    if (0.57f < lightness) {
+                        light_multiplier = 1.05f;
+                    }
+                }
+
                 // Apply near clipping and projection
                 TexturedVertexArray vs = {.e = jk_arena_pointer_current(scratch0.arena)};
                 for (int64_t i = 0; i < 3; i++) {
                     int64_t b_i = (i + 1) % 3;
-                    JkVec4 a = jk_mat4_mul_vec4(
-                            clip_from_local, jk_vec4_from_3(vertices.e[face.v[i]], 1));
-                    JkVec4 b = jk_mat4_mul_vec4(
-                            clip_from_local, jk_vec4_from_3(vertices.e[face.v[b_i]], 1));
+                    JkVec4 a = clip_vertices.e[face.v[i]];
+                    JkVec4 b = clip_vertices.e[face.v[b_i]];
                     b32 a_inside = !!(a.z < a.w);
                     b32 b_inside = !!(b.z < b.w);
                     if (a_inside != b_inside) { // Crosses clip plane, add interpolated vertex
@@ -1891,6 +1947,7 @@ void render(JkContext *context, Environment *env)
                                 new_node->tri = tri;
                                 new_node->texture_id = object->texture_id;
                                 new_node->next = tile->head;
+                                new_node->light_multiplier = light_multiplier;
                                 tile->head = new_node;
                             }
                         }
@@ -1937,7 +1994,7 @@ void render(JkContext *context, Environment *env)
             }
 
             for (TriangleNode *node = tile->head; node; node = node->next) {
-                triangle_fill(env, &node->tri, textures.e + node->texture_id, bounding_box);
+                triangle_fill(env, node, textures.e + node->texture_id, bounding_box);
             }
 
             for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {

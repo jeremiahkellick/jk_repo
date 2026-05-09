@@ -177,29 +177,33 @@ static JkBuffer fbx_prop_string_read(uint8_t *base, int64_t *cursor)
 
 // ---- SVG begin --------------------------------------------------------------
 
+static b32 is_numeric(int c)
+{
+    return isdigit(c) || c == '.' || c == '-';
+}
+
 static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
 {
     JkFloatArray result = {.e = jk_arena_pointer_current(arena)};
     int c;
-    while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
-            && (isdigit(c) || isspace(c) || c == ',')) {
-        if (isdigit(c)) {
-            int64_t start = *pos - 1;
-            do {
-                c = jk_buffer_character_next(shape_string, pos);
-            } while (isdigit(c) || c == '.');
+    while ((c = jk_buffer_character_get(shape_string, *pos)) != EOF
+            && (is_numeric(c) || jk_is_space(c) || c == ',')) {
+        if (is_numeric(c)) {
+            int64_t start = *pos;
+            while (is_numeric(jk_buffer_character_get(shape_string, *pos))) {
+                (*pos)++;
+            }
             JkBuffer number_string = {
-                .size = (*pos - 1) - start,
+                .size = *pos - start,
                 .data = shape_string.data + start,
             };
             float *new_number = jk_arena_push(arena, JK_SIZEOF(*new_number));
             *new_number = (float)jk_parse_double(number_string);
+        } else {
+            (*pos)++;
         }
     }
     result.count = (float *)jk_arena_pointer_current(arena) - result.e;
-    if (c != EOF) {
-        (*pos)--;
-    }
     return result;
 }
 
@@ -511,6 +515,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
                     }
                 } break;
 
+                case 'z':
                 case 'Z': {
                     JkShapesPenCommand *new_command =
                             jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
@@ -592,6 +597,39 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
     }
 
     jk_arena_scope_end(scratch);
+
+    JK_ARENA_SCRATCH(file_arena)
+    {
+        // Write sdf to a bitmap file
+        JkBuffer bitmap_buffer = jk_arena_push_buffer(
+                file_arena.arena, sizeof(JkBitmapHeader) + sizeof(JkColor) * TEXTURE_PIXEL_COUNT);
+        JkBitmapHeader *bitmap = (JkBitmapHeader *)bitmap_buffer.data;
+        jk_memset(bitmap, 0, sizeof(*bitmap));
+        bitmap->identifier = 0x4d42;
+        bitmap->size = bitmap_buffer.size;
+        bitmap->data_offset = sizeof(JkBitmapHeader);
+        bitmap->dib_header_size = 108;
+        bitmap->width = TEXTURE_SIDE_LENGTH;
+        bitmap->height = TEXTURE_SIDE_LENGTH;
+        bitmap->color_plane_count = 1;
+        bitmap->bits_per_pixel = 32;
+        bitmap->compression_method = 3;
+        bitmap->data_size = sizeof(JkColor) * TEXTURE_PIXEL_COUNT;
+        bitmap->masks[0] = 0x00ff0000;
+        bitmap->masks[1] = 0x0000ff00;
+        bitmap->masks[2] = 0x000000ff;
+        bitmap->masks[3] = 0xff000000;
+        bitmap->color_space_type = 0x73524742; // 'sRGB' (LCS_sRGB)
+        JkColor *bitmap_data = (JkColor *)(bitmap_buffer.data + bitmap->data_offset);
+        for (JkIntVec2 pos = {0}; pos.y < TEXTURE_SIDE_LENGTH; pos.y++) {
+            for (pos.x = 0; pos.x < TEXTURE_SIDE_LENGTH; pos.x++) {
+                int32_t index = TEXTURE_SIDE_LENGTH * pos.y + pos.x;
+                bitmap_data[index] = tex->data[index];
+            }
+        }
+        jk_platform_file_write(
+                JK_FORMAT(file_arena.arena, jkfs(name), jkfn(".bmp")), bitmap_buffer);
+    }
 
     if (error) {
         jk_arena_pop(arena, JK_SIZEOF(*tex));
@@ -849,7 +887,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 int64_t fbx_id = *(int64_t *)(node->name + node->name_length + 1);
                 Thing *new_thing = thing_new(fbx_id);
                 JK_FLAG_SET(new_thing->flags, THING_FLAG_MODEL, is_model);
-                new_thing->vertices_base = c->verts_arena->pos / JK_SIZEOF(JkVec3);
+                new_thing->vertices_base = c->verts_arena->pos;
                 new_thing->texcoords_base = c->texcoords_arena->pos / JK_SIZEOF(JkVec2);
                 process_fbx_nodes(c, file, pos_children, new_thing);
             } else {
@@ -875,7 +913,8 @@ static Object *object_get(JkArenaScope objects_scope, ObjectId id)
     return (Object *)(objects_scope.arena->memory.data + objects_scope.base) + id.i;
 }
 
-static void process_thing(JkArenaScope objects_scope, Thing *thing, ObjectId object_id)
+static void process_thing(
+        JkArenaScope objects_scope, int64_t vertices_base, Thing *thing, ObjectId object_id)
 {
     if (!thing) {
         return;
@@ -928,6 +967,16 @@ static void process_thing(JkArenaScope objects_scope, Thing *thing, ObjectId obj
         Object *object = object_get(objects_scope, object_id);
         if (thing->faces.size) {
             object->faces = thing->faces;
+            int64_t max_vert = 0;
+            FaceArray faces;
+            JK_ARRAY_FROM_SPAN(faces, objects_scope.arena->memory.data, object->faces);
+            for (int64_t face_index = 0; face_index < faces.count; face_index++) {
+                for (int64_t i = 0; i < 3; i++) {
+                    max_vert = JK_MAX(max_vert, faces.e[face_index].v[i]);
+                }
+            }
+            object->vertices.offset = vertices_base + thing->vertices_base;
+            object->vertices.size = JK_SIZEOF(JkVec3) * (max_vert + 1);
         }
         if (thing->texture_id) {
             object->texture_id = thing->texture_id;
@@ -944,7 +993,7 @@ static void process_thing(JkArenaScope objects_scope, Thing *thing, ObjectId obj
     }
 
     for (Link *child = thing->first_child; child; child = child->next) {
-        process_thing(objects_scope, child->thing, object_id);
+        process_thing(objects_scope, vertices_base, child->thing, object_id);
     }
 }
 
@@ -1108,7 +1157,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
     assets->textures.size = result_arena.pos - assets->textures.offset;
 
-    assets->vertices = append_arena(&result_arena, c->verts_arena);
+    int64_t vertices_base = append_arena(&result_arena, c->verts_arena).offset;
     assets->texcoords = append_arena(&result_arena, c->texcoords_arena);
 
     // Process faces
@@ -1130,7 +1179,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     vertex_index = ~vertex_index;
                 }
                 if (point_index < JK_ARRAY_COUNT(face->v)) {
-                    face->v[point_index] = thing->vertices_base + vertex_index;
+                    face->v[point_index] = vertex_index;
                     if (i < thing->texcoord_indexes.count) {
                         face->t[point_index] = thing->texcoords_base + thing->texcoord_indexes.e[i];
                     }
@@ -1153,7 +1202,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     for (int64_t i = 0; i < thing_count; i++) {
         Thing *thing = things + i;
         if (!JK_FLAG_GET(thing->flags, THING_FLAG_HAS_PARENT)) {
-            process_thing(objects_scope, thing, (ObjectId){0});
+            process_thing(objects_scope, vertices_base, thing, (ObjectId){0});
         }
     }
     assets->objects = arena_scope_span(objects_scope);

@@ -166,6 +166,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     }
                 } break;
 
+                case 'z':
                 case 'Z': {
                     JkShapesPenCommand *new_command =
                             jk_arena_push_zero(&storage, JK_SIZEOF(*new_command));

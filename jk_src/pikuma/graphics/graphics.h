@@ -14,7 +14,7 @@
 #define TILE_SIDE_LENGTH 32
 
 #define TEXTURE_POW_2 8
-#define TEXTURE_SIDE_LENGTH (1 << 8)
+#define TEXTURE_SIDE_LENGTH (1 << TEXTURE_POW_2)
 #define TEXTURE_PIXEL_COUNT (TEXTURE_SIDE_LENGTH * TEXTURE_SIDE_LENGTH)
 #define TEXTURE_MASK (TEXTURE_SIDE_LENGTH - 1)
 
@@ -78,6 +78,7 @@ typedef struct Object {
     uint32_t flags;
     ObjectId parent;
     JkTransform transform;
+    JkSpan vertices; // JkVec3Array
     JkSpan faces; // FaceArray
     int32_t texture_id;
     float repeat_size;
@@ -89,7 +90,6 @@ typedef struct ObjectArray {
 } ObjectArray;
 
 typedef struct Assets {
-    JkSpan vertices; // JkVec3Array
     JkSpan texcoords; // JkVec2Array
     JkSpan objects; // ObjectArray
     JkSpan textures; // TextureArray
