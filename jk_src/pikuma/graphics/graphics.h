@@ -55,7 +55,7 @@ typedef struct FaceArray {
 
 typedef struct Texture {
     JkColor bg;
-    JkColor3 colors[4];
+    JkColor colors[4];
     JkColor data[TEXTURE_PIXEL_COUNT];
 } Texture;
 

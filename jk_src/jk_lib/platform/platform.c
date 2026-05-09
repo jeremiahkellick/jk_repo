@@ -1180,6 +1180,10 @@ JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_c
 
 JK_PUBLIC double jk_parse_double(JkBuffer number_string)
 {
+    if (number_string.size <= 0) {
+        return 0;
+    }
+
     double significand_sign = 1.0;
     double significand = 0.0;
     double exponent_sign = 1.0;

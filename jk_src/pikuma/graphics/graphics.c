@@ -1029,20 +1029,17 @@ static ColorF32x8x4 color_broadcast(JkColor color)
     for (int64_t i = 0; i < 4; i++) {
         result.e[i] = jk_f32x8_broadcast(color.v[i]);
     }
+    result.e[3] = jk_f32x8_div(result.e[3], jk_f32x8_broadcast(255));
     return result;
 }
 
-static void disjoint_over(ColorF32x8x4 *fg, ColorF32x8x4 bg)
+static void color_blend(ColorF32x8x4 *fg, ColorF32x8x4 bg)
 {
-    bg.e[3] = jk_f32x8_min(bg.e[3], jk_f32x8_sub(jk_f32x8_broadcast(1), fg->e[3]));
-    JkF32x8 alpha = jk_f32x8_add(fg->e[3], bg.e[3]);
+    JkF32x8 complement = jk_f32x8_sub(jk_f32x8_broadcast(1), fg->e[3]);
+    fg->e[3] = jk_f32x8_add(fg->e[3], jk_f32x8_mul(bg.e[3], complement));
     for (int64_t i = 0; i < 3; i++) {
-        JkF32x8 fg_chan = jk_f32x8_mul(fg->e[i], fg->e[3]);
-        JkF32x8 bg_chan = jk_f32x8_mul(bg.e[i], bg.e[3]);
-        fg->e[i] = jk_f32x8_div(
-                jk_f32x8_add(fg_chan, bg_chan), jk_f32x8_max(alpha, jk_f32x8_broadcast(0.001)));
+        fg->e[i] = jk_f32x8_add(fg->e[i], jk_f32x8_mul(jk_f32x8_mul(bg.e[i], bg.e[3]), complement));
     }
-    fg->e[3] = alpha;
 }
 
 static void triangle_fill(
@@ -1058,7 +1055,7 @@ static void triangle_fill(
     ColorF32x8x4 bg = color_broadcast(texture->bg);
     ColorF32x8x4 tex_colors[4];
     for (int64_t i = 0; i < 4; i++) {
-        tex_colors[i] = color_broadcast(jk_color4_from_3(texture->colors[i], 0x00));
+        tex_colors[i] = color_broadcast(texture->colors[i]);
     }
 
     JkVec2 verts_2d[3];
@@ -1164,6 +1161,7 @@ static void triangle_fill(
 
                         if (!found_color) {
                             found_color = 1;
+
                             JkF32x8 inv_z = jk_f32x8_div(
                                     jk_f32x8_broadcast(1), s_interpolants_col[0].e[S_Z]);
 
@@ -1195,6 +1193,8 @@ static void triangle_fill(
                                 }
                             }
                             pixel_size = jk_f32x8_mul(pixel_size, jk_f32x8_broadcast(0.5));
+                            pixel_size = jk_f32x8_min(
+                                    pixel_size, jk_f32x8_broadcast(18.4f / TEXTURE_SIDE_LENGTH));
 
                             JkI256 dist[4];
                             for (int32_t row_i = 0; row_i < 2; row_i++) {
@@ -1220,16 +1220,24 @@ static void triangle_fill(
                                         jk_f32x8_broadcast(SDF_SPREAD / TEXTURE_SIDE_LENGTH),
                                         jk_f32x8_reciprocal_approx(pixel_size));
 
-                                ColorF32x8x4 color = tex_colors[channel_index];
-                                color.e[3] = jk_f32x8_add(
+                                JkF32x8 coverage = jk_f32x8_add(
                                         jk_f32x8_broadcast(0.5), jk_f32x8_mul(dir, spread_pixels));
-                                color.e[3] = jk_f32x8_max(color.e[3], jk_f32x8_broadcast(0));
-                                color.e[3] = jk_f32x8_min(color.e[3], jk_f32x8_broadcast(1));
-                                disjoint_over(&pixel_color, color);
+                                coverage = jk_f32x8_max(coverage, jk_f32x8_broadcast(0));
+                                coverage = jk_f32x8_min(coverage, jk_f32x8_broadcast(1));
+                                ColorF32x8x4 color = tex_colors[channel_index];
+                                color.e[3] = jk_f32x8_mul(color.e[3], coverage);
+                                color_blend(&pixel_color, color);
                             }
                             if (jk_f32x8_any(jk_f32x8_less_than(
                                         pixel_color.e[3], jk_f32x8_broadcast(1)))) {
-                                disjoint_over(&pixel_color, bg);
+                                color_blend(&pixel_color, bg);
+                            }
+                            if (jk_f32x8_any(jk_f32x8_less_than(
+                                        pixel_color.e[3], jk_f32x8_broadcast(0.95)))) {
+                                JkF32x8 inv = jk_f32x8_reciprocal_approx(pixel_color.e[3]);
+                                for (int64_t i = 0; i < 3; i++) {
+                                    pixel_color.e[i] = jk_f32x8_mul(pixel_color.e[i], inv);
+                                }
                             }
                         }
 
@@ -1241,11 +1249,15 @@ static void triangle_fill(
                                 JK_I256_SHIFT_LEFT_I32(
                                         jk_i32x8_from_f32x8_truncate(pixel_color.e[2]), 16));
 
+                        JkF32x8 alpha_threshold = jk_f32x8_broadcast(0.234375 * sample_index);
+                        JkF32x8 should_draw = jk_f32x8_and(
+                                visible, jk_f32x8_less_than(alpha_threshold, pixel_color.e[3]));
+
                         JkF32x8 color_buffer = jk_f32x8_load((float *)(env->draw_buffer + index));
                         jk_f32x8_store((float *)(env->draw_buffer + index),
                                 jk_f32x8_blend(color_buffer,
                                         jk_f32x8_from_i256_reinterpret(color_i32),
-                                        visible));
+                                        should_draw));
                     }
                 }
 

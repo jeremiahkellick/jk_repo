@@ -295,3 +295,13 @@ Min: 17183758 (4.7732ms)
 Max: 20733442 (5.7592ms)
 
 Average: 18945426 (5.2626ms)
+
+SDF TEXTURES
+
+CPU frequency: 3600021670
+
+Min: 19581980 (5.4394ms)
+
+Max: 23041127 (6.4003ms)
+
+Average: 21187218 (5.8853ms)

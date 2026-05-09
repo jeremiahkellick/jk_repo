@@ -276,7 +276,6 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
     JkArena *arena = context->result_arena;
 
     Texture *tex = jk_arena_push(arena, JK_SIZEOF(*tex));
-    tex->bg.a = 0xff;
 
     JkBuffer shape_strings[4] = {0};
     JkShape shapes[4] = {0};
@@ -284,6 +283,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
     JkArenaScope scratch = jk_arena_scratch_begin_not(arena);
 
     b32 error = 0;
+    double page_opacity = -1;
 
     // Parse SVG data
     JK_ARENA_SCOPE(arena)
@@ -312,7 +312,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
                 if (jk_string_equal(tag, JKS("path"))) {
                     int64_t id = -1;
                     JkBuffer shape_string = {0};
-                    JkColor3 color = {0};
+                    JkColor color = {.a = 0xff};
 
                     cursor += 4;
                     JkBuffer key;
@@ -343,13 +343,14 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
                                 JkBuffer attribute_name = {
                                     .data = value.data + start, .size = style_cursor - start};
 
+                                jk_buffer_skip_whitespace(value, &style_cursor);
+                                if (jk_buffer_character_get(value, style_cursor) != ':') {
+                                    continue;
+                                }
+                                style_cursor++;
+                                jk_buffer_skip_whitespace(value, &style_cursor);
+
                                 if (jk_string_equal(attribute_name, JKS("fill"))) {
-                                    jk_buffer_skip_whitespace(value, &style_cursor);
-                                    if (jk_buffer_character_get(value, style_cursor) != ':') {
-                                        continue;
-                                    }
-                                    style_cursor++;
-                                    jk_buffer_skip_whitespace(value, &style_cursor);
                                     if (jk_buffer_character_get(value, style_cursor) != '#') {
                                         continue;
                                     }
@@ -357,7 +358,21 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
                                     color.r = read_hex_byte(value, &style_cursor);
                                     color.g = read_hex_byte(value, &style_cursor);
                                     color.b = read_hex_byte(value, &style_cursor);
-                                    break;
+                                } else if (jk_string_equal(attribute_name, JKS("fill-opacity"))) {
+                                    jk_buffer_skip_whitespace(value, &style_cursor);
+                                    int64_t alpha_start = style_cursor;
+                                    while (jk_char_is_digit(
+                                                   jk_buffer_character_get(value, style_cursor))
+                                            || jk_buffer_character_get(value, style_cursor)
+                                                    == '.') {
+                                        style_cursor++;
+                                    }
+                                    JkBuffer number = {
+                                        .data = value.data + alpha_start,
+                                        .size = style_cursor - alpha_start,
+                                    };
+                                    float alpha = jk_parse_double(number);
+                                    color.a = (uint8_t)JK_CLAMP(255 * alpha, 0, 255);
                                 }
                             }
                         }
@@ -379,12 +394,19 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
                                 tex->bg.r = read_hex_byte(value, &value_cursor);
                                 tex->bg.g = read_hex_byte(value, &value_cursor);
                                 tex->bg.b = read_hex_byte(value, &value_cursor);
+                                tex->bg.a = 0xff;
                             }
+                        } else if (jk_string_equal(key, JKS("inkscape:pageopacity"))) {
+                            page_opacity = jk_parse_double(value);
                         }
                     }
                 }
             } break;
             }
+        }
+
+        if (page_opacity != -1) {
+            tex->bg.a = (uint8_t)JK_CLAMP(255 * page_opacity, 0, 255);
         }
 
         // Parse the path data
