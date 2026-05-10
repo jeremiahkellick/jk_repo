@@ -198,6 +198,7 @@ typedef struct Q16Triangle {
 typedef struct TexturedTriangle {
     JkVec3 v[3];
     JkVec2 t[3];
+    float light[3];
 } TexturedTriangle;
 
 typedef struct TriangleArray {
@@ -209,7 +210,6 @@ typedef struct TriangleNode {
     struct TriangleNode *next;
     int32_t texture_id;
     TexturedTriangle tri;
-    float light_multiplier;
 } TriangleNode;
 
 typedef struct Tile {
@@ -224,6 +224,7 @@ typedef struct TileArray {
 typedef struct TexturedVertex {
     JkVec3 v;
     JkVec2 t;
+    float light;
 } TexturedVertex;
 
 typedef struct TexturedVertexArray {
@@ -271,6 +272,7 @@ typedef struct NavContact NavContact;
 
 typedef enum NavContactFlag {
     NAV_CONTACT_UP,
+    NAV_CONTACT_WALKABLE,
     NAV_CONTACT_FLAG_COUNT,
 } NavContactFlag;
 
@@ -406,9 +408,12 @@ typedef struct NavTriangleArray {
     NavTriangle *e;
 } NavTriangleArray;
 
-static void nav_triangle_setup(JkArena *arena, JkIntVec2 nav_dimensions, Q16Triangle tri)
+static void nav_triangle_setup(
+        JkArena *arena, JkIntVec2 nav_dimensions, Q16Triangle tri, b32 walkable)
 {
     NavTriangle *result = jk_arena_push_zero(arena, sizeof(*result));
+
+    JK_FLAG_SET(result->flags, NAV_CONTACT_WALKABLE, walkable);
 
     JkIntRect nav_area_bounds = (JkIntRect){
         .min = {1, 1},
@@ -622,6 +627,8 @@ static void nav_remove_invalid_contacts(JkIntVec2 nav_dimensions,
                 }
             }
         }
+
+        valid = valid && JK_FLAG_GET(contact->flags, NAV_CONTACT_WALKABLE);
 
         if (valid) {
             link = &contact->next;
@@ -982,6 +989,7 @@ typedef struct SampleInterpolants {
 typedef enum PixelInterpolant {
     P_U,
     P_V,
+    P_LIGHT,
     PIXEL_INTERPOLANT_COUNT,
 } PixelInterpolant;
 
@@ -1056,21 +1064,10 @@ static void triangle_fill(
     }
     bounds.min.x &= ~(8 - 1);
 
-    ColorF32x8x4 colors[5];
+    ColorF32x8x4 bg = color_broadcast(texture->bg);
+    ColorF32x8x4 colors[4];
     for (int64_t i = 0; i < 4; i++) {
         colors[i] = color_broadcast(texture->colors[i]);
-    }
-    colors[4] = color_broadcast(texture->bg);
-
-    for (int64_t color_index = 0; color_index < JK_ARRAY_COUNT(colors); color_index++) {
-        for (int64_t i = 0; i < 3; i++) {
-            colors[color_index].e[i] = jk_f32x8_mul(
-                    colors[color_index].e[i], jk_f32x8_broadcast(node->light_multiplier));
-            colors[color_index].e[i] =
-                    jk_f32x8_min(colors[color_index].e[i], jk_f32x8_broadcast(255));
-            colors[color_index].e[i] =
-                    jk_f32x8_max(colors[color_index].e[i], jk_f32x8_broadcast(0));
-        }
     }
 
     JkVec2 verts_2d[3];
@@ -1123,6 +1120,8 @@ static void triangle_fill(
                     deltas[axis_index][S_BARYCENTRIC_0 + i] * tri->t[i].x;
             deltas[axis_index][SAMPLE_INTERPOLANT_COUNT + P_V] +=
                     deltas[axis_index][S_BARYCENTRIC_0 + i] * tri->t[i].y;
+            deltas[axis_index][SAMPLE_INTERPOLANT_COUNT + P_LIGHT] +=
+                    deltas[axis_index][S_BARYCENTRIC_0 + i] * tri->light[i];
         }
         for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
             s_interpolants_row[sample_index].e[S_BARYCENTRIC_0 + i] =
@@ -1139,6 +1138,9 @@ static void triangle_fill(
         p_interpolants_row.e[P_V] = jk_f32x8_add(p_interpolants_row.e[P_V],
                 jk_f32x8_mul(s_interpolants_row[0].e[S_BARYCENTRIC_0 + i],
                         jk_f32x8_broadcast(tri->t[i].y)));
+        p_interpolants_row.e[P_LIGHT] = jk_f32x8_add(p_interpolants_row.e[P_LIGHT],
+                jk_f32x8_mul(s_interpolants_row[0].e[S_BARYCENTRIC_0 + i],
+                        jk_f32x8_broadcast(tri->light[i])));
     }
 
     float inv_deriv_z[2] = {
@@ -1245,7 +1247,7 @@ static void triangle_fill(
                             }
                             if (jk_f32x8_any(jk_f32x8_less_than(
                                         pixel_color.e[3], jk_f32x8_broadcast(1)))) {
-                                color_blend(&pixel_color, colors[4]);
+                                color_blend(&pixel_color, bg);
                             }
                             if (jk_f32x8_any(jk_f32x8_less_than(
                                         pixel_color.e[3], jk_f32x8_broadcast(0.95)))) {
@@ -1253,6 +1255,21 @@ static void triangle_fill(
                                 for (int64_t i = 0; i < 3; i++) {
                                     pixel_color.e[i] = jk_f32x8_mul(pixel_color.e[i], inv);
                                 }
+                            }
+                            JkF32x8 light = jk_f32x8_blend(jk_f32x8_broadcast(1),
+                                    jk_f32x8_broadcast(1.05),
+                                    jk_f32x8_less_than(
+                                            jk_f32x8_broadcast(0.65), p_interpolants.e[P_LIGHT]));
+                            light = jk_f32x8_blend(light,
+                                    jk_f32x8_broadcast(0.92),
+                                    jk_f32x8_less_than(
+                                            p_interpolants.e[P_LIGHT], jk_f32x8_broadcast(-0.25)));
+                            for (int64_t i = 0; i < 3; i++) {
+                                pixel_color.e[i] = jk_f32x8_mul(pixel_color.e[i], light);
+                                pixel_color.e[i] =
+                                        jk_f32x8_max(pixel_color.e[i], jk_f32x8_broadcast(0));
+                                pixel_color.e[i] =
+                                        jk_f32x8_min(pixel_color.e[i], jk_f32x8_broadcast(255));
                             }
                         }
 
@@ -1301,11 +1318,13 @@ static void triangle_fill(
     }
 }
 
-static void add_textured_vertex(JkArena *arena, JkMat4 screen_from_ndc, JkVec4 v, JkVec2 t)
+static void add_textured_vertex(
+        JkArena *arena, JkMat4 screen_from_ndc, JkVec4 v, JkVec2 t, float light)
 {
     TexturedVertex *new = jk_arena_push(arena, sizeof(*new));
     new->v = jk_mat4_mul_point(screen_from_ndc, jk_vec4_perspective_divide(v));
     new->t = jk_vec2_mul(new->v.z, t);
+    new->light = light;
 }
 
 static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
@@ -1539,12 +1558,17 @@ void render(JkContext *context, Environment *env)
             JK_ARRAY_FROM_SPAN(faces, env->assets, object->faces);
 
             JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
-            JkMat4 nav_from_local = jk_mat4_mul(nav_from_world, world_from_local);
+
+            JkVec3 *world_vertices =
+                    jk_arena_push(scratch1.arena, vertices.count * JK_SIZEOF(*world_vertices));
+            for (int64_t i = 0; i < vertices.count; i++) {
+                world_vertices[i] = jk_mat4_mul_point(world_from_local, vertices.e[i]);
+            }
 
             JkQ16Vec3 *nav_vertices =
                     jk_arena_push(scratch1.arena, vertices.count * JK_SIZEOF(*nav_vertices));
             for (int64_t i = 0; i < vertices.count; i++) {
-                JkVec3 vert_f32 = jk_mat4_mul_point(nav_from_local, vertices.e[i]);
+                JkVec3 vert_f32 = jk_mat4_mul_point(nav_from_world, world_vertices[i]);
                 nav_vertices[i] = jk_q16_vec3_from_f32(vert_f32);
             }
 
@@ -1552,12 +1576,17 @@ void render(JkContext *context, Environment *env)
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
                 Face face = faces.e[face_index];
 
+                JkVec3 normal = jk_triangle_normal(world_vertices[face.v[0]],
+                        world_vertices[face.v[1]],
+                        world_vertices[face.v[2]]);
+                b32 walkable = 0.49f < jk_vec3_dot(normal, (JkVec3){0, 0, 1});
+
                 Q16Triangle triangle = {0};
                 for (int64_t i = 0; i < 3; i++) {
                     triangle.v[i] = nav_vertices[face.v[i]];
                 }
 
-                nav_triangle_setup(scratch0.arena, nav_dimensions, triangle);
+                nav_triangle_setup(scratch0.arena, nav_dimensions, triangle, walkable);
             }
         }
 
@@ -1798,6 +1827,7 @@ void render(JkContext *context, Environment *env)
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
+
             JkArenaScope object_scope = jk_arena_scope_begin(scratch0.arena);
 
             JkVec3Array vertices;
@@ -1813,6 +1843,22 @@ void render(JkContext *context, Environment *env)
             JK_ARENA_PUSH_ARRAY(scratch0.arena, world_vertices, vertices.count);
             for (int64_t i = 0; i < world_vertices.count; i++) {
                 world_vertices.e[i] = jk_mat4_mul_point(world_from_local, vertices.e[i]);
+            }
+
+            // Compute vertex normals
+            JkVec3Array normals;
+            JK_ARENA_PUSH_ARRAY_ZERO(scratch0.arena, normals, vertices.count);
+            for (int64_t face_index = 0; face_index < faces.count; face_index++) {
+                Face *face = faces.e + face_index;
+                JkVec3 normal = jk_triangle_normal(world_vertices.e[face->v[0]],
+                        world_vertices.e[face->v[1]],
+                        world_vertices.e[face->v[2]]);
+                for (int64_t i = 0; i < 3; i++) {
+                    normals.e[face->v[i]] = jk_vec3_add(normals.e[face->v[i]], normal);
+                }
+            }
+            for (int64_t i = 0; i < normals.count; i++) {
+                normals.e[i] = jk_vec3_normalized(normals.e[i]);
             }
 
             JkVec4Array clip_vertices;
@@ -1842,8 +1888,8 @@ void render(JkContext *context, Environment *env)
                     for (int64_t i = 0; i < 3; i++) {
                         local_points[i] = local_scale_verts.e[face.v[i]];
                     }
-                    JkVec3 normal = jk_vec3_cross(jk_vec3_sub(local_points[1], local_points[0]),
-                            jk_vec3_sub(local_points[2], local_points[0]));
+                    JkVec3 normal =
+                            jk_triangle_normal(local_points[0], local_points[1], local_points[2]);
 
                     // Find which basis plane this face is most in line with
                     int64_t plane_index = 0;
@@ -1882,21 +1928,17 @@ void render(JkContext *context, Environment *env)
                 }
 
                 // Calculate lighting
-                float light_multiplier = 1.0f;
-                {
-                    JkVec3 world_verts[3];
+                float light[3];
+                if (JK_FLAG_GET(object->flags, OBJ_FLAT)) {
+                    JkVec3 normal = jk_triangle_normal(world_vertices.e[face.v[0]],
+                            world_vertices.e[face.v[1]],
+                            world_vertices.e[face.v[2]]);
                     for (int64_t i = 0; i < 3; i++) {
-                        world_verts[i] = world_vertices.e[face.v[i]];
+                        light[i] = -jk_vec3_dot(normal, light_normal);
                     }
-                    JkVec3 normal = jk_vec3_normalized(
-                            jk_vec3_cross(jk_vec3_sub(world_verts[1], world_verts[0]),
-                                    jk_vec3_sub(world_verts[2], world_verts[0])));
-                    float lightness = -jk_vec3_dot(normal, light_normal);
-                    if (lightness < -0.1) {
-                        light_multiplier = 0.9;
-                    }
-                    if (0.57f < lightness) {
-                        light_multiplier = 1.05f;
+                } else {
+                    for (int64_t i = 0; i < 3; i++) {
+                        light[i] = -jk_vec3_dot(normals.e[face.v[i]], light_normal);
                     }
                 }
 
@@ -1913,10 +1955,12 @@ void render(JkContext *context, Environment *env)
                         add_textured_vertex(scratch0.arena,
                                 screen_from_ndc,
                                 jk_vec4_lerp(a, b, t),
-                                jk_vec2_lerp(uv[i], uv[b_i], t));
+                                jk_vec2_lerp(uv[i], uv[b_i], t),
+                                jk_f32_lerp(light[i], light[b_i], t));
                     }
                     if (b_inside) {
-                        add_textured_vertex(scratch0.arena, screen_from_ndc, b, uv[b_i]);
+                        add_textured_vertex(
+                                scratch0.arena, screen_from_ndc, b, uv[b_i], light[b_i]);
                     }
                 }
                 vs.count = (TexturedVertex *)jk_arena_pointer_current(scratch0.arena) - vs.e;
@@ -1928,6 +1972,7 @@ void render(JkContext *context, Environment *env)
                     for (int64_t i = 0; i < 3; i++) {
                         tri.v[i] = vs.e[indexes[i]].v;
                         tri.t[i] = vs.e[indexes[i]].t;
+                        tri.light[i] = vs.e[indexes[i]].light;
                     }
                     if (!clockwise_left_handed(tri.v[0], tri.v[1], tri.v[2])) {
                         JkVec3 tile_coords[3];
@@ -1947,7 +1992,6 @@ void render(JkContext *context, Environment *env)
                                 new_node->tri = tri;
                                 new_node->texture_id = object->texture_id;
                                 new_node->next = tile->head;
-                                new_node->light_multiplier = light_multiplier;
                                 tile->head = new_node;
                             }
                         }

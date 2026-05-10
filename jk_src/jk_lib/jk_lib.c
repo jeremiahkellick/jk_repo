@@ -1577,6 +1577,11 @@ JK_PUBLIC float jk_acos_f32(float x)
     return result;
 }
 
+JK_PUBLIC float jk_f32_lerp(float a, float b, float t)
+{
+    return (1.0f - t) * a + t * b;
+}
+
 JK_PUBLIC float jk_remap_f32(
         float value, float min_from, float max_from, float min_to, float max_to)
 {
@@ -2819,6 +2824,11 @@ JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVe
     result = jk_vec3_add(result, jk_vec3_mul(bary_c, c));
 
     return result;
+}
+
+JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2)
+{
+    return jk_vec3_normalized(jk_vec3_cross(jk_vec3_sub(v1, v0), jk_vec3_sub(v2, v0)));
 }
 
 // ---- Geometry end -----------------------------------------------------------

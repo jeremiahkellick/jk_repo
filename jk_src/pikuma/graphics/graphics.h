@@ -66,6 +66,7 @@ typedef struct TextureArray {
 
 typedef enum ObjectFlag {
     OBJ_COLLIDE,
+    OBJ_FLAT,
     OBJ_WALKABLE,
     OBJ_FLAG_COUNT,
 } ObjectFlag;

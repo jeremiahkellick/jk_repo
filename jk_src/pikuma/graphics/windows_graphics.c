@@ -297,20 +297,20 @@ DWORD app_thread_main(LPVOID param)
             if (CompareFileTime(
                         &graphics_dll_info.ftLastWriteTime, &graphics_dll_last_modified_time)
                     != 0) {
-                graphics_dll_last_modified_time = graphics_dll_info.ftLastWriteTime;
                 if (graphics_library) {
                     FreeLibrary(graphics_library);
                     g.render = 0;
                 }
-                if (!CopyFileA("graphics.dll", "graphics_tmp.dll", FALSE)) {
+                if (CopyFileA("graphics.dll", "graphics_tmp.dll", FALSE)) {
+                    graphics_dll_last_modified_time = graphics_dll_info.ftLastWriteTime;
+                } else {
                     OutputDebugStringA("Failed to copy graphics.dll to graphics_tmp.dll\n");
                 }
-                graphics_library = LoadLibraryA("graphics_tmp.dll");
-                if (graphics_library) {
-                    g.render = (RenderFunction *)GetProcAddress(graphics_library, "render");
-                } else {
+                while (!(graphics_library = LoadLibraryA("graphics_tmp.dll"))) {
                     OutputDebugStringA("Failed to load graphics_tmp.dll\n");
+                    Sleep(16);
                 }
+                g.render = (RenderFunction *)GetProcAddress(graphics_library, "render");
             }
         } else {
             OutputDebugStringA("Failed to get last modified time of graphics.dll\n");

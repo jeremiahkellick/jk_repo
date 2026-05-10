@@ -536,6 +536,8 @@ JK_PUBLIC float jk_acos_core_f32(float value);
 
 JK_PUBLIC float jk_acos_f32(float value);
 
+JK_PUBLIC float jk_f32_lerp(float a, float b, float t);
+
 JK_PUBLIC float jk_remap_f32(
         float value, float min_from, float max_from, float min_to, float max_to);
 
@@ -668,6 +670,12 @@ JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size);
     do {                                                                        \
         (array).count = item_count;                                             \
         (array).e = jk_arena_push(arena, (item_count) * JK_SIZEOF(*(array).e)); \
+    } while (0)
+
+#define JK_ARENA_PUSH_ARRAY_ZERO(arena, array, item_count)                           \
+    do {                                                                             \
+        (array).count = item_count;                                                  \
+        (array).e = jk_arena_push_zero(arena, (item_count) * JK_SIZEOF(*(array).e)); \
     } while (0)
 
 JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size);
@@ -1123,6 +1131,8 @@ JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b);
 JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s);
 
 JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c);
+
+JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2);
 
 // ---- Geometry end -----------------------------------------------------------
 

@@ -37,6 +37,7 @@ typedef enum ThingFlag {
     THING_FLAG_MODEL,
     THING_FLAG_SCALE,
     THING_FLAG_COLLIDE,
+    THING_FLAG_FLAT,
     THING_FLAG_WALKABLE,
 } ThingFlag;
 
@@ -803,6 +804,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             b32 proceed = 1;
             b32 has_repeat_size = 0;
             b32 has_collide = 0;
+            b32 has_flat = 0;
             b32 has_walkable = 0;
 
             TransformType type = 0;
@@ -822,6 +824,8 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     has_repeat_size = 1;
                 } else if (jk_buffer_compare(string, JKS("collide")) == 0) {
                     has_collide = 1;
+                } else if (jk_buffer_compare(string, JKS("flat")) == 0) {
+                    has_flat = 1;
                 } else if (jk_buffer_compare(string, JKS("walkable")) == 0) {
                     has_walkable = 1;
                 } else {
@@ -846,6 +850,14 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 if (node->name[cursor++] == 'I') {
                     int32_t collide = *(int32_t *)(node->name + cursor);
                     JK_FLAG_SET(thing->flags, THING_FLAG_COLLIDE, collide);
+                }
+                proceed = 0;
+            }
+
+            if (proceed && has_flat) {
+                if (node->name[cursor++] == 'I') {
+                    int32_t flat = *(int32_t *)(node->name + cursor);
+                    JK_FLAG_SET(thing->flags, THING_FLAG_FLAT, flat);
                 }
                 proceed = 0;
             }
@@ -986,6 +998,9 @@ static void process_thing(
         }
         if (JK_FLAG_GET(thing->flags, THING_FLAG_COLLIDE)) {
             JK_FLAG_SET(object->flags, OBJ_COLLIDE, 1);
+        }
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_FLAT)) {
+            JK_FLAG_SET(object->flags, OBJ_FLAT, 1);
         }
         if (JK_FLAG_GET(thing->flags, THING_FLAG_WALKABLE)) {
             JK_FLAG_SET(object->flags, OBJ_WALKABLE, 1);
