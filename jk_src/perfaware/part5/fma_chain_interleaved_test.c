@@ -11,7 +11,19 @@
 
 #define INTERLEAVE_COUNT 8
 
-void fma_chain(int64_t outer_loop_count, int64_t inner_loop_count)
+void straightforward(int64_t outer_loop_count, int64_t inner_loop_count)
+{
+    for (int64_t i = 0; i < outer_loop_count; i++) {
+        float value = 1;
+        JK_PRETEND_WRITE(value);
+        for (int64_t j = 0; j < inner_loop_count; j++) {
+            value = fma(value, 2, 1);
+        }
+        JK_PRETEND_READ(value);
+    }
+}
+
+void interleaved(int64_t outer_loop_count, int64_t inner_loop_count)
 {
     for (int64_t i = 0; i < outer_loop_count; i++) {
         double values[INTERLEAVE_COUNT];
@@ -35,7 +47,37 @@ void fma_chain(int64_t outer_loop_count, int64_t inner_loop_count)
     }
 }
 
-static JkPlatformRepetitionTest tests[32];
+void compressed(int64_t outer_loop_count, int64_t inner_loop_count)
+{
+    for (int64_t outer_index = 0; outer_index < outer_loop_count; outer_index++) {
+        double values[INTERLEAVE_COUNT];
+        for (int64_t i = 0; i < INTERLEAVE_COUNT; i++) {
+            values[i] = 1;
+            JK_PRETEND_WRITE(values[i]);
+        }
+        for (int64_t inner_index = 0; inner_index < inner_loop_count; inner_index++) {
+            for (int64_t i = 0; i < INTERLEAVE_COUNT; i++) {
+                values[i] = fma(values[i], 2, 1);
+            }
+        }
+        for (int64_t i = 0; i < INTERLEAVE_COUNT; i++) {
+            JK_PRETEND_READ(values[i]);
+        }
+    }
+}
+
+typedef struct Function {
+    char *name;
+    void (*call)(int64_t outer_loop_count, int64_t inner_loop_count);
+} Function;
+
+static Function functions[] = {
+    {.name = "straightforward", .call = straightforward},
+    {.name = "interleaved", .call = interleaved},
+    {.name = "compressed", .call = compressed},
+};
+
+static JkPlatformRepetitionTest tests[32][JK_ARRAY_COUNT(functions)];
 
 #define FMA_COUNT 3600000000ll
 
@@ -43,26 +85,36 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {
-        JkPlatformRepetitionTest *test = tests + i;
-        int64_t chain_length = (i + 1) * 8;
+    for (int64_t test_index = 0; test_index < JK_ARRAY_COUNT(tests); test_index++) {
+        int64_t chain_length = (test_index + 1) * 8;
         int64_t outer_loop_count = FMA_COUNT / (INTERLEAVE_COUNT * chain_length);
 
-        printf("\n%lld\n", chain_length);
+        for (int64_t func_index = 0; func_index < JK_ARRAY_COUNT(functions); func_index++) {
+            JkPlatformRepetitionTest *test = &tests[test_index][func_index];
+            printf("\n%lld, %s\n", chain_length, functions[func_index].name);
 
-        jk_platform_repetition_test_run_wave(test, 0, frequency, 10);
-        while (jk_platform_repetition_test_running_baseline(test, tests + 0)) {
-            jk_platform_repetition_test_time_begin(test);
-            fma_chain(outer_loop_count, chain_length);
-            jk_platform_repetition_test_time_end(test);
+            jk_platform_repetition_test_run_wave(test, 0, frequency, 10);
+            while (jk_platform_repetition_test_running_baseline(test, &tests[0][func_index])) {
+                jk_platform_repetition_test_time_begin(test);
+                functions[func_index].call(outer_loop_count, chain_length);
+                jk_platform_repetition_test_time_end(test);
+            }
         }
     }
 
-    printf("\nChain length,FMAs/cycle\n");
-    for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {
-        JkPlatformRepetitionTest *test = tests + i;
-        int64_t chain_length = (i + 1) * 8;
-        printf("%lld,%.3f\n", chain_length, (double)FMA_COUNT / (double)test->min.cpu_time);
+    printf("\nChain length");
+    for (int64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {
+        printf(",%s", functions[i].name);
+    }
+    printf("\n");
+
+    for (int64_t test_index = 0; test_index < JK_ARRAY_COUNT(tests); test_index++) {
+        int64_t chain_length = (test_index + 1) * 8;
+        printf("%lld", chain_length);
+        for (int64_t func_index = 0; func_index < JK_ARRAY_COUNT(functions); func_index++) {
+            printf(",%.3f", (double)FMA_COUNT / (double)tests[test_index][func_index].min.cpu_time);
+        }
+        printf("\n");
     }
 
     return 0;
