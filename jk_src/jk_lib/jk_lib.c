@@ -1707,7 +1707,7 @@ JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope)
     scope.arena->pos = scope.base;
 }
 
-JK_PUBLIC JkBuffer jk_arena_scope_as_buffer(JkArenaScope scope)
+JK_PUBLIC JkBuffer jk_buffer_from_arena_scope(JkArenaScope scope)
 {
     return (JkBuffer){
         .size = scope.arena->pos - scope.base,
@@ -2987,7 +2987,6 @@ static void jk_profile_report_frame_build(JkArena *arena,
     int64_t total = jk_profile.frame_elapsed[frame_index];
     double total_ms = 1000.0 * (double)total / (frequency * (double)frame_count);
     JK_FORMAT(arena,
-            jkf_nl,
             jkfs(name),
             jkfn(": "),
             jkfi(total / frame_count),
@@ -3052,7 +3051,7 @@ JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency)
 {
     JkBuffer result = {.data = jk_arena_pointer_current(arena)};
 
-    JK_FORMAT(arena, jkfn("CPU frequency: "), jkfi(frequency), jkf_nl);
+    JK_FORMAT(arena, jkf_nl, jkfn("CPU frequency: "), jkfi(frequency), jkf_nl);
 
     if (jk_profile.frame_count == 0) {
         JK_FORMAT(arena, jkfn("\nNo profile data was captured.\n"));
@@ -3218,13 +3217,18 @@ JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg)
     return result;
 }
 
-JK_NOINLINE JK_PUBLIC void jk_panic(void)
+JK_PUBLIC void jk_trap(void)
 {
 #if defined(_MSC_VER) && !defined(__clang__)
     __debugbreak();
 #elif defined(__clang__) || defined(__GNUC__)
     __builtin_debugtrap();
 #endif
+}
+
+JK_NOINLINE JK_PUBLIC void jk_panic(void)
+{
+    jk_trap();
     for (;;) {
     }
 }

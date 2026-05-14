@@ -36,13 +36,6 @@ typedef enum EnvironmentFlag {
     ENV_FLAG_DEBUG_DISPLAY,
 } EnvironmentFlag;
 
-typedef enum RecordState {
-    RECORD_STATE_NONE,
-    RECORD_STATE_RECORDING,
-    RECORD_STATE_PLAYBACK,
-    RECORD_STATE_COUNT,
-} RecordState;
-
 typedef struct Face {
     int32_t v[3]; // vertex indexes
     int32_t t[3]; // texcoord indexes
@@ -121,34 +114,58 @@ typedef struct Input {
 
 typedef struct State {
     uint64_t flags;
-    int64_t frame_id;
     float camera_yaw;
     float camera_pitch;
     JkVec3 player_position;
-    int64_t test_frames_remaining;
 } State;
 
+typedef struct Clip {
+    int64_t start;
+    int64_t end; // exclusive
+} Clip;
+
+typedef enum FrameFlag {
+    FRAME_DISCONTINUOUS,
+    FRAME_FLAG_COUNT,
+} FrameFlag;
+
+typedef struct RecordedFrame {
+    uint32_t flags;
+    Input input;
+    State state;
+} RecordedFrame;
+
 typedef struct Recording {
-    int64_t count;
-    State initial;
-    Input inputs[32 * 1024];
+    Clip clips[10];
+    int64_t frame_count;
+    RecordedFrame frames[];
 } Recording;
 
+typedef enum RecorderActivity {
+    RECORD_STATE_IDLE,
+    RECORD_STATE_RECORDING,
+    RECORD_STATE_PLAYING,
+    RECORD_STATE_PROFILING
+} RecorderActivity;
+
+typedef struct RecordState {
+    RecorderActivity activity;
+    int64_t clip_index;
+} RecordState;
+
 typedef struct Environment {
-    // Platform layer should set these pointers
+    // Platform layer must initialize these
+    uint64_t flags; // Set ENV_FLAG_RUNNING if initialization was successful
     Assets *assets;
     int64_t (*estimate_cpu_frequency)(int64_t);
-
-    // Platform layer should ensure these point to buffers of the given size
     JkColor *draw_buffer; // DRAW_BUFFER_SIZE
     float *z_buffer; // Z_BUFFER_SIZE
-    Recording *recording; // sizeof(Recording)
+    JkArena record_arena;
 
-    // Platform layer should set ENV_FLAG_RUNNING if initialization was successful
-    uint64_t flags;
-
+    // Negative means we're recording to the clip, positive means we're playing it back, zero means
+    // there's no active clip
     RecordState record_state;
-    int64_t playback_cursor;
+    int64_t recording_cursor;
 
     Input input;
     State state;

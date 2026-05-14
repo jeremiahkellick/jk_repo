@@ -101,7 +101,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context)
 }
 
 // clang-format off
-JkKey make_code_map[] = {
+static JkKey make_code_map[] = {
     0x00, 0x29, 0x1e, 0x1f, 0x20, 0x21, 0x22, 0x23,
     0x24, 0x25, 0x26, 0x27, 0x2d, 0x2e, 0x2a, 0x2b,
     0x14, 0x1a, 0x08, 0x15, 0x17, 0x1c, 0x18, 0x0c,
@@ -120,7 +120,7 @@ JkKey make_code_map[] = {
     0x92, 0x8a, 0x00, 0x8b, 0x00, 0x89, 0x85,
 };
 
-JkKey make_code_map_e0[] = {
+static JkKey make_code_map_e0[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xb6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -246,7 +246,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return result;
 }
 
-DWORD app_thread_main(LPVOID param)
+static DWORD app_thread_main(LPVOID param)
 {
     WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
@@ -470,7 +470,7 @@ DWORD app_thread_main(LPVOID param)
     return 0;
 }
 
-DWORD app_thread_auxiliary(LPVOID param)
+static DWORD app_thread_auxiliary(LPVOID param)
 {
     WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
@@ -490,8 +490,27 @@ DWORD app_thread_auxiliary(LPVOID param)
     return 0;
 }
 
+typedef enum Option {
+    OPT_RECORDING,
+    OPT_COUNT,
+} Option;
+
+static JkOption opts[OPT_COUNT] = {
+    {
+        .flag = 'r',
+        .long_name = "recording",
+        .arg_name = "FILE",
+        .description = "Load a recording from FILE",
+    },
+};
+
+static JkOptionResult opt_results[OPT_COUNT];
+static JkOptionsParseResult opts_parse = {0};
+
 int32_t jk_platform_entry_point(int32_t argc, char **argv)
 {
+    jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
+
     g.cursor_arrow = LoadCursorA(0, IDC_ARROW);
     g.cursor = g.cursor_arrow;
 
@@ -508,18 +527,26 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     g.env.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
 #endif
 
-    uint8_t *memory = VirtualAlloc(0,
-            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + sizeof(*g.env.recording),
-            MEM_COMMIT,
-            PAGE_READWRITE);
+    uint8_t *memory = VirtualAlloc(0, DRAW_BUFFER_SIZE + Z_BUFFER_SIZE, MEM_COMMIT, PAGE_READWRITE);
     if (!memory) {
         jk_log(JK_LOG_FATAL, JKS("Failed to allocate memory\n"));
         exit(1);
     }
     g.env.draw_buffer = (JkColor *)memory;
     g.env.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
-    g.env.recording = (Recording *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
     g.env.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
+
+    g.env.record_arena = jk_platform_arena_virtual_init(32 * JK_GIGABYTE);
+    if (!g.env.record_arena.memory.size) {
+        jk_log(JK_LOG_FATAL, JKS("Failed to initialize arena\n"));
+        exit(1);
+    }
+
+    if (opt_results[OPT_RECORDING].present && opt_results[OPT_RECORDING].buf.size) {
+        JK_DEBUG_ASSERT(g.env.record_arena.pos == 0);
+        jk_platform_file_read(&g.env.record_arena, opt_results[OPT_RECORDING].buf);
+        JK_DEBUG_ASSERT((g.env.record_arena.pos - sizeof(Recording)) % sizeof(RecordedFrame) == 0);
+    }
 
     WNDCLASSA window_class = {
         .style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW,
@@ -599,6 +626,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
         }
     } else {
         jk_log(JK_LOG_FATAL, JKS("CreateWindowExA failed\n"));
+    }
+
+    JkBuffer recording = jk_buffer_from_arena(&g.env.record_arena);
+    if (JK_SIZEOF(Recording) < recording.size) {
+        jk_platform_file_write(JKS("recording"), recording);
     }
 
     return 0;

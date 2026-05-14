@@ -692,7 +692,7 @@ JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope);
             _jk_arena_scope.flags &= ~JK_MASK(JK_ARENA_SCOPE_FLAG_DEFER),    \
                       jk_arena_scope_end(_jk_arena_scope))
 
-JK_PUBLIC JkBuffer jk_arena_scope_as_buffer(JkArenaScope scope);
+JK_PUBLIC JkBuffer jk_buffer_from_arena_scope(JkArenaScope scope);
 
 #define JK_ARRAY_FROM_ARENA_SCOPE(array, scope)                                      \
     do {                                                                             \
@@ -1700,6 +1700,8 @@ JK_PUBLIC JkColor jk_color4_from_3(JkColor3 color, uint8_t alpha);
 JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha);
 
 JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg);
+
+JK_PUBLIC void jk_trap(void);
 
 JK_PUBLIC void jk_panic(void);
 

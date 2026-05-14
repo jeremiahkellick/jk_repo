@@ -1149,6 +1149,12 @@ JK_PUBLIC void jk_options_parse(int argc,
             }
         }
     }
+
+    for (int64_t i = 0; i < option_count; i++) {
+        if (options_out[i].arg) {
+            options_out[i].buf = jk_buffer_from_null_terminated(options_out[i].arg);
+        }
+    }
 }
 
 JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count)
@@ -1302,6 +1308,7 @@ JK_PUBLIC JkBuffer jk_platform_file_read(JkArena *arena, JkBuffer path)
                 result = buffer;
             } else {
                 errno_error = 1;
+                jk_arena_pop(arena, buffer.size);
             }
         }
 

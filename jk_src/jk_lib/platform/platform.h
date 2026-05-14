@@ -199,6 +199,7 @@ typedef struct JkOption {
 typedef struct JkOptionResult {
     b32 present;
     char *arg;
+    JkBuffer buf;
 } JkOptionResult;
 
 typedef struct JkOptionsParseResult {

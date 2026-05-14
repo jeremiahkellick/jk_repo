@@ -22,8 +22,7 @@
 static float const nav_density = 0.125f;
 static JkIntVec2 const nav_dimensions = {32, 32};
 
-static JkColor normal_bg = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
-static JkColor test_bg = {.r = 0x27, .g = 0x27, .b = 0x16, .a = 255};
+static JkColor bg_color = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
 
 static float const player_radius = 0.33f;
 static float const player_height = 1.75f;
@@ -1403,6 +1402,11 @@ static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring)
     return result;
 }
 
+static int64_t recorded_frame_count(Environment *env)
+{
+    return (env->record_arena.pos - JK_SIZEOF(Recording)) / JK_SIZEOF(RecordedFrame);
+}
+
 void render(JkContext *context, Environment *env)
 {
     JkColor text_color = {255, 255, 255, 255};
@@ -1419,7 +1423,7 @@ void render(JkContext *context, Environment *env)
     JkArenaScope scratch0 = {0};
     JkArenaScope scratch1 = {0};
     Input input = {0};
-    JkIntVec2 dimensions = {0};
+    int64_t frame_id = -1;
 
     JkMat4 clip_from_world = jk_mat4_i;
     JkMat4 screen_from_ndc = jk_mat4_i;
@@ -1431,30 +1435,14 @@ void render(JkContext *context, Environment *env)
     TextureArray textures;
     JK_ARRAY_FROM_SPAN(textures, env->assets, env->assets->textures);
 
+    Recording *recording = (Recording *)env->record_arena.memory.data;
+
     JK_CHANNEL_NARROW(0)
     {
         input = env->input;
 
-        if (jk_key_pressed(&input.keyboard, JK_KEY_1)) {
-            env->record_state = (env->record_state + 1) % RECORD_STATE_COUNT;
-
-            switch (env->record_state) {
-            case RECORD_STATE_NONE: {
-            } break;
-
-            case RECORD_STATE_RECORDING: {
-                env->recording->initial = env->state;
-                env->recording->count = 0;
-            } break;
-
-            case RECORD_STATE_PLAYBACK: {
-                env->playback_cursor = 0;
-            } break;
-
-            case RECORD_STATE_COUNT: {
-                jk_log(JK_LOG_WARNING, JKS("Invalid env->record_state"));
-            } break;
-            }
+        if (env->record_arena.pos <= 0) {
+            jk_arena_push_zero(&env->record_arena, sizeof(Recording));
         }
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_F3)) {
@@ -1463,50 +1451,113 @@ void render(JkContext *context, Environment *env)
                     !JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY));
         }
 
-        switch (env->record_state) {
-        case RECORD_STATE_NONE: {
-        } break;
-
-        case RECORD_STATE_RECORDING: {
-            if (env->recording->count < JK_ARRAY_COUNT(env->recording->inputs)) {
-                env->recording->inputs[env->recording->count++] = input;
-            }
-        } break;
-
-        case RECORD_STATE_PLAYBACK: {
-            if (env->playback_cursor == 0) {
-                env->state = env->recording->initial;
-            }
-            input = env->recording->inputs[env->playback_cursor];
-            env->playback_cursor = (env->playback_cursor + 1) % env->recording->count;
-        } break;
-
-        case RECORD_STATE_COUNT: {
-            jk_log(JK_LOG_WARNING, JKS("Invalid env->record_state"));
-        } break;
+        if (env->record_state.activity == RECORD_STATE_IDLE && recorded_frame_count(env)
+                && jk_key_pressed(&input.keyboard, JK_KEY_LEFT)) {
+            env->recording_cursor = JK_MAX(0, env->recording_cursor - FPS);
+            env->state = recording->frames[env->recording_cursor].state;
         }
+
+        b32 jump_to_present = 0;
+        b32 preserve_state = 0;
+
+        if (recording->clips[env->record_state.clip_index].end <= env->recording_cursor) {
+            if (env->record_state.activity == RECORD_STATE_PLAYING) {
+                env->recording_cursor = recording->clips[env->record_state.clip_index].start;
+            } else if (env->record_state.activity == RECORD_STATE_PROFILING) {
+                JK_ARENA_SCRATCH(log_scratch)
+                {
+                    jk_log(JK_LOG_INFO,
+                            jk_profile_report(log_scratch.arena, env->estimate_cpu_frequency(100)));
+                }
+                jump_to_present |= 1;
+            }
+        }
+
+        b32 shift = jk_key_down(&input.keyboard, JK_KEY_LEFTSHIFT)
+                || jk_key_down(&input.keyboard, JK_KEY_RIGHTSHIFT);
+
+        for (int64_t i = 0; i < 10; i++) {
+            if (jk_key_pressed(&input.keyboard, i == 0 ? JK_KEY_0 : JK_KEY_1 + i - 1)) {
+                if (shift) {
+                    env->record_state =
+                            (RecordState){.activity = RECORD_STATE_RECORDING, .clip_index = i};
+                    recording->clips[i].start = env->recording_cursor;
+                    recording->clips[i].end = 0;
+                } else {
+                    if (env->record_state.activity == RECORD_STATE_RECORDING) {
+                        recording->clips[i].end = env->recording_cursor;
+                    }
+                    if (recording->clips[i].start < recording->clips[i].end) {
+                        env->recording_cursor = recording->clips[i].start;
+                        if (jk_key_down(&input.keyboard, JK_KEY_LEFTALT)
+                                || jk_key_down(&input.keyboard, JK_KEY_RIGHTALT)) {
+                            env->record_state = (RecordState){
+                                .activity = RECORD_STATE_PROFILING, .clip_index = i};
+                        } else {
+                            env->record_state = (RecordState){
+                                .activity = RECORD_STATE_PLAYING, .clip_index = i};
+                        }
+                    }
+                }
+            }
+        }
+
+        if (env->recording_cursor < recorded_frame_count(env) - 1
+                && jk_key_down(&input.keyboard, JK_KEY_ESC)) {
+            jump_to_present |= 1;
+            preserve_state |= shift;
+        }
+
+        if (jump_to_present) {
+            env->record_state = (RecordState){.activity = RECORD_STATE_IDLE};
+            if (preserve_state) {
+                RecordedFrame *frame = jk_arena_push(&env->record_arena, JK_SIZEOF(*frame));
+                env->recording_cursor = frame - recording->frames;
+                frame->flags = JK_MASK(FRAME_DISCONTINUOUS);
+                frame->input = env->input;
+                frame->state = env->state;
+            } else {
+                env->recording_cursor = recorded_frame_count(env) - 1;
+                env->state = recording->frames[env->recording_cursor].state;
+            }
+        }
+
+        frame_id = env->recording_cursor++;
+        if (frame_id < recorded_frame_count(env)) {
+            // We're back in time, playback
+            RecordedFrame *frame = recording->frames + frame_id;
+            b32 load_clip = frame_id == recording->clips[env->record_state.clip_index].start
+                    && (env->record_state.activity == RECORD_STATE_PLAYING
+                            || env->record_state.activity == RECORD_STATE_PROFILING);
+            if (load_clip && env->record_state.activity == RECORD_STATE_PROFILING) {
+                jk_profile_reset();
+            }
+            if (load_clip || JK_FLAG_GET(frame->flags, FRAME_DISCONTINUOUS)) {
+                env->state = frame->state;
+            }
+            input = frame->input;
+        } else {
+            // We're in the present, record
+            RecordedFrame *frame = jk_arena_push(&env->record_arena, JK_SIZEOF(*frame));
+            frame->flags = 0;
+            frame->input = env->input;
+            frame->state = env->state;
+        }
+
+        JK_DEBUG_ASSERT((env->record_arena.pos - sizeof(Recording)) % sizeof(RecordedFrame) == 0);
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_R)) {
             JK_FLAG_SET(env->state.flags, FLAG_INITIALIZED, 0);
         }
 
-        if (jk_key_pressed(&input.keyboard, JK_KEY_T)) {
-            JK_FLAG_SET(env->state.flags, FLAG_INITIALIZED, 0);
-            env->state.test_frames_remaining = 240;
-        }
-
         if (!JK_FLAG_GET(env->state.flags, FLAG_INITIALIZED)) {
             env->state.flags = JK_MASK(FLAG_INITIALIZED);
-            env->state.frame_id = 0;
             env->state.camera_yaw = 5 * JK_PI / 4;
             env->state.camera_pitch = 0;
             env->state.player_position = (JkVec3){0};
 
             jk_profile_reset();
         }
-
-        dimensions =
-                0 < env->state.test_frames_remaining ? (JkIntVec2){1902, 970} : input.dimensions;
 
         JkVec2Array texcoords;
         JK_ARRAY_FROM_SPAN(texcoords, env->assets, env->assets->texcoords);
@@ -1515,15 +1566,13 @@ void render(JkContext *context, Environment *env)
 
         jk_profile_frame_begin();
 
-        if (env->state.test_frames_remaining <= 0) {
-            float mouse_sensitivity = 0.4 * DELTA_TIME;
-            env->state.camera_yaw +=
-                    jk_remainder_f32(mouse_sensitivity * -input.mouse.delta.x, 2 * JK_PI);
-            env->state.camera_pitch =
-                    JK_CLAMP(env->state.camera_pitch + mouse_sensitivity * -input.mouse.delta.y,
-                            -JK_PI / 2,
-                            JK_PI / 2);
-        }
+        float mouse_sensitivity = 0.4 * DELTA_TIME;
+        env->state.camera_yaw +=
+                jk_remainder_f32(mouse_sensitivity * -input.mouse.delta.x, 2 * JK_PI);
+        env->state.camera_pitch =
+                JK_CLAMP(env->state.camera_pitch + mouse_sensitivity * -input.mouse.delta.y,
+                        -JK_PI / 2,
+                        JK_PI / 2);
 
         scratch0 = jk_arena_scratch_begin();
         scratch1 = jk_arena_scratch_begin_not(scratch0.arena);
@@ -1718,45 +1767,43 @@ void render(JkContext *context, Environment *env)
         JkVec4 yaw_quat = jk_quat_angle_axis(env->state.camera_yaw, (JkVec3){0, 0, 1});
 
         JkVec3 target = start.p;
-        if (env->state.test_frames_remaining <= 0) {
-            JkVec3 forward = {0};
-            if (jk_key_down(&input.keyboard, JK_KEY_W)) {
-                forward.y += 1;
-            }
-            if (jk_key_down(&input.keyboard, JK_KEY_S)) {
-                forward.y -= 1;
-            }
-            if (jk_key_down(&input.keyboard, JK_KEY_A)) {
-                forward.x -= 1;
-            }
-            if (jk_key_down(&input.keyboard, JK_KEY_D)) {
-                forward.x += 1;
-            }
-            forward = jk_quat_rotate(yaw_quat, forward);
-            JkVec3 right = {-forward.y, forward.x};
+        JkVec3 forward = {0};
+        if (jk_key_down(&input.keyboard, JK_KEY_W)) {
+            forward.y += 1;
+        }
+        if (jk_key_down(&input.keyboard, JK_KEY_S)) {
+            forward.y -= 1;
+        }
+        if (jk_key_down(&input.keyboard, JK_KEY_A)) {
+            forward.x -= 1;
+        }
+        if (jk_key_down(&input.keyboard, JK_KEY_D)) {
+            forward.x += 1;
+        }
+        forward = jk_quat_rotate(yaw_quat, forward);
+        JkVec3 right = {-forward.y, forward.x};
 
-            JkVec3 a = start.ring->vertices[0];
-            JkVec3 b = start.ring->vertices[start.triangle_index - 1];
-            JkVec3 c = start.ring->vertices[start.triangle_index];
+        JkVec3 a = start.ring->vertices[0];
+        JkVec3 b = start.ring->vertices[start.triangle_index - 1];
+        JkVec3 c = start.ring->vertices[start.triangle_index];
 
-            JkVec3 up = jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a));
-            if (EPSILON < jk_vec3_magnitude_sqr(up)) {
-                up = jk_vec3_normalized(up);
-            } else {
-                up = (JkVec3){0, 0, 1};
-            }
+        JkVec3 up = jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a));
+        if (EPSILON < jk_vec3_magnitude_sqr(up)) {
+            up = jk_vec3_normalized(up);
+        } else {
+            up = (JkVec3){0, 0, 1};
+        }
 
-            JkVec3 direction = jk_vec3_cross(right, up);
-            if (jk_vec3_magnitude_sqr(direction) < EPSILON) {
-                // project the forward vector onto the walk plane
-                direction = jk_vec3_sub(forward,
-                        jk_vec3_mul(jk_vec3_dot(forward, up) / jk_vec3_magnitude_sqr(up), up));
-            }
+        JkVec3 direction = jk_vec3_cross(right, up);
+        if (jk_vec3_magnitude_sqr(direction) < EPSILON) {
+            // project the forward vector onto the walk plane
+            direction = jk_vec3_sub(
+                    forward, jk_vec3_mul(jk_vec3_dot(forward, up) / jk_vec3_magnitude_sqr(up), up));
+        }
 
-            if (EPSILON < jk_vec3_magnitude_sqr(direction)) {
-                direction = jk_vec3_normalized(direction);
-                target = jk_vec3_add(target, jk_vec3_mul(SPEED * DELTA_TIME, direction));
-            }
+        if (EPSILON < jk_vec3_magnitude_sqr(direction)) {
+            direction = jk_vec3_normalized(direction);
+            target = jk_vec3_add(target, jk_vec3_mul(SPEED * DELTA_TIME, direction));
         }
 
         // Compute max depth
@@ -1805,18 +1852,19 @@ void render(JkContext *context, Environment *env)
         clip_from_world = jk_mat4_mul(
                 jk_mat4_conversion_to((JkCoordinateSystem){JK_RIGHT, JK_UP, JK_BACKWARD}),
                 clip_from_world);
-        clip_from_world =
-                jk_mat4_mul(jk_mat4_perspective(dimensions, JK_PI / 3, NEAR_CLIP), clip_from_world);
+        clip_from_world = jk_mat4_mul(
+                jk_mat4_perspective(input.dimensions, JK_PI / 3, NEAR_CLIP), clip_from_world);
 
         screen_from_ndc = jk_mat4_translate((JkVec3){1, -1, 0});
-        screen_from_ndc =
-                jk_mat4_mul(jk_mat4_scale((JkVec3){dimensions.x / 2.0f, -dimensions.y / 2.0f, 1}),
-                        screen_from_ndc);
+        screen_from_ndc = jk_mat4_mul(
+                jk_mat4_scale((JkVec3){input.dimensions.x / 2.0f, -input.dimensions.y / 2.0f, 1}),
+                screen_from_ndc);
 
         JkIntRect tiles_rect;
         tiles_rect.min = (JkIntVec2){0};
         for (int64_t i = 0; i < 2; i++) {
-            tiles_rect.max.v[i] = JK_ALIGN_UP(dimensions.v[i], TILE_SIDE_LENGTH) / TILE_SIDE_LENGTH;
+            tiles_rect.max.v[i] =
+                    JK_ALIGN_UP(input.dimensions.v[i], TILE_SIDE_LENGTH) / TILE_SIDE_LENGTH;
         }
         TileArray tiles;
         tiles.count = tiles_rect.max.x * tiles_rect.max.y;
@@ -2009,8 +2057,7 @@ void render(JkContext *context, Environment *env)
 
     jk_channel_sync();
 
-    JkI256 bg = jk_i256_broadcast_i32(
-            *(int32_t *)(0 < env->state.test_frames_remaining ? &test_bg : &normal_bg));
+    JkI256 bg = jk_i256_broadcast_i32(*(int32_t *)&bg_color);
 
     {
         JkIntRect tiles_rect = tiles_rect_shared;
@@ -2088,16 +2135,6 @@ void render(JkContext *context, Environment *env)
             }
         }
 
-        if (0 < env->state.test_frames_remaining) {
-            if (--env->state.test_frames_remaining == 0) {
-                JK_ARENA_SCRATCH(log_scratch)
-                {
-                    jk_log(JK_LOG_INFO,
-                            jk_profile_report(log_scratch.arena, env->estimate_cpu_frequency(100)));
-                }
-            }
-        }
-
         if (JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY)) {
             JkColor nav_color = {.r = 0, .g = 255, .b = 0, .a = 255};
             nav_draw_rings(env, screen_from_ndc, clip_from_world, nav_color, start.ring);
@@ -2108,15 +2145,15 @@ void render(JkContext *context, Environment *env)
             JkShapesRenderer renderer;
             JkShapeArray shapes = (JkShapeArray){
                 .count = JK_ARRAY_COUNT(env->assets->shapes), .e = env->assets->shapes};
-            float pixels_per_unit = JK_MIN(dimensions.x, dimensions.y) / 64.0f;
+            float pixels_per_unit = JK_MIN(input.dimensions.x, input.dimensions.y) / 64.0f;
             JkVec2 ui_dimensions =
-                    jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_i32(dimensions));
+                    jk_vec2_mul(1.0f / pixels_per_unit, jk_vec2_from_i32(input.dimensions));
             jk_shapes_renderer_init(
                     &renderer, pixels_per_unit, env->assets, shapes, scratch0.arena);
 
             float padding = 0.5f;
             float text_scale = 0.005f;
-            JkBuffer frame_id_text = JK_FORMAT(scratch0.arena, jkfu(env->state.frame_id));
+            JkBuffer frame_id_text = JK_FORMAT(scratch0.arena, jkfu(frame_id));
             TextLayout layout = text_layout_monospace(env, frame_id_text, text_scale);
             JkVec2 top_left = {(ui_dimensions.x - padding) - layout.dimensions.x, padding};
             draw_text(&renderer,
@@ -2126,7 +2163,7 @@ void render(JkContext *context, Environment *env)
                     text_color);
 
             JkShapesDrawCommandArray draw_commands = jk_shapes_draw_commands_get(&renderer);
-            JkIntRect screen_rect = {.max = dimensions};
+            JkIntRect screen_rect = {.max = input.dimensions};
             for (int64_t i = 0; i < draw_commands.count; i++) {
                 JkShapesDrawCommand *command = draw_commands.e + i;
                 JkIntRect rect = jk_int_rect_intersect(screen_rect, command->rect);
@@ -2148,6 +2185,5 @@ void render(JkContext *context, Environment *env)
 
         jk_arena_scope_end(scratch0);
         jk_arena_scope_end(scratch1);
-        env->state.frame_id++;
     }
 }
