@@ -1865,6 +1865,8 @@ void render(JkContext *context, Environment *env)
         JK_PROFILE_ZONE_END(walk_manifold);
         // ---- Navigation end ------------------------------------------------
 
+        JK_PROFILE_ZONE_TIME_BEGIN(transform);
+
         JkTransform camera_transform = {
             .translation =
                     jk_vec3_add(env->state.player_position, (JkVec3){0, 0, player_eye_height}),
@@ -2048,6 +2050,10 @@ void render(JkContext *context, Environment *env)
                         tri.light[i] = vs.e[indexes[i]].light;
                     }
                     if (!clockwise_left_handed(tri.v[0], tri.v[1], tri.v[2])) {
+                        JkVec2 coords_2d[3];
+                        for (int64_t i = 0; i < 3; i++) {
+                            coords_2d[i] = jk_vec2_from_3(tri.v[i]);
+                        }
                         JkVec3 tile_coords[3];
                         for (int64_t i = 0; i < 3; i++) {
                             tile_coords[i] = jk_vec3_mul(1.0f / TILE_SIDE_LENGTH, tri.v[i]);
@@ -2056,16 +2062,45 @@ void render(JkContext *context, Environment *env)
                                 triangle_bounding_box(
                                         tile_coords[0], tile_coords[1], tile_coords[2]),
                                 tiles_rect);
-                        for (int32_t y = coverage.min.y; y < coverage.max.y; y++) {
-                            for (int32_t x = coverage.min.x; x < coverage.max.x; x++) {
-                                Tile *tile = tiles.e + (tiles_rect.max.x * y + x);
+                        for (JkIntVec2 tile_pos = coverage.min; tile_pos.y < coverage.max.y;
+                                tile_pos.y++) {
+                            for (tile_pos.x = coverage.min.x; tile_pos.x < coverage.max.x;
+                                    tile_pos.x++) {
+                                Tile *tile = tiles.e + (tiles_rect.max.x * tile_pos.y + tile_pos.x);
 
-                                TriangleNode *new_node =
-                                        jk_arena_push(scratch1.arena, sizeof(*new_node));
-                                new_node->tri = tri;
-                                new_node->texture_id = object->texture_id;
-                                new_node->next = tile->head;
-                                tile->head = new_node;
+                                // If there's any edge for which every tile corner is outside the
+                                // triangle, we can skip this tile
+                                JkVec2 pos =
+                                        jk_vec2_mul(TILE_SIDE_LENGTH, jk_vec2_from_i32(tile_pos));
+                                JkVec2 corners[4] = {
+                                    pos,
+                                    jk_vec2_add(pos, (JkVec2){0, TILE_SIDE_LENGTH}),
+                                    jk_vec2_add(pos, (JkVec2){TILE_SIDE_LENGTH, 0}),
+                                    jk_vec2_add(pos, (JkVec2){TILE_SIDE_LENGTH, TILE_SIDE_LENGTH}),
+                                };
+                                b32 valid = 1;
+                                for (int32_t a = 0; valid && a < 3; a++) {
+                                    int32_t b = (a + 1) % 3;
+                                    b32 all_outside = 1;
+                                    for (int32_t i = 0; all_outside && i < 4; i++) {
+                                        if (jk_vec2_cross(jk_vec2_sub(coords_2d[b], coords_2d[a]),
+                                                    jk_vec2_sub(corners[i], coords_2d[a]))
+                                                < 0) {
+                                            all_outside = 0;
+                                        }
+                                    }
+                                    if (all_outside) {
+                                        valid = 0;
+                                    }
+                                }
+                                if (valid) {
+                                    TriangleNode *new_node =
+                                            jk_arena_push(scratch1.arena, sizeof(*new_node));
+                                    new_node->tri = tri;
+                                    new_node->texture_id = object->texture_id;
+                                    new_node->next = tile->head;
+                                    tile->head = new_node;
+                                }
                             }
                         }
                     }
@@ -2076,6 +2111,9 @@ void render(JkContext *context, Environment *env)
 
             jk_arena_scope_end(object_scope);
         }
+        // JK_LOGF(JK_LOG_INFO, jkfn("node_count: "), jkfi(node_count));
+
+        JK_PROFILE_ZONE_END(transform);
 
         next_tile_index = 0;
 
