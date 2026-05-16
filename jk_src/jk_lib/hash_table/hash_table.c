@@ -14,8 +14,7 @@
 #define JK_HASH_TABLE_FLAG_FILLED (1 << 0)
 #define JK_HASH_TABLE_FLAG_TOMBSTONE (1 << 1)
 
-static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
-{
+static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key) {
     // Hash and mask off bits to get a result in the range 0..capacity-1. Assumes capacity is a
     // power if 2.
     int64_t slot_i = jk_hash_uint64(key) & (t->capacity - 1);
@@ -40,19 +39,16 @@ static JkHashTableSlot *jk_hash_table_probe(JkHashTable *t, JkHashTableKey key)
     return &t->buf[slot_i];
 }
 
-static bool jk_hash_table_is_present(JkHashTableSlot *slot)
-{
+static bool jk_hash_table_is_present(JkHashTableSlot *slot) {
     return (slot->flags & JK_HASH_TABLE_FLAG_FILLED)
             && !(slot->flags & JK_HASH_TABLE_FLAG_TOMBSTONE);
 }
 
-static bool jk_is_load_factor_exceeded(int64_t count, int64_t capacity)
-{
+static bool jk_is_load_factor_exceeded(int64_t count, int64_t capacity) {
     return count > (capacity * JK_HASH_TABLE_LOAD_FACTOR / 10);
 }
 
-static bool jk_hash_table_resize(JkHashTable *t)
-{
+static bool jk_hash_table_resize(JkHashTable *t) {
     int64_t prev_capacity = t->capacity;
     JkHashTableSlot *prev_buf = t->buf;
 
@@ -83,13 +79,11 @@ static bool jk_hash_table_resize(JkHashTable *t)
     return true;
 }
 
-JK_PUBLIC JkHashTable *jk_hash_table_create(void)
-{
+JK_PUBLIC JkHashTable *jk_hash_table_create(void) {
     return jk_hash_table_create_capacity(JK_HASH_TABLE_DEFAULT_CAPACITY);
 }
 
-JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(int64_t starting_capacity)
-{
+JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(int64_t starting_capacity) {
     if (!jk_is_power_of_two(starting_capacity)) {
         fprintf(stderr,
                 "jk_hash_table_create_capacity: starting_capacity must be a power of two\n");
@@ -112,8 +106,7 @@ JK_PUBLIC JkHashTable *jk_hash_table_create_capacity(int64_t starting_capacity)
     return t;
 }
 
-JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value)
-{
+JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTableValue value) {
     assert(t);
 
     JkHashTableSlot *slot = jk_hash_table_probe(t, key);
@@ -145,8 +138,7 @@ JK_PUBLIC bool jk_hash_table_put(JkHashTable *t, JkHashTableKey key, JkHashTable
     return true;
 }
 
-JK_PUBLIC JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key)
-{
+JK_PUBLIC JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key) {
     assert(t);
 
     JkHashTableSlot *slot = jk_hash_table_probe(t, key);
@@ -159,8 +151,7 @@ JK_PUBLIC JkHashTableValue *jk_hash_table_get(JkHashTable *t, JkHashTableKey key
 }
 
 JK_PUBLIC JkHashTableValue *jk_hash_table_get_with_default(
-        JkHashTable *t, JkHashTableKey key, JkHashTableValue _default)
-{
+        JkHashTable *t, JkHashTableKey key, JkHashTableValue _default) {
     assert(t);
 
     JkHashTableSlot *slot = jk_hash_table_probe(t, key);
@@ -191,8 +182,7 @@ JK_PUBLIC JkHashTableValue *jk_hash_table_get_with_default(
     return &slot->value;
 }
 
-JK_PUBLIC bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key)
-{
+JK_PUBLIC bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key) {
     assert(t);
 
     JkHashTableSlot *slot = jk_hash_table_probe(t, key);
@@ -207,8 +197,7 @@ JK_PUBLIC bool jk_hash_table_remove(JkHashTable *t, JkHashTableKey key)
     }
 }
 
-JK_PUBLIC void jk_hash_table_destroy(JkHashTable *t)
-{
+JK_PUBLIC void jk_hash_table_destroy(JkHashTable *t) {
     assert(t);
     assert(t->buf);
 

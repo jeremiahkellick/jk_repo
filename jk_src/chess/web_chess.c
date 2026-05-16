@@ -44,20 +44,17 @@ double performance_now(void);
 
 // ---- Imported functions end -------------------------------------------------
 
-static void debug_print(JkBuffer string)
-{
+static void debug_print(JkBuffer string) {
     if (0 < string.size) {
         console_log(string.size, string.data);
     }
 }
 
-JK_PUBLIC uint64_t jk_cpu_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_cpu_timer_get(void) {
     return performance_now() * 10.0;
 }
 
-static b32 ensure_memory(int64_t required_memory)
-{
+static b32 ensure_memory(int64_t required_memory) {
     int64_t current_memory =
             (int64_t)__builtin_wasm_memory_size(0) * PAGE_SIZE - (int64_t)__heap_base;
     int64_t delta = required_memory - current_memory;
@@ -70,8 +67,7 @@ static b32 ensure_memory(int64_t required_memory)
     return 1;
 }
 
-uint8_t *init_main(void)
-{
+uint8_t *init_main(void) {
     g_chess.render_memory.size = 2 * JK_MEGABYTE;
     JkBuffer log_memory = {.size = 1 * JK_MEGABYTE};
     if (ensure_memory(DRAW_BUFFER_SIZE + g_chess.render_memory.size + log_memory.size)) {
@@ -97,8 +93,7 @@ b32 tick(int32_t square_side_length,
         int32_t mouse_y,
         b32 mouse_down,
         double os_time,
-        double audio_time)
-{
+        double audio_time) {
     g_chess.square_side_length = square_side_length;
     g_chess.input.mouse_pos.x = mouse_x;
     g_chess.input.mouse_pos.y = mouse_y;
@@ -120,40 +115,33 @@ b32 tick(int32_t square_side_length,
     }
 }
 
-SoundIndex get_sound(void)
-{
+SoundIndex get_sound(void) {
     return g_chess.audio_state.sound;
 }
 
-float get_started_time_0(void)
-{
+float get_started_time_0(void) {
     return g_started_time.f32s[0];
 }
 
-float get_started_time_1(void)
-{
+float get_started_time_1(void) {
     return g_started_time.f32s[1];
 }
 
-AiRequest *get_ai_request(void)
-{
+AiRequest *get_ai_request(void) {
     return &g_ai_request;
 }
 
-AiResponse *get_ai_response_ai_thread(void)
-{
+AiResponse *get_ai_response_ai_thread(void) {
     return &g_ai.response;
 }
 
-AiResponse *get_ai_response_main_thread(void)
-{
+AiResponse *get_ai_response_main_thread(void) {
     return &g_chess.ai_response;
 }
 
 static AudioSample *audio_buffer;
 
-AudioSample *init_audio(void)
-{
+AudioSample *init_audio(void) {
     if (ensure_memory(WEB_AUDIO_BUFFER_SIZE)) {
         audio_buffer = (AudioSample *)__heap_base;
         return audio_buffer;
@@ -166,14 +154,12 @@ void fill_audio_buffer(SoundIndex sound,
         float started_time_0,
         float started_time_1,
         double time,
-        double sample_count)
-{
+        double sample_count) {
     FloatConvert started_time = {.f32s = {started_time_0, started_time_1}};
     audio(g_assets, (AudioState){sound, started_time.f64}, time, sample_count, audio_buffer);
 }
 
-b32 ai_alloc_memory(void)
-{
+b32 ai_alloc_memory(void) {
     static JkContext c;
 
     int64_t scratch_arena_size = 16 * JK_KILOBYTE;
@@ -194,8 +180,7 @@ b32 ai_alloc_memory(void)
     }
 }
 
-b32 ai_begin_request(double os_time)
-{
+b32 ai_begin_request(double os_time) {
     if (g_ai_request.wants_ai_move) {
         g_ai_arena.memory = (JkBuffer){.size = AI_MEMORY_SIZE, .data = __heap_base};
         ai_init(&g_ai_arena, &g_ai, g_ai_request.board, os_time, 1000);
@@ -205,13 +190,11 @@ b32 ai_begin_request(double os_time)
     }
 }
 
-b32 ai_tick(double os_time)
-{
+b32 ai_tick(double os_time) {
     g_ai.time = os_time;
     return ai_running(jk_context, &g_ai);
 }
 
-b32 web_is_draggable(int32_t x, int32_t y)
-{
+b32 web_is_draggable(int32_t x, int32_t y) {
     return is_draggable(&g_chess, (JkIntVec2){x, y});
 }

@@ -70,8 +70,7 @@ static ChessAssets *debug_assets;
 
 static JkColor debug_draw_buffer[DRAW_BUFFER_SIZE];
 
-static void debug_render(Board board)
-{
+static void debug_render(Board board) {
 #ifndef __wasm__
     debug_chess.board = board;
 
@@ -81,24 +80,20 @@ static void debug_render(Board board)
 
 #endif
 
-static Team board_current_team_get(Board board)
-{
+static Team board_current_team_get(Board board) {
     return (board.flags >> BOARD_FLAG_CURRENT_PLAYER) & 1;
 }
 
-static b32 board_in_bounds(JkIntVec2 pos)
-{
+static b32 board_in_bounds(JkIntVec2 pos) {
     return pos.x >= 0 && pos.x < 8 && pos.y >= 0 && pos.y < 8;
 }
 
-static uint8_t board_index_get(JkIntVec2 pos)
-{
+static uint8_t board_index_get(JkIntVec2 pos) {
     JK_DEBUG_ASSERT(board_in_bounds(pos));
     return (uint8_t)(8 * pos.y + pos.x);
 }
 
-static uint8_t board_index_get_unbounded(JkIntVec2 pos)
-{
+static uint8_t board_index_get_unbounded(JkIntVec2 pos) {
     if (board_in_bounds(pos)) {
         return board_index_get(pos);
     } else {
@@ -106,13 +101,11 @@ static uint8_t board_index_get_unbounded(JkIntVec2 pos)
     }
 }
 
-static JkIntVec2 board_index_to_vector_2(uint8_t index)
-{
+static JkIntVec2 board_index_to_vector_2(uint8_t index) {
     return (JkIntVec2){.x = index % 8, .y = index / 8};
 }
 
-static Piece board_piece_get_index(Board board, uint8_t index)
-{
+static Piece board_piece_get_index(Board board, uint8_t index) {
     uint8_t byte_index = index / 2; // A piece is 4 bits, so there are 2 pieces per byte
     uint8_t is_higher_4_bits = index % 2;
     uint8_t byte = board.bytes[byte_index];
@@ -122,13 +115,11 @@ static Piece board_piece_get_index(Board board, uint8_t index)
     return (Piece){.type = byte & 0x7, .team = (byte >> 3) & 1};
 }
 
-static Piece board_piece_get(Board board, JkIntVec2 pos)
-{
+static Piece board_piece_get(Board board, JkIntVec2 pos) {
     return board_piece_get_index(board, board_index_get(pos));
 }
 
-static void board_piece_set(Board *board, JkIntVec2 pos, Piece piece)
-{
+static void board_piece_set(Board *board, JkIntVec2 pos, Piece piece) {
     uint8_t bits = (uint8_t)((piece.team << 3) | piece.type);
     uint8_t piece_index = board_index_get(pos);
     uint8_t byte_index = piece_index / 2; // A piece is 4 bits, so there are 2 pieces per byte
@@ -217,8 +208,7 @@ static JkBuffer timer_strings[TIMER_COUNT] = {
 
 static int64_t timer_minutes[TIMER_COUNT] = {1, 3, 10, 30};
 
-static b32 square_available(Board board, JkIntVec2 square)
-{
+static b32 square_available(Board board, JkIntVec2 square) {
     if (board_in_bounds(square)) {
         Piece piece = board_piece_get(board, square);
         return piece.type == NONE || piece.team != board_current_team_get(board);
@@ -227,14 +217,12 @@ static b32 square_available(Board board, JkIntVec2 square)
     }
 }
 
-static MovePacked move_pack(Move move)
-{
+static MovePacked move_pack(Move move) {
     return (MovePacked){.bits = (uint16_t)move.piece.type | ((uint16_t)(move.piece.team & 1) << 3)
                 | ((uint16_t)(move.src & 0x3f) << 4) | ((uint16_t)(move.dest & 0x3f) << 10)};
 }
 
-static Move move_unpack(MovePacked move_packed)
-{
+static Move move_unpack(MovePacked move_packed) {
     uint16_t bits = move_packed.bits;
     return (Move){
         .piece =
@@ -247,8 +235,7 @@ static Move move_unpack(MovePacked move_packed)
     };
 }
 
-static Board parse_fen(JkBuffer fen)
-{
+static Board parse_fen(JkBuffer fen) {
     // We'll start with no castling rights. (Flag set mean disallowed, clear means allowed).
     Board board = {.flags = JK_MASK(BOARD_FLAG_WHITE_QUEEN_SIDE_CASTLING_RIGHTS)
                 | JK_MASK(BOARD_FLAG_WHITE_KING_SIDE_CASTLING_RIGHTS)
@@ -351,8 +338,7 @@ static Board parse_fen(JkBuffer fen)
 
 // Returns 1 on success. Returns 0 if the destination invalidates the parent move.
 static b32 append_move(
-        MoveArray *moves, JkIntVec2 src, JkIntVec2 dest, Piece piece, uint64_t invalidate_mask)
-{
+        MoveArray *moves, JkIntVec2 src, JkIntVec2 dest, Piece piece, uint64_t invalidate_mask) {
     uint8_t dest_index = board_index_get(dest);
     if ((invalidate_mask >> dest_index) & 1) {
         return 0;
@@ -374,8 +360,7 @@ static b32 append_moves_in_direction_until_stopped(MoveArray *moves,
         JkIntVec2 src,
         JkIntVec2 direction,
         Piece piece,
-        uint64_t invalidate_mask)
-{
+        uint64_t invalidate_mask) {
     JkIntVec2 dest = src;
     for (;;) {
         dest = jk_int_vec2_add(dest, direction);
@@ -395,18 +380,15 @@ static b32 append_moves_in_direction_until_stopped(MoveArray *moves,
     }
 }
 
-static uint8_t board_castling_rights_get(Board board, Team team)
-{
+static uint8_t board_castling_rights_get(Board board, Team team) {
     return (board.flags >> (1 + team * 2)) & 0x3;
 }
 
-static uint64_t castling_rights_mask_get(Team team, b32 king_side)
-{
+static uint64_t castling_rights_mask_get(Team team, b32 king_side) {
     return 1llu << (1 + team * 2 + !!king_side);
 }
 
-static Board board_move_perform(Board board, MovePacked move_packed)
-{
+static Board board_move_perform(Board board, MovePacked move_packed) {
     Move move = move_unpack(move_packed);
     JkIntVec2 src = board_index_to_vector_2(move.src);
     JkIntVec2 dest = board_index_to_vector_2(move.dest);
@@ -461,8 +443,7 @@ static Board board_move_perform(Board board, MovePacked move_packed)
 
 // Returns 1 on success. Returns 0 if the destination invalidates the parent move.
 static b32 append_moves_with_promo_potential(
-        MoveArray *moves, JkIntVec2 src, JkIntVec2 dest, Piece piece, uint64_t invalidate_mask)
-{
+        MoveArray *moves, JkIntVec2 src, JkIntVec2 dest, Piece piece, uint64_t invalidate_mask) {
     if (dest.y == 0 || dest.y == 7) { // Promotion
         Piece promo_piece = {.type = QUEEN, .team = piece.team};
         for (; promo_piece.type <= KNIGHT; promo_piece.type++) {
@@ -479,8 +460,7 @@ static b32 append_moves_with_promo_potential(
 //
 // Returns 1 on success. Returns 0 if we discovered the parent move is illegal while finding the
 // child move candidates.
-static b32 move_candidates_get(MoveArray *moves, Board board)
-{
+static b32 move_candidates_get(MoveArray *moves, Board board) {
     moves->count = 0;
 
     Team current_team = board_current_team_get(board);
@@ -661,8 +641,7 @@ typedef struct MoveCounts {
     int16_t a[2];
 } MoveCounts;
 
-static int32_t board_score(Board board, uint16_t depth, MoveCounts move_counts)
-{
+static int32_t board_score(Board board, uint16_t depth, MoveCounts move_counts) {
     int32_t score = move_counts.a[WHITE] - move_counts.a[BLACK];
     for (uint8_t i = 0; i < 64; i++) {
         Piece piece = board_piece_get_index(board, i);
@@ -681,13 +660,11 @@ static int32_t board_score(Board board, uint16_t depth, MoveCounts move_counts)
     return score;
 }
 
-static uint8_t node_age_get(MoveNode *node)
-{
+static uint8_t node_age_get(MoveNode *node) {
     return node->flags & MOVE_FLAGS_AGE_MASK;
 }
 
-static void node_age_set(MoveNode *node, uint8_t age)
-{
+static void node_age_set(MoveNode *node, uint8_t age) {
     node->flags = (node->flags & ~MOVE_FLAGS_AGE_MASK) | (age & MOVE_FLAGS_AGE_MASK);
 }
 
@@ -705,8 +682,7 @@ typedef struct MoveTreeStats {
     MovePacked *max_line;
 } MoveTreeStats;
 
-static void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, int64_t depth)
-{
+static void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, int64_t depth) {
     stats->node_count++;
     if (node_age_get(node) == NODE_AGE_ELDER) {
         stats->elder_count++;
@@ -738,8 +714,7 @@ static void move_tree_stats_calculate(MoveTreeStats *stats, MoveNode *node, int6
 
 static MoveArray ai_move_buffer;
 
-b32 is_in_check(MoveArray *move_buffer, MoveNode *node, Board board)
-{
+b32 is_in_check(MoveArray *move_buffer, MoveNode *node, Board board) {
     if (!JK_FLAG_GET(node->flags, MOVE_FLAG_CHECK_EVALUATED)) {
         JK_FLAG_SET(node->flags, MOVE_FLAG_CHECK_EVALUATED, 1);
 
@@ -779,8 +754,7 @@ ExpandResult expand_move_tree(JkArena *arena,
         uint16_t depth,
         uint8_t expansion_size,
         uint8_t errors,
-        MoveCounts move_counts)
-{
+        MoveCounts move_counts) {
     ExpandResult result = {.errors = errors};
     Team team = board_current_team_get(board);
 
@@ -911,8 +885,7 @@ ExpandResult expand_move_tree(JkArena *arena,
     return result;
 }
 
-void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_frequency)
-{
+void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_frequency) {
     ai->arena = arena;
     ai->response.board = (Board){0};
     ai->response.move = (Move){0};
@@ -933,8 +906,7 @@ void ai_init(JkArena *arena, Ai *ai, Board board, uint64_t time, int64_t time_fr
     }
 }
 
-b32 ai_running(JkContext *context, Ai *ai)
-{
+b32 ai_running(JkContext *context, Ai *ai) {
     jk_context = context;
 
     if (!ai->root->first_child->next_sibling) {
@@ -976,8 +948,7 @@ b32 ai_running(JkContext *context, Ai *ai)
         ai->response.move = move_unpack(favorite_child->move);
 
 #if JK_BUILD_MODE != JK_RELEASE
-        JK_ARENA_SCRATCH(scratch)
-        {
+        JK_ARENA_SCRATCH(scratch) {
             uint64_t time_elapsed = ai->time - ai->time_started;
             double seconds_elapsed = (double)time_elapsed / (double)ai->time_frequency;
 
@@ -1077,8 +1048,7 @@ b32 ai_running(JkContext *context, Ai *ai)
 
 // Finds legal moves and populates move_buffer with them
 // Returns 1 if the current player's king is in check. Returns 0 otherwise.
-static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
-{
+static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board) {
     MoveNode *root = jk_arena_push_zero(arena, JK_SIZEOF(*root));
     expand_move_tree(arena, move_buffer, root, board, 0, 2, 0, (MoveCounts){0});
     b32 in_check = is_in_check(move_buffer, root, board);
@@ -1089,8 +1059,7 @@ static b32 find_legal_moves(JkArena *arena, MoveArray *move_buffer, Board board)
     return in_check;
 }
 
-b32 board_equal(Board *a, Board *b)
-{
+b32 board_equal(Board *a, Board *b) {
     for (int64_t i = 0; i < JK_ARRAY_COUNT(a->bytes) / 8; i++) {
         uint64_t a_bytes = *(uint64_t *)(a->bytes + (i * 8));
         uint64_t b_bytes = *(uint64_t *)(b->bytes + (i * 8));
@@ -1105,8 +1074,7 @@ void audio(ChessAssets *assets,
         AudioState state,
         uint64_t time,
         int64_t sample_count,
-        AudioSample *sample_buffer)
-{
+        AudioSample *sample_buffer) {
     int64_t sound_sample_count = assets->sounds[state.sound].size / JK_SIZEOF(uint16_t);
     uint16_t *sound_samples = (uint16_t *)((uint8_t *)assets + assets->sounds[state.sound].offset);
 
@@ -1125,31 +1093,26 @@ void audio(ChessAssets *assets,
     }
 }
 
-static JkIntVec2 screen_board_origin_get(int32_t square_side_length)
-{
+static JkIntVec2 screen_board_origin_get(int32_t square_side_length) {
     return (JkIntVec2){square_side_length, square_side_length};
 }
 
-static JkIntVec2 screen_to_board_pos_pixels(int32_t square_side_length, JkIntVec2 screen_pos)
-{
+static JkIntVec2 screen_to_board_pos_pixels(int32_t square_side_length, JkIntVec2 screen_pos) {
     return jk_int_vec2_sub(screen_pos, screen_board_origin_get(square_side_length));
 }
 
-static b32 screen_in_bounds(int32_t square_side_length, JkIntVec2 screen_pos)
-{
+static b32 screen_in_bounds(int32_t square_side_length, JkIntVec2 screen_pos) {
     return screen_pos.x >= 0 && screen_pos.x < square_side_length * 10 && screen_pos.y >= 0
             && screen_pos.y < square_side_length * 10;
 }
 
-static b32 board_pos_pixels_in_bounds(int32_t square_side_length, JkIntVec2 board_pos_pixels)
-{
+static b32 board_pos_pixels_in_bounds(int32_t square_side_length, JkIntVec2 board_pos_pixels) {
     int32_t board_side_length = square_side_length * 8;
     return board_pos_pixels.x >= 0 && board_pos_pixels.x < board_side_length
             && board_pos_pixels.y >= 0 && board_pos_pixels.y < board_side_length;
 }
 
-static JkIntVec2 apply_perspective(Team perspective, JkIntVec2 board_position)
-{
+static JkIntVec2 apply_perspective(Team perspective, JkIntVec2 board_position) {
     if (perspective) {
         board_position.x = 7 - board_position.x;
     } else {
@@ -1158,8 +1121,7 @@ static JkIntVec2 apply_perspective(Team perspective, JkIntVec2 board_position)
     return board_position;
 }
 
-static JkIntVec2 board_pos_pixels_to_squares_raw(Chess *chess, JkIntVec2 board_pos_pixels)
-{
+static JkIntVec2 board_pos_pixels_to_squares_raw(Chess *chess, JkIntVec2 board_pos_pixels) {
     return apply_perspective(chess->perspective,
             (JkIntVec2){
                 .x = board_pos_pixels.x / chess->square_side_length,
@@ -1167,8 +1129,7 @@ static JkIntVec2 board_pos_pixels_to_squares_raw(Chess *chess, JkIntVec2 board_p
             });
 }
 
-static JkIntVec2 board_pos_pixels_to_squares(Chess *chess, JkIntVec2 board_pos_pixels)
-{
+static JkIntVec2 board_pos_pixels_to_squares(Chess *chess, JkIntVec2 board_pos_pixels) {
     if (board_pos_pixels_in_bounds(chess->square_side_length, board_pos_pixels)) {
         return board_pos_pixels_to_squares_raw(chess, board_pos_pixels);
     } else {
@@ -1176,26 +1137,22 @@ static JkIntVec2 board_pos_pixels_to_squares(Chess *chess, JkIntVec2 board_pos_p
     }
 }
 
-static JkIntVec2 screen_to_board_pos(Chess *chess, JkIntVec2 screen_pos)
-{
+static JkIntVec2 screen_to_board_pos(Chess *chess, JkIntVec2 screen_pos) {
     return board_pos_pixels_to_squares(
             chess, screen_to_board_pos_pixels(chess->square_side_length, screen_pos));
 }
 
-static JkVec2 board_to_canvas_pos(Team perspective, float square_size, JkIntVec2 board_pos)
-{
+static JkVec2 board_to_canvas_pos(Team perspective, float square_size, JkIntVec2 board_pos) {
     board_pos = apply_perspective(perspective, board_pos);
     JkVec2 board_pos_f = {(float)board_pos.x, (float)board_pos.y};
     return jk_vec2_add((JkVec2){square_size, square_size}, jk_vec2_mul(square_size, board_pos_f));
 }
 
-static b32 input_button_pressed(Chess *chess, InputId id)
-{
+static b32 input_button_pressed(Chess *chess, InputId id) {
     return JK_FLAG_GET(chess->input.flags, id) && !JK_FLAG_GET(chess->input_prev.flags, id);
 }
 
-static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
-{
+static uint64_t destinations_get_by_src(Chess *chess, uint8_t src) {
     uint64_t result = 0;
     for (uint8_t i = 0; i < chess->moves.count; i++) {
         Move move = move_unpack(chess->moves.data[i]);
@@ -1206,8 +1163,7 @@ static uint64_t destinations_get_by_src(Chess *chess, uint8_t src)
     return result;
 }
 
-void update(JkContext *context, ChessAssets *assets, Chess *chess)
-{
+void update(JkContext *context, ChessAssets *assets, Chess *chess) {
     jk_context = context;
 
     JkArena arena = {.memory = chess->render_memory};
@@ -1514,13 +1470,11 @@ static JkColor color_teams[TEAM_COUNT] = {
     {.r = 0x9d, .g = 0x6f, .b = 0xfb, .a = 0xff},
 };
 
-static uint8_t uint8_average(uint8_t a, uint8_t b)
-{
+static uint8_t uint8_average(uint8_t a, uint8_t b) {
     return (uint8_t)(((uint32_t)a + (uint32_t)b) / 2);
 }
 
-static JkColor blend(JkColor a, JkColor b)
-{
+static JkColor blend(JkColor a, JkColor b) {
     JkColor result;
     for (int32_t i = 0; i < 4; i++) {
         result.v[i] = uint8_average(a.v[i], b.v[i]);
@@ -1528,13 +1482,11 @@ static JkColor blend(JkColor a, JkColor b)
     return result;
 }
 
-static uint8_t color_multiply(uint8_t a, uint8_t b)
-{
+static uint8_t color_multiply(uint8_t a, uint8_t b) {
     return ((uint32_t)a * (uint32_t)b) / 255;
 }
 
-static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
-{
+static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha) {
     JkColor result = {0, 0, 0, 255};
     for (uint8_t i = 0; i < 3; i++) {
         result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
@@ -1549,8 +1501,7 @@ typedef struct TextLayout {
     JkVec2 dimensions;
 } TextLayout;
 
-static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scale)
-{
+static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scale) {
     TextLayout result = {0};
     result.dimensions.x = 0.0f;
     for (int64_t i = 0; i < text.size; i++) {
@@ -1580,16 +1531,14 @@ static TextLayout text_layout_get(ChessAssets *assets, JkBuffer text, float scal
 }
 
 static void draw_text(
-        JkShapesRenderer *renderer, JkBuffer text, JkVec2 cursor, float scale, JkColor color)
-{
+        JkShapesRenderer *renderer, JkBuffer text, JkVec2 cursor, float scale, JkColor color) {
     for (int64_t i = 0; i < text.size; i++) {
         cursor.x += jk_shapes_draw(
                 renderer, text.data[i] + CHARACTER_SHAPE_OFFSET, cursor, scale, color);
     }
 }
 
-static uint8_t region_code(float side_length, JkVec2 v)
-{
+static uint8_t region_code(float side_length, JkVec2 v) {
     return ((v.x < 0.0f) << 0) | ((side_length - 1.0f < v.x) << 1) | ((v.y < 0.0f) << 2)
             | ((side_length - 1.0f < v.y) << 3);
 }
@@ -1599,8 +1548,7 @@ typedef struct Endpoint {
     JkVec2 *point;
 } Endpoint;
 
-static b32 clip_to_draw_region(float side_length, JkVec2 *a, JkVec2 *b)
-{
+static b32 clip_to_draw_region(float side_length, JkVec2 *a, JkVec2 *b) {
     Endpoint endpoint_a = {.code = region_code(side_length, *a), .point = a};
     Endpoint endpoint_b = {.code = region_code(side_length, *b), .point = b};
 
@@ -1631,18 +1579,15 @@ static b32 clip_to_draw_region(float side_length, JkVec2 *a, JkVec2 *b)
     }
 }
 
-static float fpart(float x)
-{
+static float fpart(float x) {
     return x - jk_floor_f32(x);
 }
 
-static float fpart_complement(float x)
-{
+static float fpart_complement(float x) {
     return 1.0f - fpart(x);
 }
 
-static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness)
-{
+static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness) {
     int32_t brightness_i = (int32_t)(brightness * 255.0f);
     if (brightness_i > 255) {
         brightness_i = 255;
@@ -1652,8 +1597,7 @@ static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, floa
             color_multiply(color.a, (uint8_t)brightness_i));
 }
 
-static void draw_line(Chess *chess, JkColor color, JkVec2 a, JkVec2 b)
-{
+static void draw_line(Chess *chess, JkColor color, JkVec2 a, JkVec2 b) {
     if (!clip_to_draw_region((float)(chess->square_side_length * 10), &a, &b)) {
         return;
     }
@@ -1740,8 +1684,7 @@ static void draw_radio_buttons(ChessAssets *assets,
         int64_t choice_count,
         int64_t choice_selected,
         JkBuffer *choice_strings,
-        int64_t first_button_id)
-{
+        int64_t first_button_id) {
     JK_DEBUG_ASSERT(0 <= first_button_id && first_button_id < BUTTON_COUNT);
     JK_DEBUG_ASSERT(0 <= choice_count);
     JK_DEBUG_ASSERT(first_button_id + choice_count <= BUTTON_COUNT);
@@ -1810,8 +1753,7 @@ static void draw_radio_buttons(ChessAssets *assets,
     top_left->y += scaled_dimensions.y;
 }
 
-void render(ChessAssets *assets, Chess *chess)
-{
+void render(ChessAssets *assets, Chess *chess) {
     RenderState state = {
         .square_side_length = chess->square_side_length,
         .holding_piece = JK_FLAG_GET(chess->flags, CHESS_FLAG_HOLDING_PIECE),
@@ -2488,8 +2430,7 @@ void render(ChessAssets *assets, Chess *chess)
     }
 }
 
-b32 is_draggable(Chess *chess, JkIntVec2 pos)
-{
+b32 is_draggable(Chess *chess, JkIntVec2 pos) {
     if (chess->player_types[board_current_team_get(chess->board)] == PLAYER_HUMAN) {
         uint8_t index = board_index_get_unbounded(screen_to_board_pos(chess, pos));
         if (index < 64) {

@@ -21,15 +21,13 @@ static int32_t unicode_codepoints[] = {
     0x10348,
 };
 
-static void print_buffer(JkBuffer buffer)
-{
+static void print_buffer(JkBuffer buffer) {
     for (int64_t i = 0; i < buffer.size; i++) {
         putc(buffer.data[i], stdout);
     }
 }
 
-static void print_unicode(uint32_t codepoint32)
-{
+static void print_unicode(uint32_t codepoint32) {
     char null_terminated_codepoint[5] = {0};
 
     JkUtf8Codepoint codepoint = jk_utf8_codepoint_encode(codepoint32);
@@ -69,8 +67,7 @@ static char *sorted_strings[LENGTH] = {
     "Watermelon",
 };
 
-static b32 string_arrays_are_equal(char **a, char **b, int length)
-{
+static b32 string_arrays_are_equal(char **a, char **b, int length) {
     for (int i = 0; i < length; i++) {
         if (strcmp(a[i], b[i]) != 0) {
             return 0;
@@ -79,16 +76,15 @@ static b32 string_arrays_are_equal(char **a, char **b, int length)
     return 1;
 }
 
-static void print_int_array(int array[])
-{
+static void print_int_array(int array[]) {
     printf("{");
     for (int i = 0; i < LENGTH; i++) {
         printf("%d%s", array[i], i == 9 ? "}" : ", ");
     }
 }
 
-static void print_string_arrays_side_by_side(char **a, char **b, int length, int indent, int width)
-{
+static void print_string_arrays_side_by_side(
+        char **a, char **b, int length, int indent, int width) {
     for (int i = 0; i < length; i++) {
         // Indent
         for (int j = 0; j < indent; j++) {
@@ -107,8 +103,7 @@ static void print_string_arrays_side_by_side(char **a, char **b, int length, int
     }
 }
 
-static b32 expect_string(JkBuffer expected, JkBuffer actual)
-{
+static b32 expect_string(JkBuffer expected, JkBuffer actual) {
     if (jk_buffer_compare(expected, actual) == 0) {
         return 1;
     } else {
@@ -128,8 +123,7 @@ JkConversionUnion unprintable_64 = {.uint64_v = 0x7feb83f05b73e306llu};
 JkConversionUnion max_f32 = {.uint32_v = 0x7f7fffff};
 JkConversionUnion some_nan_32 = {.uint32_v = 0x7fE9605C};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     // ---- Arena begin --------------------------------------------------------
     printf("Arena\n");
 
@@ -137,8 +131,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     JkArena arena = jk_platform_arena_virtual_init(page_size * 3);
     JK_ASSERT(arena.memory.size);
 
-    JK_ARENA_SCOPE(&arena)
-    {
+    JK_ARENA_SCOPE(&arena) {
         uint8_t *push1 = jk_arena_push(&arena, JK_SIZEOF(string1));
         JK_ASSERT(push1);
         memcpy(push1, string1, JK_SIZEOF(string1));
@@ -260,14 +253,12 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     jk_log(JK_LOG_INFO, JKS("His house is in the village though;"));
 
     printf("\n");
-    JK_LOG_ITER(e)
-    {
+    JK_LOG_ITER(e) {
         if (jk_log_entry_type(e) == JK_LOG_ERROR) {
             jk_log_entry_remove(e);
         }
     }
-    JK_LOG_ITER(e)
-    {
+    JK_LOG_ITER(e) {
         jk_log_entry_print(e);
     }
 
@@ -277,14 +268,12 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     jk_log(JK_LOG_INFO, JKS("My little horse must think it queer"));
 
     printf("\n");
-    JK_LOG_ITER(e)
-    {
+    JK_LOG_ITER(e) {
         jk_log_entry_print(e);
     }
 
     jk_context->log = jk_log_init(jk_platform_print, log_memory);
-    JK_LOG_ITER(e)
-    {
+    JK_LOG_ITER(e) {
         jk_log_entry_print(e);
     }
 
@@ -311,8 +300,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
 
     printf("\n");
 
-    JK_LOG_ITER(entry)
-    {
+    JK_LOG_ITER(entry) {
         jk_log_entry_print(entry);
     }
 

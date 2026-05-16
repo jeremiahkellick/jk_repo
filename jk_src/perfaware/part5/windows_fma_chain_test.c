@@ -15,8 +15,7 @@ static JkPlatformRepetitionTest tests[42];
 
 #define FMA_COUNT 3600000000
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (int64_t i = 0; i < JK_ARRAY_COUNT(tests); i++) {

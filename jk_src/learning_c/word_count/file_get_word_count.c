@@ -9,8 +9,7 @@
 // Indicates the word counter is currently inside of a word
 #define WORD_INSIDE 1
 
-int file_get_word_count(FILE *file)
-{
+int file_get_word_count(FILE *file) {
     int word_count = 0;
     int state = WORD_OUTSIDE;
     int character;

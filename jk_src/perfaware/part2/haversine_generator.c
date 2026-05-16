@@ -43,8 +43,7 @@ static Cluster default_cluster = {
     .y_min = -90.0,
 };
 
-static uint32_t hash_string(char *string)
-{
+static uint32_t hash_string(char *string) {
     uint32_t hash = 0;
     while (*string != '\0') {
         Bits32 bits = {0};
@@ -56,13 +55,11 @@ static uint32_t hash_string(char *string)
     return hash;
 }
 
-static double random_within(double min, double radius)
-{
+static double random_within(double min, double radius) {
     return min + ((double)rand() / (double)RAND_MAX) * radius;
 }
 
-Cluster random_cluster(void)
-{
+Cluster random_cluster(void) {
     Cluster cluster = {
         .x_min = random_within(-180, 360.0 - 45.0),
         .y_min = random_within(-90.0, 180.0 - 45.0),
@@ -125,8 +122,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     program_name = argv[0];
 
     // Parse arguments

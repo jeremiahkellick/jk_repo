@@ -6,8 +6,7 @@
 #include <jk_src/pikuma/graphics/graphics.h>
 // #jk_build dependencies_end
 
-static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
-{
+static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos) {
     JkFloatArray result = {.e = jk_arena_pointer_current(arena)};
     int c;
     while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
@@ -32,8 +31,7 @@ static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int
     return result;
 }
 
-JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim)
-{
+JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim) {
     int64_t start = *cursor;
     int c;
     do {
@@ -43,21 +41,18 @@ JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim)
                       : (JkBuffer){0};
 }
 
-b32 is_xml_tag_name_character(int32_t c)
-{
+b32 is_xml_tag_name_character(int32_t c) {
     c = jk_char_to_lower(c);
     return ('a' <= c && c <= 'z') || jk_char_is_digit(c) || c == '-' || c == '_' || c == ':'
             || c == '.';
 }
 
-b32 is_css_attribute_name_character(int32_t c)
-{
+b32 is_css_attribute_name_character(int32_t c) {
     c = jk_char_to_lower(c);
     return ('a' <= c && c <= 'z') || jk_char_is_digit(c) || c == '-' || c == '_';
 }
 
-uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor)
-{
+uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor) {
     uint8_t result = 0;
     for (int64_t i = 0; i < 2; i++) {
         result <<= 4;
@@ -70,8 +65,7 @@ uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor)
     return result;
 }
 
-b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuffer *value)
-{
+b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuffer *value) {
     // Name
     jk_buffer_skip_whitespace(svg, cursor);
     int64_t start = *cursor;
@@ -100,8 +94,7 @@ b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *name, JkBuff
     return 1;
 }
 
-Texture generate_sdf_texture(JkArena *arena, JkBuffer name)
-{
+Texture generate_sdf_texture(JkArena *arena, JkBuffer name) {
     Texture r = {.offset = -1, .bg = {.a = 0xff}};
 
     jk_platform_set_working_directory_to_executable_directory();
@@ -112,8 +105,7 @@ Texture generate_sdf_texture(JkArena *arena, JkBuffer name)
     JkArenaScope scratch = jk_arena_scratch_begin_not(arena);
 
     // Parse SVG data
-    JK_ARENA_SCOPE(arena)
-    {
+    JK_ARENA_SCOPE(arena) {
         JkBuffer svg = jk_platform_file_read(arena,
                 JK_FORMAT(arena, jkfn("../jk_assets/pikuma/graphics/"), jkfs(name), jkfn(".svg")));
         if (svg.size == 0) {

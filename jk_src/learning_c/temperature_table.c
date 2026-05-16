@@ -8,8 +8,7 @@
  * Print fahrenheit-celsuis table
  * for fahrenheit = 20, 40, 60, ..., 300
  */
-int main(void)
-{
+int main(void) {
     printf("Fahrenheit\tCelsius\n");
     for (int fahrenheit = LOWER; fahrenheit <= UPPER; fahrenheit += STEP) {
         float celsius = 5.0f / 9.0f * (fahrenheit - 32.0f);

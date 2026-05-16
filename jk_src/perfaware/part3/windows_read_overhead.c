@@ -32,8 +32,7 @@ static int64_t large_page_size;
 
 static void *global_buffer;
 
-static b32 handle_allocation(JkPlatformRepetitionTest *test, ReadParams *params)
-{
+static b32 handle_allocation(JkPlatformRepetitionTest *test, ReadParams *params) {
     switch (params->alloc) {
     case NONE:
     case ALLOC_COUNT: {
@@ -74,8 +73,7 @@ static b32 handle_allocation(JkPlatformRepetitionTest *test, ReadParams *params)
     return 1;
 }
 
-static void handle_deallocation(JkPlatformRepetitionTest *test, ReadParams *params)
-{
+static void handle_deallocation(JkPlatformRepetitionTest *test, ReadParams *params) {
     switch (params->alloc) {
     case NONE:
     case ALLOC_COUNT: {
@@ -92,8 +90,7 @@ static void handle_deallocation(JkPlatformRepetitionTest *test, ReadParams *para
     }
 }
 
-static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         if (!handle_allocation(test, &params)) {
             continue;
@@ -111,8 +108,7 @@ static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params
     }
 }
 
-static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         if (!handle_allocation(test, &params)) {
             continue;
@@ -130,8 +126,7 @@ static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadPar
     }
 }
 
-static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         if (!handle_allocation(test, &params)) {
             continue;
@@ -157,8 +152,7 @@ static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params)
     }
 }
 
-static void read_via_read(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void read_via_read(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         if (!handle_allocation(test, &params)) {
             continue;
@@ -197,8 +191,7 @@ static void read_via_read(JkPlatformRepetitionTest *test, ReadParams params)
     }
 }
 
-static void read_via_read_file(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void read_via_read_file(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         if (!handle_allocation(test, &params)) {
             continue;
@@ -260,8 +253,7 @@ static TestCandidate candidates[] = {
 // tests[malloc][i]
 static JkPlatformRepetitionTest tests[ALLOC_COUNT][JK_ARRAY_COUNT(candidates)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     HANDLE process_token;
     if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &process_token)) {
         TOKEN_PRIVILEGES privileges = {0};

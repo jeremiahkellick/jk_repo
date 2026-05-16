@@ -4,41 +4,34 @@
 
 #if defined(_MSC_VER) && !defined(__clang__)
 
-JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
-{
+JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value) {
     return __lzcnt64(value);
 }
 
-JK_PUBLIC float jk_round_f32(float value)
-{
+JK_PUBLIC float jk_round_f32(float value) {
     return _mm_cvtss_f32(
             _mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_TO_NEAREST_INT));
 }
 
-JK_PUBLIC float jk_floor_f32(float value)
-{
+JK_PUBLIC float jk_floor_f32(float value) {
     return _mm_cvtss_f32(_mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_FLOOR));
 }
 
-JK_PUBLIC float jk_ceil_f32(float value)
-{
+JK_PUBLIC float jk_ceil_f32(float value) {
     return _mm_cvtss_f32(_mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_CEIL));
 }
 
-JK_PUBLIC float jk_sqrt_f32(float value)
-{
+JK_PUBLIC float jk_sqrt_f32(float value) {
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value)));
 }
 
-JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value)
-{
+JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value) {
     return _InterlockedExchangeAdd((long volatile *)pointer, value);
 }
 
 #elif defined(__GNUC__) || defined(__clang__)
 
-JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
-{
+JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value) {
     if (value == 0) {
         return 64;
     } else {
@@ -46,28 +39,23 @@ JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value)
     }
 }
 
-JK_PUBLIC float jk_round_f32(float value)
-{
+JK_PUBLIC float jk_round_f32(float value) {
     return __builtin_roundevenf(value);
 }
 
-JK_PUBLIC float jk_floor_f32(float value)
-{
+JK_PUBLIC float jk_floor_f32(float value) {
     return __builtin_floorf(value);
 }
 
-JK_PUBLIC float jk_ceil_f32(float value)
-{
+JK_PUBLIC float jk_ceil_f32(float value) {
     return __builtin_ceilf(value);
 }
 
-JK_PUBLIC float jk_sqrt_f32(float value)
-{
+JK_PUBLIC float jk_sqrt_f32(float value) {
     return __builtin_sqrtf(value);
 }
 
-JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value)
-{
+JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value) {
     return __sync_fetch_and_add(pointer, value);
 }
 
@@ -79,210 +67,170 @@ JK_PUBLIC int32_t jk_atomic_add(int32_t volatile *pointer, int32_t value)
 
 #if defined(__x86_64__) || defined(_M_X64)
 
-JK_PUBLIC JkI256 jk_i256_zero(void)
-{
+JK_PUBLIC JkI256 jk_i256_zero(void) {
     return (JkI256){_mm256_setzero_si256()};
 }
 
-JK_PUBLIC JkI256 jk_i256_load(void *pointer)
-{
+JK_PUBLIC JkI256 jk_i256_load(void *pointer) {
     return (JkI256){_mm256_loadu_si256(pointer)};
 }
 
-JK_PUBLIC void jk_i256_store(void *pointer, JkI256 x)
-{
+JK_PUBLIC void jk_i256_store(void *pointer, JkI256 x) {
     _mm256_storeu_si256(pointer, x.v);
 }
 
-JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b) {
     return (JkI256){_mm256_and_si256(a.v, b.v)};
 }
 
-JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b) {
     return (JkI256){_mm256_or_si256(a.v, b.v)};
 }
 
-JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value)
-{
+JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value) {
     return (JkI256){_mm256_set1_epi32(value)};
 }
 
-JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b) {
     return (JkI256){_mm256_add_epi32(a.v, b.v)};
 }
 
-JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b) {
     return (JkI256){_mm256_sub_epi32(a.v, b.v)};
 }
 
-JK_PUBLIC JkI256 __jk_i256_shift_left_i32(JkI256 x, int32_t bit_count)
-{
+JK_PUBLIC JkI256 __jk_i256_shift_left_i32(JkI256 x, int32_t bit_count) {
     return (JkI256){_mm256_slli_epi32(x.v, bit_count)};
 }
 
-JK_PUBLIC JkI256 __jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count)
-{
+JK_PUBLIC JkI256 __jk_i256_shift_right_zero_fill_i32(JkI256 x, int32_t bit_count) {
     return (JkI256){_mm256_srli_epi32(x.v, bit_count)};
 }
 
-JK_PUBLIC JkI256 __jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count)
-{
+JK_PUBLIC JkI256 __jk_i256_shift_right_sign_fill_i32(JkI256 x, int32_t bit_count) {
     return (JkI256){_mm256_srai_epi32(x.v, bit_count)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_zero(void)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_zero(void) {
     return (JkF32x8){_mm256_setzero_ps()};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value) {
     return (JkF32x8){_mm256_set1_ps(value)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer) {
     return (JkF32x8){_mm256_loadu_ps(pointer)};
 }
 
-JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
-{
+JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x) {
     _mm256_storeu_ps(pointer, x.v);
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets) {
     return (JkF32x8){_mm256_i32gather_ps(pointer, offsets.v, 4)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_add_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_sub_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_mul_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_div_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_reciprocal_approx(JkF32x8 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_reciprocal_approx(JkF32x8 x) {
     return (JkF32x8){_mm256_rcp_ps(x.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x) {
     return (JkF32x8){_mm256_round_ps(x.v, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_min(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_min(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_min_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_max(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_max(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_max_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_abs(JkF32x8 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_abs(JkF32x8 x) {
     return (JkF32x8){_mm256_andnot_ps(_mm256_set1_ps(-0.0f), x.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_lerp(JkF32x8 a, JkF32x8 b, JkF32x8 t)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_lerp(JkF32x8 a, JkF32x8 b, JkF32x8 t) {
     return jk_f32x8_add(
             jk_f32x8_mul(jk_f32x8_sub(jk_f32x8_broadcast(1), t), a), jk_f32x8_mul(t, b));
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_and_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_or_ps(a.v, b.v)};
 }
 
 // ~a & b
-JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_andnot_ps(a.v, b.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b) {
     return (JkF32x8){_mm256_cmp_ps(a.v, b.v, _CMP_LT_OQ)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x) {
     return x;
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask) {
     return (JkF32x8){_mm256_blendv_ps(false_value.v, true_value.v, mask.v)};
 }
 
-JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x)
-{
+JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x) {
     return !_mm256_testz_ps(x.v, x.v);
 }
 
-JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
-{
+JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x) {
     return _mm256_testc_ps(x.v, _mm256_castsi256_ps(_mm256_set1_epi32(-1)));
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_from_i32x8(JkI256 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_from_i32x8(JkI256 x) {
     return (JkF32x8){_mm256_cvtepi32_ps(x.v)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x) {
     return (JkF32x8){_mm256_castsi256_ps(x.v)};
 }
 
-JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x)
-{
+JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x) {
     return (JkI256){_mm256_castps_si256(x.v)};
 }
 
-JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x)
-{
+JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x) {
     return (JkI256){_mm256_cvttps_epi32(x.v)};
 }
 
 #if defined(_MSC_VER) && !defined(__clang__)
 
-JK_PUBLIC uint64_t jk_cpu_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_cpu_timer_get(void) {
     return __rdtsc();
 }
 
 #elif defined(__GNUC__) || defined(__clang__)
 
-JK_PUBLIC uint64_t jk_cpu_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_cpu_timer_get(void) {
     return __builtin_ia32_rdtsc();
 }
 
@@ -290,76 +238,62 @@ JK_PUBLIC uint64_t jk_cpu_timer_get(void)
 
 #elif __arm64__
 
-JK_PUBLIC uint64_t jk_cpu_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_cpu_timer_get(void) {
     uint64_t timebase;
     __asm__ volatile("mrs %0, CNTPCT_EL0" : "=r"(timebase));
     return timebase;
 }
 
-JK_PUBLIC JkI256 jk_i256_zero(void)
-{
+JK_PUBLIC JkI256 jk_i256_zero(void) {
     return (int32x4x2_t){vdupq_n_s32(0), vdupq_n_s32(0)};
 }
 
-JK_PUBLIC JkI256 jk_i256_load(void *pointer)
-{
+JK_PUBLIC JkI256 jk_i256_load(void *pointer) {
     return vld1q_s32_x2(pointer);
 }
 
-JK_PUBLIC void jk_i256_store(void *pointer, JkI256 value)
-{
+JK_PUBLIC void jk_i256_store(void *pointer, JkI256 value) {
     vst1q_s32_x2(pointer, value);
 }
 
-JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_and(JkI256 a, JkI256 b) {
     return (int32x4x2_t){vandq_s32(a.val[0], b.val[0]), vandq_s32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_or(JkI256 a, JkI256 b) {
     return (int32x4x2_t){vorrq_s32(a.val[0], b.val[0]), vorrq_s32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value)
-{
+JK_PUBLIC JkI256 jk_i256_broadcast_i32(int32_t value) {
     return (int32x4x2_t){vdupq_n_s32(value), vdupq_n_s32(value)};
 }
 
-JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_add_i32(JkI256 a, JkI256 b) {
     return (int32x4x2_t){vaddq_s32(a.val[0], b.val[0]), vaddq_s32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b)
-{
+JK_PUBLIC JkI256 jk_i256_sub_i32(JkI256 a, JkI256 b) {
     return (int32x4x2_t){vsubq_s32(a.val[0], b.val[0]), vsubq_s32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_zero(void)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_zero(void) {
     return (float32x4x2_t){vdupq_n_f32(0), vdupq_n_f32(0)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_broadcast(float value) {
     return (float32x4x2_t){vdupq_n_f32(value), vdupq_n_f32(value)};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_load(void *pointer) {
     return vld1q_f32_x2(pointer);
 }
 
-JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x)
-{
+JK_PUBLIC void jk_f32x8_store(void *pointer, JkF32x8 x) {
     vst1q_f32_x2(pointer, x);
 }
 
 // Truncates offset
-JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask) {
     float *ptr = pointer;
     float32x4x2_t r = jk_f32x8_zero();
     offsets = jk_i256_and(offsets, jk_i256_from_f32x8_reinterpret(mask));
@@ -377,97 +311,81 @@ JK_PUBLIC JkF32x8 jk_f32x8_gather(void *pointer, JkI256 offsets, JkF32x8 mask)
     return r;
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_add(JkF32x8 a, JkF32x8 b) {
     return (float32x4x2_t){vaddq_f32(a.val[0], b.val[0]), vaddq_f32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_sub(JkF32x8 a, JkF32x8 b) {
     return (float32x4x2_t){vsubq_f32(a.val[0], b.val[0]), vsubq_f32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_mul(JkF32x8 a, JkF32x8 b) {
     return (float32x4x2_t){vmulq_f32(a.val[0], b.val[0]), vmulq_f32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b) {
     return (float32x4x2_t){vdivq_f32(a.val[0], b.val[0]), vdivq_f32(a.val[1], b.val[1])};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x) {
     return (float32x4x2_t){vrndmq_f32(x.val[0]), vrndmq_f32(x.val[1])};
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_and(JkF32x8 a, JkF32x8 b) {
     return jk_f32x8_from_i256_reinterpret(
             jk_i256_and(jk_i256_from_f32x8_reinterpret(a), jk_i256_from_f32x8_reinterpret(b)));
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_or(JkF32x8 a, JkF32x8 b) {
     return jk_f32x8_from_i256_reinterpret(
             jk_i256_or(jk_i256_from_f32x8_reinterpret(a), jk_i256_from_f32x8_reinterpret(b)));
 }
 
 // ~a & b
-JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_andnot(JkF32x8 a, JkF32x8 b) {
     int32x4x2_t ai = jk_i256_from_f32x8_reinterpret(a);
     int32x4x2_t not_a = {vmvnq_s32(ai.val[0]), vmvnq_s32(ai.val[1])};
     return jk_f32x8_from_i256_reinterpret(jk_i256_and(not_a, jk_i256_from_f32x8_reinterpret(b)));
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_less_than(JkF32x8 a, JkF32x8 b) {
     return (float32x4x2_t){
         vreinterpretq_f32_u32(vcltq_f32(a.val[0], b.val[0])),
         vreinterpretq_f32_u32(vcltq_f32(a.val[1], b.val[1])),
     };
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_to_mask(JkF32x8 x) {
     return jk_f32x8_from_i256_reinterpret(
             JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(jk_i256_from_f32x8_reinterpret(x), 31));
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_blend(JkF32x8 false_value, JkF32x8 true_value, JkF32x8 mask) {
     return (float32x4x2_t){
         vbslq_f32(vreinterpretq_u32_s32(mask.val[0]), true_value.val[0], false_value.val[0]),
         vbslq_f32(vreinterpretq_u32_s32(mask.val[1]), true_value.val[1], false_value.val[1]),
     };
 }
 
-JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x)
-{
+JK_PUBLIC b32 jk_f32x8_any(JkF32x8 x) {
     return vmaxvq_u32(vreinterpretq_u32_f32(x.val[0]))
             | vmaxvq_u32(vreinterpretq_u32_f32(x.val[1]));
 }
 
-JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x)
-{
+JK_PUBLIC b32 jk_f32x8_all(JkF32x8 x) {
     return vminvq_u32(vreinterpretq_u32_s32(x.val[0]))
             && vminvq_u32(vreinterpretq_u32_s32(x.val[1]));
 }
 
-JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x)
-{
+JK_PUBLIC JkF32x8 jk_f32x8_from_i256_reinterpret(JkI256 x) {
     return (float32x4x2_t){vreinterpretq_f32_s32(x.val[0]), vreinterpretq_f32_s32(x.val[1])};
 }
 
-JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x)
-{
+JK_PUBLIC JkI256 jk_i256_from_f32x8_reinterpret(JkF32x8 x) {
     return (int32x4x2_t){vreinterpretq_s32_f32(x.val[0]), vreinterpretq_s32_f32(x.val[1])};
 }
 
-JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x)
-{
+JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x) {
     return (JkI256){vcvtq_s32_f32(x.val[0]), vcvtq_s32_f32(x.val[1])};
 }
 
@@ -485,15 +403,13 @@ JK_GLOBAL_DEFINE JK_THREAD_LOCAL JkContext *jk_context = (JkContext *)&jk_contex
 
 // ---- Thread management begin ------------------------------------------------
 
-JK_PUBLIC void jk_channel_sync(void)
-{
+JK_PUBLIC void jk_channel_sync(void) {
     if (jk_context->barrier_wait && jk_context->channel.barrier) {
         jk_context->barrier_wait(jk_context->channel.barrier);
     }
 }
 
-JkChannelNarrowState jk_channel_narrow_helper(int64_t channel_index)
-{
+JkChannelNarrowState jk_channel_narrow_helper(int64_t channel_index) {
     JkChannelNarrowState state = {
         .run = channel_index == jk_context->channel.index,
         .restore = jk_context->channel,
@@ -510,37 +426,31 @@ JkChannelNarrowState jk_channel_narrow_helper(int64_t channel_index)
 
 // ---- Buffer begin -----------------------------------------------------------
 
-JK_PUBLIC void jk_buffer_zero(JkBuffer buffer)
-{
+JK_PUBLIC void jk_buffer_zero(JkBuffer buffer) {
     jk_memset(buffer.data, 0, buffer.size);
 }
 
-JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer)
-{
+JK_PUBLIC JkBuffer jk_buffer_copy(JkArena *arena, JkBuffer buffer) {
     JkBuffer result = {.size = buffer.size, .data = jk_arena_push(arena, buffer.size)};
     jk_memcpy(result.data, buffer.data, buffer.size);
     return result;
 }
 
-JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer)
-{
+JK_PUBLIC void jk_buffer_reverse(JkBuffer buffer) {
     for (int64_t i = 0; i < buffer.size / 2; i++) {
         JK_SWAP(buffer.data[i], buffer.data[buffer.size - 1 - i], uint8_t);
     }
 }
 
-JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, int64_t size)
-{
+JK_PUBLIC JkBuffer jk_buffer_alloc(JkArena *arena, int64_t size) {
     return (JkBuffer){.size = size, .data = jk_arena_push(arena, size)};
 }
 
-JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size)
-{
+JK_PUBLIC JkBuffer jk_buffer_alloc_zero(JkArena *arena, int64_t size) {
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
 }
 
-JK_PUBLIC int64_t jk_strlen(char *string)
-{
+JK_PUBLIC int64_t jk_strlen(char *string) {
     char *pointer = string;
     while (*pointer) {
         pointer++;
@@ -548,8 +458,7 @@ JK_PUBLIC int64_t jk_strlen(char *string)
     return pointer - string;
 }
 
-JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
-{
+JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string) {
     if (string) {
         return (JkBuffer){.size = jk_strlen(string), .data = (uint8_t *)string};
     } else {
@@ -557,8 +466,7 @@ JK_PUBLIC JkBuffer jk_buffer_from_null_terminated(char *string)
     }
 }
 
-JK_PUBLIC char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer)
-{
+JK_PUBLIC char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer) {
     char *result = jk_arena_push(arena, buffer.size + 1);
     if (result) {
         result[buffer.size] = '\0';
@@ -567,32 +475,27 @@ JK_PUBLIC char *jk_null_terminated_from_buffer(JkArena *arena, JkBuffer buffer)
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_buffer_from_arena(JkArena *arena)
-{
+JK_PUBLIC JkBuffer jk_buffer_from_arena(JkArena *arena) {
     return (JkBuffer){.size = arena->pos, .data = arena->memory.data};
 }
 
-JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos)
-{
+JK_PUBLIC int32_t jk_buffer_character_get(JkBuffer buffer, int64_t pos) {
     return (0 <= pos && pos < buffer.size) ? buffer.data[pos] : JK_OOB;
 }
 
-JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos)
-{
+JK_PUBLIC int32_t jk_buffer_character_next(JkBuffer buffer, int64_t *pos) {
     int32_t c = jk_buffer_character_get(buffer, *pos);
     (*pos)++;
     return c;
 }
 
-JK_PUBLIC void jk_buffer_skip_whitespace(JkBuffer buffer, int64_t *cursor)
-{
+JK_PUBLIC void jk_buffer_skip_whitespace(JkBuffer buffer, int64_t *cursor) {
     while (jk_is_space(jk_buffer_character_get(buffer, *cursor))) {
         *cursor += 1;
     }
 }
 
-JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c)
-{
+JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c) {
     switch (c) {
     case ' ':
     case '\t':
@@ -604,8 +507,7 @@ JK_PUBLIC b32 jk_is_space_exclude_newlines(int32_t c)
     }
 }
 
-JK_PUBLIC int32_t jk_buffer_token_character_next(JkBuffer buffer, int64_t *pos)
-{
+JK_PUBLIC int32_t jk_buffer_token_character_next(JkBuffer buffer, int64_t *pos) {
     int32_t c;
     do {
         c = jk_buffer_character_next(buffer, pos);
@@ -613,8 +515,7 @@ JK_PUBLIC int32_t jk_buffer_token_character_next(JkBuffer buffer, int64_t *pos)
     return c;
 }
 
-JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count)
-{
+JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int64_t bit_count) {
     JK_DEBUG_ASSERT(0 <= bit_count && bit_count <= 32);
     uint64_t result = 0;
 
@@ -632,15 +533,13 @@ JK_PUBLIC uint32_t jk_buffer_bits_peek(JkBuffer buffer, int64_t bit_cursor, int6
     return (uint32_t)((result >> bit_index) & ((1llu << bit_count) - 1));
 }
 
-JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count)
-{
+JK_PUBLIC uint32_t jk_buffer_bits_read(JkBuffer buffer, int64_t *bit_cursor, int64_t bit_count) {
     uint32_t result = jk_buffer_bits_peek(buffer, *bit_cursor, bit_count);
     *bit_cursor += bit_count;
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)
-{
+JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos) {
     JkBuffer result = {0};
     if (0 <= *pos && *pos < buffer.size) {
         result.data = buffer.data + *pos;
@@ -653,8 +552,7 @@ JK_PUBLIC JkBuffer jk_buffer_null_terminated_next(JkBuffer buffer, int64_t *pos)
     return result;
 }
 
-JK_PUBLIC b32 jk_string_equal(JkBuffer a, JkBuffer b)
-{
+JK_PUBLIC b32 jk_string_equal(JkBuffer a, JkBuffer b) {
     if (a.size != b.size) {
         return 0;
     }
@@ -668,8 +566,7 @@ JK_PUBLIC b32 jk_string_equal(JkBuffer a, JkBuffer b)
     return 1;
 }
 
-JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b)
-{
+JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b) {
     for (int64_t pos = 0; 1; pos++) {
         int32_t a_char = jk_buffer_character_get(a, pos);
         int32_t b_char = jk_buffer_character_get(b, pos);
@@ -683,8 +580,7 @@ JK_PUBLIC int32_t jk_buffer_compare(JkBuffer a, JkBuffer b)
     }
 }
 
-JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer)
-{
+JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer) {
     uint64_t result = 0;
     int64_t i = 0;
     while (i < buffer.size) {
@@ -698,24 +594,20 @@ JK_PUBLIC uint64_t jk_buffer_hash(JkBuffer buffer)
     return result;
 }
 
-JK_PUBLIC b32 jk_is_space(int32_t c)
-{
+JK_PUBLIC b32 jk_is_space(int32_t c) {
     return c == ' ' || ('\t' <= c && c <= '\r');
 }
 
-JK_PUBLIC b32 jk_char_is_digit(int32_t c)
-{
+JK_PUBLIC b32 jk_char_is_digit(int32_t c) {
     return '0' <= c && c <= '9';
 }
 
-JK_PUBLIC b32 jk_char_is_hex_digit(int32_t c)
-{
+JK_PUBLIC b32 jk_char_is_hex_digit(int32_t c) {
     c = jk_char_to_lower(c);
     return jk_char_is_digit(c) || ('a' <= c && c <= 'f');
 }
 
-JK_PUBLIC uint8_t jk_char_hex_value(int32_t c)
-{
+JK_PUBLIC uint8_t jk_char_hex_value(int32_t c) {
     c = jk_char_to_lower(c);
     if ('a' <= c && c <= 'f') {
         return 10 + (c - 'a');
@@ -724,8 +616,7 @@ JK_PUBLIC uint8_t jk_char_hex_value(int32_t c)
     }
 }
 
-JK_PUBLIC int32_t jk_char_to_lower(int32_t c)
-{
+JK_PUBLIC int32_t jk_char_to_lower(int32_t c) {
     if ('A' <= c && c <= 'Z') {
         return c + ('a' - 'A');
     } else {
@@ -733,8 +624,7 @@ JK_PUBLIC int32_t jk_char_to_lower(int32_t c)
     }
 }
 
-JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
-{
+JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string) {
     for (int64_t i = 0; i < string.size; i++) {
         if (jk_is_space(string.data[i])) {
             return 1;
@@ -744,8 +634,7 @@ JK_PUBLIC b32 jk_string_contains_whitespace(JkBuffer string)
 }
 
 // Returns the index where the search_string appears in the text if found, or -1 if not found
-JK_PUBLIC int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
-{
+JK_PUBLIC int64_t jk_string_find(JkBuffer text, JkBuffer search_string) {
     for (int64_t i = 0; i <= (int64_t)text.size - (int64_t)search_string.size; i++) {
         b32 match = 1;
         for (int64_t j = 0; j < (int64_t)search_string.size; j++) {
@@ -764,8 +653,7 @@ JK_PUBLIC int64_t jk_string_find(JkBuffer text, JkBuffer search_string)
     return -1;
 }
 
-JK_PUBLIC JkBuffer jk_string_from_int(JkArena *arena, int64_t value)
-{
+JK_PUBLIC JkBuffer jk_string_from_int(JkArena *arena, int64_t value) {
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
@@ -798,8 +686,7 @@ JK_PUBLIC JkBuffer jk_string_from_int(JkArena *arena, int64_t value)
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_string_from_unsigned(JkArena *arena, uint64_t value, int64_t min_width)
-{
+JK_PUBLIC JkBuffer jk_string_from_unsigned(JkArena *arena, uint64_t value, int64_t min_width) {
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
@@ -826,8 +713,7 @@ JK_PUBLIC JkBuffer jk_string_from_unsigned(JkArena *arena, uint64_t value, int64
 JK_GLOBAL_DEFINE JK_READONLY uint8_t jk_hex_char[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
 
-JK_PUBLIC JkBuffer jk_string_from_hex(JkArena *arena, uint64_t value, int16_t min_width)
-{
+JK_PUBLIC JkBuffer jk_string_from_hex(JkArena *arena, uint64_t value, int16_t min_width) {
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
@@ -850,8 +736,7 @@ JK_PUBLIC JkBuffer jk_string_from_hex(JkArena *arena, uint64_t value, int16_t mi
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_string_from_binary(JkArena *arena, uint64_t value, int16_t min_width)
-{
+JK_PUBLIC JkBuffer jk_string_from_binary(JkArena *arena, uint64_t value, int16_t min_width) {
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
@@ -874,8 +759,7 @@ JK_PUBLIC JkBuffer jk_string_from_binary(JkArena *arena, uint64_t value, int16_t
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t decimal_places)
-{
+JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t decimal_places) {
     JK_DEBUG_ASSERT(0 <= decimal_places && decimal_places <= 8);
     JkFloatUnpacked unpacked = jk_unpack_f64(value);
     if (unpacked.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
@@ -928,8 +812,7 @@ JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t deci
     }
 }
 
-JK_PUBLIC JkFormatItem jkfc(uint8_t character)
-{
+JK_PUBLIC JkFormatItem jkfc(uint8_t character) {
     return (JkFormatItem){
         .type = JK_FORMAT_ITEM_CHARACTER,
         .unsigned_value = character,
@@ -937,8 +820,7 @@ JK_PUBLIC JkFormatItem jkfc(uint8_t character)
 }
 
 // Include a null terminated string in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfn(char *null_terminated)
-{
+JK_PUBLIC JkFormatItem jkfn(char *null_terminated) {
     return (JkFormatItem){
         .type = JK_FORMAT_ITEM_NULL_TERMINATED,
         .null_terminated = null_terminated,
@@ -946,71 +828,60 @@ JK_PUBLIC JkFormatItem jkfn(char *null_terminated)
 }
 
 // Include a JkBuffer in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfs(JkBuffer string)
-{
+JK_PUBLIC JkFormatItem jkfs(JkBuffer string) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_STRING, .string = string};
 }
 
 // Include a signed integer JK_FORMAT
-JK_PUBLIC JkFormatItem jkfi(int64_t signed_value)
-{
+JK_PUBLIC JkFormatItem jkfi(int64_t signed_value) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_INT, .signed_value = signed_value};
 }
 
 // Include an unsigned integer in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfu(uint64_t unsigned_value)
-{
+JK_PUBLIC JkFormatItem jkfu(uint64_t unsigned_value) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_UNSIGNED, .unsigned_value = unsigned_value};
 }
 
 // Include an unsigned integer in JK_FORMAT and supply a width
-JK_PUBLIC JkFormatItem jkfuw(uint64_t unsigned_value, int16_t min_width)
-{
+JK_PUBLIC JkFormatItem jkfuw(uint64_t unsigned_value, int16_t min_width) {
     return (JkFormatItem){
         .type = JK_FORMAT_ITEM_UNSIGNED, .unsigned_value = unsigned_value, .param = min_width};
 }
 
 // Include a hexadecimal value in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width)
-{
+JK_PUBLIC JkFormatItem jkfh(uint64_t hex_value, int16_t min_width) {
     return (JkFormatItem){
         .type = JK_FORMAT_ITEM_HEX, .unsigned_value = hex_value, .param = min_width};
 }
 
 // Include a binary value in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width)
-{
+JK_PUBLIC JkFormatItem jkfb(uint64_t binary_value, int16_t min_width) {
     return (JkFormatItem){
         .type = JK_FORMAT_ITEM_BINARY, .unsigned_value = binary_value, .param = min_width};
 }
 
 // Include a floating point value in JK_FORMAT
-JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places)
-{
+JK_PUBLIC JkFormatItem jkff(double float_value, int16_t decimal_places) {
     return (JkFormatItem){
         .type = JK_FORMAT_ITEM_FLOAT, .float_value = float_value, .param = decimal_places};
 }
 
 // Include a JkVec2 value in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfv2(JkVec2 v)
-{
+JK_PUBLIC JkFormatItem jkfv2(JkVec2 v) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC2, .vec2_value = v};
 }
 
 // Include a JkVec3 value in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfv(JkVec3 v)
-{
+JK_PUBLIC JkFormatItem jkfv(JkVec3 v) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC3, .vec3_value = v};
 }
 
 // Include a JkVec4 value in JK_FORMAT
-JK_PUBLIC JkFormatItem jkfv4(JkVec4 v)
-{
+JK_PUBLIC JkFormatItem jkfv4(JkVec4 v) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_VEC4, .vec4_value = v};
 }
 
-JK_PUBLIC JkFormatItem jkf_bytes(double byte_count)
-{
+JK_PUBLIC JkFormatItem jkf_bytes(double byte_count) {
     return (JkFormatItem){.type = JK_FORMAT_ITEM_BYTES, .float_value = byte_count};
 }
 
@@ -1018,8 +889,7 @@ JK_PUBLIC JkFormatItem jkf_bytes(double byte_count)
 JK_GLOBAL_DEFINE JK_READONLY JkFormatItem jkf_nl = {
     .type = JK_FORMAT_ITEM_STRING, .string = JKSI("\n")};
 
-JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
-{
+JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items) {
     JkBuffer result;
     result.data = jk_arena_pointer_current(arena);
 
@@ -1116,8 +986,7 @@ JK_PUBLIC JkBuffer jk_format(JkArena *arena, JkFormatItemArray items)
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path)
-{
+JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path) {
     // Truncate path at last component to convert it the containing directory name
     for (int64_t new_size = path.size - 1; 0 <= new_size; new_size--) {
         if (path.data[new_size] == '/' || path.data[new_size] == '\\') {
@@ -1128,8 +997,7 @@ JK_PUBLIC JkBuffer jk_path_directory(JkBuffer path)
     return path;
 }
 
-JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path)
-{
+JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path) {
     JkBuffer result = path;
 
     // Basename begins at last slash
@@ -1144,8 +1012,7 @@ JK_PUBLIC JkBuffer jk_path_basename(JkBuffer path)
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_path_stem(JkBuffer path)
-{
+JK_PUBLIC JkBuffer jk_path_stem(JkBuffer path) {
     JkBuffer result = path;
     int64_t dot = -1;
 
@@ -1167,8 +1034,7 @@ JK_PUBLIC JkBuffer jk_path_stem(JkBuffer path)
     return result;
 }
 
-JK_PUBLIC JkBuffer jk_path_extension(JkBuffer path)
-{
+JK_PUBLIC JkBuffer jk_path_extension(JkBuffer path) {
     for (int64_t i = path.size - 1; 0 <= i && path.data[i] != '/' && path.data[i] != '\\'; i--) {
         if (path.data[i] == '.') {
             return (JkBuffer){
@@ -1197,18 +1063,15 @@ static JkBuffer jk_log_type_prefixes[JK_LOG_TYPE_COUNT] = {
     JKSI("[FATAL  ]: "),
 };
 
-static b32 jk_log_valid(JkLog *l)
-{
+static b32 jk_log_valid(JkLog *l) {
     return l && l->print;
 }
 
-static JkLogEntryData *jk_log_entry_data_raw(JkLog *l, JkLogEntry handle)
-{
+static JkLogEntryData *jk_log_entry_data_raw(JkLog *l, JkLogEntry handle) {
     return l->entries + handle.i;
 }
 
-static JkLogEntryData *jk_log_entry_data(JkLogEntry handle)
-{
+static JkLogEntryData *jk_log_entry_data(JkLogEntry handle) {
     if (jk_log_valid(jk_context->log)) {
         return jk_log_entry_data_raw(jk_context->log, handle);
     } else {
@@ -1216,13 +1079,11 @@ static JkLogEntryData *jk_log_entry_data(JkLogEntry handle)
     }
 }
 
-static int64_t jk_log_list_empty(JkLog *l, JkLogEntry sentinel)
-{
+static int64_t jk_log_list_empty(JkLog *l, JkLogEntry sentinel) {
     return jk_log_entry_equal(jk_log_entry_next(sentinel), sentinel);
 }
 
-static void jk_log_list_push(JkLog *l, JkLogEntry sentinel, JkLogEntry entry)
-{
+static void jk_log_list_push(JkLog *l, JkLogEntry sentinel, JkLogEntry entry) {
     JkLogEntryData *sentinel_data = jk_log_entry_data_raw(l, sentinel);
     JkLogEntryData *entry_data = jk_log_entry_data_raw(l, entry);
 
@@ -1232,20 +1093,17 @@ static void jk_log_list_push(JkLog *l, JkLogEntry sentinel, JkLogEntry entry)
     sentinel_data->prev = entry;
 }
 
-static void jk_log_list_remove(JkLog *l, JkLogEntry entry)
-{
+static void jk_log_list_remove(JkLog *l, JkLogEntry entry) {
     JkLogEntryData *data = jk_log_entry_data_raw(l, entry);
     jk_log_entry_data_raw(l, data->prev)->next = data->next;
     jk_log_entry_data_raw(l, data->next)->prev = data->prev;
 }
 
-static uint8_t *jk_log_string_offset_to_ptr(JkLog *l, int64_t offset)
-{
+static uint8_t *jk_log_string_offset_to_ptr(JkLog *l, int64_t offset) {
     return ((uint8_t *)l + l->string_buffer_start) + (offset % l->string_buffer_capacity);
 }
 
-JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory)
-{
+JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory) {
     JkLog *l = 0;
 
     if (print) {
@@ -1278,8 +1136,7 @@ JK_PUBLIC JkLog *jk_log_init(void (*print)(JkBuffer message), JkBuffer memory)
     return l;
 }
 
-JK_PUBLIC void jk_log(JkLogType type, JkBuffer message)
-{
+JK_PUBLIC void jk_log(JkLogType type, JkBuffer message) {
     if (!jk_log_valid(jk_context->log)) {
         return;
     }
@@ -1331,31 +1188,25 @@ JK_PUBLIC void jk_log(JkLogType type, JkBuffer message)
     jk_log_entry_print(entry);
 }
 
-JK_PUBLIC void jk_logf(JkLogType type, JkFormatItemArray items)
-{
-    JK_ARENA_SCRATCH(scratch)
-    {
+JK_PUBLIC void jk_logf(JkLogType type, JkFormatItemArray items) {
+    JK_ARENA_SCRATCH(scratch) {
         jk_log(type, jk_format(scratch.arena, items));
     }
 }
 
-JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b)
-{
+JK_PUBLIC b32 jk_log_entry_equal(JkLogEntry a, JkLogEntry b) {
     return a.i == b.i;
 }
 
-JK_PUBLIC b32 jk_log_entry_valid(JkLogEntry entry)
-{
+JK_PUBLIC b32 jk_log_entry_valid(JkLogEntry entry) {
     return 2 <= entry.i;
 }
 
-JK_PUBLIC JkLogType jk_log_entry_type(JkLogEntry entry)
-{
+JK_PUBLIC JkLogType jk_log_entry_type(JkLogEntry entry) {
     return jk_log_entry_data(entry)->type;
 }
 
-JK_PUBLIC JkBuffer jk_log_entry_message(JkLogEntry entry)
-{
+JK_PUBLIC JkBuffer jk_log_entry_message(JkLogEntry entry) {
     JkLogEntryData *data = jk_log_entry_data(entry);
     return (JkBuffer){
         .size = data->message.size,
@@ -1363,18 +1214,15 @@ JK_PUBLIC JkBuffer jk_log_entry_message(JkLogEntry entry)
     };
 }
 
-JK_PUBLIC JkLogEntry jk_log_entry_first(void)
-{
+JK_PUBLIC JkLogEntry jk_log_entry_first(void) {
     return jk_log_entry_next(jk_log_sentinel);
 }
 
-JK_PUBLIC JkLogEntry jk_log_entry_next(JkLogEntry entry)
-{
+JK_PUBLIC JkLogEntry jk_log_entry_next(JkLogEntry entry) {
     return jk_log_entry_data(entry)->next;
 }
 
-JK_PUBLIC void jk_log_entry_print(JkLogEntry entry)
-{
+JK_PUBLIC void jk_log_entry_print(JkLogEntry entry) {
     JkLog *l = jk_context->log;
     JkLogEntryData *data = jk_log_entry_data(entry);
     l->print(jk_log_type_prefixes[data->type]);
@@ -1382,8 +1230,7 @@ JK_PUBLIC void jk_log_entry_print(JkLogEntry entry)
     l->print(JKS("\n"));
 }
 
-JK_PUBLIC void jk_log_entry_remove(JkLogEntry entry)
-{
+JK_PUBLIC void jk_log_entry_remove(JkLogEntry entry) {
     if (jk_log_valid(jk_context->log)) {
         jk_log_list_remove(jk_context->log, entry);
         jk_log_list_push(jk_context->log, jk_log_free_list_sentinel, entry);
@@ -1394,8 +1241,7 @@ JK_PUBLIC void jk_log_entry_remove(JkLogEntry entry)
 
 // ---- Math begin -------------------------------------------------------------
 
-JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value)
-{
+JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value) {
     JkFloatUnpacked result;
 
     uint64_t bits = *(uint64_t *)&value;
@@ -1418,8 +1264,7 @@ JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value)
     return result;
 }
 
-JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f)
-{
+JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f) {
     uint64_t result = f.sign ? (1llu << 63) : 0;
 
     if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
@@ -1443,8 +1288,7 @@ JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f)
     return *(double *)&result;
 }
 
-JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value)
-{
+JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value) {
     JkFloatUnpacked result;
 
     uint32_t bits = *(uint32_t *)&value;
@@ -1467,8 +1311,7 @@ JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value)
     return result;
 }
 
-JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f)
-{
+JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f) {
     uint32_t result = f.sign ? (1 << 31) : 0;
 
     if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
@@ -1492,13 +1335,11 @@ JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f)
     return *(float *)&result;
 }
 
-JK_PUBLIC float jk_remainder_f32(float x, float y)
-{
+JK_PUBLIC float jk_remainder_f32(float x, float y) {
     return x - y * jk_round_f32(x / y);
 }
 
-JK_PUBLIC float jk_sin_core_f32(float x)
-{
+JK_PUBLIC float jk_sin_core_f32(float x) {
     float result = -0x1.f647bep-11f;
     result = result * x + 0x1.501da2p-7f;
     result = result * x + -0x1.017a88p-9f;
@@ -1509,8 +1350,7 @@ JK_PUBLIC float jk_sin_core_f32(float x)
     return result;
 }
 
-JK_PUBLIC float jk_sin_f32(float x)
-{
+JK_PUBLIC float jk_sin_f32(float x) {
     x = jk_remainder_f32(x, 2 * JK_PI);
 
     b32 positive = 0 <= x;
@@ -1530,18 +1370,15 @@ JK_PUBLIC float jk_sin_f32(float x)
     return result;
 }
 
-JK_PUBLIC float jk_cos_f32(float x)
-{
+JK_PUBLIC float jk_cos_f32(float x) {
     return jk_sin_f32(x + JK_PI / 2);
 }
 
-JK_PUBLIC float jk_tan_f32(float value)
-{
+JK_PUBLIC float jk_tan_f32(float value) {
     return jk_sin_f32(value) / jk_cos_f32(value);
 }
 
-JK_PUBLIC float jk_acos_core_f32(float x)
-{
+JK_PUBLIC float jk_acos_core_f32(float x) {
     float result = -0x1.056a66p+0f;
     result = result * x + 0x1.1fa76cp+1f;
     result = result * x + -0x1.1b0890p+1f;
@@ -1554,8 +1391,7 @@ JK_PUBLIC float jk_acos_core_f32(float x)
     return result;
 }
 
-JK_PUBLIC float jk_acos_f32(float x)
-{
+JK_PUBLIC float jk_acos_f32(float x) {
     b32 positive = 0.0f <= x;
     if (!positive) {
         x = -x;
@@ -1577,22 +1413,19 @@ JK_PUBLIC float jk_acos_f32(float x)
     return result;
 }
 
-JK_PUBLIC float jk_f32_lerp(float a, float b, float t)
-{
+JK_PUBLIC float jk_f32_lerp(float a, float b, float t) {
     return (1.0f - t) * a + t * b;
 }
 
 JK_PUBLIC float jk_remap_f32(
-        float value, float min_from, float max_from, float min_to, float max_to)
-{
+        float value, float min_from, float max_from, float min_to, float max_to) {
     float delta_from = max_from - min_from;
     float delta_to = max_to - min_to;
     return min_to + delta_to * ((value - min_from) / delta_from);
 }
 
 JK_PUBLIC float jk_remap_clamped_f32(
-        float value, float min_from, float max_from, float min_to, float max_to)
-{
+        float value, float min_from, float max_from, float min_to, float max_to) {
     float result = jk_remap_f32(value, min_from, max_from, min_to, max_to);
     return JK_CLAMP(result, min_to, max_to);
 }
@@ -1601,35 +1434,29 @@ JK_PUBLIC float jk_remap_clamped_f32(
 
 // ---- Fixed-point begin ------------------------------------------------------
 
-JK_PUBLIC int32_t jk_q16_from_i32(int32_t x)
-{
+JK_PUBLIC int32_t jk_q16_from_i32(int32_t x) {
     return x << 16;
 }
 
-JK_PUBLIC int32_t jk_i32_from_q16_truncate(int32_t x)
-{
+JK_PUBLIC int32_t jk_i32_from_q16_truncate(int32_t x) {
     return (x + (~(x >> 31) & 65535)) >> 16;
 }
 
-JK_PUBLIC int32_t jk_i32_from_q16_floor(int32_t x)
-{
+JK_PUBLIC int32_t jk_i32_from_q16_floor(int32_t x) {
     return x >> 16;
 }
 
-JK_PUBLIC int32_t jk_i32_from_q16_ceil(int32_t x)
-{
+JK_PUBLIC int32_t jk_i32_from_q16_ceil(int32_t x) {
     return (x + ((x >> 31) & 65535)) >> 16;
 }
 
-JK_PUBLIC int32_t jk_q16_from_f32(float x)
-{
+JK_PUBLIC int32_t jk_q16_from_f32(float x) {
     JkFloatUnpacked f = jk_unpack_f32(x);
     int32_t value = jk_signed_shift(f.significand, f.exponent + 16);
     return f.sign ? -value : value;
 }
 
-JK_PUBLIC float jk_f32_from_q16(int32_t x)
-{
+JK_PUBLIC float jk_f32_from_q16(int32_t x) {
     return jk_pack_f32((JkFloatUnpacked){
         .sign = x < 0,
         .exponent = -16,
@@ -1637,13 +1464,11 @@ JK_PUBLIC float jk_f32_from_q16(int32_t x)
     });
 }
 
-JK_PUBLIC int32_t jk_q16_mul(int32_t a, int32_t b)
-{
+JK_PUBLIC int32_t jk_q16_mul(int32_t a, int32_t b) {
     return (int32_t)(((int64_t)a * (int64_t)b) >> 16);
 }
 
-JK_PUBLIC int32_t jk_q16_div(int32_t numerator, int32_t denominator)
-{
+JK_PUBLIC int32_t jk_q16_div(int32_t numerator, int32_t denominator) {
     return (int32_t)(((int64_t)numerator << 16) / (int64_t)denominator);
 }
 
@@ -1651,8 +1476,7 @@ JK_PUBLIC int32_t jk_q16_div(int32_t numerator, int32_t denominator)
 
 // ---- Arena begin ------------------------------------------------------------
 
-JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
-{
+JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size) {
     JK_DEBUG_ASSERT(0 <= size);
     int64_t new_pos = arena->pos + size;
     if (arena->memory.size < new_pos) {
@@ -1666,8 +1490,7 @@ JK_PUBLIC void *jk_arena_push(JkArena *arena, int64_t size)
     return address;
 }
 
-JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, int64_t size)
-{
+JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, int64_t size) {
     void *address = jk_arena_push(arena, size);
     if (address) {
         jk_memset(address, 0, size);
@@ -1675,53 +1498,44 @@ JK_PUBLIC void *jk_arena_push_zero(JkArena *arena, int64_t size)
     return address;
 }
 
-JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size)
-{
+JK_PUBLIC JkBuffer jk_arena_push_buffer(JkArena *arena, int64_t size) {
     return (JkBuffer){.size = size, .data = jk_arena_push(arena, size)};
 }
 
-JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size)
-{
+JK_PUBLIC JkBuffer jk_arena_push_buffer_zero(JkArena *arena, int64_t size) {
     return (JkBuffer){.size = size, .data = jk_arena_push_zero(arena, size)};
 }
 
-JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size)
-{
+JK_PUBLIC void jk_arena_pop(JkArena *arena, int64_t size) {
     JK_DEBUG_ASSERT(0 <= size && size <= arena->pos);
     arena->pos -= size;
 }
 
-JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena)
-{
+JK_PUBLIC void *jk_arena_pointer_current(JkArena *arena) {
     return arena->memory.data + arena->pos;
 }
 
-JK_PUBLIC JkArenaScope jk_arena_scope_begin(JkArena *arena)
-{
+JK_PUBLIC JkArenaScope jk_arena_scope_begin(JkArena *arena) {
     return (JkArenaScope){
         .flags = JK_MASK(JK_ARENA_SCOPE_FLAG_DEFER), .arena = arena, .base = arena->pos};
 }
 
-JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope)
-{
+JK_PUBLIC void jk_arena_scope_end(JkArenaScope scope) {
     scope.arena->pos = scope.base;
 }
 
-JK_PUBLIC JkBuffer jk_buffer_from_arena_scope(JkArenaScope scope)
-{
+JK_PUBLIC JkBuffer jk_buffer_from_arena_scope(JkArenaScope scope) {
     return (JkBuffer){
         .size = scope.arena->pos - scope.base,
         .data = scope.arena->memory.data + scope.base,
     };
 }
 
-JK_PUBLIC JkArenaScope jk_arena_scratch_begin(void)
-{
+JK_PUBLIC JkArenaScope jk_arena_scratch_begin(void) {
     return jk_arena_scope_begin(jk_context->scratch_arenas + 0);
 }
 
-JK_PUBLIC JkArenaScope jk_arena_scratch_begin_not(JkArena *not_this_arena)
-{
+JK_PUBLIC JkArenaScope jk_arena_scratch_begin_not(JkArena *not_this_arena) {
     if (jk_context->scratch_arenas + 0 == not_this_arena) {
         return jk_arena_scope_begin(jk_context->scratch_arenas + 1);
     } else {
@@ -1733,8 +1547,7 @@ JK_PUBLIC JkArenaScope jk_arena_scratch_begin_not(JkArena *not_this_arena)
 
 // ---- UTF-8 begin ------------------------------------------------------------
 
-JK_PUBLIC JkUtf8Codepoint jk_utf8_codepoint_encode(uint32_t codepoint32)
-{
+JK_PUBLIC JkUtf8Codepoint jk_utf8_codepoint_encode(uint32_t codepoint32) {
     JkUtf8Codepoint result = {0};
     if (codepoint32 < 0x80) {
         result.b[0] = (unsigned char)codepoint32;
@@ -1754,8 +1567,7 @@ JK_PUBLIC JkUtf8Codepoint jk_utf8_codepoint_encode(uint32_t codepoint32)
     return result;
 }
 
-JK_PUBLIC int32_t jk_utf8_codepoint_decode(JkUtf8Codepoint codepoint)
-{
+JK_PUBLIC int32_t jk_utf8_codepoint_decode(JkUtf8Codepoint codepoint) {
     if ((codepoint.b[0] & 0x80) == 0x0) {
         return codepoint.b[0];
     } else if ((codepoint.b[0] & 0xe0) == 0xc0) {
@@ -1769,14 +1581,12 @@ JK_PUBLIC int32_t jk_utf8_codepoint_decode(JkUtf8Codepoint codepoint)
     }
 }
 
-JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte)
-{
+JK_PUBLIC b32 jk_utf8_byte_is_continuation(char byte) {
     return (byte & 0xc0) == 0x80;
 }
 
 JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
-        JkBuffer buffer, int64_t *pos, JkUtf8Codepoint *codepoint)
-{
+        JkBuffer buffer, int64_t *pos, JkUtf8Codepoint *codepoint) {
     *codepoint = (JkUtf8Codepoint){0};
     if (!(0 <= *pos && *pos < buffer.size)) {
         return JK_UTF8_CODEPOINT_GET_EOF;
@@ -1797,8 +1607,7 @@ JK_PUBLIC JkUtf8CodepointGetResult jk_utf8_codepoint_get(
 
 // ---- Quicksort begin --------------------------------------------------------
 
-static void jk_bytes_swap(void *a, void *b, int64_t element_size, void *tmp)
-{
+static void jk_bytes_swap(void *a, void *b, int64_t element_size, void *tmp) {
     jk_memcpy(tmp, a, element_size);
     jk_memcpy(a, b, element_size);
     jk_memcpy(b, tmp, element_size);
@@ -1810,8 +1619,7 @@ static void jk_quicksort_internal(JkRandomGeneratorU64 *generator,
         int64_t element_size,
         void *tmp,
         void *data,
-        int32_t (*compare)(void *data, void *a, void *b))
-{
+        int32_t (*compare)(void *data, void *a, void *b)) {
     JK_DEBUG_ASSERT(0 <= element_size);
 
     if (element_count < 2) {
@@ -1867,37 +1675,31 @@ JK_PUBLIC void jk_quicksort(void *array_void,
         int64_t element_size,
         void *tmp,
         void *data,
-        int32_t (*compare)(void *data, void *a, void *b))
-{
+        int32_t (*compare)(void *data, void *a, void *b)) {
     JkRandomGeneratorU64 generator = jk_random_generator_new_u64(0x9646e4db8d81f399);
     jk_quicksort_internal(&generator, array_void, element_count, element_size, tmp, data, compare);
 }
 
-static int32_t jk_int_compare(void *data, void *a, void *b)
-{
+static int32_t jk_int_compare(void *data, void *a, void *b) {
     return *(int32_t *)a - *(int32_t *)b;
 }
 
-JK_PUBLIC void jk_quicksort_ints(int32_t *array, int32_t length)
-{
+JK_PUBLIC void jk_quicksort_ints(int32_t *array, int32_t length) {
     int32_t tmp;
     jk_quicksort(array, length, JK_SIZEOF(int32_t), &tmp, 0, jk_int_compare);
 }
 
-static int32_t jk_float_compare(void *data, void *a, void *b)
-{
+static int32_t jk_float_compare(void *data, void *a, void *b) {
     float delta = *(float *)a - *(float *)b;
     return delta == 0.0f ? 0 : (delta < 0.0f ? -1 : 1);
 }
 
-JK_PUBLIC void jk_quicksort_floats(float *array, int32_t length)
-{
+JK_PUBLIC void jk_quicksort_floats(float *array, int32_t length) {
     float tmp;
     jk_quicksort(array, length, JK_SIZEOF(float), &tmp, 0, jk_float_compare);
 }
 
-static int32_t jk_string_compare(void *data, void *a, void *b)
-{
+static int32_t jk_string_compare(void *data, void *a, void *b) {
     uint8_t *a_ptr = *(uint8_t **)a;
     uint8_t *b_ptr = *(uint8_t **)b;
     for (; *a_ptr || *b_ptr; a_ptr++, b_ptr++) {
@@ -1911,8 +1713,7 @@ static int32_t jk_string_compare(void *data, void *a, void *b)
     return 0;
 }
 
-JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length)
-{
+JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length) {
     char *tmp;
     jk_quicksort(array, length, JK_SIZEOF(char *), &tmp, 0, jk_string_compare);
 }
@@ -1921,38 +1722,31 @@ JK_PUBLIC void jk_quicksort_strings(char **array, int32_t length)
 
 // ---- JkIntVec2 begin --------------------------------------------------------
 
-JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b)
-{
+JK_PUBLIC b32 jk_int_vec2_equal(JkIntVec2 a, JkIntVec2 b) {
     return a.x == b.x && a.y == b.y;
 }
 
-JK_PUBLIC JkIntVec2 jk_int_vec2_add(JkIntVec2 a, JkIntVec2 b)
-{
+JK_PUBLIC JkIntVec2 jk_int_vec2_add(JkIntVec2 a, JkIntVec2 b) {
     return (JkIntVec2){.x = a.x + b.x, .y = a.y + b.y};
 }
 
-JK_PUBLIC JkIntVec2 jk_int_vec2_sub(JkIntVec2 a, JkIntVec2 b)
-{
+JK_PUBLIC JkIntVec2 jk_int_vec2_sub(JkIntVec2 a, JkIntVec2 b) {
     return (JkIntVec2){.x = a.x - b.x, .y = a.y - b.y};
 }
 
-JK_PUBLIC JkIntVec2 jk_int_vec2_mul(int32_t scalar, JkIntVec2 vector)
-{
+JK_PUBLIC JkIntVec2 jk_int_vec2_mul(int32_t scalar, JkIntVec2 vector) {
     return (JkIntVec2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
-JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector)
-{
+JK_PUBLIC JkIntVec2 jk_int_vec2_div(int32_t divisor, JkIntVec2 vector) {
     return (JkIntVec2){.x = vector.x / divisor, .y = vector.y / divisor};
 }
 
-JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector)
-{
+JK_PUBLIC JkIntVec2 jk_int_vec2_remainder(int32_t divisor, JkIntVec2 vector) {
     return (JkIntVec2){.x = vector.x % divisor, .y = vector.y % divisor};
 }
 
-JK_PUBLIC JkIntVec2 jk_int_vec2_from_q16_floor(JkQ16Vec2 v)
-{
+JK_PUBLIC JkIntVec2 jk_int_vec2_from_q16_floor(JkQ16Vec2 v) {
     return (JkIntVec2){.x = jk_i32_from_q16_floor(v.x), .y = jk_i32_from_q16_floor(v.y)};
 }
 
@@ -1960,53 +1754,43 @@ JK_PUBLIC JkIntVec2 jk_int_vec2_from_q16_floor(JkQ16Vec2 v)
 
 // ---- JkQ16Vec2 begin --------------------------------------------------------
 
-JK_PUBLIC b32 jk_q16_vec2_equal(JkQ16Vec2 a, JkQ16Vec2 b)
-{
+JK_PUBLIC b32 jk_q16_vec2_equal(JkQ16Vec2 a, JkQ16Vec2 b) {
     return a.x == b.x && a.y == b.y;
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_add(JkQ16Vec2 a, JkQ16Vec2 b)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_add(JkQ16Vec2 a, JkQ16Vec2 b) {
     return (JkQ16Vec2){.x = a.x + b.x, .y = a.y + b.y};
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_sub(JkQ16Vec2 a, JkQ16Vec2 b)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_sub(JkQ16Vec2 a, JkQ16Vec2 b) {
     return (JkQ16Vec2){.x = a.x - b.x, .y = a.y - b.y};
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_mul(int32_t scalar, JkQ16Vec2 vector)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_mul(int32_t scalar, JkQ16Vec2 vector) {
     return (JkQ16Vec2){.x = jk_q16_mul(scalar, vector.x), .y = jk_q16_mul(scalar, vector.y)};
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_div(int32_t divisor, JkQ16Vec2 vector)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_div(int32_t divisor, JkQ16Vec2 vector) {
     return (JkQ16Vec2){.x = jk_q16_div(vector.x, divisor), .y = jk_q16_div(vector.y, divisor)};
 }
 
-JK_PUBLIC int32_t jk_q16_vec2_cross(JkQ16Vec2 u, JkQ16Vec2 v)
-{
+JK_PUBLIC int32_t jk_q16_vec2_cross(JkQ16Vec2 u, JkQ16Vec2 v) {
     return jk_q16_mul(u.x, v.y) - jk_q16_mul(u.y, v.x);
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_3(JkQ16Vec3 v)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_3(JkQ16Vec3 v) {
     return (JkQ16Vec2){.x = v.x, .y = v.y};
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_i32(JkIntVec2 v) {
     return (JkQ16Vec2){.x = jk_q16_from_i32(v.x), .y = jk_q16_from_i32(v.y)};
 }
 
-JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v)
-{
+JK_PUBLIC JkQ16Vec2 jk_q16_vec2_from_f32(JkVec2 v) {
     return (JkQ16Vec2){.x = jk_q16_from_f32(v.x), .y = jk_q16_from_f32(v.y)};
 }
 
-JK_PUBLIC JkVec2 jk_vec2_from_q16(JkQ16Vec2 v)
-{
+JK_PUBLIC JkVec2 jk_vec2_from_q16(JkQ16Vec2 v) {
     return (JkVec2){.x = jk_f32_from_q16(v.x), .y = jk_f32_from_q16(v.y)};
 }
 
@@ -2014,29 +1798,24 @@ JK_PUBLIC JkVec2 jk_vec2_from_q16(JkQ16Vec2 v)
 
 // ---- JkQ16Vec3 begin --------------------------------------------------------
 
-JK_PUBLIC b32 jk_q16_vec3_equal(JkQ16Vec3 a, JkQ16Vec3 b)
-{
+JK_PUBLIC b32 jk_q16_vec3_equal(JkQ16Vec3 a, JkQ16Vec3 b) {
     return a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_add(JkQ16Vec3 a, JkQ16Vec3 b)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_add(JkQ16Vec3 a, JkQ16Vec3 b) {
     return (JkQ16Vec3){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z};
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_sub(JkQ16Vec3 a, JkQ16Vec3 b)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_sub(JkQ16Vec3 a, JkQ16Vec3 b) {
     return (JkQ16Vec3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_mul(int32_t scalar, JkQ16Vec3 v)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_mul(int32_t scalar, JkQ16Vec3 v) {
     return (JkQ16Vec3){
         .x = jk_q16_mul(scalar, v.x), .y = jk_q16_mul(scalar, v.y), .z = jk_q16_mul(scalar, v.z)};
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 v)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 v) {
     return (JkQ16Vec3){
         .x = jk_q16_div(v.x, divisor),
         .y = jk_q16_div(v.y, divisor),
@@ -2044,18 +1823,15 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_div(int32_t divisor, JkQ16Vec3 v)
     };
 }
 
-JK_PUBLIC int32_t jk_q16_vec3_magnitude_sqr(JkQ16Vec3 v)
-{
+JK_PUBLIC int32_t jk_q16_vec3_magnitude_sqr(JkQ16Vec3 v) {
     return jk_q16_mul(v.x, v.x) + jk_q16_mul(v.y, v.y) + jk_q16_mul(v.z, v.z);
 }
 
-JK_PUBLIC int32_t jk_q16_vec3_dot(JkQ16Vec3 u, JkQ16Vec3 v)
-{
+JK_PUBLIC int32_t jk_q16_vec3_dot(JkQ16Vec3 u, JkQ16Vec3 v) {
     return jk_q16_mul(u.x, v.x) + jk_q16_mul(u.y, v.y) + jk_q16_mul(u.z, v.z);
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v) {
     return (JkQ16Vec3){
         .x = jk_q16_mul(u.y, v.z) - jk_q16_mul(u.z, v.y),
         .y = jk_q16_mul(u.z, v.x) - jk_q16_mul(u.x, v.z),
@@ -2063,32 +1839,27 @@ JK_PUBLIC JkQ16Vec3 jk_q16_vec3_cross(JkQ16Vec3 u, JkQ16Vec3 v)
     };
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_lerp(JkQ16Vec3 a, JkQ16Vec3 b, int32_t t)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_lerp(JkQ16Vec3 a, JkQ16Vec3 b, int32_t t) {
     return jk_q16_vec3_add(jk_q16_vec3_mul(jk_q16_from_i32(1) - t, a), jk_q16_vec3_mul(t, b));
 }
 
-JK_PUBLIC int32_t jk_q16_vec3_distance_sqr(JkQ16Vec3 a, JkQ16Vec3 b)
-{
+JK_PUBLIC int32_t jk_q16_vec3_distance_sqr(JkQ16Vec3 a, JkQ16Vec3 b) {
     int32_t dx = b.x - a.x;
     int32_t dy = b.y - a.y;
     int32_t dz = b.z - a.z;
     return jk_q16_mul(dx, dx) + jk_q16_mul(dy, dy) + jk_q16_mul(dz, dz);
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_2(JkQ16Vec2 v, int32_t z) {
     return (JkQ16Vec3){.x = v.x, .y = v.y, .z = z};
 }
 
-JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_f32(JkVec3 v)
-{
+JK_PUBLIC JkQ16Vec3 jk_q16_vec3_from_f32(JkVec3 v) {
     return (JkQ16Vec3){
         .x = jk_q16_from_f32(v.x), .y = jk_q16_from_f32(v.y), .z = jk_q16_from_f32(v.z)};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_from_q16(JkQ16Vec3 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_from_q16(JkQ16Vec3 v) {
     return (JkVec3){
         .x = jk_f32_from_q16(v.x), .y = jk_f32_from_q16(v.y), .z = jk_f32_from_q16(v.z)};
 }
@@ -2097,97 +1868,79 @@ JK_PUBLIC JkVec3 jk_vec3_from_q16(JkQ16Vec3 v)
 
 // ---- JkVec2 begin -----------------------------------------------------------
 
-JK_PUBLIC b32 jk_vec2_approx_equal(JkVec2 a, JkVec2 b, float tolerance)
-{
+JK_PUBLIC b32 jk_vec2_approx_equal(JkVec2 a, JkVec2 b, float tolerance) {
     return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance);
 }
 
-JK_PUBLIC JkVec2 jk_vec2_add(JkVec2 a, JkVec2 b)
-{
+JK_PUBLIC JkVec2 jk_vec2_add(JkVec2 a, JkVec2 b) {
     return (JkVec2){.x = a.x + b.x, .y = a.y + b.y};
 }
 
-JK_PUBLIC JkVec2 jk_vec2_sub(JkVec2 a, JkVec2 b)
-{
+JK_PUBLIC JkVec2 jk_vec2_sub(JkVec2 a, JkVec2 b) {
     return (JkVec2){.x = a.x - b.x, .y = a.y - b.y};
 }
 
-JK_PUBLIC JkVec2 jk_vec2_mul(float scalar, JkVec2 vector)
-{
+JK_PUBLIC JkVec2 jk_vec2_mul(float scalar, JkVec2 vector) {
     return (JkVec2){.x = scalar * vector.x, .y = scalar * vector.y};
 }
 
-JK_PUBLIC JkVec2 jk_vec2_ceil(JkVec2 v)
-{
+JK_PUBLIC JkVec2 jk_vec2_ceil(JkVec2 v) {
     return (JkVec2){jk_ceil_f32(v.x), jk_ceil_f32(v.y)};
 }
 
-JK_PUBLIC JkIntVec2 jk_vec2_ceil_i(JkVec2 v)
-{
+JK_PUBLIC JkIntVec2 jk_vec2_ceil_i(JkVec2 v) {
     JkVec2 v_ceiled = jk_vec2_ceil(v);
     return (JkIntVec2){(int32_t)v_ceiled.x, (int32_t)v_ceiled.y};
 }
 
-JK_PUBLIC float jk_vec2_magnitude_sqr(JkVec2 v)
-{
+JK_PUBLIC float jk_vec2_magnitude_sqr(JkVec2 v) {
     return v.x * v.x + v.y * v.y;
 }
 
-JK_PUBLIC float jk_vec2_magnitude(JkVec2 v)
-{
+JK_PUBLIC float jk_vec2_magnitude(JkVec2 v) {
     return jk_sqrt_f32(jk_vec2_magnitude_sqr(v));
 }
 
-JK_PUBLIC JkVec2 jk_vec2_normalized(JkVec2 v)
-{
+JK_PUBLIC JkVec2 jk_vec2_normalized(JkVec2 v) {
     return jk_vec2_mul(1.0f / jk_vec2_magnitude(v), v);
 }
 
-JK_PUBLIC float jk_vec2_dot(JkVec2 u, JkVec2 v)
-{
+JK_PUBLIC float jk_vec2_dot(JkVec2 u, JkVec2 v) {
     return u.x * v.x + u.y * v.y;
 }
 
-JK_PUBLIC float jk_vec2_cross(JkVec2 u, JkVec2 v)
-{
+JK_PUBLIC float jk_vec2_cross(JkVec2 u, JkVec2 v) {
     return u.x * v.y - u.y * v.x;
 }
 
-JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v)
-{
+JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v) {
     float sign = u.x * v.y - u.y * v.x < 0.0f ? -1.0f : 1.0f;
     return sign * jk_acos_f32(jk_vec2_dot(u, v) / (jk_vec2_magnitude(u) * jk_vec2_magnitude(v)));
 }
 
-JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t)
-{
+JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t) {
     return jk_vec2_add(jk_vec2_mul(1.0f - t, a), jk_vec2_mul(t, b));
 }
 
-JK_PUBLIC float jk_vec2_distance_sqr(JkVec2 a, JkVec2 b)
-{
+JK_PUBLIC float jk_vec2_distance_sqr(JkVec2 a, JkVec2 b) {
     float dx = b.x - a.x;
     float dy = b.y - a.y;
     return dx * dx + dy * dy;
 }
 
-JK_PUBLIC JkVec2 jk_vec2_from_i32(JkIntVec2 int_vector)
-{
+JK_PUBLIC JkVec2 jk_vec2_from_i32(JkIntVec2 int_vector) {
     return (JkVec2){(float)int_vector.x, (float)int_vector.y};
 }
 
-JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector)
-{
+JK_PUBLIC JkIntVec2 jk_vec2_round(JkVec2 vector) {
     return (JkIntVec2){jk_round(vector.x), jk_round(vector.y)};
 }
 
-JK_PUBLIC JkVec2 jk_vec2_from_3(JkVec3 v)
-{
+JK_PUBLIC JkVec2 jk_vec2_from_3(JkVec3 v) {
     return (JkVec2){v.x, v.y};
 }
 
-JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector)
-{
+JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector) {
     return (JkVec2){
         matrix[0][0] * vector.x + matrix[0][1] * vector.y,
         matrix[1][0] * vector.x + matrix[1][1] * vector.y,
@@ -2198,54 +1951,44 @@ JK_PUBLIC JkVec2 jk_matrix_2x2_multiply_vector(float matrix[2][2], JkVec2 vector
 
 // ---- JkVec3 begin -----------------------------------------------------------
 
-JK_PUBLIC b32 jk_vec3_equal(JkVec3 a, JkVec3 b, float tolerance)
-{
+JK_PUBLIC b32 jk_vec3_equal(JkVec3 a, JkVec3 b, float tolerance) {
     return jk_float32_equal(a.x, b.x, tolerance) && jk_float32_equal(a.y, b.y, tolerance)
             && jk_float32_equal(a.z, b.z, tolerance);
 }
 
-JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b)
-{
+JK_PUBLIC JkVec3 jk_vec3_add(JkVec3 a, JkVec3 b) {
     return (JkVec3){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_sub(JkVec3 a, JkVec3 b)
-{
+JK_PUBLIC JkVec3 jk_vec3_sub(JkVec3 a, JkVec3 b) {
     return (JkVec3){.x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_negate(JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_negate(JkVec3 v) {
     return (JkVec3){.x = -v.x, .y = -v.y, .z = -v.z};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector)
-{
+JK_PUBLIC JkVec3 jk_vec3_mul(float scalar, JkVec3 vector) {
     return (JkVec3){.x = scalar * vector.x, .y = scalar * vector.y, .z = scalar * vector.z};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_hadamard_prod(JkVec3 u, JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_hadamard_prod(JkVec3 u, JkVec3 v) {
     return (JkVec3){.x = u.x * v.x, .y = u.y * v.y, .z = u.z * v.z};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_ceil(JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_ceil(JkVec3 v) {
     return (JkVec3){jk_ceil_f32(v.x), jk_ceil_f32(v.y), jk_ceil_f32(v.z)};
 }
 
-JK_PUBLIC float jk_vec3_magnitude_sqr(JkVec3 v)
-{
+JK_PUBLIC float jk_vec3_magnitude_sqr(JkVec3 v) {
     return v.x * v.x + v.y * v.y + v.z * v.z;
 }
 
-JK_PUBLIC float jk_vec3_magnitude(JkVec3 v)
-{
+JK_PUBLIC float jk_vec3_magnitude(JkVec3 v) {
     return jk_sqrt_f32(jk_vec3_magnitude_sqr(v));
 }
 
-JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v) {
     float mag_sqr = jk_vec3_magnitude_sqr(v);
     if (mag_sqr) {
         return jk_vec3_mul(1.0f / jk_sqrt_f32(mag_sqr), v);
@@ -2254,13 +1997,11 @@ JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v)
     }
 }
 
-JK_PUBLIC float jk_vec3_dot(JkVec3 u, JkVec3 v)
-{
+JK_PUBLIC float jk_vec3_dot(JkVec3 u, JkVec3 v) {
     return u.x * v.x + u.y * v.y + u.z * v.z;
 }
 
-JK_PUBLIC JkVec3 jk_vec3_cross(JkVec3 u, JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_cross(JkVec3 u, JkVec3 v) {
     return (JkVec3){
         .x = u.y * v.z - u.z * v.y,
         .y = u.z * v.x - u.x * v.z,
@@ -2268,31 +2009,26 @@ JK_PUBLIC JkVec3 jk_vec3_cross(JkVec3 u, JkVec3 v)
     };
 }
 
-JK_PUBLIC float jk_vec3_angle_between(JkVec3 u, JkVec3 v)
-{
+JK_PUBLIC float jk_vec3_angle_between(JkVec3 u, JkVec3 v) {
     return jk_acos_f32(jk_vec3_dot(u, v) / (jk_vec3_magnitude(u) * jk_vec3_magnitude(v)));
 }
 
-JK_PUBLIC JkVec3 jk_vec3_lerp(JkVec3 a, JkVec3 b, float t)
-{
+JK_PUBLIC JkVec3 jk_vec3_lerp(JkVec3 a, JkVec3 b, float t) {
     return jk_vec3_add(jk_vec3_mul(1.0f - t, a), jk_vec3_mul(t, b));
 }
 
-JK_PUBLIC float jk_vec3_distance_squared(JkVec3 a, JkVec3 b)
-{
+JK_PUBLIC float jk_vec3_distance_squared(JkVec3 a, JkVec3 b) {
     float dx = b.x - a.x;
     float dy = b.y - a.y;
     float dz = b.z - a.z;
     return dx * dx + dy * dy + dz * dz;
 }
 
-JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector)
-{
+JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector) {
     return (JkVec3){jk_round_f32(vector.x), jk_round_f32(vector.y)};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_from_2(JkVec2 v, float z)
-{
+JK_PUBLIC JkVec3 jk_vec3_from_2(JkVec2 v, float z) {
     return (JkVec3){v.x, v.y, z};
 }
 
@@ -2300,53 +2036,43 @@ JK_PUBLIC JkVec3 jk_vec3_from_2(JkVec2 v, float z)
 
 // ---- JkVec4 begin -----------------------------------------------------------
 
-JK_PUBLIC JkVec4 jk_vec4_add(JkVec4 a, JkVec4 b)
-{
+JK_PUBLIC JkVec4 jk_vec4_add(JkVec4 a, JkVec4 b) {
     return (JkVec4){.x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z, .w = a.w + b.w};
 }
 
-JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v)
-{
+JK_PUBLIC JkVec4 jk_vec4_mul(float scalar, JkVec4 v) {
     return (JkVec4){.x = scalar * v.x, .y = scalar * v.y, .z = scalar * v.z, .w = scalar * v.w};
 }
 
-JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v)
-{
+JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v) {
     return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
 }
 
-JK_PUBLIC float jk_vec4_magnitude(JkVec4 v)
-{
+JK_PUBLIC float jk_vec4_magnitude(JkVec4 v) {
     return jk_sqrt_f32(jk_vec4_magnitude_sqr(v));
 }
 
-JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v)
-{
+JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v) {
     return jk_vec4_mul(1.0f / jk_vec4_magnitude(v), v);
 }
 
-JK_PUBLIC JkVec4 jk_vec4_lerp(JkVec4 a, JkVec4 b, float t)
-{
+JK_PUBLIC JkVec4 jk_vec4_lerp(JkVec4 a, JkVec4 b, float t) {
     return jk_vec4_add(jk_vec4_mul(1.0f - t, a), jk_vec4_mul(t, b));
 }
 
-JK_PUBLIC JkVec4 jk_vec4_from_3(JkVec3 v, float w)
-{
+JK_PUBLIC JkVec4 jk_vec4_from_3(JkVec3 v, float w) {
     return (JkVec4){.x = v.x, .y = v.y, .z = v.z, .w = w};
 }
 
-JK_PUBLIC JkVec2 jk_vec2_from_4(JkVec4 v)
-{
+JK_PUBLIC JkVec2 jk_vec2_from_4(JkVec4 v) {
     return (JkVec2){.x = v.x, .y = v.y};
 }
 
-JK_PUBLIC JkVec3 jk_vec3_from_4(JkVec4 v)
-{
+JK_PUBLIC JkVec3 jk_vec3_from_4(JkVec4 v) {
     return (JkVec3){.x = v.x, .y = v.y, .z = v.z};
 }
 
-JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v)
-{
+JK_PUBLIC JkVec3 jk_vec4_perspective_divide(JkVec4 v) {
     return (JkVec3){.x = v.x / v.w, .y = v.y / v.w, .z = v.z / v.w};
 }
 
@@ -2361,8 +2087,7 @@ JK_GLOBAL_DEFINE JK_READONLY JkMat4 jk_mat4_i = {{
     {0, 0, 0, 1},
 }};
 
-JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m)
-{
+JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m) {
     JkMat4 result;
     for (int64_t i = 0; i < 4; i++) {
         for (int64_t j = 0; j < 4; j++) {
@@ -2372,8 +2097,7 @@ JK_PUBLIC JkMat4 jk_mat4_transpose(JkMat4 m)
     return result;
 }
 
-JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b)
-{
+JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b) {
     JkMat4 result = {0};
     for (int64_t i = 0; i < 4; i++) {
         for (int64_t j = 0; j < 4; j++) {
@@ -2385,8 +2109,7 @@ JK_PUBLIC JkMat4 jk_mat4_mul(JkMat4 a, JkMat4 b)
     return result;
 }
 
-JK_PUBLIC JkVec3 jk_mat4_mul_point(JkMat4 m, JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_mat4_mul_point(JkMat4 m, JkVec3 v) {
     JkVec3 result = {0};
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t k = 0; k < 3; k++) {
@@ -2397,8 +2120,7 @@ JK_PUBLIC JkVec3 jk_mat4_mul_point(JkMat4 m, JkVec3 v)
     return result;
 }
 
-JK_PUBLIC JkVec3 jk_mat4_mul_normal(JkMat4 m, JkVec3 v)
-{
+JK_PUBLIC JkVec3 jk_mat4_mul_normal(JkMat4 m, JkVec3 v) {
     JkVec3 result = {0};
     for (int64_t i = 0; i < 3; i++) {
         for (int64_t k = 0; k < 3; k++) {
@@ -2408,8 +2130,7 @@ JK_PUBLIC JkVec3 jk_mat4_mul_normal(JkMat4 m, JkVec3 v)
     return result;
 }
 
-JK_PUBLIC JkVec4 jk_mat4_mul_vec4(JkMat4 m, JkVec4 v)
-{
+JK_PUBLIC JkVec4 jk_mat4_mul_vec4(JkMat4 m, JkVec4 v) {
     JkVec4 result = {0};
     for (int64_t i = 0; i < 4; i++) {
         for (int64_t k = 0; k < 4; k++) {
@@ -2495,8 +2216,7 @@ JK_PUBLIC JkMat4 jk_mat4_perspective(JkIntVec2 dimensions, float fov_radians, fl
 
 // Conversion matrix from a given source coordinate system to my preferred one,
 // x = right, y = forward, z = up (which is right-handed)
-JK_PUBLIC JkMat4 jk_mat4_conversion_from(JkCoordinateSystem source)
-{
+JK_PUBLIC JkMat4 jk_mat4_conversion_from(JkCoordinateSystem source) {
     JkMat4 result = {0};
     for (int32_t src_axis = 0; src_axis < 3; src_axis++) {
         int32_t dest_axis = source.direction[src_axis] / 2;
@@ -2509,8 +2229,7 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from(JkCoordinateSystem source)
 
 // Conversion matrix from my preferred coordinate system, x = right, y = forward, z = up, to a given
 // destination coordinate system
-JK_PUBLIC JkMat4 jk_mat4_conversion_to(JkCoordinateSystem dest)
-{
+JK_PUBLIC JkMat4 jk_mat4_conversion_to(JkCoordinateSystem dest) {
     JkMat4 result = {0};
     for (int32_t dest_axis = 0; dest_axis < 3; dest_axis++) {
         int32_t src_axis = dest.direction[dest_axis] / 2;
@@ -2521,8 +2240,7 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_to(JkCoordinateSystem dest)
     return result;
 }
 
-JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordinateSystem dest)
-{
+JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordinateSystem dest) {
     JkMat4 result = {0};
     for (int32_t src_axis = 0; src_axis < 3; src_axis++) {
         int32_t value = 1;
@@ -2548,8 +2266,7 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 
 // ---- JkQuat begin -----------------------------------------------------------
 
-JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis)
-{
+JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis) {
     JkVec4 result;
     result.w = jk_cos_f32(angle / 2);
     float sin = jk_sin_f32(angle / 2);
@@ -2560,13 +2277,11 @@ JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis)
     return result;
 }
 
-JkVec4 jk_quat_conjugate(JkVec4 q)
-{
+JkVec4 jk_quat_conjugate(JkVec4 q) {
     return (JkVec4){.x = -q.x, .y = -q.y, .z = -q.z, .w = q.w};
 }
 
-JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b)
-{
+JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b) {
     return (JkVec4){{
         a.v[0] * b.v[3] + a.v[3] * b.v[0] - a.v[2] * b.v[1] + a.v[1] * b.v[2],
         a.v[1] * b.v[3] + a.v[2] * b.v[0] + a.v[3] * b.v[1] - a.v[0] * b.v[2],
@@ -2575,8 +2290,7 @@ JkVec4 jk_quat_mul(JkVec4 a, JkVec4 b)
     }};
 }
 
-JkVec3 jk_quat_rotate(JkVec4 q, JkVec3 v)
-{
+JkVec3 jk_quat_rotate(JkVec4 q, JkVec3 v) {
     float sqr[4];
     for (int64_t i = 0; i < 4; i++) {
         sqr[i] = q.v[i] * q.v[i];
@@ -2594,8 +2308,7 @@ JkVec3 jk_quat_rotate(JkVec4 q, JkVec3 v)
     };
 }
 
-JkMat4 jk_mat4_from_quat(JkVec4 q)
-{
+JkMat4 jk_mat4_from_quat(JkVec4 q) {
     float sqr[4];
     for (int64_t i = 0; i < 4; i++) {
         sqr[i] = q.v[i] * q.v[i];
@@ -2611,8 +2324,7 @@ JkMat4 jk_mat4_from_quat(JkVec4 q)
 }
 
 // Only works on pure rotation matrices
-JkVec4 jk_quat_from_mat4(JkMat4 m)
-{
+JkVec4 jk_quat_from_mat4(JkMat4 m) {
     JkVec4 r;
 
     r.v[0] = jk_sqrt_f32(JK_ABS(1 + m.e[0][0] - m.e[1][1] - m.e[2][2]));
@@ -2669,16 +2381,14 @@ JkVec4 jk_quat_from_mat4(JkMat4 m)
 
 // ---- JkTransform begin ------------------------------------------------------
 
-JK_PUBLIC JkMat4 jk_mat4_from_transform(JkTransform t)
-{
+JK_PUBLIC JkMat4 jk_mat4_from_transform(JkTransform t) {
     JkMat4 result = jk_mat4_scale(t.scale);
     result = jk_mat4_mul(jk_mat4_from_quat(t.rotation), result);
     result = jk_mat4_mul(jk_mat4_translate(t.translation), result);
     return result;
 }
 
-JK_PUBLIC JkMat4 jk_mat4_from_transform_inv(JkTransform t)
-{
+JK_PUBLIC JkMat4 jk_mat4_from_transform_inv(JkTransform t) {
     JkMat4 result = jk_mat4_translate(jk_vec3_mul(-1, t.translation));
     result = jk_mat4_mul(jk_mat4_from_quat(jk_quat_conjugate(t.rotation)), result);
     JkVec3 inv_scale;
@@ -2693,22 +2403,19 @@ JK_PUBLIC JkMat4 jk_mat4_from_transform_inv(JkTransform t)
 
 // ---- Geometry begin ---------------------------------------------------------
 
-JK_PUBLIC float jk_segment_y_intersection(JkSegment2d segment, float y)
-{
+JK_PUBLIC float jk_segment_y_intersection(JkSegment2d segment, float y) {
     float delta_y = segment.p1.y - segment.p0.y;
     JK_ASSERT(delta_y != 0);
     return ((segment.p1.x - segment.p0.x) / delta_y) * (y - segment.p0.y) + segment.p0.x;
 }
 
-JK_PUBLIC float jk_segment_x_intersection(JkSegment2d segment, float x)
-{
+JK_PUBLIC float jk_segment_x_intersection(JkSegment2d segment, float x) {
     float delta_x = segment.p1.x - segment.p0.x;
     JK_ASSERT(delta_x != 0);
     return ((segment.p1.y - segment.p0.y) / delta_x) * (x - segment.p0.x) + segment.p0.y;
 }
 
-JK_PUBLIC JkEdge jk_edge_from_points(JkVec2 a, JkVec2 b)
-{
+JK_PUBLIC JkEdge jk_edge_from_points(JkVec2 a, JkVec2 b) {
     JkEdge edge;
     if (a.y < b.y) {
         edge.segment.p0 = a;
@@ -2722,24 +2429,20 @@ JK_PUBLIC JkEdge jk_edge_from_points(JkVec2 a, JkVec2 b)
     return edge;
 }
 
-JK_PUBLIC JkRect jk_rect(JkVec2 position, JkVec2 dimensions)
-{
+JK_PUBLIC JkRect jk_rect(JkVec2 position, JkVec2 dimensions) {
     return (JkRect){position, jk_vec2_add(position, dimensions)};
 }
 
-JK_PUBLIC JkIntVec2 jk_int_rect_dimensions(JkIntRect rect)
-{
+JK_PUBLIC JkIntVec2 jk_int_rect_dimensions(JkIntRect rect) {
     return (JkIntVec2){rect.max.x - rect.min.x, rect.max.y - rect.min.y};
 }
 
-JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point)
-{
+JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point) {
     return rect.min.x <= point.x && point.x < rect.max.x && rect.min.y <= point.y
             && point.y < rect.max.y;
 }
 
-JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b)
-{
+JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b) {
     return (JkIntRect){
         .min.x = JK_MAX(a.min.x, b.min.x),
         .min.y = JK_MAX(a.min.y, b.min.y),
@@ -2748,8 +2451,7 @@ JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b)
     };
 }
 
-JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s)
-{
+JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s) {
     JkVec2 v01 = jk_vec2_sub(s.e[1], s.e[0]);
     JkVec2 v0p = jk_vec2_sub(p, s.e[0]);
     float dot = jk_vec2_dot(v01, v0p);
@@ -2765,8 +2467,7 @@ JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s)
     }
 }
 
-JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c)
-{
+JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c) {
     JkVec3 ap = jk_vec3_sub(p, a);
     JkVec3 bp = jk_vec3_sub(p, b);
     JkVec3 cp = jk_vec3_sub(p, c);
@@ -2826,8 +2527,7 @@ JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVe
     return result;
 }
 
-JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2)
-{
+JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2) {
     return jk_vec3_normalized(jk_vec3_cross(jk_vec3_sub(v1, v0), jk_vec3_sub(v2, v0)));
 }
 
@@ -2838,14 +2538,12 @@ JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2)
 // Bob Jenkins's pseudorandom number generator aka JSF64 from
 // https://burtleburtle.net/bob/rand/talksmall.html
 
-static uint64_t jk_rotate_left(uint64_t value, int64_t shift)
-{
+static uint64_t jk_rotate_left(uint64_t value, int64_t shift) {
     JK_DEBUG_ASSERT(0 <= shift && shift < 64);
     return (value << shift) | (value >> (64 - shift));
 }
 
-JK_PUBLIC JkRandomGeneratorU64 jk_random_generator_new_u64(uint64_t seed)
-{
+JK_PUBLIC JkRandomGeneratorU64 jk_random_generator_new_u64(uint64_t seed) {
     JkRandomGeneratorU64 g = {
         g.a = 0xf1ea5eed,
         g.b = seed,
@@ -2860,8 +2558,7 @@ JK_PUBLIC JkRandomGeneratorU64 jk_random_generator_new_u64(uint64_t seed)
     return g;
 }
 
-JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
-{
+JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g) {
     uint64_t e = g->a - jk_rotate_left(g->b, 7);
     g->a = g->b ^ jk_rotate_left(g->c, 13);
     g->b = g->c + jk_rotate_left(g->d, 37);
@@ -2874,8 +2571,7 @@ JK_PUBLIC uint64_t jk_random_u64(JkRandomGeneratorU64 *g)
 
 // ---- JkKeyboard begin -------------------------------------------------------
 
-JK_PUBLIC void jk_keyboard_clear(JkKeyboard *keyboard)
-{
+JK_PUBLIC void jk_keyboard_clear(JkKeyboard *keyboard) {
     jk_memset(&keyboard->pressed,
             0,
             JK_ARRAY_COUNT(keyboard->pressed) * sizeof(keyboard->pressed[0]));
@@ -2884,18 +2580,15 @@ JK_PUBLIC void jk_keyboard_clear(JkKeyboard *keyboard)
             JK_ARRAY_COUNT(keyboard->released) * sizeof(keyboard->released[0]));
 }
 
-JK_PUBLIC b32 jk_key_down(JkKeyboard *keyboard, JkKey key)
-{
+JK_PUBLIC b32 jk_key_down(JkKeyboard *keyboard, JkKey key) {
     return (keyboard->down[key / 8] >> (key % 8)) & 1;
 }
 
-JK_PUBLIC b32 jk_key_pressed(JkKeyboard *keyboard, JkKey key)
-{
+JK_PUBLIC b32 jk_key_pressed(JkKeyboard *keyboard, JkKey key) {
     return (keyboard->pressed[key / 8] >> (key % 8)) & 1;
 }
 
-JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key)
-{
+JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key) {
     return (keyboard->released[key / 8] >> (key % 8)) & 1;
 }
 
@@ -2903,8 +2596,7 @@ JK_PUBLIC b32 jk_key_released(JkKeyboard *keyboard, JkKey key)
 
 // ---- JkMouse begin ----------------------------------------------------------
 
-JK_PUBLIC void jk_mouse_clear(JkMouse *mouse)
-{
+JK_PUBLIC void jk_mouse_clear(JkMouse *mouse) {
     mouse->flags &= ~(JK_MASK(JK_MOUSE_LEFT_PRESSED) | JK_MASK(JK_MOUSE_LEFT_RELEASED)
             | JK_MASK(JK_MOUSE_RIGHT_PRESSED) | JK_MASK(JK_MOUSE_RIGHT_RELEASED));
     mouse->delta = (JkVec2){0};
@@ -2932,8 +2624,7 @@ typedef struct JkProfile {
 
 static JkProfile jk_profile;
 
-JK_PUBLIC void jk_profile_frame_begin(void)
-{
+JK_PUBLIC void jk_profile_frame_begin(void) {
     if (!jk_profile.frame_count) {
         jk_profile.frame_elapsed[JK_PROFILE_FRAME_MIN] = INT64_MAX;
         jk_profile.frame_elapsed[JK_PROFILE_FRAME_MAX] = INT64_MIN;
@@ -2942,8 +2633,7 @@ JK_PUBLIC void jk_profile_frame_begin(void)
     jk_profile.start = jk_cpu_timer_get();
 }
 
-JK_PUBLIC void jk_profile_frame_end(void)
-{
+JK_PUBLIC void jk_profile_frame_end(void) {
     int64_t elapsed = jk_cpu_timer_get() - jk_profile.start;
 
     jk_profile.frame_elapsed[JK_PROFILE_FRAME_TOTAL] += elapsed;
@@ -2982,8 +2672,7 @@ static void jk_profile_report_frame_build(JkArena *arena,
         JkBuffer name,
         JkProfileFrameType frame_index,
         double frequency,
-        int64_t frame_count)
-{
+        int64_t frame_count) {
     int64_t total = jk_profile.frame_elapsed[frame_index];
     double total_ms = 1000.0 * (double)total / (frequency * (double)frame_count);
     JK_FORMAT(arena,
@@ -3047,8 +2736,7 @@ static void jk_profile_report_frame_build(JkArena *arena,
 #endif
 }
 
-JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency)
-{
+JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency) {
     JkBuffer result = {.data = jk_arena_pointer_current(arena)};
 
     JK_FORMAT(arena, jkf_nl, jkfn("CPU frequency: "), jkfi(frequency), jkf_nl);
@@ -3074,8 +2762,7 @@ JK_PUBLIC JkBuffer jk_profile_report(JkArena *arena, int64_t frequency)
     return result;
 }
 
-JK_PUBLIC void jk_profile_reset(void)
-{
+JK_PUBLIC void jk_profile_reset(void) {
     jk_profile.frame_count = 0;
     jk_memset(jk_profile.frame_elapsed, 0, sizeof(jk_profile.frame_elapsed));
 
@@ -3095,8 +2782,7 @@ JK_PUBLIC void jk_profile_reset(void)
 #if !JK_PROFILE_DISABLE
 
 JK_PUBLIC void jk_profile_zone_begin(
-        JkProfileTiming *timing, JkProfileZone *zone, JkBuffer name, int64_t byte_count)
-{
+        JkProfileTiming *timing, JkProfileZone *zone, JkBuffer name, int64_t byte_count) {
     JkProfileZoneFrame *frame = zone->frames + JK_PROFILE_FRAME_CURRENT;
 
     if (!zone->seen) {
@@ -3124,8 +2810,7 @@ JK_PUBLIC void jk_profile_zone_begin(
     return;
 }
 
-JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
-{
+JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing) {
     int64_t elapsed = jk_cpu_timer_get() - timing->start;
     JkProfileZoneFrame *parent_frame = timing->parent->frames + JK_PROFILE_FRAME_CURRENT;
     JkProfileZoneFrame *current_frame = jk_profile.zone_current->frames + JK_PROFILE_FRAME_CURRENT;
@@ -3160,13 +2845,11 @@ JK_PUBLIC void jk_profile_zone_end(JkProfileTiming *timing)
 
 // ---- File formats begin -----------------------------------------------------
 
-JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk)
-{
+JK_PUBLIC b32 jk_riff_chunk_valid(JkRiffChunkMain *chunk_main, JkRiffChunk *chunk) {
     return ((uint8_t *)chunk - (uint8_t *)&chunk_main->form_type) < chunk_main->size;
 }
 
-JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk)
-{
+JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk) {
     return (JkRiffChunk *)(chunk->data + ((chunk->size + 1) & ~1));
 }
 
@@ -3176,18 +2859,15 @@ JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f64 = {
     .uint64_v = 0x7ff0000000000000llu};
 JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};
 
-JK_PUBLIC JkColor3 jk_color3_from_4(JkColor color)
-{
+JK_PUBLIC JkColor3 jk_color3_from_4(JkColor color) {
     return (JkColor3){.r = color.r, .g = color.g, .b = color.b};
 }
 
-JK_PUBLIC JkColor jk_color4_from_3(JkColor3 color, uint8_t alpha)
-{
+JK_PUBLIC JkColor jk_color4_from_3(JkColor3 color, uint8_t alpha) {
     return (JkColor){.r = color.r, .b = color.b, .g = color.g, .a = alpha};
 }
 
-JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha)
-{
+JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, uint8_t alpha) {
     JkColor result = {0, 0, 0, 255};
     for (uint8_t i = 0; i < 3; i++) {
         result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
@@ -3197,8 +2877,7 @@ JK_PUBLIC JkColor jk_color_alpha_blend(JkColor foreground, JkColor background, u
     return result;
 }
 
-JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg)
-{
+JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg) {
     JkColor result;
 
     if (fg.a == 0) {
@@ -3217,8 +2896,7 @@ JK_PUBLIC JkColor jk_color_disjoint_over(JkColor fg, JkColor bg)
     return result;
 }
 
-JK_PUBLIC void jk_trap(void)
-{
+JK_PUBLIC void jk_trap(void) {
 #if defined(_MSC_VER) && !defined(__clang__)
     __debugbreak();
 #elif defined(__clang__) || defined(__GNUC__)
@@ -3226,15 +2904,13 @@ JK_PUBLIC void jk_trap(void)
 #endif
 }
 
-JK_NOINLINE JK_PUBLIC void jk_panic(void)
-{
+JK_NOINLINE JK_PUBLIC void jk_panic(void) {
     jk_trap();
     for (;;) {
     }
 }
 
-JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
-{
+JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line) {
     JK_LOGF(JK_LOG_FATAL,
             jkfn("Assertion failed: "),
             jkfn(message),
@@ -3246,8 +2922,7 @@ JK_PUBLIC void jk_assert_failed(char *message, char *file, int64_t line)
     jk_panic();
 }
 
-JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line)
-{
+JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line) {
     JK_LOGF(JK_LOG_WARNING, jkfn(message), jkfn(", "), jkfn(file), jkfn(":"), jkfu(line), jkf_nl);
 }
 
@@ -3256,8 +2931,7 @@ JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line)
  *
  * @return The parsed integer if successful, -1 if failed
  */
-JK_PUBLIC int32_t jk_parse_positive_integer(char *string)
-{
+JK_PUBLIC int32_t jk_parse_positive_integer(char *string) {
     int32_t multiplier = 1;
     int32_t result = 0;
     for (int64_t i = jk_strlen(string) - 1; i >= 0; i--) {
@@ -3272,8 +2946,7 @@ JK_PUBLIC int32_t jk_parse_positive_integer(char *string)
     return result;
 }
 
-JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
-{
+JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size) {
     uint8_t *bytes = address;
     for (int64_t i = 0; i < size; i++) {
         bytes[i] = value;
@@ -3281,8 +2954,7 @@ JK_PUBLIC void *jk_memset(void *address, uint8_t value, int64_t size)
     return address;
 }
 
-JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size)
-{
+JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size) {
     uint8_t *dest_bytes = dest;
     uint8_t *src_bytes = src;
     for (int64_t i = 0; i < size; i++) {
@@ -3296,8 +2968,7 @@ JK_PUBLIC void *jk_memcpy(void *dest, void *src, int64_t size)
  *
  * From https://github.com/skeeto/hash-prospector
  */
-JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
-{
+JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x) {
     x ^= x >> 16;
     x *= 0x21f0aaad;
     x ^= x >> 15;
@@ -3306,8 +2977,7 @@ JK_PUBLIC uint32_t jk_hash_uint32(uint32_t x)
     return x;
 }
 
-JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x)
-{
+JK_PUBLIC uint64_t jk_hash_uint64(uint64_t x) {
     uint32_t lo = (uint32_t)x;
     uint32_t hi = (uint32_t)(x >> 32);
     uint32_t lo_hash = jk_hash_uint32(lo);
@@ -3352,13 +3022,11 @@ JK_GLOBAL_DEFINE JK_READONLY uint8_t jk_bit_reverse_table[256] = {
 };
 // clang-format on
 
-JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value)
-{
+JK_PUBLIC uint16_t jk_bit_reverse_u16(uint16_t value) {
     return ((uint16_t)jk_bit_reverse_table[value & 0xff] << 8) | jk_bit_reverse_table[value >> 8];
 }
 
-JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount)
-{
+JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount) {
     if (amount < 0) {
         return amount <= -64 ? 0 : value >> -amount;
     } else {
@@ -3366,8 +3034,7 @@ JK_PUBLIC uint64_t jk_signed_shift(uint64_t value, int64_t amount)
     }
 }
 
-JK_PUBLIC uint32_t jk_signed_shift_u32(uint32_t value, int64_t amount)
-{
+JK_PUBLIC uint32_t jk_signed_shift_u32(uint32_t value, int64_t amount) {
     if (amount < 0) {
         return amount <= -32 ? 0 : value >> -amount;
     } else {
@@ -3375,14 +3042,12 @@ JK_PUBLIC uint32_t jk_signed_shift_u32(uint32_t value, int64_t amount)
     }
 }
 
-JK_PUBLIC b32 jk_is_power_of_two(int64_t x)
-{
+JK_PUBLIC b32 jk_is_power_of_two(int64_t x) {
     return x && (x & (x - 1)) == 0;
 }
 
 // Rounds up to nearest power of 2. Leaves 0 as 0.
-JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x)
-{
+JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x) {
     if (x <= 0) {
         return 0;
     } else {
@@ -3399,8 +3064,7 @@ JK_PUBLIC int64_t jk_round_up_to_power_of_2(int64_t x)
 }
 
 // Rounds down to nearest power of 2. Leaves 0 as 0.
-JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x)
-{
+JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x) {
     if (x <= 0) {
         return 0;
     } else {
@@ -3415,18 +3079,15 @@ JK_PUBLIC int64_t jk_round_down_to_power_of_2(int64_t x)
     }
 }
 
-JK_PUBLIC int32_t jk_round(float value)
-{
+JK_PUBLIC int32_t jk_round(float value) {
     return (int32_t)(value + 0.5f);
 }
 
-JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance)
-{
+JK_PUBLIC b32 jk_float32_equal(float a, float b, float tolerance) {
     return JK_ABS(b - a) < tolerance;
 }
 
-JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
-{
+JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance) {
     return JK_ABS(b - a) < tolerance;
 }
 
@@ -3446,8 +3107,7 @@ JK_PUBLIC b32 jk_float64_equal(double a, double b, double tolerance)
             ("type_view: {type: ```" #type "```, expr: ```" #__VA_ARGS__ "```}")
 #else
 #define raddbg_type_view(type, ...) \
-    struct raddbg_gen_data_id()     \
-    {                               \
+    struct raddbg_gen_data_id() {   \
         int __unused__;             \
     }
 #endif

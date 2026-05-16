@@ -43,8 +43,7 @@ _Alignas(32) static float lane_offsets[2][LANE_COUNT] = {
 
 // ---- Xiaolin Wu's line algorithm begin --------------------------------------
 
-static uint8_t region_code(JkIntVec2 dimensions, JkVec2 v)
-{
+static uint8_t region_code(JkIntVec2 dimensions, JkVec2 v) {
     return ((v.x < 0.0f) << 0) | ((dimensions.x - 1.0f < v.x) << 1) | ((v.y < 0.0f) << 2)
             | ((dimensions.y - 1.0f < v.y) << 3);
 }
@@ -54,8 +53,7 @@ typedef struct Endpoint {
     JkVec2 *point;
 } Endpoint;
 
-static b32 clip_to_draw_region(JkIntVec2 dimensions, JkVec2 *a, JkVec2 *b)
-{
+static b32 clip_to_draw_region(JkIntVec2 dimensions, JkVec2 *a, JkVec2 *b) {
     Endpoint endpoint_a = {.code = region_code(dimensions, *a), .point = a};
     Endpoint endpoint_b = {.code = region_code(dimensions, *b), .point = b};
 
@@ -86,23 +84,19 @@ static b32 clip_to_draw_region(JkIntVec2 dimensions, JkVec2 *a, JkVec2 *b)
     }
 }
 
-static float fpart(float x)
-{
+static float fpart(float x) {
     return x - jk_floor_f32(x);
 }
 
-static float fpart_complement(float x)
-{
+static float fpart_complement(float x) {
     return 1.0f - fpart(x);
 }
 
-static uint8_t color_multiply(uint8_t a, uint8_t b)
-{
+static uint8_t color_multiply(uint8_t a, uint8_t b) {
     return ((uint32_t)a * (uint32_t)b) / 255;
 }
 
-static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness)
-{
+static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, float brightness) {
     int32_t brightness_i = (int32_t)(brightness * 255.0f);
     if (brightness_i > 255) {
         brightness_i = 255;
@@ -112,8 +106,7 @@ static void plot(JkColor *draw_buffer, JkColor color, int32_t x, int32_t y, floa
             color_multiply(color.a, (uint8_t)brightness_i));
 }
 
-static void draw_line(Environment *env, JkColor color, JkVec2 a, JkVec2 b)
-{
+static void draw_line(Environment *env, JkColor color, JkVec2 a, JkVec2 b) {
     if (!clip_to_draw_region(env->input.dimensions, &a, &b)) {
         return;
     }
@@ -236,8 +229,7 @@ typedef struct TexturedVertexArray {
     TexturedVertex *e;
 } TexturedVertexArray;
 
-static int32_t triangle_node_ptr_compare(void *data, void *a_ptr, void *b_ptr)
-{
+static int32_t triangle_node_ptr_compare(void *data, void *a_ptr, void *b_ptr) {
     TriangleNode *a = *(TriangleNode **)a_ptr;
     TriangleNode *b = *(TriangleNode **)b_ptr;
     float a_z = a->tri.v[0].z + a->tri.v[1].z + a->tri.v[2].z;
@@ -245,14 +237,12 @@ static int32_t triangle_node_ptr_compare(void *data, void *a_ptr, void *b_ptr)
     return a_z < b_z ? 1 : (b_z < a_z) ? -1 : 0;
 }
 
-static void quicksort_triangle_node_ptrs(TriangleNodePtrArray array)
-{
+static void quicksort_triangle_node_ptrs(TriangleNodePtrArray array) {
     TriangleNode *tmp;
     jk_quicksort(array.e, array.count, JK_SIZEOF(*array.e), &tmp, 0, triangle_node_ptr_compare);
 }
 
-static JkIntRect segment_bounding_box(JkQ16Vec2 v0, JkQ16Vec2 v1, int32_t radius)
-{
+static JkIntRect segment_bounding_box(JkQ16Vec2 v0, JkQ16Vec2 v1, int32_t radius) {
     JkQ16Vec2 min = {.x = JK_MIN(v0.x, v1.x) - radius, .y = JK_MIN(v0.y, v1.y) - radius};
     JkQ16Vec2 max = {.x = JK_MAX(v0.x, v1.x) + radius, .y = JK_MAX(v0.y, v1.y) + radius};
     return (JkIntRect){
@@ -261,8 +251,7 @@ static JkIntRect segment_bounding_box(JkQ16Vec2 v0, JkQ16Vec2 v1, int32_t radius
     };
 }
 
-static JkIntRect q16_triangle_bounding_box(Q16Triangle tri)
-{
+static JkIntRect q16_triangle_bounding_box(Q16Triangle tri) {
     return (JkIntRect){
         .min.x = jk_i32_from_q16_ceil(JK_MIN3(tri.v[0].x, tri.v[1].x, tri.v[2].x)),
         .min.y = jk_i32_from_q16_ceil(JK_MIN3(tri.v[0].y, tri.v[1].y, tri.v[2].y)),
@@ -271,8 +260,7 @@ static JkIntRect q16_triangle_bounding_box(Q16Triangle tri)
     };
 }
 
-static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2)
-{
+static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2) {
     return (JkIntRect){
         .min.x = jk_floor_f32(JK_MIN3(v0.x, v1.x, v2.x)),
         .min.y = jk_floor_f32(JK_MIN3(v0.y, v1.y, v2.y)),
@@ -281,8 +269,7 @@ static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2)
     };
 }
 
-static b32 clockwise_left_handed(JkVec3 v0, JkVec3 v1, JkVec3 v2)
-{
+static b32 clockwise_left_handed(JkVec3 v0, JkVec3 v1, JkVec3 v2) {
     return (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x) > 0;
 }
 
@@ -365,8 +352,7 @@ static JK_READONLY NavContact nil_contact = {
     .z = INT32_MIN,
 };
 
-static b32 nav_contacts_any(NavContacts contacts)
-{
+static b32 nav_contacts_any(NavContacts contacts) {
     b32 result = 0;
     for (int64_t i = 0; i < 4; i++) {
         if (contacts.e[i] != &nil_contact) {
@@ -390,14 +376,12 @@ static JkQ16Vec2 synthetic_edge_offset[4] = {
     {SYNTHETIC_OFFSET, 0},
 };
 
-static JkQ16Vec2 nav_corner_pos(NavRing *ring, int64_t corner_index)
-{
+static JkQ16Vec2 nav_corner_pos(NavRing *ring, int64_t corner_index) {
     JkIntVec2 result_i32 = jk_int_vec2_add(ring->pos, nav_corner_offset[corner_index]);
     return jk_q16_vec2_from_i32(result_i32);
 }
 
-static JkVec3 world_from_nav(JkVec2 nav_origin, JkQ16Vec3 v)
-{
+static JkVec3 world_from_nav(JkVec2 nav_origin, JkQ16Vec3 v) {
     JkVec2 xy = jk_vec2_mul(
             nav_density, jk_vec2_add(jk_vec2_from_q16(jk_q16_vec2_from_3(v)), nav_origin));
     return jk_vec3_from_2(xy, jk_f32_from_q16(v.z));
@@ -428,8 +412,7 @@ typedef struct NavTriangleArray {
 } NavTriangleArray;
 
 static void nav_triangle_setup(
-        JkArena *arena, JkIntVec2 nav_dimensions, Q16Triangle tri, b32 walkable)
-{
+        JkArena *arena, JkIntVec2 nav_dimensions, Q16Triangle tri, b32 walkable) {
     NavTriangle *result = jk_arena_push_zero(arena, sizeof(*result));
 
     JK_FLAG_SET(result->flags, NAV_CONTACT_WALKABLE, walkable);
@@ -493,8 +476,7 @@ static void nav_triangle_setup(
     }
 }
 
-static NavInterpolants nav_triangle_sample(NavTriangle *edge_functions, JkQ16Vec2 pos)
-{
+static NavInterpolants nav_triangle_sample(NavTriangle *edge_functions, JkQ16Vec2 pos) {
     NavInterpolants result;
     for (NavInterpolant i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
         result.e[i] = jk_q16_mul(pos.x, edge_functions->deltas[0].e[i])
@@ -505,8 +487,7 @@ static NavInterpolants nav_triangle_sample(NavTriangle *edge_functions, JkQ16Vec
 }
 
 static void nav_triangle_generate_contact(
-        JkArena *arena, NavContact **head, NavInterpolants *interpolants, uint32_t flags)
-{
+        JkArena *arena, NavContact **head, NavInterpolants *interpolants, uint32_t flags) {
     if (0 <= (interpolants->e[NAV_BARYCENTRIC_0] | interpolants->e[NAV_BARYCENTRIC_1]
                 | interpolants->e[NAV_BARYCENTRIC_2])) {
         NavContact *contact = jk_arena_push(arena, sizeof(*contact));
@@ -529,8 +510,7 @@ static void draw_world_segment(Environment *env,
         JkMat4 clip_from_world,
         JkColor color,
         JkVec3 a,
-        JkVec3 b)
-{
+        JkVec3 b) {
     JkVec4 clip[2] = {
         jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(a, 1)),
         jk_mat4_mul_vec4(clip_from_world, jk_vec4_from_3(b, 1)),
@@ -561,8 +541,7 @@ static void nav_draw_rings(Environment *env,
         JkMat4 screen_from_ndc,
         JkMat4 clip_from_world,
         JkColor nav_color,
-        NavRing *ring)
-{
+        NavRing *ring) {
     if (JK_FLAG_GET(ring->flags, NAV_RING_DRAWN)) {
         return;
     }
@@ -596,8 +575,7 @@ static void nav_draw_rings(Environment *env,
     }
 }
 
-static int32_t distance_to_edge_sqr(JkQ16Vec3 p, NavEdge *edge)
-{
+static int32_t distance_to_edge_sqr(JkQ16Vec3 p, NavEdge *edge) {
     JkQ16Vec3 v01 = jk_q16_vec3_sub(edge->v[1], edge->v[0]);
     JkQ16Vec3 v0p = jk_q16_vec3_sub(p, edge->v[0]);
     int32_t dot = jk_q16_vec3_dot(v01, v0p);
@@ -616,8 +594,7 @@ static void nav_remove_invalid_contacts(JkIntVec2 nav_dimensions,
         NavEdge **nav_edges,
         JkQ16Vec2 pos,
         NavContact **head,
-        int32_t nav_player_radius_sqr)
-{
+        int32_t nav_player_radius_sqr) {
     int32_t ceiling = INT32_MAX / 2;
     int64_t solid_count = 0;
     NavContact **link = head;
@@ -663,8 +640,7 @@ static int32_t nav_sample(JkArena *arena,
         int32_t min_z,
         int32_t max_z,
         JkQ16Vec2 pos,
-        int32_t nav_player_radius_sqr)
-{
+        int32_t nav_player_radius_sqr) {
     JkArenaScope scope = jk_arena_scope_begin(arena);
 
     NavContact *head = &nil_contact;
@@ -687,8 +663,7 @@ static int32_t nav_sample(JkArena *arena,
     return result;
 }
 
-static JkQ16Vec2 get_midpoint(JkQ16Vec2 a, JkQ16Vec2 b)
-{
+static JkQ16Vec2 get_midpoint(JkQ16Vec2 a, JkQ16Vec2 b) {
     return (JkQ16Vec2){.x = (a.x + b.x) >> 1, .y = (a.y + b.y) >> 1};
 }
 
@@ -697,8 +672,7 @@ static JkQ16Vec3 nav_binary_search(JkArena *arena,
         NavEdge **nav_edges,
         JkQ16Vec3 inside_point,
         JkQ16Vec2 outside_point,
-        int32_t nav_player_radius_sqr)
-{
+        int32_t nav_player_radius_sqr) {
     int32_t min_z = inside_point.z - (NAV_STEP_HEIGHT >> 1);
     int32_t max_z = inside_point.z + (NAV_STEP_HEIGHT >> 1);
 
@@ -724,8 +698,7 @@ static void nav_add_edge(JkArena *arena,
         int32_t nav_player_radius,
         int32_t nav_player_radius_sqr,
         JkQ16Vec3 v0,
-        JkQ16Vec3 v1)
-{
+        JkQ16Vec3 v1) {
     JkIntRect nav_area_bounds = (JkIntRect){.max = nav_dimensions};
     JkIntRect bounds = jk_int_rect_intersect(
             segment_bounding_box(jk_q16_vec2_from_3(v0), jk_q16_vec2_from_3(v1), nav_player_radius),
@@ -755,8 +728,7 @@ static void nav_add_edge(JkArena *arena,
 }
 
 static void nav_triangle_rasterize(
-        JkArena *arena, NavContact **nav_contacts, JkIntVec2 nav_dimensions, NavTriangle *tri)
-{
+        JkArena *arena, NavContact **nav_contacts, JkIntVec2 nav_dimensions, NavTriangle *tri) {
     NavInterpolants interpolants_row;
     for (NavInterpolant i = 0; i < NAV_INTERPOLANT_COUNT; i++) {
         interpolants_row.e[i] = tri->bounds.min.x * tri->deltas[0].e[i]
@@ -780,8 +752,7 @@ static void nav_triangle_rasterize(
     }
 }
 
-static NavRingArray nav_find_rings(JkArena *arena, NavContact **nav_contacts)
-{
+static NavRingArray nav_find_rings(JkArena *arena, NavContact **nav_contacts) {
     JkArenaScope ring_array_scope = jk_arena_scope_begin(arena);
 
     for (JkIntVec2 pos = {0}; pos.y < nav_dimensions.y - 1; pos.y++) {
@@ -875,8 +846,7 @@ static void nav_ring_find_edges(JkArena *arena,
         NavTriangleArray nav_triangles,
         NavEdge **nav_edges,
         int32_t nav_player_radius_sqr,
-        NavRing *ring)
-{
+        NavRing *ring) {
     int64_t segment_count = 0;
     JkQ16Vec3 segments[2][2];
     int64_t first_inside = -1;
@@ -967,8 +937,7 @@ typedef struct NavRingQueue {
     NavRing **rings;
 } NavRingQueue;
 
-static NavRingQueue q_new(JkArena *arena, int64_t capacity)
-{
+static NavRingQueue q_new(JkArena *arena, int64_t capacity) {
     JK_DEBUG_ASSERT(jk_is_power_of_two(capacity));
     return (NavRingQueue){
         .mask = capacity - 1,
@@ -976,14 +945,12 @@ static NavRingQueue q_new(JkArena *arena, int64_t capacity)
     };
 }
 
-static void q_enqueue(NavRingQueue *q, NavRing *ring)
-{
+static void q_enqueue(NavRingQueue *q, NavRing *ring) {
     q->rings[q->end++ & q->mask] = ring;
     JK_FLAG_SET(ring->flags, NAV_RING_ENQUEUED, 1);
 }
 
-static NavRing *q_dequeue(NavRingQueue *q)
-{
+static NavRing *q_dequeue(NavRingQueue *q) {
     if (q->start < q->end) {
         return q->rings[q->start++ & q->mask];
     } else {
@@ -1020,8 +987,7 @@ typedef struct ColorF32x8x4 {
     JkF32x8 e[4];
 } ColorF32x8x4;
 
-static JkF32x8 channel_extract(JkI256 color, int32_t channel_index)
-{
+static JkF32x8 channel_extract(JkI256 color, int32_t channel_index) {
     switch (channel_index) {
     case 1: {
         color = JK_I256_SHIFT_RIGHT_ZERO_FILL_I32(color, 8);
@@ -1041,8 +1007,7 @@ static JkF32x8 channel_extract(JkI256 color, int32_t channel_index)
     return jk_f32x8_from_i32x8(jk_i256_and(color, jk_i256_broadcast_i32(0xff)));
 }
 
-static JkF32x8 bilerp(JkI256 *colors, int32_t channel_index, JkF32x8 xfrac, JkF32x8 yfrac)
-{
+static JkF32x8 bilerp(JkI256 *colors, int32_t channel_index, JkF32x8 xfrac, JkF32x8 yfrac) {
     JkF32x8 colorsf[4];
     for (int64_t i = 0; i < 4; i++) {
         colorsf[i] = channel_extract(colors[i], channel_index);
@@ -1052,8 +1017,7 @@ static JkF32x8 bilerp(JkI256 *colors, int32_t channel_index, JkF32x8 xfrac, JkF3
     return jk_f32x8_lerp(top, bottom, yfrac);
 }
 
-static ColorF32x8x4 color_broadcast(JkColor color)
-{
+static ColorF32x8x4 color_broadcast(JkColor color) {
     ColorF32x8x4 result;
     for (int64_t i = 0; i < 4; i++) {
         result.e[i] = jk_f32x8_broadcast(color.v[i]);
@@ -1062,8 +1026,7 @@ static ColorF32x8x4 color_broadcast(JkColor color)
     return result;
 }
 
-static void color_blend(ColorF32x8x4 *fg, ColorF32x8x4 bg)
-{
+static void color_blend(ColorF32x8x4 *fg, ColorF32x8x4 bg) {
     JkF32x8 complement = jk_f32x8_sub(jk_f32x8_broadcast(1), fg->e[3]);
     fg->e[3] = jk_f32x8_add(fg->e[3], jk_f32x8_mul(bg.e[3], complement));
     for (int64_t i = 0; i < 3; i++) {
@@ -1072,8 +1035,7 @@ static void color_blend(ColorF32x8x4 *fg, ColorF32x8x4 bg)
 }
 
 static void triangle_fill(
-        Environment *env, TriangleNode *node, Texture *texture, JkIntRect bounding_box)
-{
+        Environment *env, TriangleNode *node, Texture *texture, JkIntRect bounding_box) {
     TexturedTriangle *tri = &node->tri;
 
     JkIntRect bounds = jk_int_rect_intersect(
@@ -1338,16 +1300,14 @@ static void triangle_fill(
 }
 
 static void add_textured_vertex(
-        JkArena *arena, JkMat4 screen_from_ndc, JkVec4 v, JkVec2 t, float light)
-{
+        JkArena *arena, JkMat4 screen_from_ndc, JkVec4 v, JkVec2 t, float light) {
     TexturedVertex *new = jk_arena_push(arena, sizeof(*new));
     new->v = jk_mat4_mul_point(screen_from_ndc, jk_vec4_perspective_divide(v));
     new->t = jk_vec2_mul(new->v.z, t);
     new->light = light;
 }
 
-static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
-{
+static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha) {
     JkColor result = {0, 0, 0, 255};
     for (uint8_t i = 0; i < 3; i++) {
         result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
@@ -1362,8 +1322,7 @@ typedef struct TextLayout {
     JkVec2 dimensions;
 } TextLayout;
 
-static TextLayout text_layout_monospace(Environment *env, JkBuffer text, float scale)
-{
+static TextLayout text_layout_monospace(Environment *env, JkBuffer text, float scale) {
     TextLayout result = {0};
 
     result.offset.x = 0;
@@ -1383,16 +1342,14 @@ static TextLayout text_layout_monospace(Environment *env, JkBuffer text, float s
 }
 
 static void draw_text(
-        JkShapesRenderer *renderer, JkBuffer text, JkVec2 cursor, float scale, JkColor color)
-{
+        JkShapesRenderer *renderer, JkBuffer text, JkVec2 cursor, float scale, JkColor color) {
     for (int64_t i = 0; i < text.size; i++) {
         cursor.x += jk_shapes_draw(
                 renderer, text.data[i] + ASCII_TO_SHAPE_OFFSET, cursor, scale, color);
     }
 }
 
-static JkMat4 object_compute_world_from_local(ObjectArray objects, ObjectId id)
-{
+static JkMat4 object_compute_world_from_local(ObjectArray objects, ObjectId id) {
     JkMat4 result = jk_mat4_i;
     for (ObjectId parent_id = id; parent_id.i; parent_id = objects.e[parent_id.i].parent) {
         Object *parent = objects.e + parent_id.i;
@@ -1406,8 +1363,7 @@ typedef struct ScreenFromWorldResult {
     JkVec3 v;
 } ScreenFromWorldResult;
 
-static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring)
-{
+static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring) {
     NavPoint result = {.distance_sqr = jk_infinity_f32.f32, .ring = ring};
     for (int64_t i = 2; i < ring->vertex_count; i++) {
         JkVec3 candidate = jk_closest_point_on_triangle(
@@ -1422,13 +1378,11 @@ static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring)
     return result;
 }
 
-static int64_t recorded_frame_count(Environment *env)
-{
+static int64_t recorded_frame_count(Environment *env) {
     return (env->record_arena.pos - JK_SIZEOF(Recording)) / JK_SIZEOF(RecordedFrame);
 }
 
-void render(JkContext *context, Environment *env)
-{
+void render(JkContext *context, Environment *env) {
     JkColor text_color = {255, 255, 255, 255};
 
     jk_context = context;
@@ -1458,8 +1412,7 @@ void render(JkContext *context, Environment *env)
 
     Recording *recording = (Recording *)env->record_arena.memory.data;
 
-    JK_CHANNEL_NARROW(0)
-    {
+    JK_CHANNEL_NARROW(0) {
         input = env->input;
 
         if (env->record_arena.pos <= 0) {
@@ -1485,8 +1438,7 @@ void render(JkContext *context, Environment *env)
             if (env->record_state.activity == RECORD_STATE_PLAYING) {
                 env->recording_cursor = recording->clips[env->record_state.clip_index].start;
             } else if (env->record_state.activity == RECORD_STATE_PROFILING) {
-                JK_ARENA_SCRATCH(log_scratch)
-                {
+                JK_ARENA_SCRATCH(log_scratch) {
                     jk_log(JK_LOG_INFO,
                             jk_profile_report(log_scratch.arena, env->estimate_cpu_frequency(100)));
                 }
@@ -1835,8 +1787,7 @@ void render(JkContext *context, Environment *env)
         int64_t max_steps = jk_ceil_f32((SPEED * DELTA_TIME) / step_size);
         int64_t max_depth = 2 * max_steps + 1;
 
-        JK_ARENA_SCOPE(scratch0.arena)
-        {
+        JK_ARENA_SCOPE(scratch0.arena) {
             NavPoint destination = {.distance_sqr = jk_infinity_f32.f32};
             NavRingQueue q = q_new(scratch0.arena, 1024);
             q_enqueue(&q, start.ring);
@@ -2201,15 +2152,13 @@ void render(JkContext *context, Environment *env)
     }
     jk_channel_sync();
 
-    JK_CHANNEL_NARROW(0)
-    {
+    JK_CHANNEL_NARROW(0) {
         jk_profile_zone_end(&timing_rasterize);
 
         jk_profile_frame_end();
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_P)) {
-            JK_ARENA_SCRATCH(log_scratch)
-            {
+            JK_ARENA_SCRATCH(log_scratch) {
                 jk_log(JK_LOG_INFO,
                         jk_profile_report(log_scratch.arena, env->estimate_cpu_frequency(100)));
             }

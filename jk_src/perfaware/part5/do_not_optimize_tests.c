@@ -16,8 +16,7 @@
 // into producting output that better exposes issues in some of the optmization prevention
 // techniques used here. So this won't actually compute asin, but all we needed was some arbitrary
 // work anyway.
-JK_PUBLIC double arbitrary_work(double x_squared)
-{
+JK_PUBLIC double arbitrary_work(double x_squared) {
     __m128d x_squared_sd = _mm_set_sd(x_squared);
     __m128d result = _mm_set_sd(0x1.8978c6502660ap-2);
     result = _mm_fmadd_sd(result, x_squared_sd, _mm_set_sd(-0x1.0a98c5604a5c6p0));
@@ -32,8 +31,7 @@ JK_PUBLIC double arbitrary_work(double x_squared)
     return _mm_cvtsd_f64(result);
 }
 
-static void recommended_way(int64_t rep_count)
-{
+static void recommended_way(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value = 0.5;
 
@@ -49,8 +47,7 @@ static void recommended_way(int64_t rep_count)
     }
 }
 
-static void our_way(int64_t rep_count)
-{
+static void our_way(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value = 0.5;
 
@@ -66,8 +63,7 @@ static void our_way(int64_t rep_count)
     }
 }
 
-static void fix_attempt_1(int64_t rep_count)
-{
+static void fix_attempt_1(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value;
 
@@ -83,8 +79,7 @@ static void fix_attempt_1(int64_t rep_count)
     }
 }
 
-static void fix_attempt_2(int64_t rep_count)
-{
+static void fix_attempt_2(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value;
 
@@ -100,8 +95,7 @@ static void fix_attempt_2(int64_t rep_count)
     }
 }
 
-static void vmovsd_method(int64_t rep_count)
-{
+static void vmovsd_method(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value;
 
@@ -117,8 +111,7 @@ static void vmovsd_method(int64_t rep_count)
     }
 }
 
-static void qna_method(int64_t rep_count)
-{
+static void qna_method(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value = 0.5;
 
@@ -134,8 +127,7 @@ static void qna_method(int64_t rep_count)
     }
 }
 
-static void macro_method(int64_t rep_count)
-{
+static void macro_method(int64_t rep_count) {
     for (int64_t i = 0; i < rep_count; i++) {
         double value = 0.5;
 
@@ -166,8 +158,7 @@ static TestFunction functions[] = {
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (int64_t i = 0; i < JK_ARRAY_COUNT(functions); i++) {

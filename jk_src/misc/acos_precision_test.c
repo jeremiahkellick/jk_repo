@@ -18,8 +18,7 @@ static float coeffs[][10] = {
 };
 // clang-format on
 
-static float compute_polynomial(float x, int64_t coefficient_count, float *coefficients)
-{
+static float compute_polynomial(float x, int64_t coefficient_count, float *coefficients) {
     float result = coefficients[--coefficient_count];
     while (coefficient_count) {
         result = result * x + coefficients[--coefficient_count];
@@ -27,8 +26,7 @@ static float compute_polynomial(float x, int64_t coefficient_count, float *coeff
     return result;
 }
 
-static float acos_unrolled(float x)
-{
+static float acos_unrolled(float x) {
     float result = -0x1.056a66p+0f;
     result = result * x + 0x1.1fa76cp+1f;
     result = result * x + -0x1.1b0890p+1f;
@@ -41,8 +39,7 @@ static float acos_unrolled(float x)
     return result;
 }
 
-static float acos_full_range(float x)
-{
+static float acos_full_range(float x) {
     b32 positive = 0.0f <= x;
     if (!positive) {
         x = -x;
@@ -64,8 +61,7 @@ static float acos_full_range(float x)
     return result;
 }
 
-int main(void)
-{
+int main(void) {
     JkPrecisionTest test = {0};
 
     while (jk_precision_test(&test, 0.0f, 1.0f / sqrtf(2.0f), 100000000)) {

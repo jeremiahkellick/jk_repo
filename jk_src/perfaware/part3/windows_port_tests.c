@@ -37,8 +37,7 @@ static TestCandidate candidates[] = {
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     uint8_t data[8] = {0};
     int64_t mov_count = 1024 * 1024 * 1024;
 

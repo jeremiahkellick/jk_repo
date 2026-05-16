@@ -16,21 +16,18 @@ typedef struct Heap {
 } Heap;
 
 // Buffer should have at least JK_SIZEOF(Element) * capcapity bytes
-static Heap heap_create(JkBuffer memory)
-{
+static Heap heap_create(JkBuffer memory) {
     return (Heap){
         .capacity = memory.size / JK_SIZEOF(Element),
         .elements = (Element **)memory.data,
     };
 }
 
-static int64_t heap_parent_get(int64_t i)
-{
+static int64_t heap_parent_get(int64_t i) {
     return (i - 1) / 2;
 }
 
-static void heap_swap(Heap *heap, int64_t a, int64_t b)
-{
+static void heap_swap(Heap *heap, int64_t a, int64_t b) {
     Element *tmp = heap->elements[a];
     heap->elements[a] = heap->elements[b];
     heap->elements[b] = tmp;
@@ -38,8 +35,7 @@ static void heap_swap(Heap *heap, int64_t a, int64_t b)
     heap->elements[b]->heap_index = b;
 }
 
-static void heapify_up(Heap *heap, int64_t i)
-{
+static void heapify_up(Heap *heap, int64_t i) {
     if (i) {
         int64_t parent = heap_parent_get(i);
         if (heap->elements[i]->score < heap->elements[parent]->score) {
@@ -49,8 +45,7 @@ static void heapify_up(Heap *heap, int64_t i)
     }
 }
 
-static void heapify_down(Heap *heap, int64_t i)
-{
+static void heapify_down(Heap *heap, int64_t i) {
     int64_t min_child_score = INT64_MAX;
     int64_t min_child = INT64_MAX;
     for (int64_t child = 2 * i + 1; child <= 2 * i + 2 && child < heap->count; child++) {
@@ -65,15 +60,13 @@ static void heapify_down(Heap *heap, int64_t i)
     }
 }
 
-static void reheapify(Heap *heap, int64_t i)
-{
+static void reheapify(Heap *heap, int64_t i) {
     heapify_up(heap, i);
     heapify_down(heap, i);
 }
 
 // Returns nonzero on success, zero on failure
-static b32 heap_insert(Heap *heap, Element *element)
-{
+static b32 heap_insert(Heap *heap, Element *element) {
     if (heap->count < heap->capacity) {
         element->heap_index = heap->count++;
         heap->elements[element->heap_index] = element;
@@ -84,8 +77,7 @@ static b32 heap_insert(Heap *heap, Element *element)
     }
 }
 
-static Element *heap_pop(Heap *heap)
-{
+static Element *heap_pop(Heap *heap) {
     if (heap->count) {
         Element *result = heap->elements[0];
         heap->elements[0] = heap->elements[--heap->count];
@@ -96,8 +88,7 @@ static Element *heap_pop(Heap *heap)
     }
 }
 
-static Element *heap_peek_min(Heap *heap)
-{
+static Element *heap_peek_min(Heap *heap) {
     if (heap->count) {
         return heap->elements[0];
     } else {
@@ -105,8 +96,7 @@ static Element *heap_peek_min(Heap *heap)
     }
 }
 
-static void heap_verify(Heap *heap)
-{
+static void heap_verify(Heap *heap) {
     if (heap->count) {
         for (int64_t i = heap->count - 1; i > 0; i--) {
             int64_t parent = heap_parent_get(i);
@@ -116,8 +106,7 @@ static void heap_verify(Heap *heap)
     }
 }
 
-int main(void)
-{
+int main(void) {
     Element test_elements[] = {
         {.score = 48},
         {.score = 29},

@@ -19,23 +19,20 @@ typedef struct ReadParams {
 
 typedef void ReadFunction(JkPlatformRepetitionTest *test, ReadParams params);
 
-static void handle_allocation(ReadParams *params)
-{
+static void handle_allocation(ReadParams *params) {
     if (params->alloc) {
         params->dest.data = mmap(
                 NULL, params->dest.size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     }
 }
 
-static void handle_deallocation(ReadParams *params)
-{
+static void handle_deallocation(ReadParams *params) {
     if (params->alloc) {
         munmap(params->dest.data, params->dest.size);
     }
 }
 
-static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         handle_allocation(&params);
 
@@ -51,8 +48,7 @@ static void write_to_all_bytes(JkPlatformRepetitionTest *test, ReadParams params
     }
 }
 
-static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         handle_allocation(&params);
 
@@ -68,8 +64,7 @@ static void write_to_all_bytes_backwards(JkPlatformRepetitionTest *test, ReadPar
     }
 }
 
-static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         handle_allocation(&params);
         FILE *file = fopen(params.file_name, "rb");
@@ -93,8 +88,7 @@ static void read_via_fread(JkPlatformRepetitionTest *test, ReadParams params)
     }
 }
 
-static void read_via_read(JkPlatformRepetitionTest *test, ReadParams params)
-{
+static void read_via_read(JkPlatformRepetitionTest *test, ReadParams params) {
     while (jk_platform_repetition_test_running(test)) {
         handle_allocation(&params);
         int file = open(params.file_name, O_RDONLY);
@@ -134,8 +128,7 @@ static TestCandidate candidates[] = {
 // tests[alloc][i]
 static JkPlatformRepetitionTest tests[2][JK_ARRAY_COUNT(candidates)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "%s: Expected 1 file argument, got %d\n", argv[0], argc - 1);
         exit(1);

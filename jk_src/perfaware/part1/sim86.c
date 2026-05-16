@@ -339,8 +339,7 @@ typedef struct Instruction {
     } u;
 } Instruction;
 
-static int effective_address_clocks(Binop *binop)
-{
+static int effective_address_clocks(Binop *binop) {
     OperandMemory *memop = NULL;
     for (int i = 0; i < 2; i++) {
         if (binop->operands[i].type == OPERAND_MEMORY) {
@@ -382,13 +381,11 @@ static int effective_address_clocks(Binop *binop)
     }
 }
 
-static void *register_address(Reg reg, bool wide)
-{
+static void *register_address(Reg reg, bool wide) {
     return &register_file[reg_w_to_register_file_index[reg][wide]];
 }
 
-static bool next_byte(uint8_t *dest)
-{
+static bool next_byte(uint8_t *dest) {
     uint16_t *ip = register_address(REG_IP, true);
     if (*ip < code_byte_count) {
         *dest = memory[(*ip)++];
@@ -403,8 +400,7 @@ static bool next_byte(uint8_t *dest)
  * an error informing the user that their file ended in the middle of an instruction and exit the
  * program with code 1.
  */
-static void read_instruction_bytes(int64_t n, uint8_t *dest)
-{
+static void read_instruction_bytes(int64_t n, uint8_t *dest) {
     for (; n > 0; n--) {
         if (!next_byte(dest++)) {
             fprintf(stderr, "%s: File ended in the middle of an instruction\n", program_name);
@@ -413,8 +409,7 @@ static void read_instruction_bytes(int64_t n, uint8_t *dest)
     }
 }
 
-static int16_t get_int16(void *address, bool sign_extend)
-{
+static int16_t get_int16(void *address, bool sign_extend) {
     if (sign_extend) {
         return (int16_t)(*(int8_t *)address);
     } else {
@@ -426,8 +421,7 @@ static int16_t get_int16(void *address, bool sign_extend)
  * Read an int16_t value from the given file. If read_both_bytes is true, read two bytes and return
  * them directly. Otherwise, only read one byte and sign-extend it to two.
  */
-static int16_t read_int16(bool sign_extend)
-{
+static int16_t read_int16(bool sign_extend) {
     uint16_t *ip = register_address(REG_IP, true);
     int16_t value = get_int16(&memory[*ip], sign_extend);
     *ip += sign_extend ? 1 : 2;
@@ -437,8 +431,7 @@ static int16_t read_int16(bool sign_extend)
 /**
  * Read 2 bytes from the file. Interpret them as a direct address, writing it to the given operand.
  */
-static void read_direct_address(Operand *operand)
-{
+static void read_direct_address(Operand *operand) {
     operand->type = OPERAND_MEMORY;
     operand->u.memory.regs[0] = REG_NOTHING;
     operand->u.memory.regs[1] = REG_NOTHING;
@@ -452,8 +445,7 @@ static void read_direct_address(Operand *operand)
  * @param file the file to read the byte from
  * @return The middle 3 bits of the byte. What they mean depends on the calling context.
  */
-static uint8_t decode_rm_byte(Operand *operand)
-{
+static uint8_t decode_rm_byte(Operand *operand) {
     uint8_t byte;
     read_instruction_bytes(1, &byte);
     uint8_t mod = byte >> 6;
@@ -475,8 +467,7 @@ static uint8_t decode_rm_byte(Operand *operand)
     return (byte >> 3) & 0x7;
 }
 
-static void decode_reg_rm(uint8_t byte, Binop *binop)
-{
+static void decode_reg_rm(uint8_t byte, Binop *binop) {
     binop->wide = byte & 0x1;
     int rm_operand = (byte >> 1) & 0x1;
     int reg_operand = !rm_operand;
@@ -507,8 +498,7 @@ static void decode_reg_rm(uint8_t byte, Binop *binop)
  *
  * @return The middle 3 bits of the rm byte. What they mean depends on the calling context.
  */
-static uint8_t decode_immediate_rm(uint8_t byte, bool sign_extend, Binop *binop)
-{
+static uint8_t decode_immediate_rm(uint8_t byte, bool sign_extend, Binop *binop) {
     binop->wide = byte & 0x1;
     uint8_t middle_bits = decode_rm_byte(&binop->operands[DEST]);
     binop->category =
@@ -518,8 +508,7 @@ static uint8_t decode_immediate_rm(uint8_t byte, bool sign_extend, Binop *binop)
     return middle_bits;
 }
 
-static bool decode_instruction(Instruction *inst)
-{
+static bool decode_instruction(Instruction *inst) {
     memset(inst, 0, JK_SIZEOF(*inst));
 
     uint8_t byte;
@@ -609,8 +598,7 @@ static bool decode_instruction(Instruction *inst)
     return true;
 }
 
-static void print_instruction(Instruction *inst)
-{
+static void print_instruction(Instruction *inst) {
     switch (inst->type) {
     case INST_JUMP: {
         printf("%s ", jump_names[inst->u.jump.type]);
@@ -666,8 +654,7 @@ static void print_instruction(Instruction *inst)
     }
 }
 
-static void print_flags(uint8_t flags_value)
-{
+static void print_flags(uint8_t flags_value) {
     for (int i = 0; i < FLAG_COUNT; i++) {
         if ((flags_value >> i) & 0x1) {
             printf("%s", flag_strings[i]);
@@ -675,14 +662,12 @@ static void print_flags(uint8_t flags_value)
     }
 }
 
-static void save_state(void)
-{
+static void save_state(void) {
     memcpy(prev_register_file, register_file, JK_SIZEOF(register_file));
     prev_flags = flags;
 }
 
-static void print_diff(void)
-{
+static void print_diff(void) {
     for (int i = 0; i < REG_VALUE_COUNT; i++) {
         Reg reg = register_print_order[i];
         int register_file_index = reg_w_to_register_file_index[reg][true];
@@ -700,13 +685,11 @@ static void print_diff(void)
     }
 }
 
-static bool get_flag(Flag flag)
-{
+static bool get_flag(Flag flag) {
     return (flags >> flag) & 0x1;
 }
 
-static void set_flag(Flag flag, bool value)
-{
+static void set_flag(Flag flag, bool value) {
     if (value) {
         flags |= 0x1 << flag;
     } else {
@@ -714,16 +697,14 @@ static void set_flag(Flag flag, bool value)
     }
 }
 
-static bool get_parity(int16_t value)
-{
+static bool get_parity(int16_t value) {
     uint8_t least_significant_byte = *(uint8_t *)&value;
     int t0 = least_significant_byte ^ (least_significant_byte >> 4);
     int t1 = t0 ^ (t0 >> 2);
     return !((t1 ^ (t1 >> 1)) & 0x1);
 }
 
-static uint16_t simulate_instruction(Instruction *inst)
-{
+static uint16_t simulate_instruction(Instruction *inst) {
     uint16_t mem_address = 0;
     switch (inst->type) {
     case INST_BINOP: {
@@ -903,8 +884,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     program_name = argv[0];
 
     // Parse arguments

@@ -12,8 +12,7 @@
 static char *program_name = "!! program_name not yet overwritten with argv[0] !!";
 
 static int64_t just_read(
-        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size)
-{
+        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size) {
     FILE *file = fopen(file_name, "rb");
     if (file) {
         JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, buffer_size);
@@ -45,8 +44,7 @@ static int64_t just_read(
     return 0;
 }
 
-static int64_t sum(JkBuffer buffer)
-{
+static int64_t sum(JkBuffer buffer) {
     int64_t *source = (int64_t *)buffer.data;
     int64_t sum0 = 0;
     int64_t sum1 = 0;
@@ -64,8 +62,7 @@ static int64_t sum(JkBuffer buffer)
 }
 
 static int64_t read_and_sum(
-        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size)
-{
+        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size) {
     int64_t result = 0;
 
     FILE *file = fopen(file_name, "rb");
@@ -113,8 +110,7 @@ typedef struct SumThreadData {
     int64_t result;
 } SumThreadData;
 
-static DWORD sum_thread(LPVOID ptr)
-{
+static DWORD sum_thread(LPVOID ptr) {
     SumThreadData *data = ptr;
 
     int i = 0;
@@ -147,8 +143,7 @@ static DWORD sum_thread(LPVOID ptr)
 }
 
 static int64_t read_and_sum_threads(
-        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size)
-{
+        JkPlatformRepetitionTest *test, char *file_name, int64_t file_size, int64_t buffer_size) {
     int64_t half_size = buffer_size / 2;
     SumThreadData thread_data = {.iterations = (file_size + half_size - 1) / half_size};
 
@@ -237,8 +232,7 @@ static Function functions[] = {
 
 static JkPlatformRepetitionTest tests[13][JK_ARRAY_COUNT(functions)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     program_name = argv[0];
 
     if (argc != 2) {

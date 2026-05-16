@@ -27,13 +27,11 @@ typedef struct CharacterData {
     bool written_to_incorrect;
 } Character;
 
-static bool is_ignored(uint8_t c)
-{
+static bool is_ignored(uint8_t c) {
     return c == '\n' || c == '\t';
 }
 
-static void print_character(FILE *file, Character *character)
-{
+static void print_character(FILE *file, Character *character) {
     fprintf(file,
             "%.*s\t%.*s\t%.*s\n",
             (int)character->v[CHARACTER].size,
@@ -44,15 +42,13 @@ static void print_character(FILE *file, Character *character)
             character->v[TRANSLATION].data);
 }
 
-static void swap(int64_t *a, int64_t *b)
-{
+static void swap(int64_t *a, int64_t *b) {
     int64_t tmp = *a;
     *a = *b;
     *b = tmp;
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "%s: Expected 1 text file argument, got %d\n", argv[0], argc - 1);
         exit(1);

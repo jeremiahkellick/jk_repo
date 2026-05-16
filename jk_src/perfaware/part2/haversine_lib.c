@@ -8,21 +8,19 @@
 
 #include "haversine_lib.h"
 
-JK_PUBLIC double square(double A)
-{
+JK_PUBLIC double square(double A) {
     double Result = (A * A);
     return Result;
 }
 
-JK_PUBLIC double radians_from_degrees(double Degrees)
-{
+JK_PUBLIC double radians_from_degrees(double Degrees) {
     double Result = 0.01745329251994329577 * Degrees;
     return Result;
 }
 
 // NOTE(casey): EarthRadius is generally expected to be 6372.8
-JK_PUBLIC double haversine_reference(double X0, double Y0, double X1, double Y1, double EarthRadius)
-{
+JK_PUBLIC double haversine_reference(
+        double X0, double Y0, double X1, double Y1, double EarthRadius) {
     /* NOTE(casey): This is not meant to be a "good" way to calculate the Haversine distance.
        Instead, it attempts to follow, as closely as possible, the formula used in the real-world
        question on which these homework exercises are loosely based.
@@ -46,8 +44,7 @@ JK_PUBLIC double haversine_reference(double X0, double Y0, double X1, double Y1,
     return Result;
 }
 
-JK_PUBLIC double haversine_reference_sum(HaversineContext context)
-{
+JK_PUBLIC double haversine_reference_sum(HaversineContext context) {
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
 
@@ -60,8 +57,7 @@ JK_PUBLIC double haversine_reference_sum(HaversineContext context)
     return sum;
 }
 
-JK_PUBLIC int64_t haversine_reference_verify(HaversineContext context)
-{
+JK_PUBLIC int64_t haversine_reference_verify(HaversineContext context) {
     int64_t error_count = 0;
 
     for (int64_t i = 0; i < context.pair_count; i++) {
@@ -76,8 +72,7 @@ JK_PUBLIC int64_t haversine_reference_verify(HaversineContext context)
     return error_count;
 }
 
-JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double EarthRadius)
-{
+JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double EarthRadius) {
     double lat1 = Y0;
     double lat2 = Y1;
     double lon1 = X0;
@@ -96,8 +91,7 @@ JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double Ea
     return Result;
 }
 
-JK_PUBLIC double haversine_sum(HaversineContext context)
-{
+JK_PUBLIC double haversine_sum(HaversineContext context) {
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
 
@@ -110,8 +104,7 @@ JK_PUBLIC double haversine_sum(HaversineContext context)
     return sum;
 }
 
-JK_PUBLIC int64_t haversine_verify(HaversineContext context)
-{
+JK_PUBLIC int64_t haversine_verify(HaversineContext context) {
     int64_t error_count = 0;
 
     for (int64_t i = 0; i < context.pair_count; i++) {
@@ -126,8 +119,7 @@ JK_PUBLIC int64_t haversine_verify(HaversineContext context)
 }
 
 JK_PUBLIC HaversineContext haversine_setup(
-        char *json_file_name, char *answers_file_name, JkArena *storage)
-{
+        char *json_file_name, char *answers_file_name, JkArena *storage) {
     HaversineContext context = {0};
 
     JkBuffer text = jk_platform_file_read_full(storage, json_file_name);
@@ -195,8 +187,7 @@ JK_PUBLIC HaversineContext haversine_setup(
     return context;
 }
 
-JK_PUBLIC b32 approximately_equal(double a, double b)
-{
+JK_PUBLIC b32 approximately_equal(double a, double b) {
     double epsilon = 0.0000001;
     double diff = a - b;
     return diff > -epsilon && diff < epsilon;

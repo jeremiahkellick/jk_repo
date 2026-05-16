@@ -21,8 +21,7 @@ uint32_t values[] =
 
 char *file_name = "e_5_2_table.csv";
 
-static uint8_t most_significant_bit_index(uint32_t value)
-{
+static uint8_t most_significant_bit_index(uint32_t value) {
     if (value == 0) {
         return UINT8_MAX;
     }
@@ -34,8 +33,7 @@ static uint8_t most_significant_bit_index(uint32_t value)
     return 0;
 }
 
-static uint16_t compress(uint32_t value, uint8_t msb)
-{
+static uint16_t compress(uint32_t value, uint8_t msb) {
     if (msb < 15) {
         return 0;
     } else {
@@ -43,8 +41,7 @@ static uint16_t compress(uint32_t value, uint8_t msb)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     FILE *file = fopen(file_name, "wb");
     if (file) {
         for (uint64_t i = 0; i < JK_ARRAY_COUNT(values); i++) {

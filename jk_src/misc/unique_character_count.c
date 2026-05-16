@@ -28,8 +28,7 @@ JkOptionsParseResult opts_parse = {0};
 
 char *program_name = "<program_name global should be overwritten with argv[0]>";
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     program_name = argv[0];
 
     // Parse command line arguments

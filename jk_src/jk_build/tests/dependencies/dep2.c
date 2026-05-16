@@ -6,8 +6,7 @@
 #include <jk_src/jk_build/tests/dependencies/dep_nested.h>
 // #jk_build dependencies_end
 
-void dep2(void)
-{
+void dep2(void) {
     printf("Successfully called dependency 2/3\n");
     dep_nested();
 }

@@ -20,8 +20,7 @@ void blocks_16(int64_t chain_count, int64_t block_count);
 #define INTERLEAVE_COUNT 16
 #define REF_INTERLEAVE_COUNT 8
 
-void reference(int64_t chain_count, int64_t chain_length)
-{
+void reference(int64_t chain_count, int64_t chain_length) {
     for (int64_t chain_index = 0; chain_index < chain_count * 2; chain_index++) {
         double values[REF_INTERLEAVE_COUNT];
         for (int64_t i = 0; i < REF_INTERLEAVE_COUNT; i++) {
@@ -57,8 +56,7 @@ static JkPlatformRepetitionTest tests[8][JK_ARRAY_COUNT(functions)];
 
 #define FMA_COUNT 3600000000ll
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (int64_t chain_index = 0; chain_index < JK_ARRAY_COUNT(tests); chain_index++) {

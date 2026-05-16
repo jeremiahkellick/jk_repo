@@ -30,8 +30,7 @@ uint32_t values[] =
 
 char *file_name = "e_5_3_table.csv";
 
-static int8_t most_significant_bit_index(uint32_t value)
-{
+static int8_t most_significant_bit_index(uint32_t value) {
     for (uint8_t i = 30; i; i--) {
         if ((value >> i) & 1) {
             return i;
@@ -40,8 +39,7 @@ static int8_t most_significant_bit_index(uint32_t value)
     return 0;
 }
 
-static uint32_t signed_shift(uint32_t value, int8_t amount)
-{
+static uint32_t signed_shift(uint32_t value, int8_t amount) {
     if (amount < 0) {
         return value >> -amount;
     } else {
@@ -49,16 +47,14 @@ static uint32_t signed_shift(uint32_t value, int8_t amount)
     }
 }
 
-static uint16_t compress(uint32_t value)
-{
+static uint16_t compress(uint32_t value) {
     int8_t exponent = most_significant_bit_index(value);
     uint16_t sign = (value >> 16) & 0x8000;
     uint16_t mantissa = signed_shift(value, 10 - JK_MAX(1, exponent)) & 0x3ff;
     return sign | ((uint16_t)exponent << 10) | mantissa;
 }
 
-static double s10e5_to_double(uint16_t value)
-{
+static double s10e5_to_double(uint16_t value) {
     double sign = (value & 0x8000) ? -1.0 : 1.0;
     uint16_t mantissa = value & 0x3ff;
 
@@ -71,8 +67,7 @@ static double s10e5_to_double(uint16_t value)
     return sign * mantissa * pow(2.0, (double)exponent);
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     JkArena *arena = jk_arena_scratch_begin().arena;
 
     FILE *file = fopen(file_name, "wb");

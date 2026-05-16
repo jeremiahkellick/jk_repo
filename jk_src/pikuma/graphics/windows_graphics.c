@@ -43,16 +43,14 @@ typedef struct Global {
 
 static Global g = {.keyboard_lock = SRWLOCK_INIT};
 
-static void update_dimensions(HWND window)
-{
+static void update_dimensions(HWND window) {
     RECT rect;
     GetClientRect(window, &rect);
     g.window_dimensions.x = rect.right - rect.left;
     g.window_dimensions.y = rect.bottom - rect.top;
 }
 
-static void copy_draw_buffer_to_window(HWND window, HDC device_context)
-{
+static void copy_draw_buffer_to_window(HWND window, HDC device_context) {
     HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
     if (g.env.input.dimensions.x < g.window_dimensions.x) {
         RECT rect = {
@@ -137,8 +135,7 @@ static JkKey make_code_map_e0[] = {
 };
 // clang-format on
 
-static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
-{
+static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     LRESULT result = 0;
 
     switch (message) {
@@ -246,8 +243,7 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return result;
 }
 
-static DWORD app_thread_main(LPVOID param)
-{
+static DWORD app_thread_main(LPVOID param) {
     WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
     if (!JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
@@ -470,8 +466,7 @@ static DWORD app_thread_main(LPVOID param)
     return 0;
 }
 
-static DWORD app_thread_auxiliary(LPVOID param)
-{
+static DWORD app_thread_auxiliary(LPVOID param) {
     WaitForSingleObject(g.threads_spawned_event, INFINITE);
 
     if (!JK_FLAG_GET(g.env.flags, ENV_FLAG_RUNNING)) {
@@ -507,8 +502,7 @@ static JkOption opts[OPT_COUNT] = {
 static JkOptionResult opt_results[OPT_COUNT];
 static JkOptionsParseResult opts_parse = {0};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
 
     g.cursor_arrow = LoadCursorA(0, IDC_ARROW);

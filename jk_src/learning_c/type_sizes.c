@@ -9,8 +9,7 @@ typedef struct Struct {
 
 typedef long long llong;
 
-int main(void)
-{
+int main(void) {
     print_size_in_bits(char);
     print_size_in_bits(short);
     print_size_in_bits(int);

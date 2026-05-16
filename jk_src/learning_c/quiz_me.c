@@ -38,8 +38,7 @@ typedef struct Question {
 
 Question questions[MAX_QUESTIONS];
 
-int jk_read_line(FILE *file, char *buf, size_t buf_size, bool *eof)
-{
+int jk_read_line(FILE *file, char *buf, size_t buf_size, bool *eof) {
     int i;
     for (i = 0; i < buf_size; i++) {
         int c = fgetc(file);
@@ -56,8 +55,7 @@ int jk_read_line(FILE *file, char *buf, size_t buf_size, bool *eof)
     return i;
 }
 
-char *read_line_malloc(FILE *file, char *tmp_buf, size_t tmp_buf_size)
-{
+char *read_line_malloc(FILE *file, char *tmp_buf, size_t tmp_buf_size) {
     bool eof = false;
     int length = jk_read_line(file, tmp_buf, tmp_buf_size, &eof);
     if (length == 0) {
@@ -73,23 +71,20 @@ char *read_line_malloc(FILE *file, char *tmp_buf, size_t tmp_buf_size)
     return new_buf;
 }
 
-void empty_stdin(void)
-{
+void empty_stdin(void) {
     int c;
     do {
         c = getchar();
     } while (c != '\n' && c != EOF);
 }
 
-void swap(Question *a, Question *b)
-{
+void swap(Question *a, Question *b) {
     Question tmp = *b;
     *b = *a;
     *a = tmp;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     if (argc != 2) {
         printf("%s: Incorrect number of arguments. Usage: quiz_me FILE", argv[0]);
         exit(1);

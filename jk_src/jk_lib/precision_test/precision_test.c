@@ -11,8 +11,7 @@
 JK_PUBLIC void jk_precision_test_check_reference(char *label,
         double (*function)(double),
         int64_t reference_count,
-        JkPrecisionTestReference *references)
-{
+        JkPrecisionTestReference *references) {
     printf("%s:\n", label);
     for (int64_t i = 0; i < reference_count; i++) {
         printf("f(%+.24f) = %+.24f [reference]\n", references[i].input, references[i].output);
@@ -25,13 +24,11 @@ JK_PUBLIC void jk_precision_test_check_reference(char *label,
     printf("\n");
 }
 
-static double jk_precision_test_result_diff_avg(JkPrecisionTestResult result)
-{
+static double jk_precision_test_result_diff_avg(JkPrecisionTestResult result) {
     return result.diff_total / (double)result.diff_count;
 }
 
-JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, int64_t step_count)
-{
+JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, int64_t step_count) {
     t->input = min + (max - min) * (double)t->step_index / (double)(step_count - 1);
     t->result_index = t->result_count;
 
@@ -56,8 +53,7 @@ JK_PUBLIC b32 jk_precision_test(JkPrecisionTest *t, double min, double max, int6
 }
 
 JK_PUBLIC void jk_precision_test_result(
-        JkPrecisionTest *t, double reference, double value, char *label, ...)
-{
+        JkPrecisionTest *t, double reference, double value, char *label, ...) {
     if (t->result_index < JK_ARRAY_COUNT(t->results)) {
         JkPrecisionTestResult *result = t->results + t->result_index++;
 
@@ -86,15 +82,13 @@ JK_PUBLIC void jk_precision_test_result(
     }
 }
 
-static int jk_precision_test_result_compare(void *data, void *a, void *b)
-{
+static int jk_precision_test_result_compare(void *data, void *a, void *b) {
     double a_diff_max = ((JkPrecisionTestResult *)a)->diff_max;
     double b_diff_max = ((JkPrecisionTestResult *)b)->diff_max;
     return a_diff_max < b_diff_max ? -1 : b_diff_max < a_diff_max ? 1 : 0;
 }
 
-static void jk_precision_test_result_quicksort(int64_t count, JkPrecisionTestResult *data)
-{
+static void jk_precision_test_result_quicksort(int64_t count, JkPrecisionTestResult *data) {
     JkPrecisionTestResult tmp;
     jk_quicksort(data,
             count,
@@ -104,8 +98,7 @@ static void jk_precision_test_result_quicksort(int64_t count, JkPrecisionTestRes
             jk_precision_test_result_compare);
 }
 
-JK_PUBLIC void jk_precision_test_print(JkPrecisionTest *t)
-{
+JK_PUBLIC void jk_precision_test_print(JkPrecisionTest *t) {
     jk_precision_test_result_quicksort(t->result_count, t->results);
 
     for (int64_t i = 0; i < t->result_count; i++) {

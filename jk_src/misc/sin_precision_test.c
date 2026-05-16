@@ -18,8 +18,7 @@ static float coeffs[][10] = {
 };
 // clang-format on
 
-static float compute_polynomial(float x, int64_t coefficient_count, float *coefficients)
-{
+static float compute_polynomial(float x, int64_t coefficient_count, float *coefficients) {
     float result = coefficients[--coefficient_count];
     while (coefficient_count) {
         result = result * x + coefficients[--coefficient_count];
@@ -27,8 +26,7 @@ static float compute_polynomial(float x, int64_t coefficient_count, float *coeff
     return result;
 }
 
-static float sin_unrolled(float x)
-{
+static float sin_unrolled(float x) {
     float result = -0x1.f647bep-11f;
     result = result * x + 0x1.501da2p-7f;
     result = result * x + -0x1.017a88p-9f;
@@ -39,8 +37,7 @@ static float sin_unrolled(float x)
     return result;
 }
 
-static float sin_full_range(float x)
-{
+static float sin_full_range(float x) {
     x = jk_remainder_f32(x, 2 * JK_PI);
 
     b32 positive = 0 <= x;
@@ -60,13 +57,11 @@ static float sin_full_range(float x)
     return result;
 }
 
-static float cos_full_range(float x)
-{
+static float cos_full_range(float x) {
     return sin_full_range(x + JK_PI / 2);
 }
 
-int main(void)
-{
+int main(void) {
     JkPrecisionTest test = {0};
 
     while (jk_precision_test(&test, 0, JK_PI / 2, 100000000)) {

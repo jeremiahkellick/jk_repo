@@ -9,8 +9,7 @@
 
 static uint8_t reverse_table[256];
 
-int main(void)
-{
+int main(void) {
     for (int64_t index = 0; index < JK_ARRAY_COUNT(reverse_table); index++) {
         uint8_t byte = (uint8_t)index;
         reverse_table[index] = __builtin_bitreverse8(byte);

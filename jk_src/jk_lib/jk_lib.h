@@ -229,17 +229,13 @@ typedef struct JkBufferArray {
 
 #define JKS JK_STRING
 
-#define JK_STRING_INITIALIZER(string_literal)                    \
-    {                                                            \
-        JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal \
-    }
+#define JK_STRING_INITIALIZER(string_literal) \
+    {JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal}
 
 #define JKSI JK_STRING_INITIALIZER
 
-#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array)        \
-    {                                                     \
-        .size = JK_SIZEOF(byte_array), .data = byte_array \
-    }
+#define JK_BUFFER_INIT_FROM_BYTE_ARRAY(byte_array) \
+    {.size = JK_SIZEOF(byte_array), .data = byte_array}
 
 JK_PUBLIC void jk_buffer_zero(JkBuffer buffer);
 
@@ -1725,8 +1721,7 @@ JK_PUBLIC void jk_soft_assert_failed(char *message, char *file, int64_t line);
 #define JK_ARRAY_COUNT(array) (JK_SIZEOF(array) / JK_SIZEOF((array)[0]))
 
 #define JK_BUFFER_FROM_ARRAY(array)                    \
-    (JkBuffer)                                         \
-    {                                                  \
+    (JkBuffer) {                                       \
         .size = JK_ARRAY_COUNT(array), .data = (array) \
     }
 

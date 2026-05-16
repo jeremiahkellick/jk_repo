@@ -92,8 +92,7 @@ typedef struct IntArray4 {
     int32_t a[4];
 } IntArray4;
 
-static int32_t square_side_length_get(IntArray4 dimensions)
-{
+static int32_t square_side_length_get(IntArray4 dimensions) {
     int32_t min_dimension = INT32_MAX;
     for (int64_t i = 0; i < JK_ARRAY_COUNT(dimensions.a); i++) {
         if (dimensions.a[i] < min_dimension) {
@@ -103,8 +102,7 @@ static int32_t square_side_length_get(IntArray4 dimensions)
     return min_dimension / 10;
 }
 
-static void update_dimensions(HWND window)
-{
+static void update_dimensions(HWND window) {
     RECT rect;
     GetClientRect(window, &rect);
     g_window_dimensions.x = rect.right - rect.left;
@@ -133,8 +131,7 @@ typedef struct Rect {
     };
 } Rect;
 
-static Rect draw_rect_get(void)
-{
+static Rect draw_rect_get(void) {
     Rect result = {0};
 
     result.dimensions = (JkIntVec2){
@@ -150,8 +147,7 @@ static Rect draw_rect_get(void)
     return result;
 }
 
-static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect draw_rect)
-{
+static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect draw_rect) {
     HBRUSH brush = CreateSolidBrush(RGB(CLEAR_COLOR_R, CLEAR_COLOR_G, CLEAR_COLOR_B));
 
     WinRect inverse_rect = {draw_rect.pos.x + draw_rect.dimensions.x,
@@ -198,8 +194,7 @@ static void copy_draw_buffer_to_window(HWND window, HDC device_context, Rect dra
             SRCCOPY);
 }
 
-static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
-{
+static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     LRESULT result = 0;
 
     switch (message) {
@@ -273,11 +268,9 @@ static LRESULT window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return result;
 }
 
-static void debug_print(JkBuffer string)
-{
+static void debug_print(JkBuffer string) {
     AcquireSRWLockExclusive(&g_shared.debug_print_lock);
-    JK_ARENA_SCRATCH(scratch)
-    {
+    JK_ARENA_SCRATCH(scratch) {
         OutputDebugStringA(jk_null_terminated_from_buffer(scratch.arena, string));
     }
     ReleaseSRWLockExclusive(&g_shared.debug_print_lock);
@@ -295,8 +288,7 @@ static int64_t g_recorded_inputs_count;
 static Input g_recorded_inputs[1024];
 static Chess g_recorded_game_state;
 
-DWORD game_thread(LPVOID param)
-{
+DWORD game_thread(LPVOID param) {
     jk_platform_thread_init();
 
     HWND window = (HWND)param;
@@ -679,8 +671,7 @@ DWORD game_thread(LPVOID param)
     return 0;
 }
 
-DWORD ai_thread(LPVOID param)
-{
+DWORD ai_thread(LPVOID param) {
     jk_platform_thread_init();
 
     while (g_running) {
@@ -728,8 +719,7 @@ DWORD ai_thread(LPVOID param)
     return 0;
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     g_cursor = LoadCursorA(0, IDC_ARROW);
 
     g_audio_buffer_size =

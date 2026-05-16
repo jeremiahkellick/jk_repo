@@ -9,8 +9,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-static uint32_t crc32(JkBuffer buffer)
-{
+static uint32_t crc32(JkBuffer buffer) {
     uint32_t result = 0xffffffff;
     for (int64_t byte_index = 0; byte_index < buffer.size; byte_index++) {
         result ^= buffer.data[byte_index];
@@ -57,8 +56,7 @@ static uint8_t gzip_bytes[] = {
 
 static JkBuffer gzip_buffer = {.size = JK_SIZEOF(gzip_bytes), .data = gzip_bytes};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     b32 pass = 1;
 
     uint32_t crc = crc32(expected_result.contents);

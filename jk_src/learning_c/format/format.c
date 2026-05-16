@@ -26,8 +26,7 @@ int jk_format(void (*put_char)(char c, void *args),
         void *put_char_args,
         int max_characters,
         char *format_string,
-        va_list ap)
-{
+        va_list ap) {
     if (max_characters == 0) {
         return 0;
     }
@@ -55,20 +54,17 @@ int jk_format(void (*put_char)(char c, void *args),
     return char_count;
 }
 
-void file_put_char(char c, void *file)
-{
+void file_put_char(char c, void *file) {
     putc(c, (FILE *)file);
 }
 
-void string_put_char(char c, void *pointer)
-{
+void string_put_char(char c, void *pointer) {
     char **string_pointer = (char **)pointer;
     **string_pointer = c;
     (*string_pointer)++;
 }
 
-int jk_fprintf(FILE *file, char *format_string, ...)
-{
+int jk_fprintf(FILE *file, char *format_string, ...) {
     va_list ap;
     va_start(ap, format_string);
     int result = jk_format(file_put_char, file, -1, format_string, ap);
@@ -76,8 +72,7 @@ int jk_fprintf(FILE *file, char *format_string, ...)
     return result;
 }
 
-int jk_printf(char *format_string, ...)
-{
+int jk_printf(char *format_string, ...) {
     va_list ap;
     va_start(ap, format_string);
     int result = jk_format(file_put_char, stdout, -1, format_string, ap);
@@ -85,8 +80,7 @@ int jk_printf(char *format_string, ...)
     return result;
 }
 
-int jk_sprintf(char *buffer, int buffer_size, char *format_string, ...)
-{
+int jk_sprintf(char *buffer, int buffer_size, char *format_string, ...) {
     va_list ap;
     va_start(ap, format_string);
     char *pointer = buffer;
@@ -96,8 +90,7 @@ int jk_sprintf(char *buffer, int buffer_size, char *format_string, ...)
     return num_written;
 }
 
-int main(void)
-{
+int main(void) {
     jk_printf("%s, %s!\n", "Hello", "mate");
     jk_fprintf(stderr, "%s, %s!\n", "Hello", "bubby");
     char string[16];
