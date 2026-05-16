@@ -211,6 +211,11 @@ typedef struct TriangleNode {
     TexturedTriangle tri;
 } TriangleNode;
 
+typedef struct TriangleNodePtrArray {
+    int64_t count;
+    TriangleNode **e;
+} TriangleNodePtrArray;
+
 typedef struct Tile {
     TriangleNode *head;
 } Tile;
@@ -230,6 +235,21 @@ typedef struct TexturedVertexArray {
     int64_t count;
     TexturedVertex *e;
 } TexturedVertexArray;
+
+static int32_t triangle_node_ptr_compare(void *data, void *a_ptr, void *b_ptr)
+{
+    TriangleNode *a = *(TriangleNode **)a_ptr;
+    TriangleNode *b = *(TriangleNode **)b_ptr;
+    float a_z = a->tri.v[0].z + a->tri.v[1].z + a->tri.v[2].z;
+    float b_z = b->tri.v[0].z + b->tri.v[1].z + b->tri.v[2].z;
+    return a_z < b_z ? 1 : (b_z < a_z) ? -1 : 0;
+}
+
+static void quicksort_triangle_node_ptrs(TriangleNodePtrArray array)
+{
+    TriangleNode *tmp;
+    jk_quicksort(array.e, array.count, JK_SIZEOF(*array.e), &tmp, 0, triangle_node_ptr_compare);
+}
 
 static JkIntRect segment_bounding_box(JkQ16Vec2 v0, JkQ16Vec2 v1, int32_t radius)
 {
@@ -1424,6 +1444,7 @@ void render(JkContext *context, Environment *env)
     JkArenaScope scratch1 = {0};
     Input input = {0};
     int64_t frame_id = -1;
+    JkProfileTiming timing_rasterize = {0};
 
     JkMat4 clip_from_world = jk_mat4_i;
     JkMat4 screen_from_ndc = jk_mat4_i;
@@ -1578,6 +1599,7 @@ void render(JkContext *context, Environment *env)
         scratch1 = jk_arena_scratch_begin_not(scratch0.arena);
 
         // ---- Navigation begin ----------------------------------------------
+        JK_PROFILE_ZONE_TIME_BEGIN(walk_manifold);
 
         JkVec2 nav_origin = jk_vec2_sub(
                 jk_vec2_mul(1 / nav_density, jk_vec2_from_3(env->state.player_position)),
@@ -1783,11 +1805,13 @@ void render(JkContext *context, Environment *env)
         forward = jk_quat_rotate(yaw_quat, forward);
         JkVec3 right = {-forward.y, forward.x};
 
-        JkVec3 a = start.ring->vertices[0];
-        JkVec3 b = start.ring->vertices[start.triangle_index - 1];
-        JkVec3 c = start.ring->vertices[start.triangle_index];
-
-        JkVec3 up = jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a));
+        JkVec3 up;
+        {
+            JkVec3 a = start.ring->vertices[0];
+            JkVec3 b = start.ring->vertices[start.triangle_index - 1];
+            JkVec3 c = start.ring->vertices[start.triangle_index];
+            up = jk_vec3_cross(jk_vec3_sub(b, a), jk_vec3_sub(c, a));
+        }
         if (EPSILON < jk_vec3_magnitude_sqr(up)) {
             up = jk_vec3_normalized(up);
         } else {
@@ -1838,6 +1862,7 @@ void render(JkContext *context, Environment *env)
             env->state.player_position = destination.p;
         }
 
+        JK_PROFILE_ZONE_END(walk_manifold);
         // ---- Navigation end ------------------------------------------------
 
         JkTransform camera_transform = {
@@ -2053,6 +2078,9 @@ void render(JkContext *context, Environment *env)
         }
 
         next_tile_index = 0;
+
+        static JkProfileZone zone_rasterize;
+        jk_profile_zone_begin(&timing_rasterize, &zone_rasterize, JKS("rasterize"), 0);
     }
 
     jk_channel_sync();
@@ -2084,9 +2112,21 @@ void render(JkContext *context, Environment *env)
                 }
             }
 
+            JkArenaScope triangle_scope = jk_arena_scratch_begin();
             for (TriangleNode *node = tile->head; node; node = node->next) {
-                triangle_fill(env, node, textures.e + node->texture_id, bounding_box);
+                TriangleNode **slot = jk_arena_push(triangle_scope.arena, sizeof(*slot));
+                *slot = node;
             }
+            TriangleNodePtrArray triangles;
+            JK_ARRAY_FROM_ARENA_SCOPE(triangles, triangle_scope);
+            quicksort_triangle_node_ptrs(triangles);
+
+            for (int64_t i = 0; i < triangles.count; i++) {
+                triangle_fill(
+                        env, triangles.e[i], textures.e + triangles.e[i]->texture_id, bounding_box);
+            }
+
+            jk_arena_scope_end(triangle_scope);
 
             for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
                 for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
@@ -2125,6 +2165,8 @@ void render(JkContext *context, Environment *env)
 
     JK_CHANNEL_NARROW(0)
     {
+        jk_profile_zone_end(&timing_rasterize);
+
         jk_profile_frame_end();
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_P)) {
