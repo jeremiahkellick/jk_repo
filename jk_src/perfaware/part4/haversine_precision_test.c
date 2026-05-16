@@ -25,8 +25,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_profile_frame_begin();
 
     // Parse command line arguments

@@ -21,8 +21,7 @@ uint32_t values[] =
 
 char *file_name = "e_5_1_table.csv";
 
-static uint8_t most_significant_bit_index(uint32_t value)
-{
+static uint8_t most_significant_bit_index(uint32_t value) {
     if (value == 0) {
         return UINT8_MAX;
     }
@@ -34,8 +33,7 @@ static uint8_t most_significant_bit_index(uint32_t value)
     return 0;
 }
 
-static uint32_t mask(uint32_t value)
-{
+static uint32_t mask(uint32_t value) {
     uint8_t msb = most_significant_bit_index(value);
     if (10 < msb) {
         return (int32_t)0x80000000 >> (31 - (msb - 10));
@@ -44,8 +42,7 @@ static uint32_t mask(uint32_t value)
     }
 }
 
-static void print_binary(FILE *file, uint32_t value, uint8_t digit_count)
-{
+static void print_binary(FILE *file, uint32_t value, uint8_t digit_count) {
     uint32_t mask = 1 << (digit_count - 1);
     while (mask) {
         putc(value & mask ? '1' : '0', file);
@@ -53,8 +50,7 @@ static void print_binary(FILE *file, uint32_t value, uint8_t digit_count)
     }
 }
 
-static void print_value(FILE *file, uint32_t value)
-{
+static void print_value(FILE *file, uint32_t value) {
     print_binary(file, value >> 31, 1);
     fprintf(file, ":");
     print_binary(file, value >> 15, 16);
@@ -62,8 +58,7 @@ static void print_value(FILE *file, uint32_t value)
     print_binary(file, value, 15);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     FILE *file = fopen(file_name, "wb");
     if (file) {
         fprintf(file, "approx,d (bin),d_masked (bin),approx\n");

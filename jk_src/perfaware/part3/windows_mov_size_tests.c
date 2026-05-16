@@ -37,8 +37,7 @@ static TestCandidate candidates[] = {
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(candidates)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, jk_platform_page_size());

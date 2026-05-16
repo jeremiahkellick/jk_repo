@@ -16,8 +16,7 @@
 
 static char debug_print_buffer[4096];
 
-static int debug_printf(void (*debug_print)(char *), char *format, ...)
-{
+static int debug_printf(void (*debug_print)(char *), char *format, ...) {
     va_list args;
     va_start(args, format);
     int result = vsnprintf(debug_print_buffer, JK_ARRAY_COUNT(debug_print_buffer), format, args);
@@ -41,13 +40,11 @@ static JkColor color_move_prev = {.r = 0xff, .g = 0xa6, .b = 0x2b, .a = 0xff};
 static JkColor color_white_pieces = {.r = 0x85, .g = 0x92, .b = 0x82, .a = 0xff};
 static JkColor color_black_pieces = {.r = 0xa2, .g = 0x73, .b = 0xff, .a = 0xff};
 
-static JkColor blend(JkColor a, JkColor b)
-{
+static JkColor blend(JkColor a, JkColor b) {
     return (JkColor){.r = a.r / 2 + b.r / 2, .g = a.g / 2 + b.g / 2, .b = a.b / 2 + b.b / 2};
 }
 
-static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha)
-{
+static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha) {
     JkColor result = {0, 0, 0, 255};
     for (uint8_t i = 0; i < 3; i++) {
         result.v[i] = ((int32_t)foreground.v[i] * (int32_t)alpha
@@ -57,8 +54,7 @@ static JkColor blend_alpha(JkColor foreground, JkColor background, uint8_t alpha
     return result;
 }
 
-void bezier_render(JkContext *context, ChessAssets *assets, Bezier *bezier)
-{
+void bezier_render(JkContext *context, ChessAssets *assets, Bezier *bezier) {
     jk_context = context;
 
     float const canvas_size = 640.0f;

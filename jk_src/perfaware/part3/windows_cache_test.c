@@ -17,8 +17,7 @@ static JkPlatformRepetitionTest tests[17];
 #define STARTING_SIZE (16 * 1024)
 #define MAX_SIZE (STARTING_SIZE << (JK_ARRAY_COUNT(tests) - 1))
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, MAX_SIZE);

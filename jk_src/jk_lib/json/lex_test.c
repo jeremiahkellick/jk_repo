@@ -9,8 +9,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_platform_set_working_directory_to_executable_directory();
 
     JkArena *arena = jk_arena_scratch_begin().arena;

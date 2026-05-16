@@ -7,8 +7,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     if (argc != 2) {
         fprintf(stderr, "%s: Usage error\n", argv[0]);
         fprintf(stderr, "%s FILE_NAME\n", argv[0]);

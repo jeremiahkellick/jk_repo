@@ -20,8 +20,7 @@ double coefficients[TERMS_MAX];
 // Usage: results[i] where degree = 2i + 1
 double results[TERMS_MAX];
 
-void compute_coefficients()
-{
+void compute_coefficients() {
     double factorial = 1.0;
     double sign = 1.0;
     int i = 0;
@@ -35,8 +34,7 @@ void compute_coefficients()
 
 // Taylor series sin (expansion from 0)
 
-void compute_results_naive(double x)
-{
+void compute_results_naive(double x) {
     double result = 0.0;
     double x_squared = x * x;
     double x_raised = x;
@@ -47,8 +45,7 @@ void compute_results_naive(double x)
     }
 }
 
-double taylor_sin_horners(double x, int term_index)
-{
+double taylor_sin_horners(double x, int term_index) {
     double result = coefficients[term_index];
     double x_squared = x * x;
     while (term_index) {
@@ -57,8 +54,7 @@ double taylor_sin_horners(double x, int term_index)
     return result * x;
 }
 
-double taylor_sin_fma(double x, int term_index)
-{
+double taylor_sin_fma(double x, int term_index) {
     double result = coefficients[term_index];
     double x_squared = x * x;
     while (term_index) {
@@ -67,8 +63,7 @@ double taylor_sin_fma(double x, int term_index)
     return result * x;
 }
 
-double taylor_sin_fma_i(double x, int term_index)
-{
+double taylor_sin_fma_i(double x, int term_index) {
     __m128d result = _mm_set_sd(coefficients[term_index]);
     double x_squared = x * x;
     while (term_index) {
@@ -78,8 +73,7 @@ double taylor_sin_fma_i(double x, int term_index)
     return _mm_cvtsd_f64(result) * x;
 }
 
-int main(void)
-{
+int main(void) {
     compute_coefficients();
 
     JkPrecisionTest test = {0};

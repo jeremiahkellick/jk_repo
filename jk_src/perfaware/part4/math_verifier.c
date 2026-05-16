@@ -14,28 +14,23 @@
 
 #include "reference_tables.c"
 
-static double identity(double x)
-{
+static double identity(double x) {
     return x;
 }
 
-static double sqrtsd(double value)
-{
+static double sqrtsd(double value) {
     return _mm_cvtsd_f64(_mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(value)));
 }
 
-static double sqrtss(double value)
-{
+static double sqrtss(double value) {
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss((float)value)));
 }
 
-static double rsqrtss(double value)
-{
+static double rsqrtss(double value) {
     return _mm_cvtss_f32(_mm_rcp_ss(_mm_rsqrt_ss(_mm_set_ss((float)value))));
 }
 
-static double sin_deg_2(double value)
-{
+static double sin_deg_2(double value) {
     double sign = value < 0 ? -1.0 : 1.0;
     double x = sign * value;
     return sign * ((-4.0 / (JK_PI * JK_PI)) * x * x + (4.0 / JK_PI) * x);
@@ -45,21 +40,18 @@ static double sin_deg_2(double value)
 #define A ((8.0 - 8.0 * SQRT_OF_2) / (JK_PI * JK_PI))
 #define B ((-2.0 + 4 * SQRT_OF_2) / JK_PI)
 
-static double sin_deg_2_alt(double value)
-{
+static double sin_deg_2_alt(double value) {
     double sign = value < 0 ? -1.0 : 1.0;
     double abs = fabs(value);
     double x = JK_PI / 2.0 - fabs(-JK_PI / 2.0 + abs);
     return sign * (A * (x * x) + B * x);
 }
 
-static double cos_deg_2(double value)
-{
+static double cos_deg_2(double value) {
     return sin_deg_2_alt(value + JK_PI / 2.0);
 }
 
-int main(void)
-{
+int main(void) {
     jk_precision_test_check_reference("sin", sin, JK_ARRAY_COUNT(ref_table_sin), ref_table_sin);
     jk_precision_test_check_reference("cos", cos, JK_ARRAY_COUNT(ref_table_cos), ref_table_cos);
     jk_precision_test_check_reference("asin", asin, JK_ARRAY_COUNT(ref_table_asin), ref_table_asin);

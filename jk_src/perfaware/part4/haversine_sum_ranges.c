@@ -36,8 +36,7 @@ static Interval intervals[MATH_FUNCTION_COUNT] = {
     {.min = INFINITY, .max = -INFINITY},
 };
 
-static void print_tracked_intervals(void)
-{
+static void print_tracked_intervals(void) {
     printf("\n");
     for (int i = 0; i < MATH_FUNCTION_COUNT; i++) {
         printf("%s: %.3f-%.3f\n", interval_names[i], intervals[i].min, intervals[i].max);
@@ -45,8 +44,7 @@ static void print_tracked_intervals(void)
     printf("\n");
 }
 
-static void interval_include(Interval *interval, double value)
-{
+static void interval_include(Interval *interval, double value) {
     if (value < interval->min) {
         interval->min = value;
     }
@@ -55,33 +53,28 @@ static void interval_include(Interval *interval, double value)
     }
 }
 
-static double tracked_sin(double value)
-{
+static double tracked_sin(double value) {
     interval_include(&intervals[MATH_FUNCTION_SIN], value);
     return sin(value);
 }
 
-static double tracked_cos(double value)
-{
+static double tracked_cos(double value) {
     interval_include(&intervals[MATH_FUNCTION_COS], value);
     return cos(value);
 }
 
-static double tracked_asin(double value)
-{
+static double tracked_asin(double value) {
     interval_include(&intervals[MATH_FUNCTION_ASIN], value);
     return asin(value);
 }
 
-static double tracked_sqrt(double value)
-{
+static double tracked_sqrt(double value) {
     interval_include(&intervals[MATH_FUNCTION_SQRT], value);
     return sqrt(value);
 }
 
 static double haversine_track_intervals(
-        double X0, double Y0, double X1, double Y1, double EarthRadius)
-{
+        double X0, double Y0, double X1, double Y1, double EarthRadius) {
     double lat1 = Y0;
     double lat2 = Y1;
     double lon1 = X0;
@@ -101,8 +94,7 @@ static double haversine_track_intervals(
     return Result;
 }
 
-static double haversine_track_intervals_sum(HaversineContext context)
-{
+static double haversine_track_intervals_sum(HaversineContext context) {
     double sum = 0.0;
     double sum_coefficient = 1.0 / (double)context.pair_count;
 
@@ -116,8 +108,7 @@ static double haversine_track_intervals_sum(HaversineContext context)
     return sum;
 }
 
-static int64_t haversine_track_intervals_verify(HaversineContext context)
-{
+static int64_t haversine_track_intervals_verify(HaversineContext context) {
     int64_t error_count = 0;
 
     for (int64_t i = 0; i < context.pair_count; i++) {
@@ -150,8 +141,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_profile_frame_begin();
 
     // Parse command line arguments

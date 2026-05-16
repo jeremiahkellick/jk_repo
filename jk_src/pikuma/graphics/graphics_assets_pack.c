@@ -68,16 +68,14 @@ static int64_t thing_count = 0;
 static JkHashTable *fbx_id_map;
 static JkHashTable *texture_id_map;
 
-static Thing *thing_new(int64_t fbx_id)
-{
+static Thing *thing_new(int64_t fbx_id) {
     JK_DEBUG_ASSERT(thing_count < ARBITRARY_CAP);
     Thing *result = things + (thing_count++);
     jk_hash_table_put(fbx_id_map, fbx_id, (int64_t)result);
     return result;
 }
 
-static Thing *thing_by_fbx_id(int64_t fbx_id)
-{
+static Thing *thing_by_fbx_id(int64_t fbx_id) {
     Thing *result = 0;
     JkHashTableValue *value = jk_hash_table_get(fbx_id_map, fbx_id);
     if (value) {
@@ -86,8 +84,7 @@ static Thing *thing_by_fbx_id(int64_t fbx_id)
     return result;
 }
 
-void thing_connect(int64_t child_fbx_id, int64_t parent_fbx_id)
-{
+void thing_connect(int64_t child_fbx_id, int64_t parent_fbx_id) {
     Thing *child = thing_by_fbx_id(child_fbx_id);
     Thing *parent = thing_by_fbx_id(parent_fbx_id);
 
@@ -169,8 +166,7 @@ typedef struct Context {
     int64_t texture_count;
 } Context;
 
-static JkBuffer fbx_prop_string_read(uint8_t *base, int64_t *cursor)
-{
+static JkBuffer fbx_prop_string_read(uint8_t *base, int64_t *cursor) {
     JkFbxString *string = (JkFbxString *)(base + *cursor);
     *cursor += JK_SIZEOF(string->length) + string->length;
     return (JkBuffer){.size = string->length, .data = string->data};
@@ -178,13 +174,11 @@ static JkBuffer fbx_prop_string_read(uint8_t *base, int64_t *cursor)
 
 // ---- SVG begin --------------------------------------------------------------
 
-static b32 is_numeric(int c)
-{
+static b32 is_numeric(int c) {
     return isdigit(c) || c == '.' || c == '-';
 }
 
-static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
-{
+static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos) {
     JkFloatArray result = {.e = jk_arena_pointer_current(arena)};
     int c;
     while ((c = jk_buffer_character_get(shape_string, *pos)) != EOF
@@ -208,8 +202,7 @@ static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int
     return result;
 }
 
-JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim)
-{
+JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim) {
     int64_t start = *cursor;
     int c;
     do {
@@ -219,21 +212,18 @@ JkBuffer read_string(JkBuffer buffer, int64_t *cursor, int32_t delim)
                       : (JkBuffer){0};
 }
 
-b32 is_xml_tag_name_character(int32_t c)
-{
+b32 is_xml_tag_name_character(int32_t c) {
     c = jk_char_to_lower(c);
     return ('a' <= c && c <= 'z') || jk_char_is_digit(c) || c == '-' || c == '_' || c == ':'
             || c == '.';
 }
 
-b32 is_css_attribute_name_character(int32_t c)
-{
+b32 is_css_attribute_name_character(int32_t c) {
     c = jk_char_to_lower(c);
     return ('a' <= c && c <= 'z') || jk_char_is_digit(c) || c == '-' || c == '_';
 }
 
-uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor)
-{
+uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor) {
     uint8_t result = 0;
     for (int64_t i = 0; i < 2; i++) {
         result <<= 4;
@@ -246,8 +236,7 @@ uint8_t read_hex_byte(JkBuffer buffer, int64_t *cursor)
     return result;
 }
 
-b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *key, JkBuffer *value)
-{
+b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *key, JkBuffer *value) {
     // Key
     jk_buffer_skip_whitespace(svg, cursor);
     int64_t start = *cursor;
@@ -276,8 +265,7 @@ b32 svg_iterate_attributes(JkBuffer svg, int64_t *cursor, JkBuffer *key, JkBuffe
     return 1;
 }
 
-int64_t generate_sdf_texture(Context *context, JkBuffer name)
-{
+int64_t generate_sdf_texture(Context *context, JkBuffer name) {
     JkArena *arena = context->result_arena;
 
     Texture *tex = jk_arena_push(arena, JK_SIZEOF(*tex));
@@ -291,8 +279,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
     double page_opacity = -1;
 
     // Parse SVG data
-    JK_ARENA_SCOPE(arena)
-    {
+    JK_ARENA_SCOPE(arena) {
         JkBuffer svg = jk_platform_file_read(arena,
                 JK_FORMAT(arena, jkfn("../jk_assets/pikuma/graphics/"), jkfs(name), jkfn(".svg")));
         if (svg.size == 0) {
@@ -599,8 +586,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
 
     jk_arena_scope_end(scratch);
 
-    JK_ARENA_SCRATCH(file_arena)
-    {
+    JK_ARENA_SCRATCH(file_arena) {
         // Write sdf to a bitmap file
         JkBuffer bitmap_buffer = jk_arena_push_buffer(
                 file_arena.arena, sizeof(JkBitmapHeader) + sizeof(JkColor) * TEXTURE_PIXEL_COUNT);
@@ -642,8 +628,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name)
 
 // ---- SVG end ----------------------------------------------------------------
 
-static int32_t texture_get(Context *c, JkBuffer image_file_name)
-{
+static int32_t texture_get(Context *c, JkBuffer image_file_name) {
     JkBuffer name = jk_path_stem(image_file_name);
     JkHashTableKey hash = jk_buffer_hash(name);
     int64_t *value = jk_hash_table_get(texture_id_map, hash);
@@ -654,8 +639,7 @@ static int32_t texture_get(Context *c, JkBuffer image_file_name)
     }
 }
 
-static JkDoubleArray read_doubles(Context *c, JkFbxNode *node)
-{
+static JkDoubleArray read_doubles(Context *c, JkFbxNode *node) {
     JkDoubleArray result = {0};
     uint8_t type = *(node->name + node->name_length);
     if (0 < node->property_count && type == 'd') {
@@ -687,8 +671,7 @@ static JkDoubleArray read_doubles(Context *c, JkFbxNode *node)
     return result;
 }
 
-static JkInt32Array read_ints(Context *c, JkFbxNode *node)
-{
+static JkInt32Array read_ints(Context *c, JkFbxNode *node) {
     JkInt32Array result = {0};
     uint8_t type = *(node->name + node->name_length);
     if (0 < node->property_count && type == 'i') {
@@ -717,8 +700,7 @@ static JkInt32Array read_ints(Context *c, JkFbxNode *node)
     return result;
 }
 
-static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thing)
-{
+static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thing) {
     while (0 < pos && pos < file.size) {
         JkFbxNode *node = (JkFbxNode *)(file.data + pos);
         int64_t pos_children =
@@ -914,20 +896,17 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
     }
 }
 
-static ObjectId object_new(JkArenaScope objects_scope)
-{
+static ObjectId object_new(JkArenaScope objects_scope) {
     Object *object = jk_arena_push(objects_scope.arena, JK_SIZEOF(*object));
     return (ObjectId){object - (Object *)(objects_scope.arena->memory.data + objects_scope.base)};
 }
 
-static Object *object_get(JkArenaScope objects_scope, ObjectId id)
-{
+static Object *object_get(JkArenaScope objects_scope, ObjectId id) {
     return (Object *)(objects_scope.arena->memory.data + objects_scope.base) + id.i;
 }
 
 static void process_thing(
-        JkArenaScope objects_scope, int64_t vertices_base, Thing *thing, ObjectId object_id)
-{
+        JkArenaScope objects_scope, int64_t vertices_base, Thing *thing, ObjectId object_id) {
     if (!thing) {
         return;
     }
@@ -1012,24 +991,21 @@ static void process_thing(
     }
 }
 
-JkSpan arena_scope_span(JkArenaScope scope)
-{
+JkSpan arena_scope_span(JkArenaScope scope) {
     return (JkSpan){
         .size = scope.arena->pos - scope.base,
         .offset = scope.base,
     };
 }
 
-JkSpan append_arena(JkArena *dest, JkArena *src)
-{
+JkSpan append_arena(JkArena *dest, JkArena *src) {
     JkSpan result = {.size = src->pos, .offset = dest->pos};
     uint8_t *data = jk_arena_push(dest, result.size);
     jk_memcpy(data, src->memory.data, result.size);
     return result;
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_platform_set_working_directory_to_executable_directory();
 
     conversion_matrix = jk_mat4_conversion_from(coordinate_system);
@@ -1069,8 +1045,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     Assets *assets = jk_arena_push(&result_arena, JK_SIZEOF(*assets));
 
     // Fill out the rest of the shapes array with font data
-    JK_ARENA_SCOPE(&scratch_arena)
-    {
+    JK_ARENA_SCOPE(&scratch_arena) {
         char *ttf_file_name = "../jk_assets/pikuma/graphics/Inconsolata-Regular.ttf";
         JkBuffer ttf_file = jk_platform_file_read_full(&scratch_arena, ttf_file_name);
         if (!ttf_file.size) {

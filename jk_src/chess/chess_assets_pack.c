@@ -23,8 +23,7 @@ char *sound_file_paths[SOUND_COUNT] = {
     "../jk_assets/chess/lose.wav",
 };
 
-static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos)
-{
+static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos) {
     JkFloatArray result = {.e = jk_arena_pointer_current(arena)};
     int c;
     while ((c = jk_buffer_character_next(shape_string, pos)) != EOF
@@ -49,8 +48,7 @@ static JkFloatArray parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t
     return result;
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_platform_set_working_directory_to_executable_directory();
 
     JkArena scratch_arena = jk_platform_arena_virtual_init(JK_GIGABYTE);
@@ -60,8 +58,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     ChessAssets *assets = jk_arena_push_zero(&storage, JK_SIZEOF(*assets));
 
     // Fill out shapes array with piece data
-    JK_ARENA_SCOPE(&scratch_arena)
-    {
+    JK_ARENA_SCOPE(&scratch_arena) {
         JkBufferArray piece_strings =
                 jk_platform_file_read_lines(&scratch_arena, "../jk_assets/chess/paths.txt");
         JK_ASSERT(piece_strings.count == PIECE_TYPE_COUNT - 1);
@@ -188,8 +185,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
 
     // Fill out the rest of the shapes array with font data
-    JK_ARENA_SCOPE(&scratch_arena)
-    {
+    JK_ARENA_SCOPE(&scratch_arena) {
         char *ttf_file_name = "../jk_assets/chess/AmiriQuran-Regular.ttf";
         JkBuffer ttf_file = jk_platform_file_read_full(&scratch_arena, ttf_file_name);
         if (!ttf_file.size) {

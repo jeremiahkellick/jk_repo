@@ -32,13 +32,11 @@ JK_GLOBAL_DEFINE JkBuffer jk_json_token_strings[JK_JSON_TOKEN_TYPE_COUNT] = {
     JKSI("EOF"),
 };
 
-JK_PUBLIC b32 jk_json_is_whitespace(int64_t byte)
-{
+JK_PUBLIC b32 jk_json_is_whitespace(int64_t byte) {
     return byte == ' ' || byte == '\n' || byte == '\r' || byte == '\t';
 }
 
-JK_PUBLIC JkBuffer jk_json_token_to_string(JkArena *arena, JkJsonToken *token)
-{
+JK_PUBLIC JkBuffer jk_json_token_to_string(JkArena *arena, JkJsonToken *token) {
     if (token->type == JK_JSON_TOKEN_VALUE) {
         return jk_json_to_string(arena, token->value, 0);
     } else {
@@ -46,8 +44,7 @@ JK_PUBLIC JkBuffer jk_json_token_to_string(JkArena *arena, JkJsonToken *token)
     }
 }
 
-static void jk_json_to_string_internal(JkArena *arena, JkJson *json, int64_t indent_level)
-{
+static void jk_json_to_string_internal(JkArena *arena, JkJson *json, int64_t indent_level) {
     if (json->type == JK_JSON_ARRAY || json->type == JK_JSON_OBJECT) {
         b32 is_object = json->type == JK_JSON_OBJECT;
         if (!json->first_child) {
@@ -88,8 +85,7 @@ static void jk_json_to_string_internal(JkArena *arena, JkJson *json, int64_t ind
     JK_FORMAT(arena, jkfs(jk_json_type_strings[json->type]));
 }
 
-JK_PUBLIC JkBuffer jk_json_to_string(JkArena *arena, JkJson *json, int64_t indent_level)
-{
+JK_PUBLIC JkBuffer jk_json_to_string(JkArena *arena, JkJson *json, int64_t indent_level) {
     JkBuffer result = {.data = jk_arena_pointer_current(arena)};
     jk_json_to_string_internal(arena, json, indent_level);
     result.size = (uint8_t *)jk_arena_pointer_current(arena) - result.data;
@@ -120,8 +116,7 @@ static JkJsonExactMatch jk_json_exact_matches[] = {
     },
 };
 
-JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage)
-{
+JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage) {
     int64_t c;
     JkJsonToken token = {0};
 
@@ -250,8 +245,7 @@ JK_PUBLIC JkJsonToken jk_json_lex(JkBuffer text, int64_t *pos, JkArena *storage)
     } while (0)
 
 static JkJson *jk_json_parse_with_token(
-        JkBuffer text, int64_t *pos, JkJsonToken token, JkArena *storage)
-{
+        JkBuffer text, int64_t *pos, JkJsonToken token, JkArena *storage) {
     if (token.type == JK_JSON_TOKEN_VALUE) {
         return token.value;
     } else if (token.type == JK_JSON_TOKEN_OPEN_BRACE || token.type == JK_JSON_TOKEN_OPEN_BRACKET) {
@@ -321,8 +315,7 @@ static JkJson *jk_json_parse_with_token(
     }
 }
 
-JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
-{
+JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage) {
     JkJsonToken token;
     int64_t pos_alloc = 0;
     int64_t *pos = &pos_alloc;
@@ -332,8 +325,7 @@ JK_PUBLIC JkJson *jk_json_parse(JkBuffer text, JkArena *storage)
 
 #undef JK_JSON_LEX_NEXT_TOKEN
 
-JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage)
-{
+JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *storage) {
     int64_t c;
     int64_t pos = 0;
     JkBuffer string = {0};
@@ -408,8 +400,7 @@ JK_PUBLIC JkBuffer jk_json_parse_string(JkBuffer json_string_value, JkArena *sto
     return string;
 }
 
-JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name)
-{
+JK_PUBLIC JkJson *jk_json_member_get(JkJson *object, char *name) {
     JK_ASSERT(object->type == JK_JSON_OBJECT);
 
     for (JkJson *child = object->first_child; child; child = child->sibling) {

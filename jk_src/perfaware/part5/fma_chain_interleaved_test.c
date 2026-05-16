@@ -11,8 +11,7 @@
 
 #define INTERLEAVE_COUNT 8
 
-void straightforward(int64_t outer_loop_count, int64_t inner_loop_count)
-{
+void straightforward(int64_t outer_loop_count, int64_t inner_loop_count) {
     for (int64_t i = 0; i < outer_loop_count; i++) {
         float value = 1;
         JK_PRETEND_WRITE(value);
@@ -23,8 +22,7 @@ void straightforward(int64_t outer_loop_count, int64_t inner_loop_count)
     }
 }
 
-void interleaved(int64_t outer_loop_count, int64_t inner_loop_count)
-{
+void interleaved(int64_t outer_loop_count, int64_t inner_loop_count) {
     for (int64_t i = 0; i < outer_loop_count; i++) {
         double values[INTERLEAVE_COUNT];
         for (int64_t i = 0; i < INTERLEAVE_COUNT; i++) {
@@ -47,8 +45,7 @@ void interleaved(int64_t outer_loop_count, int64_t inner_loop_count)
     }
 }
 
-void compressed(int64_t outer_loop_count, int64_t inner_loop_count)
-{
+void compressed(int64_t outer_loop_count, int64_t inner_loop_count) {
     for (int64_t outer_index = 0; outer_index < outer_loop_count; outer_index++) {
         double values[INTERLEAVE_COUNT];
         for (int64_t i = 0; i < INTERLEAVE_COUNT; i++) {
@@ -81,8 +78,7 @@ static JkPlatformRepetitionTest tests[32][JK_ARRAY_COUNT(functions)];
 
 #define FMA_COUNT 3600000000ll
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (int64_t test_index = 0; test_index < JK_ARRAY_COUNT(tests); test_index++) {

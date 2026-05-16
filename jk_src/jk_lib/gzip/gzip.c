@@ -115,13 +115,11 @@ static JkBuffer jk_deflate_dist_fixed_code_lengths =
 static uint8_t jk_deflate_code_length_order[] = {
     16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
-static uint16_t jk_deflate_pad(uint16_t code, uint8_t code_length)
-{
+static uint16_t jk_deflate_pad(uint16_t code, uint8_t code_length) {
     return code << (16 - code_length);
 }
 
-static uint16_t jk_deflate_unpad(uint16_t padded_code, uint8_t code_length)
-{
+static uint16_t jk_deflate_unpad(uint16_t padded_code, uint8_t code_length) {
     return padded_code >> (16 - code_length);
 }
 
@@ -142,8 +140,7 @@ typedef struct JkDeflateHuffmanDecoder {
 } JkDeflateHuffmanDecoder;
 
 static void jk_deflate_huffman_decoder_init(
-        JkArena *arena, JkDeflateHuffmanDecoder *decoder, JkBuffer code_lengths)
-{
+        JkArena *arena, JkDeflateHuffmanDecoder *decoder, JkBuffer code_lengths) {
     jk_memset(decoder, 0, JK_SIZEOF(*decoder));
     decoder->initialized = 1;
 
@@ -184,8 +181,7 @@ static void jk_deflate_huffman_decoder_init(
 }
 
 static uint16_t jk_deflate_huffman_decode(
-        JkDeflateHuffmanDecoder *decoder, JkBuffer buffer, int64_t *bit_cursor)
-{
+        JkDeflateHuffmanDecoder *decoder, JkBuffer buffer, int64_t *bit_cursor) {
     uint16_t next_16_bits = jk_buffer_bits_peek(buffer, *bit_cursor, 16);
     uint16_t padded_code = jk_bit_reverse_u16(next_16_bits);
 
@@ -212,8 +208,7 @@ static uint16_t jk_deflate_huffman_decode(
 }
 
 // Decompresses data in the DEFLATE format
-JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompressed_size)
-{
+JK_PUBLIC JkBuffer jk_inflate(JkArena *arena, JkBuffer data, int64_t uncompressed_size) {
     JkBuffer result = {.data = jk_arena_push(arena, uncompressed_size)};
 
     int64_t bit_cursor = 0;
@@ -363,8 +358,7 @@ typedef struct __attribute__((packed)) JkZlibHeader {
 #pragma pack(pop)
 #endif
 
-JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, int64_t uncompressed_size)
-{
+JK_PUBLIC JkBuffer jk_zlib_decompress(JkArena *arena, JkBuffer data, int64_t uncompressed_size) {
     JkBuffer result = {0};
 
     int64_t pos = 0;
@@ -413,8 +407,7 @@ JK_PUBLIC JkBuffer jk_gzip_buffer_names[3] = {
     JKSI("contents"),
 };
 
-JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer)
-{
+JkGzipDecompressResult jk_gzip_decompress(JkArena *arena, JkBuffer buffer) {
     JkGzipDecompressResult result = {0};
 
     int64_t byte_cursor = 0;

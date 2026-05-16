@@ -10,8 +10,7 @@
 
 #include "listing_0187_arcsine_coefficients.c"
 
-static double compute_asin_from_table(double x, double *coefficients, int64_t coefficient_count)
-{
+static double compute_asin_from_table(double x, double *coefficients, int64_t coefficient_count) {
     b32 in_standard_range = x <= JK_INV_SQRT_2;
     if (!in_standard_range) {
         x = sqrt(1.0 - x * x);
@@ -22,8 +21,7 @@ static double compute_asin_from_table(double x, double *coefficients, int64_t co
     return in_standard_range ? result : (JK_PI / 2.0) - result;
 }
 
-int main(void)
-{
+int main(void) {
     JkPrecisionTest test = {0};
 
     while (jk_precision_test(&test, 0.0, 1.0, 100000000)) {

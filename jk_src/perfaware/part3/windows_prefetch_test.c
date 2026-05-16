@@ -33,8 +33,7 @@ Function functions[] = {
 // Usage: tests[rep_count_index][function_index]
 static JkPlatformRepetitionTest tests[32][JK_ARRAY_COUNT(functions)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     assert(JK_SIZEOF(Node) == 64);
 
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);

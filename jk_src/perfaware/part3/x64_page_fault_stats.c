@@ -20,8 +20,7 @@ typedef struct PagingIndicies {
     uint16_t v[PAGING_INDEX_TYPE_COUNT];
 } PagingIndicies;
 
-static PagingIndicies paging_indicies_get(void *pointer)
-{
+static PagingIndicies paging_indicies_get(void *pointer) {
     uint64_t p = (uint64_t)pointer;
     return (PagingIndicies){.v = {
                                 (p >> 12) & 0x1ff,
@@ -55,8 +54,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int page_count = 0;
     jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
     if (opts_parse.operand_count == 1) {

@@ -9,8 +9,7 @@
 
 #include "reference_tables.c"
 
-int main(void)
-{
+int main(void) {
     jk_precision_test_check_reference("sin", sin, JK_ARRAY_COUNT(ref_table_sin), ref_table_sin);
     jk_precision_test_check_reference("cos", cos, JK_ARRAY_COUNT(ref_table_cos), ref_table_cos);
     jk_precision_test_check_reference("asin", asin, JK_ARRAY_COUNT(ref_table_asin), ref_table_asin);

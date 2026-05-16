@@ -35,8 +35,7 @@ static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(sizes)];
 
 #define BUFFER_SIZE (1 * 1024 * 1024 * 1024)
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     JkBuffer buffer = jk_platform_memory_alloc(JK_ALLOC_COMMIT, BUFFER_SIZE);

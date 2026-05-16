@@ -11,8 +11,7 @@
 
 #include "platform.h"
 
-static int32_t jk_platform_init_common(int32_t argc, char **argv)
-{
+static int32_t jk_platform_init_common(int32_t argc, char **argv) {
     jk_platform_thread_init();
     return jk_platform_entry_point(argc, argv);
 }
@@ -30,19 +29,16 @@ typedef BOOL JkPlatformWindowsDpiFunction(DPI_AWARENESS_CONTEXT value);
 
 JK_GLOBAL_DEFINE HINSTANCE jk_platform_hinstance;
 
-int32_t WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
-{
+int32_t WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code) {
     jk_platform_hinstance = instance;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     jk_platform_set_working_directory_to_executable_directory();
     return jk_platform_init_common(__argc, __argv);
 }
 
-JK_PUBLIC void jk_platform_print(JkBuffer string)
-{
+JK_PUBLIC void jk_platform_print(JkBuffer string) {
     if (0 < string.size) {
-        JK_ARENA_SCRATCH(scratch)
-        {
+        JK_ARENA_SCRATCH(scratch) {
             OutputDebugStringA(jk_null_terminated_from_buffer(scratch.arena, string));
         }
     }
@@ -50,14 +46,12 @@ JK_PUBLIC void jk_platform_print(JkBuffer string)
 
 #else
 
-int32_t main(int32_t argc, char **argv)
-{
+int32_t main(int32_t argc, char **argv) {
     SetConsoleOutputCP(CP_UTF8);
     return jk_platform_init_common(argc, argv);
 }
 
-JK_PUBLIC void jk_platform_print(JkBuffer string)
-{
+JK_PUBLIC void jk_platform_print(JkBuffer string) {
     if (0 < string.size) {
         fwrite(string.data, 1, string.size, stdout);
     }
@@ -65,11 +59,9 @@ JK_PUBLIC void jk_platform_print(JkBuffer string)
 
 #endif
 
-JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path)
-{
+JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path) {
     struct __stat64 info = {0};
-    JK_ARENA_SCRATCH(scratch)
-    {
+    JK_ARENA_SCRATCH(scratch) {
         if (_stat64(jk_null_terminated_from_buffer(scratch.arena, path), &info)) {
             JK_LOGF(JK_LOG_ERROR,
                     jkfn("Could not determine the size of '"),
@@ -82,13 +74,11 @@ JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path)
     return (int64_t)info.st_size;
 }
 
-JK_PUBLIC int64_t jk_platform_page_size(void)
-{
+JK_PUBLIC int64_t jk_platform_page_size(void) {
     return 4096;
 }
 
-JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
-{
+JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size) {
     static DWORD flAllocationType[JK_ALLOC_TYPE_COUNT] = {
         /* JK_ALLOC_RESERVE = */ MEM_RESERVE,
         /* JK_ALLOC_COMMIT = */ MEM_COMMIT | MEM_RESERVE,
@@ -109,8 +99,7 @@ JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
     return result;
 }
 
-JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
-{
+JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size) {
     if (0 < size) {
         if (VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE)) {
             return 1;
@@ -123,8 +112,7 @@ JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
     }
 }
 
-JK_PUBLIC void jk_platform_memory_free(JkBuffer memory)
-{
+JK_PUBLIC void jk_platform_memory_free(JkBuffer memory) {
     if (0 < memory.size) {
         // TODO: Consider how to deal with different freeing behavior between Windows and Unix
         VirtualFree(memory.data, 0, MEM_RELEASE);
@@ -146,8 +134,7 @@ typedef struct _PROCESS_MEMORY_COUNTERS {
 
 typedef BOOL (*GetProcessMemoryInfoPointer)(HANDLE, PROCESS_MEMORY_COUNTERS *, DWORD);
 
-static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
-{
+static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void) {
     static uint8_t initialized;
     static HANDLE process;
     static HINSTANCE library;
@@ -175,28 +162,24 @@ static PROCESS_MEMORY_COUNTERS jk_process_memory_info_get(void)
     return memory_counters;
 }
 
-JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
-{
+JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void) {
     PROCESS_MEMORY_COUNTERS memory_counters = jk_process_memory_info_get();
     return memory_counters.PageFaultCount;
 }
 
-JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_platform_os_timer_get(void) {
     LARGE_INTEGER value;
     QueryPerformanceCounter(&value);
     return value.QuadPart;
 }
 
-JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
-{
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void) {
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
     return freq.QuadPart;
 }
 
-JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
-{
+JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void) {
     // Load executable file name into buffer
     char buffer[MAX_PATH];
     DWORD file_name_length = GetModuleFileNameA(0, buffer, MAX_PATH);
@@ -218,8 +201,7 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
     }
 }
 
-static void jk_windows_print_last_error(void)
-{
+static void jk_windows_print_last_error(void) {
     DWORD error_code = GetLastError();
     if (error_code == 0) {
         fprintf(stderr, "Unknown error\n");
@@ -236,8 +218,7 @@ static void jk_windows_print_last_error(void)
     }
 }
 
-JK_PUBLIC int jk_platform_exec(JkBufferArray command)
-{
+JK_PUBLIC int jk_platform_exec(JkBufferArray command) {
     static char command_buffer[4096];
 
     if (!command.count) {
@@ -286,13 +267,11 @@ JK_PUBLIC int jk_platform_exec(JkBufferArray command)
     return (int)exit_status;
 }
 
-JK_PUBLIC void jk_platform_sleep(int64_t milliseconds)
-{
+JK_PUBLIC void jk_platform_sleep(int64_t milliseconds) {
     Sleep(milliseconds);
 }
 
-JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
-{
+JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path) {
     char buffer[MAX_PATH];
 
     int64_t length = strlen(directory_path);
@@ -317,8 +296,7 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
     return 1;
 }
 
-JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
-{
+JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path) {
     char buffer[MAX_PATH];
 
     int64_t i = 0;
@@ -343,8 +321,7 @@ JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
 }
 
 JK_PUBLIC JK_NOINLINE JkBuffer jk_platform_stack_trace(
-        JkBuffer buffer, int64_t skip, int64_t indent)
-{
+        JkBuffer buffer, int64_t skip, int64_t indent) {
     static SRWLOCK lock = SRWLOCK_INIT;
     static uint8_t module_buffer[1024];
 
@@ -466,18 +443,15 @@ JK_PUBLIC JK_NOINLINE JkBuffer jk_platform_stack_trace(
     return result;
 }
 
-JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed)
-{
+JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed) {
     return InitializeSynchronizationBarrier(b, needed, 100);
 }
 
-JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b)
-{
+JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b) {
     EnterSynchronizationBarrier(b, 0);
 }
 
-JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b)
-{
+JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b) {
     DeleteSynchronizationBarrier(b);
 }
 
@@ -500,17 +474,14 @@ JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b)
 #include <time.h>
 #endif
 
-int32_t main(int32_t argc, char **argv)
-{
+int32_t main(int32_t argc, char **argv) {
     return jk_platform_init_common(argc, argv);
 }
 
-JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path)
-{
+JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path) {
     struct stat stat_struct = {0};
     int error_code = 0;
-    JK_ARENA_SCRATCH(scratch)
-    {
+    JK_ARENA_SCRATCH(scratch) {
         error_code = stat(jk_null_terminated_from_buffer(scratch.arena, path), &stat_struct);
     }
     if (error_code) {
@@ -525,8 +496,7 @@ JK_PUBLIC int64_t jk_platform_file_size(JkBuffer path)
     }
 }
 
-JK_PUBLIC int64_t jk_platform_page_size(void)
-{
+JK_PUBLIC int64_t jk_platform_page_size(void) {
     static int64_t page_size = 0;
     if (page_size == 0) {
         page_size = getpagesize();
@@ -534,8 +504,7 @@ JK_PUBLIC int64_t jk_platform_page_size(void)
     return page_size;
 }
 
-JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
-{
+JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size) {
     static int prot[JK_ALLOC_TYPE_COUNT] = {
         /* JK_ALLOC_RESERVE = */ PROT_NONE,
         /* JK_ALLOC_COMMIT = */ PROT_READ | PROT_WRITE,
@@ -552,8 +521,7 @@ JK_PUBLIC JkBuffer jk_platform_memory_alloc(JkAllocType type, int64_t size)
     return result;
 }
 
-JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
-{
+JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size) {
     if (0 < size) {
         if (mprotect(address, size, PROT_READ | PROT_WRITE)) {
             jk_log(JK_LOG_ERROR, JKS("Failed to commit memory"));
@@ -566,8 +534,7 @@ JK_PUBLIC b32 jk_platform_memory_commit(void *address, int64_t size)
     }
 }
 
-JK_PUBLIC void jk_platform_memory_free(JkBuffer memory)
-{
+JK_PUBLIC void jk_platform_memory_free(JkBuffer memory) {
     if (0 < memory.size) {
         // TODO: Consider how to deal with different freeing behavior between Windows and Unix
         munmap(memory.data, memory.size);
@@ -578,8 +545,7 @@ typedef struct JkPlatformOsMetrics {
     b32 initialized;
 } JkPlatformOsMetrics;
 
-JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
-{
+JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void) {
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) == 0) {
         return usage.ru_majflt + usage.ru_minflt;
@@ -590,13 +556,11 @@ JK_PUBLIC uint64_t jk_platform_page_fault_count_get(void)
 
 #if __APPLE__
 
-JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_platform_os_timer_get(void) {
     return mach_absolute_time();
 }
 
-JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
-{
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void) {
     mach_timebase_info_data_t timebase_info;
     JK_ASSERT(mach_timebase_info(&timebase_info) == KERN_SUCCESS);
     return (1000000000ll * timebase_info.denom) / timebase_info.numer;
@@ -606,22 +570,19 @@ JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
 
 #if __linux
 
-JK_PUBLIC uint64_t jk_platform_os_timer_get(void)
-{
+JK_PUBLIC uint64_t jk_platform_os_timer_get(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ll + (uint64_t)ts.tv_nsec;
 }
 
-JK_PUBLIC int64_t jk_platform_os_timer_frequency(void)
-{
+JK_PUBLIC int64_t jk_platform_os_timer_frequency(void) {
     return 1000000000ll;
 }
 
 #endif
 
-JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
-{
+JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void) {
 #if __APPLE__
     char path[PATH_MAX];
     uint32_t bufsize = PATH_MAX;
@@ -668,8 +629,7 @@ JK_PUBLIC void jk_platform_set_working_directory_to_executable_directory(void)
 #endif
 }
 
-JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
-{
+JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path) {
     char buffer[PATH_MAX];
 
     int64_t length = jk_strlen(directory_path);
@@ -698,8 +658,7 @@ JK_PUBLIC b32 jk_platform_ensure_directory_exists(char *directory_path)
     return 1;
 }
 
-JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
-{
+JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path) {
     char buffer[PATH_MAX];
 
     int64_t i = 0;
@@ -727,20 +686,17 @@ JK_PUBLIC b32 jk_platform_create_directory(JkBuffer path)
     return 1;
 }
 
-JK_PUBLIC JkBuffer jk_platform_stack_trace(JkBuffer buffer, int64_t skip, int64_t indent)
-{
+JK_PUBLIC JkBuffer jk_platform_stack_trace(JkBuffer buffer, int64_t skip, int64_t indent) {
     return (JkBuffer){0};
 }
 
-JK_PUBLIC void jk_platform_print(JkBuffer string)
-{
+JK_PUBLIC void jk_platform_print(JkBuffer string) {
     if (0 < string.size) {
         fwrite(string.data, 1, string.size, stdout);
     }
 }
 
-JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed)
-{
+JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed) {
     b->needed = needed;
     b->called = 0;
     if (pthread_mutex_init(&b->mutex, 0)) {
@@ -754,8 +710,7 @@ JK_PUBLIC b32 jk_platform_barrier_init(JkPlatformBarrier *b, int64_t needed)
     return 1;
 }
 
-JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b)
-{
+JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b) {
     pthread_mutex_lock(&b->mutex);
     b->called++;
     if (b->called == b->needed) {
@@ -767,8 +722,7 @@ JK_PUBLIC void jk_platform_barrier_wait(JkPlatformBarrier *b)
     pthread_mutex_unlock(&b->mutex);
 }
 
-JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b)
-{
+JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b) {
     if (pthread_mutex_destroy(&b->mutex)) {
         jk_log(JK_LOG_ERROR, JKS("Failed to destory mutex"));
     }
@@ -791,8 +745,7 @@ JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b)
 #include <x86intrin.h>
 #endif
 
-JK_PUBLIC double jk_platform_fma_64(double a, double b, double c)
-{
+JK_PUBLIC double jk_platform_fma_64(double a, double b, double c) {
     return _mm_cvtsd_f64(_mm_fmadd_sd(_mm_set_sd(a), _mm_set_sd(b), _mm_set_sd(c)));
 }
 
@@ -804,8 +757,7 @@ JK_PUBLIC double jk_platform_fma_64(double a, double b, double c)
 
 // ---- Virtual arena begin ------------------------------------------------------------
 
-static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
-{
+static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size) {
     new_size = jk_platform_page_size_round_up(new_size);
     JK_DEBUG_ASSERT(arena->memory.size <= new_size);
     int64_t virtual_size = (int64_t)arena->user_data;
@@ -823,8 +775,7 @@ static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size)
     }
 }
 
-JK_PUBLIC JkArena jk_platform_arena_virtual_init(int64_t virtual_size)
-{
+JK_PUBLIC JkArena jk_platform_arena_virtual_init(int64_t virtual_size) {
     JkArena result = {0};
 
     JkBuffer reserved = jk_platform_memory_alloc(JK_ALLOC_RESERVE, virtual_size);
@@ -846,8 +797,7 @@ JK_PUBLIC JkArena jk_platform_arena_virtual_init(int64_t virtual_size)
     return result;
 }
 
-JK_PUBLIC void jk_platform_arena_virtual_release(JkArena *arena)
-{
+JK_PUBLIC void jk_platform_arena_virtual_release(JkArena *arena) {
     int64_t virtual_size = (int64_t)arena->user_data;
     jk_platform_memory_free((JkBuffer){.size = virtual_size, .data = arena->memory.data});
 }
@@ -859,8 +809,7 @@ JK_PUBLIC void jk_platform_arena_virtual_release(JkArena *arena)
 JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *test,
         int64_t target_byte_count,
         int64_t frequency,
-        int64_t try_for_seconds)
-{
+        int64_t try_for_seconds) {
     if (test->state == JK_REPETITION_TEST_ERROR) {
         return;
     }
@@ -875,23 +824,20 @@ JK_PUBLIC void jk_platform_repetition_test_run_wave(JkPlatformRepetitionTest *te
     test->last_found_min_time = jk_cpu_timer_get();
 }
 
-JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *test)
-{
+JK_PUBLIC void jk_platform_repetition_test_time_begin(JkPlatformRepetitionTest *test) {
     test->block_open_count++;
     test->current.page_fault_count -= jk_platform_page_fault_count_get();
     test->current.cpu_time -= jk_cpu_timer_get();
 }
 
-JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test)
-{
+JK_PUBLIC void jk_platform_repetition_test_time_end(JkPlatformRepetitionTest *test) {
     test->current.cpu_time += jk_cpu_timer_get();
     test->current.page_fault_count += jk_platform_page_fault_count_get();
     test->block_close_count++;
 }
 
 JK_PUBLIC double jk_platform_repetition_test_bandwidth(
-        JkPlatformRepetitionTestSample sample, int64_t frequency)
-{
+        JkPlatformRepetitionTestSample sample, int64_t frequency) {
     double seconds =
             (double)sample.v[JK_PLATFORM_REPETITION_TEST_VALUE_CPU_TIME] / (double)frequency;
     return (double)sample.v[JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT] / seconds;
@@ -901,8 +847,7 @@ static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *t
         char *name,
         JkPlatformRepetitionTestSampleType type,
         int64_t frequency,
-        JkPlatformRepetitionTest *baseline)
-{
+        JkPlatformRepetitionTest *baseline) {
     JkPlatformRepetitionTestSample *sample = test->samples + type;
 
     int64_t count = sample->count ? sample->count : 1;
@@ -940,8 +885,7 @@ static void jk_platform_repetition_test_print_sample(JkPlatformRepetitionTest *t
 }
 
 JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
-        JkPlatformRepetitionTest *test, JkPlatformRepetitionTest *baseline)
-{
+        JkPlatformRepetitionTest *test, JkPlatformRepetitionTest *baseline) {
     if (test->state != JK_REPETITION_TEST_RUNNING) {
         return 0;
     }
@@ -1012,19 +956,16 @@ JK_PUBLIC b32 jk_platform_repetition_test_running_baseline(
     return test->state == JK_REPETITION_TEST_RUNNING;
 }
 
-JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test)
-{
+JK_PUBLIC b32 jk_platform_repetition_test_running(JkPlatformRepetitionTest *test) {
     return jk_platform_repetition_test_running_baseline(test, 0);
 }
 
 JK_PUBLIC void jk_platform_repetition_test_count_bytes(
-        JkPlatformRepetitionTest *test, int64_t bytes)
-{
+        JkPlatformRepetitionTest *test, int64_t bytes) {
     test->current.v[JK_PLATFORM_REPETITION_TEST_VALUE_BYTE_COUNT] += bytes;
 }
 
-JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test, char *message)
-{
+JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test, char *message) {
     test->state = JK_REPETITION_TEST_ERROR;
     fprintf(stderr, "%s\n", message);
 }
@@ -1033,8 +974,7 @@ JK_PUBLIC void jk_platform_repetition_test_error(JkPlatformRepetitionTest *test,
 
 // ---- Command line arguments parsing begin -----------------------------------
 
-static void jk_argv_swap_to_front(char **argv, char **arg)
-{
+static void jk_argv_swap_to_front(char **argv, char **arg) {
     for (; arg > argv; arg--) {
         char *tmp = *arg;
         *arg = *(arg - 1);
@@ -1047,8 +987,7 @@ JK_PUBLIC void jk_options_parse(int argc,
         JkOption *options_in,
         JkOptionResult *options_out,
         int64_t option_count,
-        JkOptionsParseResult *result)
-{
+        JkOptionsParseResult *result) {
     b32 options_ended = 0;
     result->operands = &argv[argc];
     result->operand_count = 0;
@@ -1157,8 +1096,7 @@ JK_PUBLIC void jk_options_parse(int argc,
     }
 }
 
-JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count)
-{
+JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_count) {
     fprintf(file, "OPTIONS\n");
     for (int i = 0; i < option_count; i++) {
         if (i != 0) {
@@ -1184,8 +1122,7 @@ JK_PUBLIC void jk_options_print_help(FILE *file, JkOption *options, int option_c
     }
 }
 
-JK_PUBLIC double jk_parse_double(JkBuffer number_string)
-{
+JK_PUBLIC double jk_parse_double(JkBuffer number_string) {
     if (number_string.size <= 0) {
         return 0;
     }
@@ -1253,13 +1190,11 @@ JK_PUBLIC double jk_parse_double(JkBuffer number_string)
 
 // ---- Command line arguments parsing end -------------------------------------
 
-static void jk_platform_barrier_wait_void(void *pointer)
-{
+static void jk_platform_barrier_wait_void(void *pointer) {
     jk_platform_barrier_wait(pointer);
 }
 
-JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel)
-{
+JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel) {
     static JK_THREAD_LOCAL JkContext context;
     for (int64_t i = 0; i < JK_ARRAY_COUNT(context.scratch_arenas); i++) {
         context.scratch_arenas[i] = jk_platform_arena_virtual_init(8 * JK_GIGABYTE);
@@ -1271,32 +1206,27 @@ JK_PUBLIC void jk_platform_thread_init_channel(JkChannel channel)
     jk_context = &context;
 }
 
-JK_PUBLIC void jk_platform_thread_init(void)
-{
+JK_PUBLIC void jk_platform_thread_init(void) {
     jk_platform_thread_init_channel((JkChannel){.index = 0, .count = 1, .barrier = 0});
 }
 
-JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n)
-{
+JK_PUBLIC int64_t jk_platform_page_size_round_up(int64_t n) {
     int64_t page_size = jk_platform_page_size();
     return (n + page_size - 1) & ~(page_size - 1);
 }
 
-JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n)
-{
+JK_PUBLIC int64_t jk_platform_page_size_round_down(int64_t n) {
     int64_t page_size = jk_platform_page_size();
     return n & ~(page_size - 1);
 }
 
-JK_PUBLIC JkBuffer jk_platform_file_read(JkArena *arena, JkBuffer path)
-{
+JK_PUBLIC JkBuffer jk_platform_file_read(JkArena *arena, JkBuffer path) {
     JkBuffer result = {0};
 
     b32 errno_error = 0;
 
     FILE *file = 0;
-    JK_ARENA_SCRATCH_NOT(scratch, arena)
-    {
+    JK_ARENA_SCRATCH_NOT(scratch, arena) {
         char *path_nt = jk_null_terminated_from_buffer(scratch.arena, path);
         file = fopen(path_nt, "rb");
     }
@@ -1328,13 +1258,11 @@ JK_PUBLIC JkBuffer jk_platform_file_read(JkArena *arena, JkBuffer path)
     return result;
 }
 
-JK_PUBLIC b32 jk_platform_file_write(JkBuffer path, JkBuffer contents)
-{
+JK_PUBLIC b32 jk_platform_file_write(JkBuffer path, JkBuffer contents) {
     b32 success = 1;
 
     FILE *file = 0;
-    JK_ARENA_SCRATCH(scratch)
-    {
+    JK_ARENA_SCRATCH(scratch) {
         file = fopen(jk_null_terminated_from_buffer(scratch.arena, path), "wb");
     }
     if (file) {
@@ -1356,8 +1284,7 @@ JK_PUBLIC b32 jk_platform_file_write(JkBuffer path, JkBuffer contents)
     return success;
 }
 
-JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
-{
+JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name) {
     JK_PROFILE_ZONE_TIME_BEGIN(jk_platform_file_read_full);
 
     FILE *file = fopen(file_name, "rb");
@@ -1394,8 +1321,7 @@ JK_PUBLIC JkBuffer jk_platform_file_read_full(JkArena *arena, char *file_name)
     return buffer;
 }
 
-JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name)
-{
+JK_PUBLIC JkBufferArray jk_platform_file_read_lines(JkArena *arena, char *file_name) {
     JkBuffer file = jk_platform_file_read_full(arena, file_name);
     JkBufferArray lines = {.e = jk_arena_pointer_current(arena)};
 
@@ -1432,8 +1358,7 @@ end:
 }
 
 JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
-        JkBuffer buffer, JkBuffer file_path, JkBuffer array_name)
-{
+        JkBuffer buffer, JkBuffer file_path, JkBuffer array_name) {
     b32 result = 0;
 
     if (!jk_platform_create_directory(jk_path_directory(file_path))) {
@@ -1479,8 +1404,7 @@ JK_PUBLIC b32 jk_platform_write_as_c_byte_array(
     return result;
 }
 
-JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait)
-{
+JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_to_wait) {
     int64_t os_freq = jk_platform_os_timer_frequency();
     int64_t os_wait_time = os_freq * milliseconds_to_wait / 1000;
 
@@ -1499,20 +1423,17 @@ JK_PUBLIC int64_t jk_platform_cpu_timer_frequency_estimate(int64_t milliseconds_
     return os_freq * cpu_elapsed / os_elapsed;
 }
 
-JK_PUBLIC void jk_platform_profile_end_and_print(void)
-{
+JK_PUBLIC void jk_platform_profile_end_and_print(void) {
     jk_profile_frame_end();
 
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
-    JK_ARENA_SCRATCH(scratch)
-    {
+    JK_ARENA_SCRATCH(scratch) {
         jk_log(JK_LOG_INFO, jk_profile_report(scratch.arena, frequency));
     }
 }
 
-JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count)
-{
+JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t byte_count) {
     int64_t abs = JK_ABS(byte_count);
     if (abs < 1024) {
         fprintf(file, "%lld bytes", (long long)byte_count);
@@ -1528,8 +1449,7 @@ JK_PUBLIC void jk_platform_print_bytes_int64(FILE *file, char *format, int64_t b
     }
 }
 
-JK_PUBLIC void jk_platform_print_bytes_double(FILE *file, char *format, double byte_count)
-{
+JK_PUBLIC void jk_platform_print_bytes_double(FILE *file, char *format, double byte_count) {
     if (byte_count < 1024.0) {
         fprintf(file, "%.0f bytes", byte_count);
     } else if (byte_count < 1024.0 * 1024.0) {

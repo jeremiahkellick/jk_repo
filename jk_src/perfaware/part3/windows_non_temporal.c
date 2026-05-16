@@ -31,8 +31,7 @@ static Function functions[] = {
 
 static JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     int64_t input_size = 16ll * 1024;

@@ -12,25 +12,24 @@
 
 // ---- Define OS_NAME ---------------------------------------------------------
 #ifdef _WIN32
-    #define OS_NAME "Windows"
+#define OS_NAME "Windows"
 #elif __APPLE__
-    #include <TargetConditionals.h>
-    #if TARGET_OS_MAC
-        #define OS_NAME "macOS"
-    #else
-        #define OS_NAME "Unknown"
-    #endif
-#elif __linux__
-    #define OS_NAME "Linux"
+#include <TargetConditionals.h>
+#if TARGET_OS_MAC
+#define OS_NAME "macOS"
 #else
-    #define OS_NAME "Unknown"
+#define OS_NAME "Unknown"
+#endif
+#elif __linux__
+#define OS_NAME "Linux"
+#else
+#define OS_NAME "Unknown"
 #endif
 // -----------------------------------------------------------------------------
 
 #define print_os() printf("OS: " OS_NAME "\n")
 
-int main(void)
-{
+int main(void) {
     char *tmp_s;
     char *a = "a";
     char *b = "b";

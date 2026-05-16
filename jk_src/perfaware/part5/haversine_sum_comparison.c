@@ -30,8 +30,7 @@ static JkOptionsParseResult opts_parse = {0};
 
 static char *program_name = "<program_name global should be overwritten with argv[0]>";
 
-static double haversine_sum_1(HaversineContext context)
-{
+static double haversine_sum_1(HaversineContext context) {
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
@@ -51,8 +50,7 @@ static double haversine_sum_1(HaversineContext context)
     return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
 }
 
-static double haversine_sum_2(HaversineContext context)
-{
+static double haversine_sum_2(HaversineContext context) {
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
@@ -74,8 +72,7 @@ static double haversine_sum_2(HaversineContext context)
     return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
 }
 
-static double haversine_sum_3(HaversineContext context)
-{
+static double haversine_sum_3(HaversineContext context) {
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
@@ -102,8 +99,7 @@ static double haversine_sum_3(HaversineContext context)
     return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
 }
 
-static double haversine_sum_4(HaversineContext context)
-{
+static double haversine_sum_4(HaversineContext context) {
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1 = RADIANS_PER_DEGREE * context.pairs[i].v[Y0];
@@ -133,8 +129,7 @@ static double haversine_sum_4(HaversineContext context)
     return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
 }
 
-static double haversine_sum_5(HaversineContext context)
-{
+static double haversine_sum_5(HaversineContext context) {
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1_deg = context.pairs[i].v[Y0];
@@ -164,8 +159,7 @@ static double haversine_sum_5(HaversineContext context)
     return (2.0 * EARTH_RADIUS * sum) / context.pair_count;
 }
 
-static double haversine_sum_6(HaversineContext context)
-{
+static double haversine_sum_6(HaversineContext context) {
     double sum = 0.0;
     for (int64_t i = 0; i < context.pair_count; i++) {
         double lat1_deg = context.pairs[i].v[Y0];
@@ -216,8 +210,7 @@ TestFunction functions[] = {
 
 JkPlatformRepetitionTest tests[JK_ARRAY_COUNT(functions)];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     program_name = argv[0];
 
     // Parse command line arguments

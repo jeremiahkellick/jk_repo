@@ -13,8 +13,7 @@
 static SRWLOCK jk_stack_trace_lock = SRWLOCK_INIT;
 static uint8_t jk_stack_trace_module_buffer[1024];
 
-JK_NOINLINE JkBuffer stack_trace(JkBuffer buffer, int64_t skip, int64_t indent)
-{
+JK_NOINLINE JkBuffer stack_trace(JkBuffer buffer, int64_t skip, int64_t indent) {
     AcquireSRWLockExclusive(&jk_stack_trace_lock);
 
     JkBuffer result = {.size = 0, .data = buffer.data};
@@ -135,23 +134,19 @@ JK_NOINLINE JkBuffer stack_trace(JkBuffer buffer, int64_t skip, int64_t indent)
 uint8_t stack_trace_byte_array[4096];
 JkBuffer stack_trace_buffer = JK_BUFFER_INIT_FROM_BYTE_ARRAY(stack_trace_byte_array);
 
-void foo(void)
-{
+void foo(void) {
     jk_platform_print(stack_trace(stack_trace_buffer, 1, 2));
 }
 
-void bar(void)
-{
+void bar(void) {
     foo();
 }
 
-void baz(void)
-{
+void baz(void) {
     bar();
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     baz();
 
     return 0;

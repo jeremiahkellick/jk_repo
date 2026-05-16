@@ -6,13 +6,11 @@
 
 // ---- Hash table begin -------------------------------------------------------
 
-static b32 jk_shapes_is_load_factor_exceeded(int64_t count, int64_t capacity)
-{
+static b32 jk_shapes_is_load_factor_exceeded(int64_t count, int64_t capacity) {
     return count > (capacity * JK_SHAPES_HASH_TABLE_LOAD_FACTOR / 10);
 }
 
-JK_PUBLIC JkShapesHashTable *jk_shapes_hash_table_init(JkShapesHashTable *t, JkBuffer memory)
-{
+JK_PUBLIC JkShapesHashTable *jk_shapes_hash_table_init(JkShapesHashTable *t, JkBuffer memory) {
     t->capacity = jk_round_down_to_power_of_2(memory.size / JK_SIZEOF(JkShapesHashTableSlot));
     JK_DEBUG_ASSERT(jk_is_power_of_two(t->capacity));
     t->slots = (JkShapesHashTableSlot *)memory.data;
@@ -23,8 +21,7 @@ JK_PUBLIC JkShapesHashTable *jk_shapes_hash_table_init(JkShapesHashTable *t, JkB
     return t;
 }
 
-JK_PUBLIC JkShapesHashTableSlot *jk_shapes_hash_table_probe(JkShapesHashTable *t, int64_t key)
-{
+JK_PUBLIC JkShapesHashTableSlot *jk_shapes_hash_table_probe(JkShapesHashTable *t, int64_t key) {
     // Hash and mask off bits to get a result in the range 0..capacity-1. Assumes capacity is a
     // power if 2.
     int64_t slot_i = jk_hash_uint32((uint32_t)(key >> 32) ^ (uint32_t)key) & (t->capacity - 1);
@@ -51,8 +48,7 @@ JK_PUBLIC JkShapesHashTableSlot *jk_shapes_hash_table_probe(JkShapesHashTable *t
 }
 
 JK_PUBLIC void jk_shapes_hash_table_set(
-        JkShapesHashTable *t, JkShapesHashTableSlot *slot, int64_t key, JkShapesBitmap value)
-{
+        JkShapesHashTable *t, JkShapesHashTableSlot *slot, int64_t key, JkShapesBitmap value) {
     if (!slot->filled) {
         // Write to key, mark as filled, and increase the count
         slot->key = key;
@@ -71,8 +67,7 @@ JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
         float pixels_per_unit,
         void *base_pointer,
         JkShapeArray shapes,
-        JkArena *arena)
-{
+        JkArena *arena) {
     renderer->pixels_per_unit = pixels_per_unit;
     renderer->base_pointer = base_pointer;
     renderer->shapes = shapes;
@@ -86,13 +81,11 @@ JK_PUBLIC void jk_shapes_renderer_init(JkShapesRenderer *renderer,
     renderer->draw_commands_head = 0;
 }
 
-static int64_t jk_shapes_bitmap_key_get(int64_t shape_index, float scale)
-{
+static int64_t jk_shapes_bitmap_key_get(int64_t shape_index, float scale) {
     return (shape_index << 32) | *(uint32_t *)&scale;
 }
 
-static JkVec2 jk_shapes_evaluate_bezier_quadratic(float t, JkVec2 p0, JkVec2 p1, JkVec2 p2)
-{
+static JkVec2 jk_shapes_evaluate_bezier_quadratic(float t, JkVec2 p0, JkVec2 p1, JkVec2 p2) {
     float t_squared = t * t;
     float one_minus_t = 1.0f - t;
     float one_minus_t_squared = one_minus_t * one_minus_t;
@@ -103,8 +96,7 @@ static JkVec2 jk_shapes_evaluate_bezier_quadratic(float t, JkVec2 p0, JkVec2 p1,
     return result;
 }
 
-static JkVec2 jk_shapes_evaluate_bezier_cubic(float t, JkVec2 p0, JkVec2 p1, JkVec2 p2, JkVec2 p3)
-{
+static JkVec2 jk_shapes_evaluate_bezier_cubic(float t, JkVec2 p0, JkVec2 p1, JkVec2 p2, JkVec2 p3) {
     float t_squared = t * t;
     float t_cubed = t_squared * t;
     float one_minus_t = 1.0f - t;
@@ -130,8 +122,7 @@ typedef struct JkShapesArcByCenter {
 
 // https://www.w3.org/TR/SVG2/implnote.html#ArcImplementationNotes
 static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
-        JkVec2 offset, float scale, JkVec2 point_start, JkShapesArcByEndpoint a)
-{
+        JkVec2 offset, float scale, JkVec2 point_start, JkShapesArcByEndpoint a) {
     JkShapesArcByCenter r = {0};
 
     // Transform arc values
@@ -218,8 +209,7 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
     return r;
 }
 
-static JkVec2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc)
-{
+static JkVec2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc) {
     float angle = arc.angle_start + t * arc.angle_delta;
     return jk_vec2_add(jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
                                (JkVec2){arc.dimensions.x * jk_cos_f32(angle),
@@ -240,8 +230,7 @@ static void jk_shapes_linearizer_init(JkShapesLinearizer *l,
         JkArena *arena,
         JkShapesPointListNode **current_node,
         JkVec2 target,
-        float tolerance)
-{
+        float tolerance) {
     l->arena = arena;
     l->current_node = current_node;
     l->tolerance_squared = tolerance * tolerance;
@@ -257,8 +246,7 @@ static void jk_shapes_linearizer_init(JkShapesLinearizer *l,
     l->start_node->t = 0.0f;
 }
 
-static b32 jk_shapes_linearizer_running(JkShapesLinearizer *l)
-{
+static b32 jk_shapes_linearizer_running(JkShapesLinearizer *l) {
     if ((*l->current_node)->next) {
         l->t = ((*l->current_node)->t + (*l->current_node)->next->t) / 2.0f;
         return 1;
@@ -267,8 +255,7 @@ static b32 jk_shapes_linearizer_running(JkShapesLinearizer *l)
     }
 }
 
-static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVec2 point)
-{
+static void jk_shapes_linearizer_evaluate(JkShapesLinearizer *l, JkVec2 point) {
     JkShapesPointListNode *next = (*l->current_node)->next;
     JkVec2 approx_point = jk_vec2_lerp((*l->current_node)->point, next->point, 0.5f);
 
@@ -290,8 +277,7 @@ JK_PUBLIC JkEdgeArray jk_shapes_edges_get(JkArena *arena,
         JkVec2 offset,
         float scale,
         float tolerance,
-        b32 skip_horizontal)
-{
+        b32 skip_horizontal) {
     JkShapesPointListNode *start_node = jk_arena_push(arena, JK_SIZEOF(*start_node));
     start_node->next = 0;
     start_node->point = (JkVec2){0};
@@ -383,8 +369,7 @@ JK_PUBLIC JkEdgeArray jk_shapes_edges_get(JkArena *arena,
 
 // No bounds checking so they return the intersection as if the segment was an infinite line
 
-JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect)
-{
+JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect rect) {
     return (JkIntRect){
         jk_vec2_round(jk_vec2_mul(renderer->pixels_per_unit, rect.min)),
         jk_vec2_round(jk_vec2_mul(renderer->pixels_per_unit, rect.max)),
@@ -392,8 +377,7 @@ JK_PUBLIC JkIntRect jk_shapes_pixel_rect_get(JkShapesRenderer *renderer, JkRect 
 }
 
 JK_PUBLIC void jk_shapes_pixel_rect_draw(
-        JkShapesRenderer *renderer, JkIntRect pixel_rect, JkColor color)
-{
+        JkShapesRenderer *renderer, JkIntRect pixel_rect, JkColor color) {
     JkShapesDrawCommandListNode *node = jk_arena_push(renderer->arena, JK_SIZEOF(*node));
     node->command.color = color;
     node->command.rect = pixel_rect;
@@ -403,8 +387,7 @@ JK_PUBLIC void jk_shapes_pixel_rect_draw(
 }
 
 JK_PUBLIC void jk_shapes_pixel_rect_draw_outline(
-        JkShapesRenderer *renderer, JkIntRect pixel_rect, float thickness, JkColor color)
-{
+        JkShapesRenderer *renderer, JkIntRect pixel_rect, float thickness, JkColor color) {
     int32_t thickness_i = JK_MAX(1, jk_round(renderer->pixels_per_unit * thickness));
 
     { // Top
@@ -452,24 +435,21 @@ JK_PUBLIC void jk_shapes_pixel_rect_draw_outline(
     }
 }
 
-JK_PUBLIC JkIntRect jk_shapes_rect_draw(JkShapesRenderer *renderer, JkRect rect, JkColor color)
-{
+JK_PUBLIC JkIntRect jk_shapes_rect_draw(JkShapesRenderer *renderer, JkRect rect, JkColor color) {
     JkIntRect pixel_rect = jk_shapes_pixel_rect_get(renderer, rect);
     jk_shapes_pixel_rect_draw(renderer, pixel_rect, color);
     return pixel_rect;
 }
 
 JK_PUBLIC JkIntRect jk_shapes_rect_draw_outline(
-        JkShapesRenderer *renderer, JkRect rect, float thickness, JkColor color)
-{
+        JkShapesRenderer *renderer, JkRect rect, float thickness, JkColor color) {
     JkIntRect pixel_rect = jk_shapes_pixel_rect_get(renderer, rect);
     jk_shapes_pixel_rect_draw_outline(renderer, pixel_rect, thickness, color);
     return pixel_rect;
 }
 
 JK_PUBLIC JkShapesBitmap jk_shapes_bitmap_get(
-        JkShapesRenderer *renderer, int64_t shape_index, float scale)
-{
+        JkShapesRenderer *renderer, int64_t shape_index, float scale) {
     JkShapesBitmap bitmap = {0};
     float pixel_scale = scale * renderer->pixels_per_unit;
 
@@ -607,8 +587,7 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
         int64_t shape_index,
         JkVec2 position,
         float scale,
-        JkColor color)
-{
+        JkColor color) {
     JkShape shape = renderer->shapes.e[shape_index];
 
     if (shape.dimensions.x && shape.dimensions.y) {
@@ -627,15 +606,13 @@ JK_PUBLIC float jk_shapes_draw(JkShapesRenderer *renderer,
     return scale * shape.advance_width;
 }
 
-static int jk_shapes_draw_command_compare(void *data, void *a, void *b)
-{
+static int jk_shapes_draw_command_compare(void *data, void *a, void *b) {
     JkShapesDrawCommand *x = a;
     JkShapesDrawCommand *y = b;
     return x->rect.min.y - y->rect.min.y;
 }
 
-static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands)
-{
+static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands) {
     JkShapesDrawCommand tmp;
     jk_quicksort(commands.e,
             commands.count,
@@ -645,8 +622,7 @@ static void jk_shapes_draw_commands_quicksort(JkShapesDrawCommandArray commands)
             jk_shapes_draw_command_compare);
 }
 
-JK_PUBLIC JkShapesDrawCommandArray jk_shapes_draw_commands_get(JkShapesRenderer *renderer)
-{
+JK_PUBLIC JkShapesDrawCommandArray jk_shapes_draw_commands_get(JkShapesRenderer *renderer) {
     JkShapesDrawCommandArray result;
     result.e = jk_arena_pointer_current(renderer->arena);
     for (JkShapesDrawCommandListNode *node = renderer->draw_commands_head; node;

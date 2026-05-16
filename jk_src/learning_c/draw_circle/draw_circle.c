@@ -17,8 +17,7 @@ static bool screen[GRID_SIZE][GRID_SIZE];
  * Uses Casey Muratori's Efficient DDA Circle Outlines algorithm from
  * https://www.computerenhance.com/p/efficient-dda-circle-outlines
  */
-static void draw_circle(bool (*grid)[GRID_SIZE], int r)
-{
+static void draw_circle(bool (*grid)[GRID_SIZE], int r) {
     int compare = -2 * r + 1;
     int delta_x = 2;
     int delta_y = -4 * r + 4;
@@ -50,8 +49,7 @@ static void draw_circle(bool (*grid)[GRID_SIZE], int r)
     }
 }
 
-static void print_grid(bool (*grid)[GRID_SIZE], int height, int width)
-{
+static void print_grid(bool (*grid)[GRID_SIZE], int height, int width) {
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             printf("%s", grid[i][j] ? "██" : "  ");
@@ -60,8 +58,7 @@ static void print_grid(bool (*grid)[GRID_SIZE], int height, int width)
     }
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     printf("Drawing a circle %d times\n", ITERATION_COUNT);
     jk_profile_frame_begin();
     for (int i = 0; i < ITERATION_COUNT; i++) {

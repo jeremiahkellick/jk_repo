@@ -9,7 +9,7 @@ BinPackArguments: false
 BinPackParameters: false
 BracedInitializerIndentWidth: 4
 BreakBeforeBinaryOperators: NonAssignment
-BreakBeforeBraces: Linux
+BreakBeforeBraces: Attach
 ColumnLimit: 100
 ContinuationIndentWidth: 8
 IndentWidth: 4

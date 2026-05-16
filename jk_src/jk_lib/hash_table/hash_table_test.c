@@ -11,8 +11,7 @@
 
 #define MEDIUM_CAPACITY 16
 
-static void basic(void)
-{
+static void basic(void) {
     JkHashTable *t = jk_hash_table_create();
     JkHashTableValue *value;
 
@@ -68,8 +67,7 @@ static void basic(void)
     jk_hash_table_destroy(t);
 }
 
-static void resize(void)
-{
+static void resize(void) {
     JkHashTable *t = jk_hash_table_create();
     JkHashTableValue *value;
 
@@ -87,8 +85,7 @@ static void resize(void)
     jk_hash_table_destroy(t);
 }
 
-static void get_with_default_triggers_resize(void)
-{
+static void get_with_default_triggers_resize(void) {
     JkHashTable *t = jk_hash_table_create_capacity(SMALL_CAPACITY);
     JkHashTableValue *value;
 
@@ -106,8 +103,7 @@ static void get_with_default_triggers_resize(void)
     jk_hash_table_destroy(t);
 }
 
-static void tombstone_cleanup(void)
-{
+static void tombstone_cleanup(void) {
     JkHashTable *t = jk_hash_table_create_capacity(MEDIUM_CAPACITY);
     JkHashTableValue *value;
 
@@ -130,8 +126,7 @@ static void tombstone_cleanup(void)
     jk_hash_table_destroy(t);
 }
 
-int main(void)
-{
+int main(void) {
     basic();
     resize();
     get_with_default_triggers_resize();

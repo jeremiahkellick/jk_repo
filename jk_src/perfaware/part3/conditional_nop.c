@@ -33,8 +33,7 @@ char *pattern_names[PATTERN_COUNT] = {
     "Random",
 };
 
-static void fill_with_pattern(JkBuffer buffer, Pattern pattern)
-{
+static void fill_with_pattern(JkBuffer buffer, Pattern pattern) {
     for (int64_t i = 0; i < buffer.size; i++) {
         uint8_t value = 0;
 
@@ -70,8 +69,7 @@ static void fill_with_pattern(JkBuffer buffer, Pattern pattern)
 
 static JkPlatformRepetitionTest tests[PATTERN_COUNT];
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     srand((unsigned)time(NULL));
 
     JkBuffer buffer = {

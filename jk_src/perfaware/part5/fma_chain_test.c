@@ -10,8 +10,7 @@
 
 #define INNER_LOOP_FMA_COUNT 8
 
-void fma_chain(int64_t outer_loop_count, int64_t inner_loop_count)
-{
+void fma_chain(int64_t outer_loop_count, int64_t inner_loop_count) {
     for (int64_t i = 0; i < outer_loop_count; i++) {
         double value = 1;
         JK_PRETEND_WRITE(value);
@@ -33,8 +32,7 @@ static JkPlatformRepetitionTest tests[32];
 
 #define FMA_COUNT 3600000000ll
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int64_t frequency = jk_platform_cpu_timer_frequency_estimate(100);
 
     for (int64_t inner_loop_count = 1; inner_loop_count <= JK_ARRAY_COUNT(tests);

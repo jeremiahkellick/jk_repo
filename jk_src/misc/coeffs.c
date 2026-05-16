@@ -6,8 +6,7 @@
 #include <jk_src/jk_lib/platform/platform.h>
 // #jk_build dependencies_end
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     JkArena *arena = jk_arena_scratch_begin().arena;
 
     for (int64_t n = 4; n <= 9; n++) {

@@ -10,13 +10,11 @@
 #define ARRAY_LENGTH 20000000
 int array[ARRAY_LENGTH];
 
-static int int_compare(void *data, void *a, void *b)
-{
+static int int_compare(void *data, void *a, void *b) {
     return *(int *)a - *(int *)b;
 }
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     srand(clock());
 
     for (int i = 0; i < ARRAY_LENGTH; i++) {

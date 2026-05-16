@@ -10,8 +10,7 @@
 #include <x86intrin.h>
 #endif
 
-JK_PUBLIC double jk_sin_core(double x)
-{
+JK_PUBLIC double jk_sin_core(double x) {
     if (JK_PI / 2.0 < x) {
         x = JK_PI - x;
     }
@@ -28,19 +27,16 @@ JK_PUBLIC double jk_sin_core(double x)
     return _mm_cvtsd_f64(result) * x;
 }
 
-JK_PUBLIC double jk_sin(double x)
-{
+JK_PUBLIC double jk_sin(double x) {
     double sign = x < 0 ? -1.0 : 1.0;
     return sign * jk_sin_core(JK_ABS(x));
 }
 
-JK_PUBLIC double jk_cos(double x)
-{
+JK_PUBLIC double jk_cos(double x) {
     return jk_sin(x + JK_PI / 2.0);
 }
 
-JK_PUBLIC double jk_asin_core(double x_squared)
-{
+JK_PUBLIC double jk_asin_core(double x_squared) {
     __m128d x_squared_sd = _mm_set_sd(x_squared);
     __m128d result = _mm_set_sd(0x1.8978c6502660ap-2);
     result = _mm_fmadd_sd(result, x_squared_sd, _mm_set_sd(-0x1.0a98c5604a5c6p0));
@@ -61,8 +57,7 @@ JK_PUBLIC double jk_asin_core(double x_squared)
     return _mm_cvtsd_f64(result);
 }
 
-JK_PUBLIC double jk_asin(double x)
-{
+JK_PUBLIC double jk_asin(double x) {
     b32 in_standard_range = x <= JK_INV_SQRT_2;
     if (!in_standard_range) {
         x = jk_sqrt(1.0 - x * x);
@@ -72,7 +67,6 @@ JK_PUBLIC double jk_asin(double x)
     return in_standard_range ? core_result : (JK_PI / 2.0) - core_result;
 }
 
-JK_PUBLIC double jk_sqrt(double x)
-{
+JK_PUBLIC double jk_sqrt(double x) {
     return _mm_cvtsd_f64(_mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(x)));
 }

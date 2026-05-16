@@ -34,8 +34,7 @@ JkOptionResult opt_results[OPT_COUNT] = {0};
 
 JkOptionsParseResult opts_parse = {0};
 
-int32_t jk_platform_entry_point(int32_t argc, char **argv)
-{
+int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     int32_t page_count = 0;
     jk_options_parse(argc, argv, opts, opt_results, OPT_COUNT, &opts_parse);
     if (opts_parse.operand_count == 1) {

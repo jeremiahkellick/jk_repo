@@ -18,8 +18,7 @@ const char *const lorem_ipsum =
         "pariatur. Excepteur sint occaecat cupidatat non proident, sunt in "
         "culpa qui officia deserunt mollit anim id est laborum.";
 
-int main(void)
-{
+int main(void) {
     printf("file_get_word_count()\n    ");
 
     // Write lorem_ipsum to a temporary file

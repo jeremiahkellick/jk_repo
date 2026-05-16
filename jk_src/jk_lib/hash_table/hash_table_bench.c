@@ -12,8 +12,7 @@
 #define NUM_ELEMENTS (CAPACITY * JK_HASH_TABLE_LOAD_FACTOR / 10)
 #define SEED 1608690770
 
-int main(void)
-{
+int main(void) {
     JkHashTable *t = jk_hash_table_create();
     int sum = 0;
     clock_t start_time;
