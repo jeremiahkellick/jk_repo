@@ -4,6 +4,10 @@
 #include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_shapes/jk_shapes.h>
 
+#include <jk_src/jk_lib/serialize/types.h>
+
+#include "serialize.h"
+
 #define SDF_SPREAD 8.0f
 
 #define FPS 60
@@ -112,13 +116,6 @@ typedef struct Input {
     JkMouse mouse;
 } Input;
 
-typedef struct State {
-    uint64_t flags;
-    float camera_yaw;
-    float camera_pitch;
-    JkVec3 player_position;
-} State;
-
 typedef struct Clip {
     int64_t start;
     int64_t end; // exclusive
@@ -132,12 +129,13 @@ typedef enum FrameFlag {
 typedef struct RecordedFrame {
     uint32_t flags;
     Input input;
-    State state;
+    int64_t state_offset;
 } RecordedFrame;
 
 typedef struct Recording {
+    int64_t record_arena_saved_pos;
+    int64_t states_arena_saved_pos;
     Clip clips[10];
-    int64_t frame_count;
     RecordedFrame frames[];
 } Recording;
 
@@ -161,6 +159,7 @@ typedef struct Environment {
     JkColor *draw_buffer; // DRAW_BUFFER_SIZE
     float *z_buffer; // Z_BUFFER_SIZE
     JkArena record_arena;
+    JkArena states_arena;
 
     // Negative means we're recording to the clip, positive means we're playing it back, zero means
     // there's no active clip
@@ -177,5 +176,11 @@ typedef struct Environment {
 
 typedef void RenderFunction(JkContext *context, Environment *env);
 RenderFunction render;
+
+typedef uint8_t *SerializeFunction(JkArena *arena, State *state);
+SerializeFunction serialize;
+
+typedef void DeserializeFunction(State *state, uint8_t *data);
+DeserializeFunction deserialize;
 
 #endif

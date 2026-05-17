@@ -1,13 +1,17 @@
 #include "graphics.h"
 
 // #jk_build library
-// #jk_build export render
+// #jk_build export render serialize deserialize
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
 #include <jk_src/jk_lib/jk_lib.h>
 #include <jk_src/jk_shapes/jk_shapes.h>
 // #jk_build dependencies_end
+
+#include <jk_src/jk_lib/serialize/functions.h>
+
+#include "serialize.h"
 
 #define NEAR_CLIP 0.2f
 #define SPEED 5.0f
@@ -1382,6 +1386,35 @@ static int64_t recorded_frame_count(Environment *env) {
     return (env->record_arena.pos - JK_SIZEOF(Recording)) / JK_SIZEOF(RecordedFrame);
 }
 
+uint8_t *serialize(JkArena *arena, State *state) {
+    uint8_t *data = jk_arena_pointer_current(arena);
+    JkSerializer s = {
+        .version = VER_COUNT - 1,
+        .is_writing = 1,
+        .write_arena = arena,
+    };
+    serialize_uint64_t(&s, &s.version);
+    serialize_State(&s, state);
+    return data;
+}
+
+void deserialize(State *state, uint8_t *data) {
+    JkSerializer s = {
+        .is_writing = 0,
+        .read_cursor = data,
+    };
+    serialize_uint64_t(&s, &s.version);
+    serialize_State(&s, state);
+}
+
+static int64_t state_store(Environment *env) {
+    return serialize(&env->states_arena, &env->state) - env->states_arena.memory.data;
+}
+
+static void state_load(Environment *env, int64_t state_offset) {
+    deserialize(&env->state, env->states_arena.memory.data + state_offset);
+}
+
 void render(JkContext *context, Environment *env) {
     JkColor text_color = {255, 255, 255, 255};
 
@@ -1428,7 +1461,7 @@ void render(JkContext *context, Environment *env) {
         if (env->record_state.activity == RECORD_STATE_IDLE && recorded_frame_count(env)
                 && jk_key_pressed(&input.keyboard, JK_KEY_LEFT)) {
             env->recording_cursor = JK_MAX(0, env->recording_cursor - FPS);
-            env->state = recording->frames[env->recording_cursor].state;
+            state_load(env, recording->frames[env->recording_cursor].state_offset);
         }
 
         b32 jump_to_present = 0;
@@ -1484,14 +1517,15 @@ void render(JkContext *context, Environment *env) {
         if (jump_to_present) {
             env->record_state = (RecordState){.activity = RECORD_STATE_IDLE};
             if (preserve_state) {
+                int64_t state_offset = recording->frames[env->recording_cursor].state_offset;
                 RecordedFrame *frame = jk_arena_push(&env->record_arena, JK_SIZEOF(*frame));
                 env->recording_cursor = frame - recording->frames;
                 frame->flags = JK_MASK(FRAME_DISCONTINUOUS);
                 frame->input = env->input;
-                frame->state = env->state;
+                frame->state_offset = state_offset;
             } else {
                 env->recording_cursor = recorded_frame_count(env) - 1;
-                env->state = recording->frames[env->recording_cursor].state;
+                state_load(env, recording->frames[env->recording_cursor].state_offset);
             }
         }
 
@@ -1506,7 +1540,7 @@ void render(JkContext *context, Environment *env) {
                 jk_profile_reset();
             }
             if (load_clip || JK_FLAG_GET(frame->flags, FRAME_DISCONTINUOUS)) {
-                env->state = frame->state;
+                state_load(env, frame->state_offset);
             }
             input = frame->input;
         } else {
@@ -1514,10 +1548,11 @@ void render(JkContext *context, Environment *env) {
             RecordedFrame *frame = jk_arena_push(&env->record_arena, JK_SIZEOF(*frame));
             frame->flags = 0;
             frame->input = env->input;
-            frame->state = env->state;
+            frame->state_offset = state_store(env);
         }
 
-        JK_DEBUG_ASSERT((env->record_arena.pos - sizeof(Recording)) % sizeof(RecordedFrame) == 0);
+        JK_DEBUG_ASSERT(
+                (env->record_arena.pos - JK_SIZEOF(Recording)) % JK_SIZEOF(RecordedFrame) == 0);
 
         if (jk_key_pressed(&input.keyboard, JK_KEY_R)) {
             JK_FLAG_SET(env->state.flags, FLAG_INITIALIZED, 0);

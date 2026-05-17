@@ -24,6 +24,8 @@
 typedef struct Global {
     JkArena arena;
     RenderFunction *render;
+    SerializeFunction *serialize;
+    DeserializeFunction *deserialize;
     HWND window;
     JkIntVec2 window_dimensions;
     HCURSOR cursor_arrow;
@@ -293,20 +295,34 @@ static DWORD app_thread_main(LPVOID param) {
             if (CompareFileTime(
                         &graphics_dll_info.ftLastWriteTime, &graphics_dll_last_modified_time)
                     != 0) {
-                if (graphics_library) {
-                    FreeLibrary(graphics_library);
-                    g.render = 0;
+                JK_ARENA_SCRATCH(scratch) {
+                    uint8_t *serialized_state = 0;
+                    if (g.serialize) {
+                        serialized_state = g.serialize(scratch.arena, &g.env.state);
+                    }
+
+                    if (graphics_library) {
+                        FreeLibrary(graphics_library);
+                    }
+                    if (CopyFileA("graphics.dll", "graphics_tmp.dll", FALSE)) {
+                        graphics_dll_last_modified_time = graphics_dll_info.ftLastWriteTime;
+                    } else {
+                        OutputDebugStringA("Failed to copy graphics.dll to graphics_tmp.dll\n");
+                    }
+                    while (!(graphics_library = LoadLibraryA("graphics_tmp.dll"))) {
+                        OutputDebugStringA("Failed to load graphics_tmp.dll\n");
+                        Sleep(16);
+                    }
+                    g.render = (RenderFunction *)GetProcAddress(graphics_library, "render");
+                    g.serialize =
+                            (SerializeFunction *)GetProcAddress(graphics_library, "serialize");
+                    g.deserialize =
+                            (DeserializeFunction *)GetProcAddress(graphics_library, "deserialize");
+
+                    if (serialized_state) {
+                        g.deserialize(&g.env.state, serialized_state);
+                    }
                 }
-                if (CopyFileA("graphics.dll", "graphics_tmp.dll", FALSE)) {
-                    graphics_dll_last_modified_time = graphics_dll_info.ftLastWriteTime;
-                } else {
-                    OutputDebugStringA("Failed to copy graphics.dll to graphics_tmp.dll\n");
-                }
-                while (!(graphics_library = LoadLibraryA("graphics_tmp.dll"))) {
-                    OutputDebugStringA("Failed to load graphics_tmp.dll\n");
-                    Sleep(16);
-                }
-                g.render = (RenderFunction *)GetProcAddress(graphics_library, "render");
             }
         } else {
             OutputDebugStringA("Failed to get last modified time of graphics.dll\n");
@@ -516,7 +532,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
 
 #if JK_BUILD_MODE == JK_RELEASE
     g.env.assets = (Assets *)assets_byte_array;
-    g.env.render = render;
+    g.render = render;
+    g.serialize = serialize;
+    g.deserialize = deserialize;
 #else
     g.env.assets = (Assets *)jk_platform_file_read_full(&g.arena, "graphics_assets").data;
 #endif
@@ -535,11 +553,37 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
         jk_log(JK_LOG_FATAL, JKS("Failed to initialize arena\n"));
         exit(1);
     }
+    g.env.states_arena = jk_platform_arena_virtual_init(32 * JK_GIGABYTE);
+    if (!g.env.states_arena.memory.size) {
+        jk_log(JK_LOG_FATAL, JKS("Failed to initialize arena\n"));
+        exit(1);
+    }
 
     if (opt_results[OPT_RECORDING].present && opt_results[OPT_RECORDING].buf.size) {
-        JK_DEBUG_ASSERT(g.env.record_arena.pos == 0);
-        jk_platform_file_read(&g.env.record_arena, opt_results[OPT_RECORDING].buf);
-        JK_DEBUG_ASSERT((g.env.record_arena.pos - sizeof(Recording)) % sizeof(RecordedFrame) == 0);
+        FILE *recording_file = 0;
+        JK_ARENA_SCRATCH(s) {
+            char *path = jk_null_terminated_from_buffer(s.arena, opt_results[OPT_RECORDING].buf);
+            recording_file = fopen(path, "rb");
+        }
+        if (recording_file) {
+            // Load into record_arena
+            Recording *recording = jk_arena_push(&g.env.record_arena, JK_SIZEOF(*recording));
+            fread(recording, JK_SIZEOF(*recording), 1, recording_file);
+            int64_t additional_bytes = recording->record_arena_saved_pos - g.env.record_arena.pos;
+            jk_arena_push(&g.env.record_arena, additional_bytes);
+            fread(recording->frames, additional_bytes, 1, recording_file);
+
+            // Load into states_arena
+            void *states = jk_arena_push(&g.env.states_arena, recording->states_arena_saved_pos);
+            fread(states, recording->states_arena_saved_pos, 1, recording_file);
+
+            fclose(recording_file);
+        } else {
+            JK_LOGF(JK_LOG_ERROR,
+                    jkfn("Failed to load recording '"),
+                    jkfs(opt_results[OPT_RECORDING].buf),
+                    jkfn("'"));
+        }
     }
 
     WNDCLASSA window_class = {
@@ -622,9 +666,18 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
         jk_log(JK_LOG_FATAL, JKS("CreateWindowExA failed\n"));
     }
 
-    JkBuffer recording = jk_buffer_from_arena(&g.env.record_arena);
-    if (JK_SIZEOF(Recording) < recording.size) {
-        jk_platform_file_write(JKS("recording"), recording);
+    if (JK_SIZEOF(Recording) < g.env.record_arena.pos) {
+        FILE *recording_file = fopen("recording", "wb");
+        if (recording_file) {
+            Recording *recording = (Recording *)g.env.record_arena.memory.data;
+            recording->record_arena_saved_pos = g.env.record_arena.pos;
+            recording->states_arena_saved_pos = g.env.states_arena.pos;
+            fwrite(g.env.record_arena.memory.data, g.env.record_arena.pos, 1, recording_file);
+            fwrite(g.env.states_arena.memory.data, g.env.states_arena.pos, 1, recording_file);
+            fclose(recording_file);
+        } else {
+            JK_DEBUG_ASSERT(0 && "Failed to write recording to a file");
+        }
     }
 
     return 0;
