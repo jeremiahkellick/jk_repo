@@ -4,6 +4,7 @@
 
 typedef enum Version {
     VER_0,
+    VER_FOO,
 
     VER_COUNT,
 } Version;
@@ -11,6 +12,7 @@ typedef enum Version {
 #endif
 
 JK_SERIALIZE_DEF_BEGIN(State) {
+    JK_ADD(VER_FOO, uint64_t, foo);
     JK_ADD(VER_0, uint64_t, flags);
     JK_ADD(VER_0, float, camera_yaw);
     JK_ADD(VER_0, float, camera_pitch);

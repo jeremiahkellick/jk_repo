@@ -1567,6 +1567,12 @@ void render(JkContext *context, Environment *env) {
             jk_profile_reset();
         }
 
+        if (jk_key_pressed(&input.keyboard, JK_KEY_SPACE)) {
+            env->state.foo = !env->state.foo;
+        }
+
+        bg_color = env->state.foo ? (JkColor){255, 0, 0, 255} : (JkColor){0};
+
         JkVec2Array texcoords;
         JK_ARRAY_FROM_SPAN(texcoords, env->assets, env->assets->texcoords);
         ObjectArray objects;
