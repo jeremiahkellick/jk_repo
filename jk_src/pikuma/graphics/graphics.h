@@ -65,6 +65,7 @@ typedef enum ObjectFlag {
     OBJ_COLLIDE,
     OBJ_FLAT,
     OBJ_WALKABLE,
+    OBJ_SPAWN,
     OBJ_FLAG_COUNT,
 } ObjectFlag;
 

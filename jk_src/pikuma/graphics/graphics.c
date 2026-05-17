@@ -26,7 +26,7 @@
 static float const nav_density = 0.125f;
 static JkIntVec2 const nav_dimensions = {32, 32};
 
-static JkColor bg_color = {.r = CLEAR_COLOR_R, .g = CLEAR_COLOR_G, .b = CLEAR_COLOR_B, .a = 255};
+static JkColor bg_color = {.r = 0x81, .g = 0xbd, .b = 0xff, .a = 0xff};
 
 static float const player_radius = 0.33f;
 static float const player_height = 1.75f;
@@ -1558,19 +1558,27 @@ void render(JkContext *context, Environment *env) {
             JK_FLAG_SET(env->state.flags, FLAG_INITIALIZED, 0);
         }
 
+        JkVec2Array texcoords;
+        JK_ARRAY_FROM_SPAN(texcoords, env->assets, env->assets->texcoords);
+        ObjectArray objects;
+        JK_ARRAY_FROM_SPAN(objects, env->assets, env->assets->objects);
+
         if (!JK_FLAG_GET(env->state.flags, FLAG_INITIALIZED)) {
             env->state.flags = JK_MASK(FLAG_INITIALIZED);
             env->state.camera_yaw = 5 * JK_PI / 4;
             env->state.camera_pitch = 0;
             env->state.player_position = (JkVec3){0};
 
+            for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
+                Object *object = objects.e + object_id.i;
+                if (JK_FLAG_GET(object->flags, OBJ_SPAWN)) {
+                    JkMat4 world_from_local = object_compute_world_from_local(objects, object_id);
+                    env->state.player_position = jk_mat4_mul_point(world_from_local, (JkVec3){0});
+                }
+            }
+
             jk_profile_reset();
         }
-
-        JkVec2Array texcoords;
-        JK_ARRAY_FROM_SPAN(texcoords, env->assets, env->assets->texcoords);
-        ObjectArray objects;
-        JK_ARRAY_FROM_SPAN(objects, env->assets, env->assets->objects);
 
         jk_profile_frame_begin();
 

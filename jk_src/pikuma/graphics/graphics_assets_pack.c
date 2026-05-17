@@ -12,7 +12,7 @@
 #define SVG_SIDE_LENGTH 64
 #define SDF_SUBPIXEL_PRECISION (1 / 64.0f)
 
-static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/terrain.fbx");
+static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/mountains.fbx");
 static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};
 
 static JkMat4 conversion_matrix;
@@ -39,6 +39,7 @@ typedef enum ThingFlag {
     THING_FLAG_COLLIDE,
     THING_FLAG_FLAT,
     THING_FLAG_WALKABLE,
+    THING_FLAG_SPAWN,
 } ThingFlag;
 
 struct Thing {
@@ -552,8 +553,8 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
 
                 float scanline_intersect_x = jk_segment_y_intersection(edge->segment, sample_y);
                 float leftmost_sample_x = jk_ceil_f32(scanline_intersect_x - 0.5f);
-                if (0 <= leftmost_sample_x && leftmost_sample_x < TEXTURE_SIDE_LENGTH) {
-                    fill_right[(int32_t)leftmost_sample_x] += edge->direction;
+                if (leftmost_sample_x < TEXTURE_SIDE_LENGTH) {
+                    fill_right[JK_MAX(0, (int32_t)leftmost_sample_x)] += edge->direction;
                 }
             }
 
@@ -876,11 +877,27 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
         } else if (jk_buffer_compare(name, JKS("Geometry")) == 0
                 || jk_buffer_compare(name, JKS("Material")) == 0 || is_model
                 || jk_buffer_compare(name, JKS("Texture")) == 0) {
-            uint8_t type = *(node->name + node->name_length);
+            int64_t cursor = node->name_length;
+            uint8_t type = node->name[cursor++];
             if (0 < node->property_count && type == 'L') {
-                int64_t fbx_id = *(int64_t *)(node->name + node->name_length + 1);
+                int64_t fbx_id = *(int64_t *)(node->name + cursor);
+                cursor += sizeof(fbx_id);
                 Thing *new_thing = thing_new(fbx_id);
-                JK_FLAG_SET(new_thing->flags, THING_FLAG_MODEL, is_model);
+
+                if (is_model) {
+                    JK_FLAG_SET(new_thing->flags, THING_FLAG_MODEL, 1);
+                    b32 proceed = 1;
+
+                    proceed = proceed && 2 <= node->property_count && node->name[cursor++] == 'S';
+                    if (proceed) {
+                        JkBuffer string = fbx_prop_string_read(node->name, &cursor);
+                        string.size = strnlen((char *)string.data, string.size);
+                        if (jk_buffer_compare(string, JKS("spawn")) == 0) {
+                            JK_FLAG_SET(new_thing->flags, THING_FLAG_SPAWN, 1);
+                        }
+                    }
+                }
+
                 new_thing->vertices_base = c->verts_arena->pos;
                 new_thing->texcoords_base = c->texcoords_arena->pos / JK_SIZEOF(JkVec2);
                 process_fbx_nodes(c, file, pos_children, new_thing);
@@ -983,6 +1000,9 @@ static void process_thing(
         }
         if (JK_FLAG_GET(thing->flags, THING_FLAG_WALKABLE)) {
             JK_FLAG_SET(object->flags, OBJ_WALKABLE, 1);
+        }
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_SPAWN)) {
+            JK_FLAG_SET(object->flags, OBJ_SPAWN, 1);
         }
     }
 
