@@ -80,12 +80,6 @@ JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b);
 
 // ---- OS functions end -------------------------------------------------------
 
-// ---- ISA functions begin ----------------------------------------------------
-
-JK_PUBLIC double jk_platform_fma_64(double a, double b, double c);
-
-// ---- ISA functions end ------------------------------------------------------
-
 // ---- Virtual arena begin ------------------------------------------------------------
 
 JK_PUBLIC JkArena jk_platform_arena_virtual_init(int64_t virtual_size);

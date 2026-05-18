@@ -43,7 +43,7 @@ static double haversine_sum_1(HaversineContext context) {
 
         double a = square(jk_sin(d_lat / 2.0))
                 + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(d_lon / 2.0));
-        double distance = jk_asin(jk_sqrt(a));
+        double distance = jk_asin(jk_f64_sqrt(a));
 
         sum += distance;
     }
@@ -65,7 +65,7 @@ static double haversine_sum_2(HaversineContext context) {
         double lat2_cos = jk_sin_core(lat2 + JK_PI / 2.0);
 
         double a = square(jk_sin(d_lat / 2.0)) + lat1_cos * lat2_cos * square(jk_sin(d_lon / 2.0));
-        double distance = jk_asin(jk_sqrt(a));
+        double distance = jk_asin(jk_f64_sqrt(a));
 
         sum += distance;
     }
@@ -171,14 +171,14 @@ static double haversine_sum_6(HaversineContext context) {
         double half_d_lon = (RADIANS_PER_DEGREE / 2.0) * (lon2_deg - lon1_deg);
 
         double lat1_cos =
-                jk_sin_core(jk_platform_fma_64(RADIANS_PER_DEGREE, lat1_deg, JK_PI / 2.0));
+                jk_sin_core(jk_f64_fma(RADIANS_PER_DEGREE, lat1_deg, JK_PI / 2.0));
         double lat2_cos =
-                jk_sin_core(jk_platform_fma_64(RADIANS_PER_DEGREE, lat2_deg, JK_PI / 2.0));
+                jk_sin_core(jk_f64_fma(RADIANS_PER_DEGREE, lat2_deg, JK_PI / 2.0));
 
         double half_d_lat_sin = jk_sin_core(JK_ABS(half_d_lat));
         double half_d_lon_sin = jk_sin_core(JK_ABS(half_d_lon));
 
-        double a = jk_platform_fma_64(
+        double a = jk_f64_fma(
                 lat1_cos * lat2_cos, square(half_d_lon_sin), square(half_d_lat_sin));
 
         b32 in_asin_standard_range = a <= 0.5;

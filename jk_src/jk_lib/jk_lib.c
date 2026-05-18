@@ -222,6 +222,14 @@ JK_PUBLIC JkI256 jk_i32x8_from_f32x8_truncate(JkF32x8 x) {
     return (JkI256){_mm256_cvttps_epi32(x.v)};
 }
 
+JK_PUBLIC double jk_f64_fma(double a, double b, double c) {
+    return _mm_cvtsd_f64(_mm_fmadd_sd(_mm_set_sd(a), _mm_set_sd(b), _mm_set_sd(c)));
+}
+
+JK_PUBLIC double jk_f64_sqrt(double x) {
+    return _mm_cvtsd_f64(_mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(x)));
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 
 JK_PUBLIC uint64_t jk_cpu_timer_get(void) {

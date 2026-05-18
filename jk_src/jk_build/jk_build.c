@@ -60,7 +60,7 @@ typedef struct JkBufferArray {
 #define JKS JK_STRING
 
 #define JK_STRING_INITIALIZER(string_literal) \
-    {JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal}
+    { JK_SIZEOF(string_literal) - 1, (uint8_t *)string_literal }
 
 #define JKSI JK_STRING_INITIALIZER
 
@@ -1312,6 +1312,7 @@ static void append_clang_gcc_shared_options(
             "-Wextra",
             "-Wpedantic",
             "-Werror=vla",
+            "-Wno-c2y-extensions",
             "-Wno-missing-braces",
             "-Wno-unused-parameter");
     if (JK_FLAG_GET(flags, FLAG_SINGLE_TRANSLATION_UNIT)) {

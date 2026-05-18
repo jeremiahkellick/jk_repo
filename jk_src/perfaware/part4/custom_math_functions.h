@@ -11,6 +11,4 @@ JK_PUBLIC double jk_asin_core(double x_squared);
 
 JK_PUBLIC double jk_asin(double x);
 
-JK_PUBLIC double jk_sqrt(double x);
-
 #endif

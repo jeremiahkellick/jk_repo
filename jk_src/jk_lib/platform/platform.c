@@ -735,26 +735,6 @@ JK_PUBLIC void jk_platform_barrier_destroy(JkPlatformBarrier *b) {
 
 // ---- OS functions end -------------------------------------------------------
 
-// ---- ISA functions begin ----------------------------------------------------
-
-#if defined(__x86_64__) || defined(_M_X64)
-
-#ifdef _MSC_VER
-#include <intrin.h>
-#else
-#include <x86intrin.h>
-#endif
-
-JK_PUBLIC double jk_platform_fma_64(double a, double b, double c) {
-    return _mm_cvtsd_f64(_mm_fmadd_sd(_mm_set_sd(a), _mm_set_sd(b), _mm_set_sd(c)));
-}
-
-#elif __arm64__
-
-#endif
-
-// ---- ISA functions end ------------------------------------------------------
-
 // ---- Virtual arena begin ------------------------------------------------------------
 
 static b32 jk_platform_arena_virtual_grow(JkArena *arena, int64_t new_size) {

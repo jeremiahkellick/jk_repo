@@ -83,7 +83,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
 
         double a = square(jk_sin(dLat / 2.0))
                 + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2.0));
-        double distance = jk_asin(jk_sqrt(a));
+        double distance = jk_asin(jk_f64_sqrt(a));
 
 #if JK_BUILD_MODE != JK_RELEASE
         if (context.answers) {

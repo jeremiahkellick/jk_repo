@@ -30,7 +30,7 @@ int main(void) {
     }
 
     while (jk_precision_test(&test, 0.0, 1.0, 100000000)) {
-        jk_precision_test_result(&test, sqrt(test.input), jk_sqrt(test.input), "jk_sqrt");
+        jk_precision_test_result(&test, sqrt(test.input), jk_f64_sqrt(test.input), "jk_sqrt");
     }
 
     printf("\n");

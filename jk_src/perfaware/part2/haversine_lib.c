@@ -84,7 +84,7 @@ JK_PUBLIC double haversine(double X0, double Y0, double X1, double Y1, double Ea
     lat2 = radians_from_degrees(lat2);
 
     double a = square(jk_sin(dLat / 2.0)) + jk_cos(lat1) * jk_cos(lat2) * square(jk_sin(dLon / 2));
-    double c = 2.0 * jk_asin(jk_sqrt(a));
+    double c = 2.0 * jk_asin(jk_f64_sqrt(a));
 
     double Result = EarthRadius * c;
 

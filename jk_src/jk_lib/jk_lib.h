@@ -43,8 +43,10 @@ typedef uint32_t b32;
 
 #if defined(__x86_64__) || defined(_M_X64)
 
-#ifdef _MSC_VER
-#include <intrin.h>
+#if _MSC_VER && !__clang__
+#include <jk_src/jk_lib/intrin/my_msvc_intrin.h>
+#elif __clang__ && __clang_major__ == 22
+#include <jk_src/jk_lib/intrin/my_clang_intrin.h>
 #else
 #include <x86intrin.h>
 #endif
@@ -505,6 +507,10 @@ typedef struct JkFloatUnpacked {
 JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value);
 
 JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f);
+
+JK_PUBLIC double jk_f64_fma(double a, double b, double c);
+
+JK_PUBLIC double jk_f64_sqrt(double x);
 
 JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value);
 
