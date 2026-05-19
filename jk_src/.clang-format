@@ -12,6 +12,7 @@ BreakBeforeBinaryOperators: NonAssignment
 BreakBeforeBraces: Attach
 ColumnLimit: 100
 ContinuationIndentWidth: 8
+Cpp11BracedListStyle: FunctionCall
 IndentWidth: 4
 InsertBraces: true
 TabWidth: 4

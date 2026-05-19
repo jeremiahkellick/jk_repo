@@ -512,6 +512,12 @@ JK_PUBLIC double jk_f64_fma(double a, double b, double c);
 
 JK_PUBLIC double jk_f64_sqrt(double x);
 
+JK_PUBLIC double jk_f64_remap(
+        double value, double min_from, double max_from, double min_to, double max_to);
+
+JK_PUBLIC double jk_f64_remap_clamped(
+        double value, double min_from, double max_from, double min_to, double max_to);
+
 JK_PUBLIC JkFloatUnpacked jk_f32_unpack(float value);
 
 JK_PUBLIC float jk_f32_pack(JkFloatUnpacked f);

@@ -1296,6 +1296,19 @@ JK_PUBLIC double jk_f64_pack(JkFloatUnpacked f) {
     return *(double *)&result;
 }
 
+JK_PUBLIC double jk_f64_remap(
+        double value, double min_from, double max_from, double min_to, double max_to) {
+    double delta_from = max_from - min_from;
+    double delta_to = max_to - min_to;
+    return min_to + delta_to * ((value - min_from) / delta_from);
+}
+
+JK_PUBLIC double jk_f64_remap_clamped(
+        double value, double min_from, double max_from, double min_to, double max_to) {
+    double result = jk_f32_remap(value, min_from, max_from, min_to, max_to);
+    return JK_CLAMP(result, min_to, max_to);
+}
+
 JK_PUBLIC JkFloatUnpacked jk_f32_unpack(float value) {
     JkFloatUnpacked result;
 
