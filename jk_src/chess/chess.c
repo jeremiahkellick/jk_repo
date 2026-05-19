@@ -1580,7 +1580,7 @@ static b32 clip_to_draw_region(float side_length, JkVec2 *a, JkVec2 *b) {
 }
 
 static float fpart(float x) {
-    return x - jk_floor_f32(x);
+    return x - jk_f32_floor(x);
 }
 
 static float fpart_complement(float x) {

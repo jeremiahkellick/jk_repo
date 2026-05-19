@@ -209,8 +209,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     expect_string(JKS("0001"), jk_string_from_binary(&arena, 1, 4));
     expect_string(JKS("0"), jk_string_from_binary(&arena, 0, 0));
 
-    expect_string(JKS("inf"), jk_string_from_f64(&arena, jk_infinity_f64.f64, 8));
-    expect_string(JKS("-inf"), jk_string_from_f64(&arena, -jk_infinity_f64.f64, 8));
+    expect_string(JKS("inf"), jk_string_from_f64(&arena, jk_f64_infinity.f64, 8));
+    expect_string(JKS("-inf"), jk_string_from_f64(&arena, -jk_f64_infinity.f64, 8));
     expect_string(JKS("nan"), jk_string_from_f64(&arena, some_nan_64.f64, 8));
     expect_string(JKS("-nan"), jk_string_from_f64(&arena, -some_nan_64.f64, 8));
     expect_string(JKS("unprintable"), jk_string_from_f64(&arena, unprintable_64.f64, 8));
@@ -219,7 +219,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
             JK_FORMAT(&arena,
                     jkff(some_nan_64.f64, 8),
                     jkfn(" "),
-                    jkff(jk_infinity_f64.f64, 8),
+                    jkff(jk_f64_infinity.f64, 8),
                     jkfn(" "),
                     jkff(-unprintable_64.f64, 8)));
     expect_string(JKS("1.3333333"), jk_string_from_f64(&arena, 4.0 / 3.0, 7));
@@ -313,82 +313,82 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     JkRandomGeneratorU64 generator = jk_random_generator_new_u64(3523520312864767571);
 
     printf("\nsome_nan_64: %f\n", (double)some_nan_64.f64);
-    printf("infinity_64: %f\n", (double)jk_infinity_f64.f64);
+    printf("infinity_64: %f\n", (double)jk_f64_infinity.f64);
     printf("some_nan_32: %f\n", (double)some_nan_32.f32);
-    printf("infinity_32: %f\n", (double)jk_infinity_f32.f32);
+    printf("infinity_32: %f\n", (double)jk_f32_infinity.f32);
 
-    JK_ASSERT(0.0 == jk_pack_f64(jk_unpack_f64(0.0)));
-    JK_ASSERT(-0.0 == jk_pack_f64(jk_unpack_f64(-0.0)));
-    JK_ASSERT(1.0 == jk_pack_f64(jk_unpack_f64(1.0)));
-    JK_ASSERT(-1.0 == jk_pack_f64(jk_unpack_f64(-1.0)));
-    JK_ASSERT(jk_infinity_f64.f64 == jk_pack_f64(jk_unpack_f64(jk_infinity_f64.f64)));
-    JK_ASSERT(-jk_infinity_f64.f64 == jk_pack_f64(jk_unpack_f64(-jk_infinity_f64.f64)));
+    JK_ASSERT(0.0 == jk_f64_pack(jk_f64_unpack(0.0)));
+    JK_ASSERT(-0.0 == jk_f64_pack(jk_f64_unpack(-0.0)));
+    JK_ASSERT(1.0 == jk_f64_pack(jk_f64_unpack(1.0)));
+    JK_ASSERT(-1.0 == jk_f64_pack(jk_f64_unpack(-1.0)));
+    JK_ASSERT(jk_f64_infinity.f64 == jk_f64_pack(jk_f64_unpack(jk_f64_infinity.f64)));
+    JK_ASSERT(-jk_f64_infinity.f64 == jk_f64_pack(jk_f64_unpack(-jk_f64_infinity.f64)));
 
-    JkConversionUnion round_trip_nan = {.f64 = jk_pack_f64(jk_unpack_f64(some_nan_64.f64))};
+    JkConversionUnion round_trip_nan = {.f64 = jk_f64_pack(jk_f64_unpack(some_nan_64.f64))};
     JK_ASSERT(some_nan_64.uint64_v == round_trip_nan.uint64_v);
     JkConversionUnion nan_negative = {.f64 = -some_nan_64.f64};
     JkConversionUnion round_trip_nan_negative = {
-        .f64 = jk_pack_f64(jk_unpack_f64(nan_negative.f64))};
+        .f64 = jk_f64_pack(jk_f64_unpack(nan_negative.f64))};
     JK_ASSERT(nan_negative.uint64_v == round_trip_nan_negative.uint64_v);
 
     // Test adding to infinity in unpacked format (64 bit)
-    JkFloatUnpacked unpacked_max_f64 = jk_unpack_f64(max_f64.f64);
+    JkFloatUnpacked unpacked_max_f64 = jk_f64_unpack(max_f64.f64);
     unpacked_max_f64.significand++;
-    JK_ASSERT(jk_infinity_f64.f64 == jk_pack_f64(unpacked_max_f64));
+    JK_ASSERT(jk_f64_infinity.f64 == jk_f64_pack(unpacked_max_f64));
 
     for (int64_t i = 0; i < 10000; i++) {
         JkConversionUnion value = {.uint64_v = jk_random_u64(&generator)};
         if (isnan(value.f64)) {
-            JkConversionUnion round_trip = {.f64 = jk_pack_f64(jk_unpack_f64(value.f64))};
+            JkConversionUnion round_trip = {.f64 = jk_f64_pack(jk_f64_unpack(value.f64))};
             JK_ASSERT(value.uint64_v == round_trip.uint64_v);
         } else {
-            JK_ASSERT(value.f64 == jk_pack_f64(jk_unpack_f64(value.f64)));
+            JK_ASSERT(value.f64 == jk_f64_pack(jk_f64_unpack(value.f64)));
         }
     }
 
-    JK_ASSERT(0.0f == jk_pack_f32(jk_unpack_f32(0.0f)));
-    JK_ASSERT(-0.0f == jk_pack_f32(jk_unpack_f32(-0.0f)));
-    JK_ASSERT(1.0f == jk_pack_f32(jk_unpack_f32(1.0f)));
-    JK_ASSERT(-1.0f == jk_pack_f32(jk_unpack_f32(-1.0f)));
-    JK_ASSERT(jk_infinity_f32.f32 == jk_pack_f32(jk_unpack_f32(jk_infinity_f32.f32)));
-    JK_ASSERT(-jk_infinity_f32.f32 == jk_pack_f32(jk_unpack_f32(-jk_infinity_f32.f32)));
+    JK_ASSERT(0.0f == jk_f32_pack(jk_f32_unpack(0.0f)));
+    JK_ASSERT(-0.0f == jk_f32_pack(jk_f32_unpack(-0.0f)));
+    JK_ASSERT(1.0f == jk_f32_pack(jk_f32_unpack(1.0f)));
+    JK_ASSERT(-1.0f == jk_f32_pack(jk_f32_unpack(-1.0f)));
+    JK_ASSERT(jk_f32_infinity.f32 == jk_f32_pack(jk_f32_unpack(jk_f32_infinity.f32)));
+    JK_ASSERT(-jk_f32_infinity.f32 == jk_f32_pack(jk_f32_unpack(-jk_f32_infinity.f32)));
 
     // Test adding to infinity in unpacked format (32 bit)
-    JkFloatUnpacked unpacked_max_f32 = jk_unpack_f32(max_f32.f32);
+    JkFloatUnpacked unpacked_max_f32 = jk_f32_unpack(max_f32.f32);
     unpacked_max_f32.significand++;
-    JK_ASSERT(jk_infinity_f32.f32 == jk_pack_f32(unpacked_max_f32));
+    JK_ASSERT(jk_f32_infinity.f32 == jk_f32_pack(unpacked_max_f32));
 
-    JkConversionUnion round_trip_nan32 = {.f32 = jk_pack_f32(jk_unpack_f32(some_nan_32.f32))};
+    JkConversionUnion round_trip_nan32 = {.f32 = jk_f32_pack(jk_f32_unpack(some_nan_32.f32))};
     JK_ASSERT(some_nan_32.uint32_v == round_trip_nan32.uint32_v);
     JkConversionUnion nan_negative32 = {.f32 = -some_nan_32.f32};
     JkConversionUnion round_trip_nan_negative32 = {
-        .f32 = jk_pack_f32(jk_unpack_f32(nan_negative32.f32))};
+        .f32 = jk_f32_pack(jk_f32_unpack(nan_negative32.f32))};
     JK_ASSERT(nan_negative32.uint32_v == round_trip_nan_negative32.uint32_v);
 
     for (int64_t i = 0; i < 10000; i++) {
         JkConversionUnion value = {.uint64_v = jk_random_u64(&generator)};
         if (isnan(value.f32)) {
-            JkConversionUnion round_trip = {.f32 = jk_pack_f32(jk_unpack_f32(value.f32))};
+            JkConversionUnion round_trip = {.f32 = jk_f32_pack(jk_f32_unpack(value.f32))};
             JK_ASSERT(value.uint32_v == round_trip.uint32_v);
         } else {
-            JK_ASSERT(value.f32 == jk_pack_f32(jk_unpack_f32(value.f32)));
+            JK_ASSERT(value.f32 == jk_f32_pack(jk_f32_unpack(value.f32)));
         }
     }
 
-    JK_ASSERT(jk_ceil_f32(5.2f) == ceilf(5.2f));
-    JK_ASSERT(jk_ceil_f32(-5.2f) == ceilf(-5.2f));
-    JK_ASSERT(jk_ceil_f32(0.0f) == ceilf(0.0f));
-    JK_ASSERT(jk_ceil_f32(-0.0f) == ceilf(-0.0f));
-    JK_ASSERT(jk_ceil_f32(1.0f) == ceilf(1.0f));
-    JK_ASSERT(jk_ceil_f32(-1.0f) == ceilf(-1.0f));
-    JK_ASSERT(jk_ceil_f32(jk_infinity_f32.f32) == ceilf(jk_infinity_f32.f32));
-    JK_ASSERT(jk_ceil_f32(-jk_infinity_f32.f32) == ceilf(-jk_infinity_f32.f32));
+    JK_ASSERT(jk_f32_ceil(5.2f) == ceilf(5.2f));
+    JK_ASSERT(jk_f32_ceil(-5.2f) == ceilf(-5.2f));
+    JK_ASSERT(jk_f32_ceil(0.0f) == ceilf(0.0f));
+    JK_ASSERT(jk_f32_ceil(-0.0f) == ceilf(-0.0f));
+    JK_ASSERT(jk_f32_ceil(1.0f) == ceilf(1.0f));
+    JK_ASSERT(jk_f32_ceil(-1.0f) == ceilf(-1.0f));
+    JK_ASSERT(jk_f32_ceil(jk_f32_infinity.f32) == ceilf(jk_f32_infinity.f32));
+    JK_ASSERT(jk_f32_ceil(-jk_f32_infinity.f32) == ceilf(-jk_f32_infinity.f32));
 
-    JkConversionUnion my_nan_ceil = {.f32 = jk_ceil_f32(some_nan_32.f32)};
+    JkConversionUnion my_nan_ceil = {.f32 = jk_f32_ceil(some_nan_32.f32)};
     JkConversionUnion reference_nan_ceil = {.f32 = ceilf(some_nan_32.f32)};
     JK_ASSERT(my_nan_ceil.uint32_v == reference_nan_ceil.uint32_v);
 
-    JkConversionUnion my_nan_ceil_negative = {.f32 = jk_ceil_f32(-some_nan_32.f32)};
+    JkConversionUnion my_nan_ceil_negative = {.f32 = jk_f32_ceil(-some_nan_32.f32)};
     JkConversionUnion reference_nan_ceil_negative = {.f32 = ceilf(-some_nan_32.f32)};
     JK_ASSERT(my_nan_ceil_negative.uint32_v == reference_nan_ceil_negative.uint32_v);
 
@@ -396,9 +396,9 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
         JkConversionUnion value = {.uint32_v = jk_random_u64(&generator)};
         double reference = ceilf(value.f32);
         if (isnan(reference)) {
-            JK_ASSERT(isnan(jk_ceil_f32(value.f32)));
+            JK_ASSERT(isnan(jk_f32_ceil(value.f32)));
         } else {
-            JK_ASSERT(jk_ceil_f32(value.f32) == reference);
+            JK_ASSERT(jk_f32_ceil(value.f32) == reference);
         }
     }
 

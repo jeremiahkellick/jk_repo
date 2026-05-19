@@ -38,7 +38,7 @@ static float sin_unrolled(float x) {
 }
 
 static float sin_full_range(float x) {
-    x = jk_remainder_f32(x, 2 * JK_PI);
+    x = jk_f32_remainder(x, 2 * JK_PI);
 
     b32 positive = 0 <= x;
     if (!positive) {

@@ -504,46 +504,46 @@ typedef struct JkFloatUnpacked {
     uint64_t significand;
 } JkFloatUnpacked;
 
-JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value);
+JK_PUBLIC JkFloatUnpacked jk_f64_unpack(double value);
 
-JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f);
+JK_PUBLIC double jk_f64_pack(JkFloatUnpacked f);
 
 JK_PUBLIC double jk_f64_fma(double a, double b, double c);
 
 JK_PUBLIC double jk_f64_sqrt(double x);
 
-JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value);
+JK_PUBLIC JkFloatUnpacked jk_f32_unpack(float value);
 
-JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f);
+JK_PUBLIC float jk_f32_pack(JkFloatUnpacked f);
 
-JK_PUBLIC float jk_round_f32(float value);
+JK_PUBLIC float jk_f32_round(float value);
 
-JK_PUBLIC float jk_floor_f32(float value);
+JK_PUBLIC float jk_f32_floor(float value);
 
-JK_PUBLIC float jk_ceil_f32(float value);
+JK_PUBLIC float jk_f32_ceil(float value);
 
-JK_PUBLIC float jk_remainder_f32(float x, float y);
+JK_PUBLIC float jk_f32_remainder(float x, float y);
 
-JK_PUBLIC float jk_sqrt_f32(float value);
+JK_PUBLIC float jk_f32_sqrt(float value);
 
-JK_PUBLIC float jk_sin_core_f32(float value);
+JK_PUBLIC float jk_f32_sin_core(float value);
 
-JK_PUBLIC float jk_sin_f32(float value);
+JK_PUBLIC float jk_f32_sin(float value);
 
-JK_PUBLIC float jk_cos_f32(float value);
+JK_PUBLIC float jk_f32_cos(float value);
 
-JK_PUBLIC float jk_tan_f32(float value);
+JK_PUBLIC float jk_f32_tan(float value);
 
-JK_PUBLIC float jk_acos_core_f32(float value);
+JK_PUBLIC float jk_f32_acos_core(float value);
 
-JK_PUBLIC float jk_acos_f32(float value);
+JK_PUBLIC float jk_f32_acos(float value);
 
 JK_PUBLIC float jk_f32_lerp(float a, float b, float t);
 
-JK_PUBLIC float jk_remap_f32(
+JK_PUBLIC float jk_f32_remap(
         float value, float min_from, float max_from, float min_to, float max_to);
 
-JK_PUBLIC float jk_remap_clamped_f32(
+JK_PUBLIC float jk_f32_remap_clamped(
         float value, float min_from, float max_from, float min_to, float max_to);
 
 // ---- Math end ---------------------------------------------------------------
@@ -1657,8 +1657,8 @@ typedef union JkConversionUnion {
     float f32;
 } JkConversionUnion;
 
-JK_GLOBAL_DECLARE JkConversionUnion jk_infinity_f64;
-JK_GLOBAL_DECLARE JkConversionUnion jk_infinity_f32;
+JK_GLOBAL_DECLARE JkConversionUnion jk_f64_infinity;
+JK_GLOBAL_DECLARE JkConversionUnion jk_f32_infinity;
 
 typedef struct JkColor3 {
     union {

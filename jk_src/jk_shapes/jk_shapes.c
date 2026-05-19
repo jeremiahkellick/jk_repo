@@ -134,14 +134,14 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         return r;
     }
 
-    r.rotation_matrix[0][0] = jk_cos_f32(a.rotation);
-    r.rotation_matrix[0][1] = -jk_sin_f32(a.rotation);
-    r.rotation_matrix[1][0] = jk_sin_f32(a.rotation);
-    r.rotation_matrix[1][1] = jk_cos_f32(a.rotation);
+    r.rotation_matrix[0][0] = jk_f32_cos(a.rotation);
+    r.rotation_matrix[0][1] = -jk_f32_sin(a.rotation);
+    r.rotation_matrix[1][0] = jk_f32_sin(a.rotation);
+    r.rotation_matrix[1][1] = jk_f32_cos(a.rotation);
 
     float inverse_rotation_matrix[2][2] = {
-        {jk_cos_f32(a.rotation), jk_sin_f32(a.rotation)},
-        {-jk_sin_f32(a.rotation), jk_cos_f32(a.rotation)},
+        {jk_f32_cos(a.rotation), jk_f32_sin(a.rotation)},
+        {-jk_f32_sin(a.rotation), jk_f32_cos(a.rotation)},
     };
 
     // Transform point_start into ellipse space
@@ -159,7 +159,7 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         lambda += (point_prime.v[i] * point_prime.v[i]) / (r.dimensions.v[i] * r.dimensions.v[i]);
     }
     if (1.0f < lambda) {
-        r.dimensions = jk_vec2_mul(jk_sqrt_f32(lambda), r.dimensions);
+        r.dimensions = jk_vec2_mul(jk_f32_sqrt(lambda), r.dimensions);
     }
 
     b32 flag_large = (a.flags >> JK_SHAPES_ARC_FLAG_LARGE) & 1;
@@ -174,7 +174,7 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
         float y_sqr = point_prime.y * point_prime.y;
         float expr = (rx_sqr * ry_sqr - rx_sqr * y_sqr - ry_sqr * x_sqr)
                 / (rx_sqr * y_sqr + ry_sqr * x_sqr);
-        float scalar = jk_sqrt_f32(JK_MAX(0.0f, expr));
+        float scalar = jk_f32_sqrt(JK_MAX(0.0f, expr));
         JkVec2 vector = {(r.dimensions.x * point_prime.y) / r.dimensions.y,
             -(r.dimensions.y * point_prime.x) / r.dimensions.x};
         float sign = flag_large == flag_sweep ? -1.0f : 1.0f;
@@ -212,8 +212,8 @@ static JkShapesArcByCenter jk_shapes_arc_endpoint_to_center(
 static JkVec2 jk_shapes_evaluate_arc(float t, JkShapesArcByCenter arc) {
     float angle = arc.angle_start + t * arc.angle_delta;
     return jk_vec2_add(jk_matrix_2x2_multiply_vector(arc.rotation_matrix,
-                               (JkVec2){arc.dimensions.x * jk_cos_f32(angle),
-                                   arc.dimensions.y * jk_sin_f32(angle)}),
+                               (JkVec2){arc.dimensions.x * jk_f32_cos(angle),
+                                   arc.dimensions.y * jk_f32_sin(angle)}),
             arc.center);
 }
 

@@ -46,7 +46,7 @@ static float acos_full_range(float x) {
     }
     b32 in_standard_range = x <= (float)JK_INV_SQRT_2;
     if (!in_standard_range) {
-        x = jk_sqrt_f32(1.0f - x * x);
+        x = jk_f32_sqrt(1.0f - x * x);
     }
 
     float result = acos_unrolled(x);

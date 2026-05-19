@@ -8,20 +8,20 @@ JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value) {
     return __lzcnt64(value);
 }
 
-JK_PUBLIC float jk_round_f32(float value) {
+JK_PUBLIC float jk_f32_round(float value) {
     return _mm_cvtss_f32(
             _mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_TO_NEAREST_INT));
 }
 
-JK_PUBLIC float jk_floor_f32(float value) {
+JK_PUBLIC float jk_f32_floor(float value) {
     return _mm_cvtss_f32(_mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_FLOOR));
 }
 
-JK_PUBLIC float jk_ceil_f32(float value) {
+JK_PUBLIC float jk_f32_ceil(float value) {
     return _mm_cvtss_f32(_mm_round_ss(_mm_setzero_ps(), _mm_set_ss(value), _MM_FROUND_CEIL));
 }
 
-JK_PUBLIC float jk_sqrt_f32(float value) {
+JK_PUBLIC float jk_f32_sqrt(float value) {
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(value)));
 }
 
@@ -39,19 +39,19 @@ JK_PUBLIC int64_t jk_count_leading_zeros(uint64_t value) {
     }
 }
 
-JK_PUBLIC float jk_round_f32(float value) {
+JK_PUBLIC float jk_f32_round(float value) {
     return __builtin_roundevenf(value);
 }
 
-JK_PUBLIC float jk_floor_f32(float value) {
+JK_PUBLIC float jk_f32_floor(float value) {
     return __builtin_floorf(value);
 }
 
-JK_PUBLIC float jk_ceil_f32(float value) {
+JK_PUBLIC float jk_f32_ceil(float value) {
     return __builtin_ceilf(value);
 }
 
-JK_PUBLIC float jk_sqrt_f32(float value) {
+JK_PUBLIC float jk_f32_sqrt(float value) {
     return __builtin_sqrtf(value);
 }
 
@@ -769,7 +769,7 @@ JK_PUBLIC JkBuffer jk_string_from_binary(JkArena *arena, uint64_t value, int16_t
 
 JK_PUBLIC JkBuffer jk_string_from_f64(JkArena *arena, double value, int64_t decimal_places) {
     JK_DEBUG_ASSERT(0 <= decimal_places && decimal_places <= 8);
-    JkFloatUnpacked unpacked = jk_unpack_f64(value);
+    JkFloatUnpacked unpacked = jk_f64_unpack(value);
     if (unpacked.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
         if (unpacked.significand) {
             return jk_buffer_copy(arena, unpacked.sign ? JKS("-nan") : JKS("nan"));
@@ -1249,7 +1249,7 @@ JK_PUBLIC void jk_log_entry_remove(JkLogEntry entry) {
 
 // ---- Math begin -------------------------------------------------------------
 
-JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value) {
+JK_PUBLIC JkFloatUnpacked jk_f64_unpack(double value) {
     JkFloatUnpacked result;
 
     uint64_t bits = *(uint64_t *)&value;
@@ -1272,7 +1272,7 @@ JK_PUBLIC JkFloatUnpacked jk_unpack_f64(double value) {
     return result;
 }
 
-JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f) {
+JK_PUBLIC double jk_f64_pack(JkFloatUnpacked f) {
     uint64_t result = f.sign ? (1llu << 63) : 0;
 
     if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
@@ -1296,7 +1296,7 @@ JK_PUBLIC double jk_pack_f64(JkFloatUnpacked f) {
     return *(double *)&result;
 }
 
-JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value) {
+JK_PUBLIC JkFloatUnpacked jk_f32_unpack(float value) {
     JkFloatUnpacked result;
 
     uint32_t bits = *(uint32_t *)&value;
@@ -1319,7 +1319,7 @@ JK_PUBLIC JkFloatUnpacked jk_unpack_f32(float value) {
     return result;
 }
 
-JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f) {
+JK_PUBLIC float jk_f32_pack(JkFloatUnpacked f) {
     uint32_t result = f.sign ? (1 << 31) : 0;
 
     if (f.exponent == JK_FLOAT_EXPONENT_SPECIAL) {
@@ -1343,11 +1343,11 @@ JK_PUBLIC float jk_pack_f32(JkFloatUnpacked f) {
     return *(float *)&result;
 }
 
-JK_PUBLIC float jk_remainder_f32(float x, float y) {
-    return x - y * jk_round_f32(x / y);
+JK_PUBLIC float jk_f32_remainder(float x, float y) {
+    return x - y * jk_f32_round(x / y);
 }
 
-JK_PUBLIC float jk_sin_core_f32(float x) {
+JK_PUBLIC float jk_f32_sin_core(float x) {
     float result = -0x1.f647bep-11f;
     result = result * x + 0x1.501da2p-7f;
     result = result * x + -0x1.017a88p-9f;
@@ -1358,8 +1358,8 @@ JK_PUBLIC float jk_sin_core_f32(float x) {
     return result;
 }
 
-JK_PUBLIC float jk_sin_f32(float x) {
-    x = jk_remainder_f32(x, 2 * JK_PI);
+JK_PUBLIC float jk_f32_sin(float x) {
+    x = jk_f32_remainder(x, 2 * JK_PI);
 
     b32 positive = 0 <= x;
     if (!positive) {
@@ -1369,7 +1369,7 @@ JK_PUBLIC float jk_sin_f32(float x) {
         x = JK_PI - x;
     }
 
-    float result = jk_sin_core_f32(x);
+    float result = jk_f32_sin_core(x);
 
     if (!positive) {
         result = -result;
@@ -1378,15 +1378,15 @@ JK_PUBLIC float jk_sin_f32(float x) {
     return result;
 }
 
-JK_PUBLIC float jk_cos_f32(float x) {
-    return jk_sin_f32(x + JK_PI / 2);
+JK_PUBLIC float jk_f32_cos(float x) {
+    return jk_f32_sin(x + JK_PI / 2);
 }
 
-JK_PUBLIC float jk_tan_f32(float value) {
-    return jk_sin_f32(value) / jk_cos_f32(value);
+JK_PUBLIC float jk_f32_tan(float value) {
+    return jk_f32_sin(value) / jk_f32_cos(value);
 }
 
-JK_PUBLIC float jk_acos_core_f32(float x) {
+JK_PUBLIC float jk_f32_acos_core(float x) {
     float result = -0x1.056a66p+0f;
     result = result * x + 0x1.1fa76cp+1f;
     result = result * x + -0x1.1b0890p+1f;
@@ -1399,17 +1399,17 @@ JK_PUBLIC float jk_acos_core_f32(float x) {
     return result;
 }
 
-JK_PUBLIC float jk_acos_f32(float x) {
+JK_PUBLIC float jk_f32_acos(float x) {
     b32 positive = 0.0f <= x;
     if (!positive) {
         x = -x;
     }
     b32 in_standard_range = x <= (float)JK_INV_SQRT_2;
     if (!in_standard_range) {
-        x = jk_sqrt_f32(1.0f - x * x);
+        x = jk_f32_sqrt(1.0f - x * x);
     }
 
-    float result = jk_acos_core_f32(x);
+    float result = jk_f32_acos_core(x);
 
     if (!in_standard_range) {
         result = (float)(JK_PI / 2.0) - result;
@@ -1425,16 +1425,16 @@ JK_PUBLIC float jk_f32_lerp(float a, float b, float t) {
     return (1.0f - t) * a + t * b;
 }
 
-JK_PUBLIC float jk_remap_f32(
+JK_PUBLIC float jk_f32_remap(
         float value, float min_from, float max_from, float min_to, float max_to) {
     float delta_from = max_from - min_from;
     float delta_to = max_to - min_to;
     return min_to + delta_to * ((value - min_from) / delta_from);
 }
 
-JK_PUBLIC float jk_remap_clamped_f32(
+JK_PUBLIC float jk_f32_remap_clamped(
         float value, float min_from, float max_from, float min_to, float max_to) {
-    float result = jk_remap_f32(value, min_from, max_from, min_to, max_to);
+    float result = jk_f32_remap(value, min_from, max_from, min_to, max_to);
     return JK_CLAMP(result, min_to, max_to);
 }
 
@@ -1459,13 +1459,13 @@ JK_PUBLIC int32_t jk_i32_from_q16_ceil(int32_t x) {
 }
 
 JK_PUBLIC int32_t jk_q16_from_f32(float x) {
-    JkFloatUnpacked f = jk_unpack_f32(x);
+    JkFloatUnpacked f = jk_f32_unpack(x);
     int32_t value = jk_signed_shift(f.significand, f.exponent + 16);
     return f.sign ? -value : value;
 }
 
 JK_PUBLIC float jk_f32_from_q16(int32_t x) {
-    return jk_pack_f32((JkFloatUnpacked){
+    return jk_f32_pack((JkFloatUnpacked){
         .sign = x < 0,
         .exponent = -16,
         .significand = JK_ABS((int64_t)x),
@@ -1893,7 +1893,7 @@ JK_PUBLIC JkVec2 jk_vec2_mul(float scalar, JkVec2 vector) {
 }
 
 JK_PUBLIC JkVec2 jk_vec2_ceil(JkVec2 v) {
-    return (JkVec2){jk_ceil_f32(v.x), jk_ceil_f32(v.y)};
+    return (JkVec2){jk_f32_ceil(v.x), jk_f32_ceil(v.y)};
 }
 
 JK_PUBLIC JkIntVec2 jk_vec2_ceil_i(JkVec2 v) {
@@ -1906,7 +1906,7 @@ JK_PUBLIC float jk_vec2_magnitude_sqr(JkVec2 v) {
 }
 
 JK_PUBLIC float jk_vec2_magnitude(JkVec2 v) {
-    return jk_sqrt_f32(jk_vec2_magnitude_sqr(v));
+    return jk_f32_sqrt(jk_vec2_magnitude_sqr(v));
 }
 
 JK_PUBLIC JkVec2 jk_vec2_normalized(JkVec2 v) {
@@ -1923,7 +1923,7 @@ JK_PUBLIC float jk_vec2_cross(JkVec2 u, JkVec2 v) {
 
 JK_PUBLIC float jk_vec2_angle_between(JkVec2 u, JkVec2 v) {
     float sign = u.x * v.y - u.y * v.x < 0.0f ? -1.0f : 1.0f;
-    return sign * jk_acos_f32(jk_vec2_dot(u, v) / (jk_vec2_magnitude(u) * jk_vec2_magnitude(v)));
+    return sign * jk_f32_acos(jk_vec2_dot(u, v) / (jk_vec2_magnitude(u) * jk_vec2_magnitude(v)));
 }
 
 JK_PUBLIC JkVec2 jk_vec2_lerp(JkVec2 a, JkVec2 b, float t) {
@@ -1985,7 +1985,7 @@ JK_PUBLIC JkVec3 jk_vec3_hadamard_prod(JkVec3 u, JkVec3 v) {
 }
 
 JK_PUBLIC JkVec3 jk_vec3_ceil(JkVec3 v) {
-    return (JkVec3){jk_ceil_f32(v.x), jk_ceil_f32(v.y), jk_ceil_f32(v.z)};
+    return (JkVec3){jk_f32_ceil(v.x), jk_f32_ceil(v.y), jk_f32_ceil(v.z)};
 }
 
 JK_PUBLIC float jk_vec3_magnitude_sqr(JkVec3 v) {
@@ -1993,13 +1993,13 @@ JK_PUBLIC float jk_vec3_magnitude_sqr(JkVec3 v) {
 }
 
 JK_PUBLIC float jk_vec3_magnitude(JkVec3 v) {
-    return jk_sqrt_f32(jk_vec3_magnitude_sqr(v));
+    return jk_f32_sqrt(jk_vec3_magnitude_sqr(v));
 }
 
 JK_PUBLIC JkVec3 jk_vec3_normalized(JkVec3 v) {
     float mag_sqr = jk_vec3_magnitude_sqr(v);
     if (mag_sqr) {
-        return jk_vec3_mul(1.0f / jk_sqrt_f32(mag_sqr), v);
+        return jk_vec3_mul(1.0f / jk_f32_sqrt(mag_sqr), v);
     } else {
         return v;
     }
@@ -2018,7 +2018,7 @@ JK_PUBLIC JkVec3 jk_vec3_cross(JkVec3 u, JkVec3 v) {
 }
 
 JK_PUBLIC float jk_vec3_angle_between(JkVec3 u, JkVec3 v) {
-    return jk_acos_f32(jk_vec3_dot(u, v) / (jk_vec3_magnitude(u) * jk_vec3_magnitude(v)));
+    return jk_f32_acos(jk_vec3_dot(u, v) / (jk_vec3_magnitude(u) * jk_vec3_magnitude(v)));
 }
 
 JK_PUBLIC JkVec3 jk_vec3_lerp(JkVec3 a, JkVec3 b, float t) {
@@ -2033,7 +2033,7 @@ JK_PUBLIC float jk_vec3_distance_squared(JkVec3 a, JkVec3 b) {
 }
 
 JK_PUBLIC JkVec3 jk_vec3_round(JkVec3 vector) {
-    return (JkVec3){jk_round_f32(vector.x), jk_round_f32(vector.y)};
+    return (JkVec3){jk_f32_round(vector.x), jk_f32_round(vector.y)};
 }
 
 JK_PUBLIC JkVec3 jk_vec3_from_2(JkVec2 v, float z) {
@@ -2057,7 +2057,7 @@ JK_PUBLIC float jk_vec4_magnitude_sqr(JkVec4 v) {
 }
 
 JK_PUBLIC float jk_vec4_magnitude(JkVec4 v) {
-    return jk_sqrt_f32(jk_vec4_magnitude_sqr(v));
+    return jk_f32_sqrt(jk_vec4_magnitude_sqr(v));
 }
 
 JK_PUBLIC JkVec4 jk_vec4_normalized(JkVec4 v) {
@@ -2163,8 +2163,8 @@ JK_PUBLIC JkMat4 jk_mat4_rotate_x(float a)
 {
     return (JkMat4){{
         {1,             0,              0, 0},
-        {0, jk_cos_f32(a), -jk_sin_f32(a), 0},
-        {0, jk_sin_f32(a),  jk_cos_f32(a), 0},
+        {0, jk_f32_cos(a), -jk_f32_sin(a), 0},
+        {0, jk_f32_sin(a),  jk_f32_cos(a), 0},
         {0,             0,              0, 1},
     }};
 }
@@ -2172,9 +2172,9 @@ JK_PUBLIC JkMat4 jk_mat4_rotate_x(float a)
 JK_PUBLIC JkMat4 jk_mat4_rotate_y(float a)
 {
     return (JkMat4){{
-        { jk_cos_f32(a), 0, jk_sin_f32(a), 0},
+        { jk_f32_cos(a), 0, jk_f32_sin(a), 0},
         {             0, 1,             0, 0},
-        {-jk_sin_f32(a), 0, jk_cos_f32(a), 0},
+        {-jk_f32_sin(a), 0, jk_f32_cos(a), 0},
         {             0, 0,             0, 1},
     }};
 }
@@ -2182,8 +2182,8 @@ JK_PUBLIC JkMat4 jk_mat4_rotate_y(float a)
 JK_PUBLIC JkMat4 jk_mat4_rotate_z(float a)
 {
     return (JkMat4){{
-        {jk_cos_f32(a), -jk_sin_f32(a), 0, 0},
-        {jk_sin_f32(a),  jk_cos_f32(a), 0, 0},
+        {jk_f32_cos(a), -jk_f32_sin(a), 0, 0},
+        {jk_f32_sin(a),  jk_f32_cos(a), 0, 0},
         {            0,              0, 1, 0},
         {            0,              0, 0, 1},
     }};
@@ -2201,7 +2201,7 @@ JK_PUBLIC JkMat4 jk_mat4_scale(JkVec3 v)
 
 JK_PUBLIC JkMat4 jk_mat4_perspective(JkIntVec2 dimensions, float fov_radians, float near_clip)
 {
-    float inv_tan = 1 / jk_tan_f32(fov_radians / 2);
+    float inv_tan = 1 / jk_f32_tan(fov_radians / 2);
     if (dimensions.x < dimensions.y) {
         float r = (float)dimensions.x / (float)dimensions.y;
         return (JkMat4){{
@@ -2276,8 +2276,8 @@ JK_PUBLIC JkMat4 jk_mat4_conversion_from_to(JkCoordinateSystem source, JkCoordin
 
 JkVec4 jk_quat_angle_axis(float angle, JkVec3 axis) {
     JkVec4 result;
-    result.w = jk_cos_f32(angle / 2);
-    float sin = jk_sin_f32(angle / 2);
+    result.w = jk_f32_cos(angle / 2);
+    float sin = jk_f32_sin(angle / 2);
     axis = jk_vec3_normalized(axis);
     for (int64_t i = 0; i < 3; i++) {
         result.v[i] = sin * axis.v[i];
@@ -2335,10 +2335,10 @@ JkMat4 jk_mat4_from_quat(JkVec4 q) {
 JkVec4 jk_quat_from_mat4(JkMat4 m) {
     JkVec4 r;
 
-    r.v[0] = jk_sqrt_f32(JK_ABS(1 + m.e[0][0] - m.e[1][1] - m.e[2][2]));
-    r.v[1] = jk_sqrt_f32(JK_ABS(1 - m.e[0][0] + m.e[1][1] - m.e[2][2]));
-    r.v[2] = jk_sqrt_f32(JK_ABS(1 - m.e[0][0] - m.e[1][1] + m.e[2][2]));
-    r.v[3] = jk_sqrt_f32(JK_ABS(1 + m.e[0][0] + m.e[1][1] + m.e[2][2]));
+    r.v[0] = jk_f32_sqrt(JK_ABS(1 + m.e[0][0] - m.e[1][1] - m.e[2][2]));
+    r.v[1] = jk_f32_sqrt(JK_ABS(1 - m.e[0][0] + m.e[1][1] - m.e[2][2]));
+    r.v[2] = jk_f32_sqrt(JK_ABS(1 - m.e[0][0] - m.e[1][1] + m.e[2][2]));
+    r.v[3] = jk_f32_sqrt(JK_ABS(1 + m.e[0][0] + m.e[1][1] + m.e[2][2]));
 
     float max = -1;
     int64_t max_i = 0;
@@ -2863,9 +2863,9 @@ JK_PUBLIC JkRiffChunk *jk_riff_chunk_next(JkRiffChunk *chunk) {
 
 // ---- File formats end -------------------------------------------------------
 
-JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f64 = {
+JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_f64_infinity = {
     .uint64_v = 0x7ff0000000000000llu};
-JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_infinity_f32 = {.uint32_v = 0x7f800000};
+JK_GLOBAL_DEFINE JK_READONLY JkConversionUnion jk_f32_infinity = {.uint32_v = 0x7f800000};
 
 JK_PUBLIC JkColor3 jk_color3_from_4(JkColor color) {
     return (JkColor3){.r = color.r, .g = color.g, .b = color.b};

@@ -89,7 +89,7 @@ static b32 clip_to_draw_region(JkIntVec2 dimensions, JkVec2 *a, JkVec2 *b) {
 }
 
 static float fpart(float x) {
-    return x - jk_floor_f32(x);
+    return x - jk_f32_floor(x);
 }
 
 static float fpart_complement(float x) {
@@ -266,10 +266,10 @@ static JkIntRect q16_triangle_bounding_box(Q16Triangle tri) {
 
 static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2) {
     return (JkIntRect){
-        .min.x = jk_floor_f32(JK_MIN3(v0.x, v1.x, v2.x)),
-        .min.y = jk_floor_f32(JK_MIN3(v0.y, v1.y, v2.y)),
-        .max.x = jk_floor_f32(JK_MAX3(v0.x, v1.x, v2.x)) + 1,
-        .max.y = jk_floor_f32(JK_MAX3(v0.y, v1.y, v2.y)) + 1,
+        .min.x = jk_f32_floor(JK_MIN3(v0.x, v1.x, v2.x)),
+        .min.y = jk_f32_floor(JK_MIN3(v0.y, v1.y, v2.y)),
+        .max.x = jk_f32_floor(JK_MAX3(v0.x, v1.x, v2.x)) + 1,
+        .max.y = jk_f32_floor(JK_MAX3(v0.y, v1.y, v2.y)) + 1,
     };
 }
 
@@ -1368,7 +1368,7 @@ typedef struct ScreenFromWorldResult {
 } ScreenFromWorldResult;
 
 static NavPoint closest_point_on_ring(JkVec3 p, NavRing *ring) {
-    NavPoint result = {.distance_sqr = jk_infinity_f32.f32, .ring = ring};
+    NavPoint result = {.distance_sqr = jk_f32_infinity.f32, .ring = ring};
     for (int64_t i = 2; i < ring->vertex_count; i++) {
         JkVec3 candidate = jk_closest_point_on_triangle(
                 p, ring->vertices[0], ring->vertices[i - 1], ring->vertices[i]);
@@ -1438,7 +1438,7 @@ void render(JkContext *context, Environment *env) {
 
     NavContact **nav_contacts = 0;
     NavRingArray nav_rings = {0};
-    NavPoint start = {.distance_sqr = jk_infinity_f32.f32};
+    NavPoint start = {.distance_sqr = jk_f32_infinity.f32};
 
     TextureArray textures;
     JK_ARRAY_FROM_SPAN(textures, env->assets, env->assets->textures);
@@ -1584,7 +1584,7 @@ void render(JkContext *context, Environment *env) {
 
         float mouse_sensitivity = 0.4 * DELTA_TIME;
         env->state.camera_yaw +=
-                jk_remainder_f32(mouse_sensitivity * -input.mouse.delta.x, 2 * JK_PI);
+                jk_f32_remainder(mouse_sensitivity * -input.mouse.delta.x, 2 * JK_PI);
         env->state.camera_pitch =
                 JK_CLAMP(env->state.camera_pitch + mouse_sensitivity * -input.mouse.delta.y,
                         -JK_PI / 2,
@@ -1599,8 +1599,8 @@ void render(JkContext *context, Environment *env) {
         JkVec2 nav_origin = jk_vec2_sub(
                 jk_vec2_mul(1 / nav_density, jk_vec2_from_3(env->state.player_position)),
                 jk_vec2_mul(0.5, jk_vec2_from_i32(nav_dimensions)));
-        nav_origin.x = jk_floor_f32(nav_origin.x);
-        nav_origin.y = jk_floor_f32(nav_origin.y);
+        nav_origin.x = jk_f32_floor(nav_origin.x);
+        nav_origin.y = jk_f32_floor(nav_origin.y);
 
         JkMat4 nav_from_world = jk_mat4_scale((JkVec3){1 / nav_density, 1 / nav_density, 1});
         nav_from_world = jk_mat4_mul(
@@ -1827,11 +1827,11 @@ void render(JkContext *context, Environment *env) {
 
         // Compute max depth
         float step_size = JK_SQRT_2 * nav_density;
-        int64_t max_steps = jk_ceil_f32((SPEED * DELTA_TIME) / step_size);
+        int64_t max_steps = jk_f32_ceil((SPEED * DELTA_TIME) / step_size);
         int64_t max_depth = 2 * max_steps + 1;
 
         JK_ARENA_SCOPE(scratch0.arena) {
-            NavPoint destination = {.distance_sqr = jk_infinity_f32.f32};
+            NavPoint destination = {.distance_sqr = jk_f32_infinity.f32};
             NavRingQueue q = q_new(scratch0.arena, 1024);
             q_enqueue(&q, start.ring);
             int64_t depth = 0;

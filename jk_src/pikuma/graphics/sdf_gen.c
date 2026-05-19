@@ -357,7 +357,7 @@ Texture generate_sdf_texture(JkArena *arena, JkBuffer name) {
                 }
 
                 float scanline_intersect_x = jk_segment_y_intersection(edge->segment, sample_y);
-                float leftmost_sample_x = jk_ceil_f32(scanline_intersect_x - 0.5f);
+                float leftmost_sample_x = jk_f32_ceil(scanline_intersect_x - 0.5f);
                 if (0 <= leftmost_sample_x && leftmost_sample_x < TEXTURE_SIDE_LENGTH) {
                     fill_right[(int32_t)leftmost_sample_x] += edge->direction;
                 }
@@ -369,7 +369,7 @@ Texture generate_sdf_texture(JkArena *arena, JkBuffer name) {
                 float sign = winding == 0 ? 1 : -1;
 
                 JkVec2 posf = jk_vec2_add(jk_vec2_from_i32(pos), (JkVec2){0.5f, 0.5f});
-                float distance_sqr = jk_infinity_f32.f32;
+                float distance_sqr = jk_f32_infinity.f32;
                 for (int64_t i = 0; i < edges.count; i++) {
                     float candidate = jk_distance_to_segment_2d(posf, edges.e[i].segment);
                     if (candidate < distance_sqr) {
@@ -379,8 +379,8 @@ Texture generate_sdf_texture(JkArena *arena, JkBuffer name) {
 
                 float value = 127.5f;
                 if ((SDF_SUBPIXEL_PRECISION * SDF_SUBPIXEL_PRECISION) < distance_sqr) {
-                    float signed_distance = sign * jk_sqrt_f32(distance_sqr);
-                    value = jk_remap_clamped_f32(signed_distance, SDF_SPREAD, -SDF_SPREAD, 0, 255);
+                    float signed_distance = sign * jk_f32_sqrt(distance_sqr);
+                    value = jk_f32_remap_clamped(signed_distance, SDF_SPREAD, -SDF_SPREAD, 0, 255);
                 }
                 sdf[TEXTURE_SIDE_LENGTH * pos.y + pos.x].v[shape_index] = (uint8_t)value;
             }
