@@ -1146,6 +1146,7 @@ static void triangle_fill(
         for (int32_t x = bounds.min.x; x < bounds.max.x; x += 8) {
             b32 found_color = 0;
             ColorF32x8x4 pixel_color = color_broadcast((JkColor){0});
+            JkF32x8 pixel_z = s_interpolants_col[0].e[S_Z];
             for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
                 SampleInterpolants *s_interpolants = s_interpolants_col + sample_index;
                 JkF32x8 outside_triangle =
@@ -1164,8 +1165,7 @@ static void triangle_fill(
                         if (!found_color) {
                             found_color = 1;
 
-                            JkF32x8 inv_z = jk_f32x8_div(
-                                    jk_f32x8_broadcast(1), s_interpolants_col[0].e[S_Z]);
+                            JkF32x8 inv_z = jk_f32x8_div(jk_f32x8_broadcast(1), pixel_z);
 
                             JkF32x8 uv[2];
                             JkF32x8 frac[2];
@@ -1173,8 +1173,10 @@ static void triangle_fill(
                             for (int32_t axis = 0; axis < 2; axis++) {
                                 uv[axis] = jk_f32x8_mul(p_interpolants.e[P_U + axis], inv_z);
 
-                                JkF32x8 tex = jk_f32x8_mul(jk_f32x8_broadcast(TEXTURE_SIDE_LENGTH),
-                                        jk_f32x8_sub(uv[axis], jk_f32x8_floor(uv[axis])));
+                                JkF32x8 tex = jk_f32x8_sub(
+                                        jk_f32x8_mul(jk_f32x8_broadcast(TEXTURE_SIDE_LENGTH),
+                                                jk_f32x8_sub(uv[axis], jk_f32x8_floor(uv[axis]))),
+                                        jk_f32x8_broadcast(0.5));
                                 frac[axis] = jk_f32x8_sub(tex, jk_f32x8_floor(tex));
                                 coords[axis][0] = jk_i256_and(jk_i32x8_from_f32x8_truncate(tex),
                                         jk_i256_broadcast_i32(TEXTURE_MASK));
