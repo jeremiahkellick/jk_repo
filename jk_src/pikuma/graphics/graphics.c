@@ -1214,7 +1214,7 @@ static void triangle_fill(
                             for (int64_t channel_index = 0;
                                     jk_f32x8_any(jk_f32x8_less_than(
                                             pixel_color.e[3], jk_f32x8_broadcast(1)))
-                                    && channel_index < 4;
+                                    && channel_index < texture->channel_count;
                                     channel_index++) {
                                 JkF32x8 distance = bilerp(dist, channel_index, frac[0], frac[1]);
                                 JkF32x8 dir = jk_f32x8_sub(

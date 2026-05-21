@@ -527,6 +527,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
     }
 
     float pixels_per_unit = (float)TEXTURE_SIDE_LENGTH / SVG_SIDE_LENGTH;
+    tex->channel_count = 0;
     for (int64_t shape_index = 0; shape_index < 4; shape_index++) {
         JkArenaScope shape_scope = jk_arena_scope_begin(scratch.arena);
 
@@ -537,6 +538,10 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
         commands.e = (JkShapesPenCommand *)(scratch.arena->memory.data + shape->commands.offset);
         JkEdgeArray edges = jk_shapes_edges_get(
                 scratch.arena, commands, (JkVec2){0}, pixels_per_unit, SDF_SUBPIXEL_PRECISION, 0);
+
+        if (commands.count) {
+            tex->channel_count = shape_index + 1;
+        }
 
         float *fill_right = jk_arena_push(scratch.arena, TEXTURE_SIDE_LENGTH * sizeof(*fill_right));
         for (JkIntVec2 pos = {0}; pos.y < TEXTURE_SIDE_LENGTH; pos.y++) {

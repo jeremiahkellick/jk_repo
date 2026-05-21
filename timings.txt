@@ -305,3 +305,35 @@ Min: 19581980 (5.4394ms)
 Max: 23041127 (6.4003ms)
 
 Average: 21187218 (5.8853ms)
+
+profile_00_1 BASELINE
+
+CPU frequency: 3600030780
+Min: 57889387 (16.0802ms)
+	walk_manifold[1]: 5275764 (9.11%)
+	transform[1]: 7376068 (12.74%)
+	rasterize[1]: 45236761 (78.14%)
+Max: 75155761 (20.8764ms)
+	walk_manifold[1]: 9314705 (12.39%)
+	transform[1]: 8727264 (11.61%)
+	rasterize[1]: 57112274 (75.99%)
+Average: 63131060 (17.5363ms)
+	walk_manifold[1]: 5377341 (8.52%)
+	transform[1]: 8360994 (13.24%)
+	rasterize[1]: 49391350 (78.24%)
+
+profile_00_1 SDF TEXTURE CHANNEL COUNT
+
+CPU frequency: 3600033150
+Min: 56332563 (15.6478ms)
+	walk_manifold[1]: 5159886 (9.16%)
+	transform[1]: 7644876 (13.57%)
+	rasterize[1]: 43526453 (77.27%)
+Max: 68647912 (19.0687ms)
+	walk_manifold[1]: 5869693 (8.55%)
+	transform[1]: 7944934 (11.57%)
+	rasterize[1]: 54829487 (79.87%)
+Average: 60406620 (16.7795ms)
+	walk_manifold[1]: 5318494 (8.80%)
+	transform[1]: 8255616 (13.67%)
+	rasterize[1]: 46830353 (77.53%)
