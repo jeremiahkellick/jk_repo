@@ -593,9 +593,6 @@ JK_PUBLIC JkF32x8 jk_f32x8_div(JkF32x8 a, JkF32x8 b);
 
 JK_PUBLIC JkF32x8 jk_f32x8_reciprocal_approx(JkF32x8 x);
 
-JK_PUBLIC JkF32x8 jk_f32x8_remap_approx(
-        JkF32x8 value, JkF32x8 min_from, JkF32x8 max_from, JkF32x8 min_to, JkF32x8 max_to);
-
 JK_PUBLIC JkF32x8 jk_f32x8_floor(JkF32x8 x);
 
 JK_PUBLIC JkF32x8 jk_f32x8_min(JkF32x8 a, JkF32x8 b);

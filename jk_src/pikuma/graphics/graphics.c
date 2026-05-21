@@ -2213,9 +2213,6 @@ void render(JkContext *context, Environment *env) {
             JkColor nav_color = {.r = 0, .g = 255, .b = 0, .a = 255};
             nav_draw_rings(env, screen_from_ndc, clip_from_world, nav_color, start.ring);
 
-            for (int64_t ring_index = 0; ring_index < nav_rings.count; ring_index++) {
-            }
-
             JkShapesRenderer renderer;
             JkShapeArray shapes = (JkShapeArray){
                 .count = JK_ARRAY_COUNT(env->assets->shapes), .e = env->assets->shapes};

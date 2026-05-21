@@ -122,7 +122,7 @@ static void print_stdout(JkBuffer string)
 - (instancetype)initWithFrame:(CGRect)frameRect scale_factor:(CGFloat)scale_factor;
 @end
 
-@interface AppDelegate : NSObject <NSApplicationDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @property(strong, nonatomic) NSWindow *window;
 @property(strong) id click_monitor;
 @property(nonatomic) CGFloat scale_factor;
@@ -155,7 +155,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
                     .data;
 
     uint8_t *memory = mmap(NULL,
-            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE + sizeof(*g.env.recording),
+            DRAW_BUFFER_SIZE + Z_BUFFER_SIZE,
             PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANON,
             -1,
@@ -166,8 +166,18 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv)
     }
     g.env.draw_buffer = (JkColor *)memory;
     g.env.z_buffer = (float *)(memory + DRAW_BUFFER_SIZE);
-    g.env.recording = (Recording *)(memory + DRAW_BUFFER_SIZE + Z_BUFFER_SIZE);
     g.env.estimate_cpu_frequency = jk_platform_cpu_timer_frequency_estimate;
+
+    g.env.record_arena = jk_platform_arena_virtual_init(32 * JK_GIGABYTE);
+    if (!g.env.record_arena.memory.size) {
+        jk_log(JK_LOG_FATAL, JKS("Failed to initialize arena\n"));
+        exit(1);
+    }
+    g.env.states_arena = jk_platform_arena_virtual_init(32 * JK_GIGABYTE);
+    if (!g.env.states_arena.memory.size) {
+        jk_log(JK_LOG_FATAL, JKS("Failed to initialize arena\n"));
+        exit(1);
+    }
 
     jk_platform_barrier_init(&g.barrier, THREAD_COUNT);
 
@@ -233,6 +243,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 - (BOOL)acceptsFirstResponder;
 - (void)keyDown:(NSEvent *)anEvent;
 - (void)keyUp:(NSEvent *)anEvent;
+- (void)flagsChanged:(NSEvent *)anEvent;
 - (void)mouseMoved:(NSEvent *)anEvent;
 @end
 
@@ -287,6 +298,26 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     }
 }
 
+- (void)flagsChanged:(NSEvent *)anEvent
+{
+    unsigned short keyCode = [anEvent keyCode];
+    if (keyCode < JK_ARRAY_COUNT(key_map)) {
+        JkKey key = key_map[keyCode];
+        if (key) {
+            uint8_t flag = 1 << (key % 8);
+            pthread_mutex_lock(&g.keyboard_lock);
+            if (g.keyboard.down[key / 8] & flag) {
+                g.keyboard.down[key / 8] &= ~flag;
+                g.keyboard.released[key / 8] |= flag;
+            } else {
+                g.keyboard.down[key / 8] |= flag;
+                g.keyboard.pressed[key / 8] |= flag;
+            }
+            pthread_mutex_unlock(&g.keyboard_lock);
+        }
+    }
+}
+
 - (void)mouseMoved:(NSEvent *)anEvent
 {
     pthread_mutex_lock(&g.mouse_lock);
@@ -322,6 +353,7 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
     [self.window center];
     [self.window makeMainWindow];
     [self.window makeKeyAndOrderFront:nil];
+    [self.window setDelegate:self];
 
     // clang-format off
     self.click_monitor = [NSEvent
@@ -343,6 +375,13 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)theApplication
 {
     return true;
+}
+
+- (void)windowDidResignKey:(NSNotification *)notification
+{
+    pthread_mutex_lock(&g.keyboard_lock);
+    jk_memset(&g.keyboard, 0, sizeof(g.keyboard));
+    pthread_mutex_unlock(&g.keyboard_lock);
 }
 @end
 

@@ -1,3 +1,5 @@
+#include <string.h>
+
 // #jk_build single_translation_unit
 
 // #jk_build dependencies_begin
@@ -176,7 +178,7 @@ static JkBuffer fbx_prop_string_read(uint8_t *base, int64_t *cursor) {
 // ---- SVG begin --------------------------------------------------------------
 
 static b32 is_numeric(int c) {
-    return isdigit(c) || c == '.' || c == '-';
+    return jk_char_is_digit(c) || c == '.' || c == '-';
 }
 
 static JkFloatArray svg_parse_numbers(JkArena *arena, JkBuffer shape_string, int64_t *pos) {
@@ -1116,38 +1118,38 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
                 assets->font_monospace_advance_width = (float)advance_width;
             }
 
-            stbtt_vertex *verticies;
-            int64_t command_count = stbtt_GetCodepointShape(&font, codepoint, &verticies);
+            stbtt_vertex *vertices;
+            int64_t command_count = stbtt_GetCodepointShape(&font, codepoint, &vertices);
             shape->commands.size = JK_SIZEOF(JkShapesPenCommand) * command_count;
             shape->commands.offset = result_arena.pos;
             JkShapesPenCommand *commands = jk_arena_push_zero(&result_arena, shape->commands.size);
             for (int64_t i = 0; i < command_count; i++) {
-                switch (verticies[i].type) {
+                switch (vertices[i].type) {
                 case STBTT_vmove:
                 case STBTT_vline: {
-                    commands[i].type = verticies[i].type == STBTT_vmove
+                    commands[i].type = vertices[i].type == STBTT_vmove
                             ? JK_SHAPES_PEN_COMMAND_MOVE
                             : JK_SHAPES_PEN_COMMAND_LINE;
-                    commands[i].v[0].x = (float)verticies[i].x;
-                    commands[i].v[0].y = (float)-verticies[i].y;
+                    commands[i].v[0].x = (float)vertices[i].x;
+                    commands[i].v[0].y = (float)-vertices[i].y;
                 } break;
 
                 case STBTT_vcurve: {
                     commands[i].type = JK_SHAPES_PEN_COMMAND_CURVE_QUADRATIC;
-                    commands[i].v[0].x = (float)verticies[i].cx;
-                    commands[i].v[0].y = (float)-verticies[i].cy;
-                    commands[i].v[1].x = (float)verticies[i].x;
-                    commands[i].v[1].y = (float)-verticies[i].y;
+                    commands[i].v[0].x = (float)vertices[i].cx;
+                    commands[i].v[0].y = (float)-vertices[i].cy;
+                    commands[i].v[1].x = (float)vertices[i].x;
+                    commands[i].v[1].y = (float)-vertices[i].y;
                 } break;
 
                 case STBTT_vcubic: {
                     commands[i].type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
-                    commands[i].v[0].x = (float)verticies[i].cx;
-                    commands[i].v[0].y = (float)-verticies[i].cy;
-                    commands[i].v[1].x = (float)verticies[i].cx1;
-                    commands[i].v[1].y = (float)-verticies[i].cy1;
-                    commands[i].v[2].x = (float)verticies[i].x;
-                    commands[i].v[2].y = (float)-verticies[i].y;
+                    commands[i].v[0].x = (float)vertices[i].cx;
+                    commands[i].v[0].y = (float)-vertices[i].cy;
+                    commands[i].v[1].x = (float)vertices[i].cx1;
+                    commands[i].v[1].y = (float)-vertices[i].cy1;
+                    commands[i].v[2].x = (float)vertices[i].x;
+                    commands[i].v[2].y = (float)-vertices[i].y;
                 } break;
 
                 default: {
