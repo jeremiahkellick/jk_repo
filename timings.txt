@@ -353,3 +353,35 @@ Average: 57487120 (15.9685ms)
 	walk_manifold[1]: 5245575 (9.12%)
 	transform[1]: 7738807 (13.46%)
 	rasterize[1]: 44501494 (77.41%)
+
+profile_00_1 TRIVIAL PART 1
+
+CPU frequency: 3600026310
+Min: 53713737 (14.9204ms)
+	walk_manifold[1]: 5223134 (9.72%)
+	transform[1]: 7632754 (14.21%)
+	rasterize[1]: 40857167 (76.06%)
+Max: 118201326 (32.8335ms)
+	walk_manifold[1]: 5238780 (4.43%)
+	transform[1]: 9161388 (7.75%)
+	rasterize[1]: 103798526 (87.82%)
+Average: 62223688 (17.2842ms)
+	walk_manifold[1]: 5720891 (9.19%)
+	transform[1]: 9776448 (15.71%)
+	rasterize[1]: 46720785 (75.09%)
+
+profile_00_1 TRIVIAL PART 2
+
+CPU frequency: 3600024600
+Min: 53043426 (14.7342ms)
+	walk_manifold[1]: 5113858 (9.64%)
+	transform[1]: 7451972 (14.05%)
+	rasterize[1]: 40476038 (76.31%)
+Max: 128086148 (35.5792ms)
+	walk_manifold[1]: 5180538 (4.04%)
+	transform[1]: 9965942 (7.78%)
+	rasterize[1]: 112935866 (88.17%)
+Average: 58217103 (16.1713ms)
+	walk_manifold[1]: 5425005 (9.32%)
+	transform[1]: 8865042 (15.23%)
+	rasterize[1]: 43924827 (75.45%)

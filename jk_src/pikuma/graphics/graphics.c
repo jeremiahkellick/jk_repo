@@ -1290,6 +1290,9 @@ static void triangle_fill(
                             jk_f32x8_add(s_interpolants->e[i], jk_f32x8_broadcast(deltas[0][i]));
                 }
             }
+            if (found_color) {
+                env->draw_buffer[DRAW_BUFFER_SIDE_LENGTH * y + x].a = 0;
+            }
 
             for (int64_t i = 0; i < PIXEL_INTERPOLANT_COUNT; i++) {
                 p_interpolants.e[i] = jk_f32x8_add(p_interpolants.e[i],
@@ -1505,10 +1508,8 @@ static void trivial_fill(Environment *env, TriangleNode *node, Texture *texture,
                         visible, jk_f32x8_less_than(alpha_threshold, pixel_color.e[3]));
                 */
 
-                for (int64_t i = 0; i < SAMPLE_COUNT; i++) {
-                    jk_f32x8_store((float *)(env->draw_buffer + PIXEL_COUNT * i + index),
-                            jk_f32x8_from_i256_reinterpret(color_i32));
-                }
+                jk_f32x8_store((float *)(env->draw_buffer + index),
+                        jk_f32x8_from_i256_reinterpret(color_i32));
             }
 
             for (int64_t i = 0; i < SAMPLE_INTERPOLANT_COUNT; i++) {
@@ -2415,29 +2416,43 @@ void render(JkContext *context, Environment *env) {
 
             for (int32_t y = bounding_box.min.y; y < bounding_box.max.y; y++) {
                 for (int32_t x = bounding_box.min.x; x < bounding_box.max.x; x += 8) {
-                    JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
-                    for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT; sample_index++) {
-                        JkI256 sample = jk_i256_load(env->draw_buffer
-                                + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y + x));
-                        JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
-                        channels[0] = jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
-                        channels[1] = jk_i256_add_i32(channels[1],
-                                jk_i256_and(
-                                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 8), byte_mask));
-                        channels[2] = jk_i256_add_i32(channels[2],
-                                jk_i256_and(
-                                        JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 16), byte_mask));
-                    }
-                    for (int32_t channel_index = 0; channel_index < 3; channel_index++) {
-                        channels[channel_index] =
-                                JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(channels[channel_index], 2);
-                    }
+                    JkI256 data =
+                            jk_i256_load(env->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x));
+                    if (jk_f32x8_all(jk_f32x8_from_i256_reinterpret(data))) {
+                        jk_i256_store(env->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), data);
+                    } else {
+                        JkI256 channels[3] = {jk_i256_zero(), jk_i256_zero(), jk_i256_zero()};
+                        for (int64_t sample_index = 0; sample_index < SAMPLE_COUNT;
+                                sample_index++) {
+                            JkI256 sample;
+                            if (sample_index == 0) {
+                                sample = data;
+                            } else {
+                                sample = jk_i256_load(env->draw_buffer
+                                        + (PIXEL_COUNT * sample_index + DRAW_BUFFER_SIDE_LENGTH * y
+                                                + x));
+                            }
+                            JkI256 byte_mask = jk_i256_broadcast_i32(0xff);
+                            channels[0] =
+                                    jk_i256_add_i32(channels[0], jk_i256_and(sample, byte_mask));
+                            channels[1] = jk_i256_add_i32(channels[1],
+                                    jk_i256_and(JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 8),
+                                            byte_mask));
+                            channels[2] = jk_i256_add_i32(channels[2],
+                                    jk_i256_and(JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(sample, 16),
+                                            byte_mask));
+                        }
+                        for (int32_t channel_index = 0; channel_index < 3; channel_index++) {
+                            channels[channel_index] =
+                                    JK_I256_SHIFT_RIGHT_SIGN_FILL_I32(channels[channel_index], 2);
+                        }
 
-                    JkI256 color = channels[0];
-                    color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
-                    color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
+                        JkI256 color = channels[0];
+                        color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[1], 8));
+                        color = jk_i256_or(color, JK_I256_SHIFT_LEFT_I32(channels[2], 16));
 
-                    jk_i256_store(env->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
+                        jk_i256_store(env->draw_buffer + (DRAW_BUFFER_SIDE_LENGTH * y + x), color);
+                    }
                 }
             }
         }
