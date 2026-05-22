@@ -117,3 +117,13 @@ extern __m256  __cdecl _mm256_castsi256_ps(__m256i);
 extern __m256  __cdecl _mm256_cvtepi32_ps(__m256i);
 extern __m256i __cdecl _mm256_castps_si256(__m256);
 extern __m256i __cdecl _mm256_cvttps_epi32(__m256);
+
+typedef struct __declspec(intrin_type) __declspec(align(16)) __m128d {
+    double m128d_f64[2];
+} __m128d;
+
+extern __m128d __cdecl _mm_setzero_pd(void);
+extern __m128d __cdecl _mm_set_sd(double);
+extern double  __cdecl _mm_cvtsd_f64(__m128d);
+extern __m128d __cdecl _mm_sqrt_sd(__m128d, __m128d);
+extern __m128d __cdecl _mm_fmadd_sd(__m128d, __m128d, __m128d);

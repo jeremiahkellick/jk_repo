@@ -202,8 +202,13 @@ typedef struct TriangleArray {
     TexturedTriangle *e;
 } TriangleArray;
 
+typedef enum TriangleFlag {
+    TRIANGLE_TRIVIAL,
+} TriangleFlag;
+
 typedef struct TriangleNode {
     struct TriangleNode *next;
+    uint32_t flags;
     int32_t texture_id;
     TexturedTriangle tri;
 } TriangleNode;
@@ -2074,25 +2079,29 @@ void render(JkContext *context, Environment *env) {
                                     jk_vec2_add(pos, (JkVec2){TILE_SIDE_LENGTH, 0}),
                                     jk_vec2_add(pos, (JkVec2){TILE_SIDE_LENGTH, TILE_SIDE_LENGTH}),
                                 };
-                                b32 valid = 1;
-                                for (int32_t a = 0; valid && a < 3; a++) {
+                                b32 trivial_reject = 0;
+                                uint32_t flags = JK_MASK(TRIANGLE_TRIVIAL);
+                                for (int32_t a = 0; !trivial_reject && a < 3; a++) {
                                     int32_t b = (a + 1) % 3;
                                     b32 all_outside = 1;
-                                    for (int32_t i = 0; all_outside && i < 4; i++) {
+                                    for (int32_t i = 0; i < 4; i++) {
                                         if (jk_vec2_cross(jk_vec2_sub(coords_2d[b], coords_2d[a]),
                                                     jk_vec2_sub(corners[i], coords_2d[a]))
                                                 < 0) {
                                             all_outside = 0;
+                                        } else {
+                                            flags = 0;
                                         }
                                     }
                                     if (all_outside) {
-                                        valid = 0;
+                                        trivial_reject = 1;
                                     }
                                 }
-                                if (valid) {
+                                if (!trivial_reject) {
                                     TriangleNode *new_node =
                                             jk_arena_push(scratch1.arena, JK_SIZEOF(*new_node));
                                     new_node->tri = tri;
+                                    new_node->flags = flags;
                                     new_node->texture_id = object->texture_id;
                                     new_node->next = tile->head;
                                     tile->head = new_node;
@@ -2128,6 +2137,8 @@ void render(JkContext *context, Environment *env) {
         while ((tile_index = jk_atomic_add(&next_tile_index, 1)) < tiles.count) {
             Tile *tile = tiles.e + tile_index;
 
+            float tile_occlude_z = 0;
+
             JkIntVec2 tile_coord = {tile_index % tiles_rect.max.x, tile_index / tiles_rect.max.x};
             JkIntRect bounding_box;
             for (int64_t i = 0; i < 2; i++) {
@@ -2156,8 +2167,19 @@ void render(JkContext *context, Environment *env) {
             quicksort_triangle_node_ptrs(triangles);
 
             for (int64_t i = 0; i < triangles.count; i++) {
-                triangle_fill(
-                        env, triangles.e[i], textures.e + triangles.e[i]->texture_id, bounding_box);
+                float min_z = 1;
+                for (int64_t vert_index = 0; vert_index < 3; vert_index++) {
+                    min_z = JK_MIN(min_z, triangles.e[i]->tri.v[vert_index].z);
+                }
+                if (JK_FLAG_GET(triangles.e[i]->flags, TRIANGLE_TRIVIAL)) {
+                    tile_occlude_z = JK_MAX(tile_occlude_z, min_z);
+                }
+                if (tile_occlude_z <= min_z) {
+                    triangle_fill(env,
+                            triangles.e[i],
+                            textures.e + triangles.e[i]->texture_id,
+                            bounding_box);
+                }
             }
 
             jk_arena_scope_end(triangle_scope);

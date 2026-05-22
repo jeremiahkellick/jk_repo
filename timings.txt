@@ -337,3 +337,19 @@ Average: 60406620 (16.7795ms)
 	walk_manifold[1]: 5318494 (8.80%)
 	transform[1]: 8255616 (13.67%)
 	rasterize[1]: 46830353 (77.53%)
+
+profile_00_1 OCCLUSION
+
+CPU frequency: 3600023530
+Min: 53852537 (14.9589ms)
+	walk_manifold[1]: 5182842 (9.62%)
+	transform[1]: 7512592 (13.95%)
+	rasterize[1]: 41156809 (76.43%)
+Max: 127201514 (35.3335ms)
+	walk_manifold[1]: 7751838 (6.09%)
+	transform[1]: 12278907 (9.65%)
+	rasterize[1]: 107169057 (84.25%)
+Average: 57487120 (15.9685ms)
+	walk_manifold[1]: 5245575 (9.12%)
+	transform[1]: 7738807 (13.46%)
+	rasterize[1]: 44501494 (77.41%)
