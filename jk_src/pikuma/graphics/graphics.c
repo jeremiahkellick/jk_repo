@@ -2168,13 +2168,15 @@ void render(JkContext *context, Environment *env) {
 
             for (int64_t i = 0; i < triangles.count; i++) {
                 float min_z = 1;
+                float max_z = 0;
                 for (int64_t vert_index = 0; vert_index < 3; vert_index++) {
                     min_z = JK_MIN(min_z, triangles.e[i]->tri.v[vert_index].z);
+                    max_z = JK_MAX(max_z, triangles.e[i]->tri.v[vert_index].z);
                 }
                 if (JK_FLAG_GET(triangles.e[i]->flags, TRIANGLE_TRIVIAL)) {
                     tile_occlude_z = JK_MAX(tile_occlude_z, min_z);
                 }
-                if (tile_occlude_z <= min_z) {
+                if (tile_occlude_z <= max_z) {
                     triangle_fill(env,
                             triangles.e[i],
                             textures.e + triangles.e[i]->texture_id,
