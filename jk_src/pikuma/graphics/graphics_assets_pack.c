@@ -1241,10 +1241,6 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
         JK_ARRAY_FROM_SPAN(faces, assets, objects.e[object_index].faces);
         for (int64_t face_index = 0; face_index < faces.count; face_index++) {
             Face *face = faces.e + face_index;
-            JkArenaScope scratch = jk_arena_scratch_begin();
-            JkColor *mask =
-                    jk_arena_push_zero(scratch.arena, TEXTURE_PIXEL_COUNT * JK_SIZEOF(*mask));
-
             JkVec2 verts[3];
             for (int64_t i = 0; i < 3; i++) {
                 verts[i] = jk_vec2_mul(TEXTURE_SIDE_LENGTH, texcoords.e[face->t[i]]);
@@ -1260,13 +1256,13 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
             float prev[4] = {0};
             b32 solid = 1;
             b32 at_least_one_point = 0;
-            for (JkIntVec2 pos = bounds.min; pos.y < bounds.max.y; pos.y++) {
-                for (pos.x = bounds.min.x; pos.x < bounds.max.x; pos.x++) {
+            for (JkIntVec2 pos = bounds.min; solid && pos.y < bounds.max.y; pos.y++) {
+                for (pos.x = bounds.min.x; solid && pos.x < bounds.max.x; pos.x++) {
                     JkVec2 p = jk_vec2_from_i32(pos);
                     if (jk_point_in_triangle_2d(p, verts[0], verts[1], verts[2])) {
                         at_least_one_point = 1;
-                        for (JkIntVec2 off = {0}; off.y < 2; off.y++) {
-                            for (off.x = 0; off.x < 2; off.x++) {
+                        for (JkIntVec2 off = {0}; solid && off.y < 2; off.y++) {
+                            for (off.x = 0; solid && off.x < 2; off.x++) {
                                 JkIntVec2 corner = jk_int_vec2_add(pos, off);
                                 int32_t index = TEXTURE_SIDE_LENGTH * corner.y + corner.x;
                                 for (int64_t i = 0; i < tex->channel_count; i++) {
@@ -1278,8 +1274,6 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
                                         solid = 0;
                                     }
                                     prev[i] = dist;
-
-                                    mask[index] = (JkColor){0xff, 0xff, 0xff, 0xff};
                                 }
                             }
                         }
@@ -1288,8 +1282,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
             }
             if (!at_least_one_point) {
                 JkIntVec2 pos = {verts[0].x, verts[0].y};
-                for (JkIntVec2 off = {0}; off.y < 2; off.y++) {
-                    for (off.x = 0; off.x < 2; off.x++) {
+                for (JkIntVec2 off = {0}; solid && off.y < 2; off.y++) {
+                    for (off.x = 0; solid && off.x < 2; off.x++) {
                         JkIntVec2 corner = jk_int_vec2_add(pos, off);
                         int32_t index = TEXTURE_SIDE_LENGTH * corner.y + corner.x;
                         for (int64_t i = 0; i < tex->channel_count; i++) {
@@ -1301,34 +1295,19 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
                                 solid = 0;
                             }
                             prev[i] = dist;
-
-                            mask[index] = (JkColor){0xff, 0xff, 0xff, 0xff};
                         }
                     }
                 }
             }
-            JkColor color;
             if (solid) {
-                color = tex->bg;
+                face->color = tex->bg;
                 for (int64_t i = 0; i < tex->channel_count; i++) {
                     if (0 < prev[i]) {
-                        color = tex->colors[i];
+                        face->color = tex->colors[i];
                         break;
                     }
                 }
-            } else {
-                color = (JkColor){.r = 0xff, .g = 0x00, .b = 0xff, .a = 0xff};
             }
-            for (JkIntVec2 pos = bounds.min; pos.y < bounds.max.y; pos.y++) {
-                for (pos.x = bounds.min.x; pos.x < bounds.max.x; pos.x++) {
-                    int32_t index = TEXTURE_SIDE_LENGTH * pos.y + pos.x;
-                    if (mask[index].a) {
-                        mask[index] = color;
-                    }
-                }
-            }
-
-            jk_arena_scope_end(scratch);
         }
     }
 
