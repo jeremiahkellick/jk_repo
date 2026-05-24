@@ -2618,6 +2618,15 @@ JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2) {
     return jk_vec3_normalized(jk_vec3_cross(jk_vec3_sub(v1, v0), jk_vec3_sub(v2, v0)));
 }
 
+JK_PUBLIC JkIntRect jk_triangle_int_bounding_box_2d(JkVec2 v0, JkVec2 v1, JkVec2 v2) {
+    return (JkIntRect){
+        .min.x = jk_f32_floor(JK_MIN3(v0.x, v1.x, v2.x)),
+        .min.y = jk_f32_floor(JK_MIN3(v0.y, v1.y, v2.y)),
+        .max.x = jk_f32_floor(JK_MAX3(v0.x, v1.x, v2.x)) + 1,
+        .max.y = jk_f32_floor(JK_MAX3(v0.y, v1.y, v2.y)) + 1,
+    };
+}
+
 // ---- Geometry end -----------------------------------------------------------
 
 // ---- Random generator begin -------------------------------------------------

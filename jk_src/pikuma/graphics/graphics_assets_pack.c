@@ -1,3 +1,4 @@
+#include "jk_src/jk_lib/jk_lib.h"
 #include <string.h>
 
 // #jk_build single_translation_unit
@@ -1032,6 +1033,10 @@ JkSpan append_arena(JkArena *dest, JkArena *src) {
     return result;
 }
 
+float distance_get(uint8_t value) {
+    return (2.0f / 255) * value - 1.0f;
+}
+
 int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     jk_platform_set_working_directory_to_executable_directory();
 
@@ -1132,9 +1137,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
                 switch (vertices[i].type) {
                 case STBTT_vmove:
                 case STBTT_vline: {
-                    commands[i].type = vertices[i].type == STBTT_vmove
-                            ? JK_SHAPES_PEN_COMMAND_MOVE
-                            : JK_SHAPES_PEN_COMMAND_LINE;
+                    commands[i].type = vertices[i].type == STBTT_vmove ? JK_SHAPES_PEN_COMMAND_MOVE
+                                                                       : JK_SHAPES_PEN_COMMAND_LINE;
                     commands[i].v[0].x = (float)vertices[i].x;
                     commands[i].v[0].y = (float)-vertices[i].y;
                 } break;
@@ -1223,6 +1227,110 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
         }
     }
     assets->objects = arena_scope_span(objects_scope);
+
+    // Find the color of solid-color faces
+    ObjectArray objects;
+    JK_ARRAY_FROM_SPAN(objects, assets, assets->objects);
+    TextureArray textures;
+    JK_ARRAY_FROM_SPAN(textures, assets, assets->textures);
+    JkVec2Array texcoords;
+    JK_ARRAY_FROM_SPAN(texcoords, assets, assets->texcoords);
+    for (int64_t object_index = 0; object_index < objects.count; object_index++) {
+        Texture *tex = textures.e + objects.e[object_index].texture_id;
+        FaceArray faces;
+        JK_ARRAY_FROM_SPAN(faces, assets, objects.e[object_index].faces);
+        for (int64_t face_index = 0; face_index < faces.count; face_index++) {
+            Face *face = faces.e + face_index;
+            JkArenaScope scratch = jk_arena_scratch_begin();
+            JkColor *mask =
+                    jk_arena_push_zero(scratch.arena, TEXTURE_PIXEL_COUNT * JK_SIZEOF(*mask));
+
+            JkVec2 verts[3];
+            for (int64_t i = 0; i < 3; i++) {
+                verts[i] = jk_vec2_mul(TEXTURE_SIDE_LENGTH, texcoords.e[face->t[i]]);
+            }
+            if (jk_vec2_cross(jk_vec2_sub(verts[1], verts[0]), jk_vec2_sub(verts[2], verts[0]))
+                    < 0) {
+                JK_SWAP(verts[1], verts[2], JkVec2);
+            }
+
+            JkIntRect tex_rect = {.max = {TEXTURE_SIDE_LENGTH - 1, TEXTURE_SIDE_LENGTH - 1}};
+            JkIntRect triangle_rect = jk_triangle_int_bounding_box_2d(verts[0], verts[1], verts[2]);
+            JkIntRect bounds = jk_int_rect_intersect(tex_rect, triangle_rect);
+            float prev[4] = {0};
+            b32 solid = 1;
+            b32 at_least_one_point = 0;
+            for (JkIntVec2 pos = bounds.min; pos.y < bounds.max.y; pos.y++) {
+                for (pos.x = bounds.min.x; pos.x < bounds.max.x; pos.x++) {
+                    JkVec2 p = jk_vec2_from_i32(pos);
+                    if (jk_point_in_triangle_2d(p, verts[0], verts[1], verts[2])) {
+                        at_least_one_point = 1;
+                        for (JkIntVec2 off = {0}; off.y < 2; off.y++) {
+                            for (off.x = 0; off.x < 2; off.x++) {
+                                JkIntVec2 corner = jk_int_vec2_add(pos, off);
+                                int32_t index = TEXTURE_SIDE_LENGTH * corner.y + corner.x;
+                                for (int64_t i = 0; i < tex->channel_count; i++) {
+                                    float dist = distance_get(tex->data[index].v[i]);
+                                    if (JK_ABS(dist) < 0.95f) {
+                                        solid = 0;
+                                    }
+                                    if (dist * prev[i] < 0) { // Different signs
+                                        solid = 0;
+                                    }
+                                    prev[i] = dist;
+
+                                    mask[index] = (JkColor){0xff, 0xff, 0xff, 0xff};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (!at_least_one_point) {
+                JkIntVec2 pos = {verts[0].x, verts[0].y};
+                for (JkIntVec2 off = {0}; off.y < 2; off.y++) {
+                    for (off.x = 0; off.x < 2; off.x++) {
+                        JkIntVec2 corner = jk_int_vec2_add(pos, off);
+                        int32_t index = TEXTURE_SIDE_LENGTH * corner.y + corner.x;
+                        for (int64_t i = 0; i < tex->channel_count; i++) {
+                            float dist = distance_get(tex->data[index].v[i]);
+                            if (JK_ABS(dist) < 0.98f) {
+                                solid = 0;
+                            }
+                            if (dist * prev[i] < 0) { // Different signs
+                                solid = 0;
+                            }
+                            prev[i] = dist;
+
+                            mask[index] = (JkColor){0xff, 0xff, 0xff, 0xff};
+                        }
+                    }
+                }
+            }
+            JkColor color;
+            if (solid) {
+                color = tex->bg;
+                for (int64_t i = 0; i < tex->channel_count; i++) {
+                    if (0 < prev[i]) {
+                        color = tex->colors[i];
+                        break;
+                    }
+                }
+            } else {
+                color = (JkColor){.r = 0xff, .g = 0x00, .b = 0xff, .a = 0xff};
+            }
+            for (JkIntVec2 pos = bounds.min; pos.y < bounds.max.y; pos.y++) {
+                for (pos.x = bounds.min.x; pos.x < bounds.max.x; pos.x++) {
+                    int32_t index = TEXTURE_SIDE_LENGTH * pos.y + pos.x;
+                    if (mask[index].a) {
+                        mask[index] = color;
+                    }
+                }
+            }
+
+            jk_arena_scope_end(scratch);
+        }
+    }
 
     jk_platform_file_write(JKS("graphics_assets"), jk_buffer_from_arena(&result_arena));
 

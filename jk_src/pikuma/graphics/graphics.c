@@ -271,12 +271,8 @@ static JkIntRect q16_triangle_bounding_box(Q16Triangle tri) {
 }
 
 static JkIntRect triangle_bounding_box(JkVec3 v0, JkVec3 v1, JkVec3 v2) {
-    return (JkIntRect){
-        .min.x = jk_f32_floor(JK_MIN3(v0.x, v1.x, v2.x)),
-        .min.y = jk_f32_floor(JK_MIN3(v0.y, v1.y, v2.y)),
-        .max.x = jk_f32_floor(JK_MAX3(v0.x, v1.x, v2.x)) + 1,
-        .max.y = jk_f32_floor(JK_MAX3(v0.y, v1.y, v2.y)) + 1,
-    };
+    return jk_triangle_int_bounding_box_2d(
+            jk_vec2_from_3(v0), jk_vec2_from_3(v1), jk_vec2_from_3(v2));
 }
 
 static b32 clockwise_left_handed(JkVec3 v0, JkVec3 v1, JkVec3 v2) {

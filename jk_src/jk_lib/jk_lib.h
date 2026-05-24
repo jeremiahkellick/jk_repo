@@ -1149,6 +1149,8 @@ JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVe
 
 JK_PUBLIC JkVec3 jk_triangle_normal(JkVec3 v0, JkVec3 v1, JkVec3 v2);
 
+JK_PUBLIC JkIntRect jk_triangle_int_bounding_box_2d(JkVec2 v0, JkVec2 v1, JkVec2 v2);
+
 // ---- Geometry end -----------------------------------------------------------
 
 // ---- Random generator begin -------------------------------------------------

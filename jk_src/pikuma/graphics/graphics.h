@@ -41,6 +41,7 @@ typedef enum EnvironmentFlag {
 } EnvironmentFlag;
 
 typedef struct Face {
+    JkColor color;
     int32_t v[3]; // vertex indexes
     int32_t t[3]; // texcoord indexes
 } Face;
