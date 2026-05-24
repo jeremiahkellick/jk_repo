@@ -573,7 +573,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
                 JkVec2 posf = jk_vec2_add(jk_vec2_from_i32(pos), (JkVec2){0.5f, 0.5f});
                 float distance_sqr = jk_f32_infinity.f32;
                 for (int64_t i = 0; i < edges.count; i++) {
-                    float candidate = jk_distance_to_segment_2d(posf, edges.e[i].segment);
+                    float candidate = jk_distance_to_segment_2d_sqr(posf, edges.e[i].segment);
                     if (candidate < distance_sqr) {
                         distance_sqr = candidate;
                     }

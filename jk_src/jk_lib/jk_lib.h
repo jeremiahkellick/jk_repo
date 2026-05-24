@@ -1133,7 +1133,17 @@ JK_PUBLIC b32 jk_int_rect_point_test(JkIntRect rect, JkIntVec2 point);
 
 JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b);
 
-JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s);
+JK_PUBLIC float jk_distance_to_segment_2d_sqr(JkVec2 p, JkSegment2d s);
+
+JK_PUBLIC b32 jk_segments_intersect_2d(JkSegment2d a, JkSegment2d b);
+
+JK_PUBLIC float jk_segment_to_segment_distance_2d_sqr(JkSegment2d a, JkSegment2d b);
+
+// Requires cross(b-a, c-a) > 0
+JK_PUBLIC b32 jk_point_in_triangle_2d(JkVec2 p, JkVec2 a, JkVec2 b, JkVec2 c);
+
+// Requires cross(b-a, c-a) > 0
+JK_PUBLIC float jk_segment_to_triangle_distance_2d_sqr(JkSegment2d s, JkVec2 a, JkVec2 b, JkVec2 c);
 
 JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c);
 

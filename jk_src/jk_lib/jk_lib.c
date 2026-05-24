@@ -2495,7 +2495,7 @@ JK_PUBLIC JkIntRect jk_int_rect_intersect(JkIntRect a, JkIntRect b) {
     };
 }
 
-JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s) {
+JK_PUBLIC float jk_distance_to_segment_2d_sqr(JkVec2 p, JkSegment2d s) {
     JkVec2 v01 = jk_vec2_sub(s.e[1], s.e[0]);
     JkVec2 v0p = jk_vec2_sub(p, s.e[0]);
     float dot = jk_vec2_dot(v01, v0p);
@@ -2509,6 +2509,49 @@ JK_PUBLIC float jk_distance_to_segment_2d(JkVec2 p, JkSegment2d s) {
         float cross = jk_vec2_cross(v01, v0p);
         return (cross * cross) / mag;
     }
+}
+
+JK_PUBLIC b32 jk_segments_intersect_2d(JkSegment2d a, JkSegment2d b) {
+    JkVec2 a01 = jk_vec2_sub(a.p1, a.p0);
+    JkVec2 b01 = jk_vec2_sub(b.p1, b.p0);
+    float ab0 = jk_vec2_cross(a01, jk_vec2_sub(b.p0, a.p0));
+    float ab1 = jk_vec2_cross(a01, jk_vec2_sub(b.p1, a.p0));
+    float ba0 = jk_vec2_cross(b01, jk_vec2_sub(a.p0, b.p0));
+    float ba1 = jk_vec2_cross(b01, jk_vec2_sub(a.p1, b.p0));
+    // b's endpoints on opposite sides of a and a's endpoints on opposite sides of b
+    // x*y < 0 is terse way to say 'Do x and y have opposite signs?'
+    return ab0 * ab1 < 0 && ba0 * ba1 < 0;
+}
+
+JK_PUBLIC float jk_segment_to_segment_distance_2d_sqr(JkSegment2d a, JkSegment2d b) {
+    if (jk_segments_intersect_2d(a, b)) {
+        return 0;
+    }
+    float r = jk_distance_to_segment_2d_sqr(a.p0, b);
+    r = JK_MIN(r, jk_distance_to_segment_2d_sqr(a.p1, b));
+    r = JK_MIN(r, jk_distance_to_segment_2d_sqr(b.p0, a));
+    r = JK_MIN(r, jk_distance_to_segment_2d_sqr(b.p1, a));
+    return r;
+}
+
+// Requires cross(b-a, c-a) > 0
+JK_PUBLIC b32 jk_point_in_triangle_2d(JkVec2 p, JkVec2 a, JkVec2 b, JkVec2 c) {
+    float w0 = jk_vec2_cross(jk_vec2_sub(b, a), jk_vec2_sub(p, a));
+    float w1 = jk_vec2_cross(jk_vec2_sub(c, b), jk_vec2_sub(p, b));
+    float w2 = jk_vec2_cross(jk_vec2_sub(a, c), jk_vec2_sub(p, c));
+    return 0 < w0 && 0 < w1 && 0 < w2;
+}
+
+// Requires cross(b-a, c-a) > 0
+JK_PUBLIC float jk_segment_to_triangle_distance_2d_sqr(
+        JkSegment2d s, JkVec2 a, JkVec2 b, JkVec2 c) {
+    if (jk_point_in_triangle_2d(s.p0, a, b, c)) {
+        return 0;
+    }
+    float r = jk_segment_to_segment_distance_2d_sqr(s, (JkSegment2d){a, b});
+    r = JK_MIN(r, jk_segment_to_segment_distance_2d_sqr(s, (JkSegment2d){b, c}));
+    r = JK_MIN(r, jk_segment_to_segment_distance_2d_sqr(s, (JkSegment2d){c, a}));
+    return r;
 }
 
 JK_PUBLIC JkVec3 jk_closest_point_on_triangle(JkVec3 p, JkVec3 a, JkVec3 b, JkVec3 c) {
