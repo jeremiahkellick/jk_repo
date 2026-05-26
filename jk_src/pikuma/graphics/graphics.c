@@ -13,10 +13,11 @@
 
 #include "serialize.h"
 
-#define NEAR_CLIP 0.2f
-#define SPEED 5.0f
+#define NEAR_CLIP 0.125
+#define WALK_SPEED 3.0f
+#define SPRINT_SPEED 5.25f
 
-#define Q16_EPSILON (1 << 10)
+#define Q16_EPSILON (1 << 8)
 #define EPSILON 0x1.0p-14
 #define SYNTHETIC_OFFSET (1 << 13)
 
@@ -24,11 +25,11 @@
 #define NAV_HEIGHT jk_q16_from_f32(1.875f)
 
 static float const nav_density = 0.125f;
-static JkIntVec2 const nav_dimensions = {32, 32};
+static JkIntVec2 const nav_dimensions = {15, 15};
 
 static JkColor bg_color = {.r = 0x81, .g = 0xbd, .b = 0xff, .a = 0xff};
 
-static float const player_radius = 0.33f;
+static float const player_radius = 0.25;
 static float const player_height = 1.75f;
 static float const player_eye_height = 1.4f;
 static JkVec3 light_dir = {-1, 2, -1};
@@ -686,7 +687,7 @@ static JkQ16Vec3 nav_binary_search(JkArena *arena,
     int32_t max_z = inside_point.z + (NAV_STEP_HEIGHT >> 1);
 
     // Binary search for walkable point closest to outside contact
-    for (int64_t i = 0; i < 8; i++) {
+    for (int64_t i = 0; i < 6; i++) {
         JkQ16Vec2 midpoint = get_midpoint(jk_q16_vec2_from_3(inside_point), outside_point);
         int32_t z = nav_sample(
                 arena, nav_triangles, nav_edges, min_z, max_z, midpoint, nav_player_radius_sqr);
@@ -1827,14 +1828,15 @@ void render(JkContext *context, Environment *env) {
                     forward, jk_vec3_mul(jk_vec3_dot(forward, up) / jk_vec3_magnitude_sqr(up), up));
         }
 
+        float speed = jk_key_down(&input.keyboard, JK_KEY_LEFTSHIFT) ? SPRINT_SPEED : WALK_SPEED;
         if (EPSILON < jk_vec3_magnitude_sqr(direction)) {
             direction = jk_vec3_normalized(direction);
-            target = jk_vec3_add(target, jk_vec3_mul(SPEED * DELTA_TIME, direction));
+            target = jk_vec3_add(target, jk_vec3_mul(speed * DELTA_TIME, direction));
         }
 
         // Compute max depth
         float step_size = JK_SQRT_2 * nav_density;
-        int64_t max_steps = jk_f32_ceil((SPEED * DELTA_TIME) / step_size);
+        int64_t max_steps = jk_f32_ceil((WALK_SPEED * DELTA_TIME) / step_size);
         int64_t max_depth = 2 * max_steps + 1;
 
         JK_ARENA_SCOPE(scratch0.arena) {
