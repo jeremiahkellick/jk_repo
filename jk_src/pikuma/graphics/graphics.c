@@ -27,7 +27,7 @@
 static float const nav_density = 0.125f;
 static JkIntVec2 const nav_dimensions = {15, 15};
 
-static JkColor bg_color = {.r = 0x81, .g = 0xbd, .b = 0xff, .a = 0xff};
+static JkColor bg_color = {.r = 0x89, .g = 0xb5, .b = 0xd5, .a = 0xff};
 
 static float const player_radius = 0.25;
 static float const player_height = 1.75f;
@@ -928,12 +928,18 @@ static void nav_ring_find_edges(JkArena *arena,
 
         int32_t delta0_dot = jk_q16_vec3_dot(normal, delta0);
         if (Q16_EPSILON < JK_ABS(delta0_dot)) {
-            JK_FLAG_SET(ring->flags, NAV_RING_HAS_CORNER, 1);
-
             JkQ16Vec3 tmp = jk_q16_vec3_sub(segments[0][0], segments[1][0]);
             int32_t p0_dot = jk_q16_vec3_dot(normal, tmp);
             int32_t t = jk_q16_div(-p0_dot, delta0_dot);
-            ring->corner = jk_q16_vec3_lerp(segments[0][0], segments[0][1], t);
+            JkQ16Vec3 corner = jk_q16_vec3_lerp(segments[0][0], segments[0][1], t);
+
+            JkQ16Vec2 top_left = nav_corner_pos(ring, 0);
+            JkQ16Vec2 bottom_right = nav_corner_pos(ring, 2);
+            if (top_left.x <= corner.x && corner.x <= bottom_right.x && top_left.y <= corner.y
+                    && corner.y <= bottom_right.y) {
+                JK_FLAG_SET(ring->flags, NAV_RING_HAS_CORNER, 1);
+                ring->corner = corner;
+            }
         }
     }
 }
@@ -2236,7 +2242,7 @@ void render(JkContext *context, Environment *env) {
         }
 
         if (JK_FLAG_GET(env->flags, ENV_FLAG_DEBUG_DISPLAY)) {
-            JkColor nav_color = {.r = 0, .g = 255, .b = 0, .a = 255};
+            JkColor nav_color = {.r = 0xff, .g = 0xff, .b = 0xff, .a = 0xff};
             nav_draw_rings(env, screen_from_ndc, clip_from_world, nav_color, start.ring);
 
             JkShapesRenderer renderer;

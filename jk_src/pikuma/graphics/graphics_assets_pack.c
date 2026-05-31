@@ -14,7 +14,7 @@
 #define SVG_SIDE_LENGTH 64
 #define SDF_SUBPIXEL_PRECISION (1 / 64.0f)
 
-static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/mountains.fbx");
+static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/house.fbx");
 static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};
 
 static JkMat4 conversion_matrix;
