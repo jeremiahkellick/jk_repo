@@ -2110,7 +2110,7 @@ void render(JkContext *context, Environment *env) {
                                             jk_arena_push(scratch1.arena, JK_SIZEOF(*new_node));
                                     new_node->tri = tri;
                                     new_node->flags = flags;
-                                    new_node->texture_id = object->texture_id;
+                                    new_node->texture_id = face.texture_id;
                                     new_node->next = tile->head;
                                     tile->head = new_node;
                                 }

@@ -41,6 +41,7 @@ typedef enum EnvironmentFlag {
 } EnvironmentFlag;
 
 typedef struct Face {
+    int32_t texture_id;
     int32_t v[3]; // vertex indexes
     int32_t t[3]; // texcoord indexes
 } Face;
@@ -80,7 +81,6 @@ typedef struct Object {
     JkTransform transform;
     JkSpan vertices; // JkVec3Array
     JkSpan faces; // FaceArray
-    int32_t texture_id;
     float repeat_size;
 } Object;
 

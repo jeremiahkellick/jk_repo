@@ -58,6 +58,7 @@ struct Thing {
     JkInt32Array vertex_indexes;
     int64_t texcoords_base;
     JkInt32Array texcoord_indexes;
+    JkInt32Array material_indexes;
 
     float repeat_size;
 };
@@ -474,7 +475,7 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
                     JK_ASSERT(numbers.count && numbers.count % 6 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 6) {
                         JkShapesPenCommand *new_command =
-                                jk_arena_push(scratch.arena, JK_SIZEOF(*new_command));
+                                jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type = JK_SHAPES_PEN_COMMAND_CURVE_CUBIC;
                         for (int32_t j = 0; j < 3; j++) {
                             new_command->v[j] =
@@ -543,7 +544,8 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
             tex->channel_count = shape_index + 1;
         }
 
-        float *fill_right = jk_arena_push(scratch.arena, TEXTURE_SIDE_LENGTH * sizeof(*fill_right));
+        float *fill_right =
+                jk_arena_push_zero(scratch.arena, TEXTURE_SIDE_LENGTH * sizeof(*fill_right));
         for (JkIntVec2 pos = {0}; pos.y < TEXTURE_SIDE_LENGTH; pos.y++) {
             jk_memset(fill_right, 0, TEXTURE_SIDE_LENGTH * sizeof(*fill_right));
             float sample_y = pos.y + 0.5f;
@@ -715,11 +717,12 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 (node->name - file.data) + node->name_length + node->property_list_size;
         JkBuffer name = {.size = node->name_length, .data = node->name};
 
-        b32 is_vertex_indexes = jk_buffer_compare(name, JKS("PolygonVertexIndex")) == 0;
-        b32 is_texcoord_indexes = jk_buffer_compare(name, JKS("UVIndex")) == 0;
-        b32 is_model = jk_buffer_compare(name, JKS("Model")) == 0;
+        b32 is_vertex_indexes = jk_string_equal(name, JKS("PolygonVertexIndex"));
+        b32 is_texcoord_indexes = jk_string_equal(name, JKS("UVIndex"));
+        b32 is_material_indexes = jk_string_equal(name, JKS("Materials"));
+        b32 is_model = jk_string_equal(name, JKS("Model"));
 
-        if (jk_buffer_compare(name, JKS("Vertices")) == 0) {
+        if (jk_string_equal(name, JKS("Vertices"))) {
             JkDoubleArray coords = read_doubles(c, node);
             int64_t vertex_count = coords.count / 3;
             JkVec3 *vertices = jk_arena_push(c->verts_arena, vertex_count * JK_SIZEOF(*vertices));
@@ -731,7 +734,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 vertices[vertex_index] =
                         jk_mat4_mul_point(conversion_matrix, vertices[vertex_index]);
             }
-        } else if (jk_buffer_compare(name, JKS("UV")) == 0) {
+        } else if (jk_string_equal(name, JKS("UV"))) {
             JkDoubleArray coords = read_doubles(c, node);
             int64_t texcoord_count = coords.count / 2;
             JkVec2 *texcoords =
@@ -742,18 +745,20 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                             coords.e[texcoord_index * 2 + coord_index];
                 }
             }
-        } else if (is_vertex_indexes || is_texcoord_indexes) {
+        } else if (is_vertex_indexes || is_texcoord_indexes || is_material_indexes) {
             if (thing) {
                 JkInt32Array indexes = read_ints(c, node);
                 if (is_vertex_indexes) {
                     thing->vertex_indexes = indexes;
-                } else {
+                } else if (is_texcoord_indexes) {
                     thing->texcoord_indexes = indexes;
+                } else if (is_material_indexes) {
+                    thing->material_indexes = indexes;
                 }
             } else {
                 jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Nothing to write indexes to"));
             }
-        } else if (jk_buffer_compare(name, JKS("C")) == 0) {
+        } else if (jk_string_equal(name, JKS("C"))) {
             b32 valid = 1;
             int64_t child_fbx_id = -1;
             int64_t parent_fbx_id = -1;
@@ -778,7 +783,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             } else {
                 jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Problem parsing connection"));
             }
-        } else if (jk_buffer_compare(name, JKS("RelativeFilename")) == 0) {
+        } else if (jk_string_equal(name, JKS("RelativeFilename"))) {
             int64_t cursor = node->name_length;
             if (1 <= node->property_count && node->name[cursor++] == 'S') {
                 JkFbxString *string = (JkFbxString *)(node->name + cursor);
@@ -790,7 +795,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             } else {
                 jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Problem parsing RelativeFilename"));
             }
-        } else if (jk_buffer_compare(name, JKS("P")) == 0) {
+        } else if (jk_string_equal(name, JKS("P"))) {
             b32 proceed = 1;
             b32 has_repeat_size = 0;
             b32 has_collide = 0;
@@ -804,19 +809,19 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     proceed && !!thing && 3 <= node->property_count && node->name[cursor++] == 'S';
             if (proceed) {
                 JkBuffer string = fbx_prop_string_read(node->name, &cursor);
-                if (jk_buffer_compare(string, JKS("Lcl Translation")) == 0) {
+                if (jk_string_equal(string, JKS("Lcl Translation"))) {
                     type = TRANSFORM_TRANSLATION;
-                } else if (jk_buffer_compare(string, JKS("Lcl Rotation")) == 0) {
+                } else if (jk_string_equal(string, JKS("Lcl Rotation"))) {
                     type = TRANSFORM_ROTATION;
-                } else if (jk_buffer_compare(string, JKS("Lcl Scaling")) == 0) {
+                } else if (jk_string_equal(string, JKS("Lcl Scaling"))) {
                     type = TRANSFORM_SCALE;
-                } else if (jk_buffer_compare(string, JKS("repeat_size")) == 0) {
+                } else if (jk_string_equal(string, JKS("repeat_size"))) {
                     has_repeat_size = 1;
-                } else if (jk_buffer_compare(string, JKS("collide")) == 0) {
+                } else if (jk_string_equal(string, JKS("collide"))) {
                     has_collide = 1;
-                } else if (jk_buffer_compare(string, JKS("flat")) == 0) {
+                } else if (jk_string_equal(string, JKS("flat"))) {
                     has_flat = 1;
-                } else if (jk_buffer_compare(string, JKS("walkable")) == 0) {
+                } else if (jk_string_equal(string, JKS("walkable"))) {
                     has_walkable = 1;
                 } else {
                     proceed = 0;
@@ -875,15 +880,15 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     JK_FLAG_SET(thing->flags, THING_FLAG_SCALE, 1);
                 }
             }
-        } else if (jk_buffer_compare(name, JKS("Connections")) == 0
-                || jk_buffer_compare(name, JKS("LayerElementUV")) == 0
-                || jk_buffer_compare(name, JKS("Objects")) == 0) {
+        } else if (jk_string_equal(name, JKS("Connections"))
+                || jk_string_equal(name, JKS("LayerElementUV"))
+                || jk_string_equal(name, JKS("LayerElementMaterial"))
+                || jk_string_equal(name, JKS("Objects"))) {
             process_fbx_nodes(c, file, pos_children, thing);
-        } else if (jk_buffer_compare(name, JKS("Properties70")) == 0) {
+        } else if (jk_string_equal(name, JKS("Properties70"))) {
             process_fbx_nodes(c, file, pos_children, thing);
-        } else if (jk_buffer_compare(name, JKS("Geometry")) == 0
-                || jk_buffer_compare(name, JKS("Material")) == 0 || is_model
-                || jk_buffer_compare(name, JKS("Texture")) == 0) {
+        } else if (jk_string_equal(name, JKS("Geometry")) || jk_string_equal(name, JKS("Material"))
+                || is_model || jk_string_equal(name, JKS("Texture"))) {
             int64_t cursor = node->name_length;
             uint8_t type = node->name[cursor++];
             if (0 < node->property_count && type == 'L') {
@@ -899,7 +904,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     if (proceed) {
                         JkBuffer string = fbx_prop_string_read(node->name, &cursor);
                         string.size = strnlen((char *)string.data, string.size);
-                        if (jk_buffer_compare(string, JKS("spawn")) == 0) {
+                        if (jk_string_equal(string, JKS("spawn"))) {
                             JK_FLAG_SET(new_thing->flags, THING_FLAG_SPAWN, 1);
                         }
                     }
@@ -921,7 +926,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
 }
 
 static ObjectId object_new(JkArenaScope objects_scope) {
-    Object *object = jk_arena_push(objects_scope.arena, JK_SIZEOF(*object));
+    Object *object = jk_arena_push_zero(objects_scope.arena, JK_SIZEOF(*object));
     return (ObjectId){object - (Object *)(objects_scope.arena->memory.data + objects_scope.base)};
 }
 
@@ -929,11 +934,24 @@ static Object *object_get(JkArenaScope objects_scope, ObjectId id) {
     return (Object *)(objects_scope.arena->memory.data + objects_scope.base) + id.i;
 }
 
-static void process_thing(
-        JkArenaScope objects_scope, int64_t vertices_base, Thing *thing, ObjectId object_id) {
+#define MAX_TEXTURES 16
+
+typedef struct TexureContext {
+    JkInt32Array ids;
+    JkInt32Array material_indexes;
+} TexureContext;
+
+static void process_thing(Assets *assets,
+        JkArenaScope objects_scope,
+        int64_t vertices_base,
+        Thing *thing,
+        ObjectId object_id,
+        TexureContext *tex_ctx) {
     if (!thing) {
         return;
     }
+
+    JkArenaScope scratch = jk_arena_scratch_begin_not(objects_scope.arena);
 
     if (JK_FLAG_GET(thing->flags, THING_FLAG_MODEL)) {
         ObjectId parent = object_id;
@@ -976,6 +994,9 @@ static void process_thing(
         }
 
         object->transform.rotation = jk_quat_from_mat4(local_matrix);
+
+        tex_ctx = jk_arena_push_zero(scratch.arena, JK_SIZEOF(*tex_ctx));
+        tex_ctx->ids.e = jk_arena_push(scratch.arena, MAX_TEXTURES * JK_SIZEOF(int32_t));
     }
 
     if (object_id.i) {
@@ -992,9 +1013,6 @@ static void process_thing(
             }
             object->vertices.offset = vertices_base + thing->vertices_base;
             object->vertices.size = JK_SIZEOF(JkVec3) * (max_vert + 1);
-        }
-        if (thing->texture_id) {
-            object->texture_id = thing->texture_id;
         }
         if (thing->repeat_size) {
             object->repeat_size = thing->repeat_size;
@@ -1013,9 +1031,41 @@ static void process_thing(
         }
     }
 
-    for (Link *child = thing->first_child; child; child = child->next) {
-        process_thing(objects_scope, vertices_base, child->thing, object_id);
+    if (thing->texture_id) {
+        JK_ASSERT(tex_ctx);
+        JK_ASSERT(tex_ctx->ids.count < MAX_TEXTURES);
+
+        tex_ctx->ids.e[tex_ctx->ids.count++] = thing->texture_id;
     }
+
+    if (thing->material_indexes.count) {
+        JK_ASSERT(tex_ctx);
+        tex_ctx->material_indexes = thing->material_indexes;
+    }
+
+    for (Link *child = thing->first_child; child; child = child->next) {
+        process_thing(assets, objects_scope, vertices_base, child->thing, object_id, tex_ctx);
+    }
+
+    if (JK_FLAG_GET(thing->flags, THING_FLAG_MODEL)) {
+        JK_ASSERT(tex_ctx);
+        JK_ASSERT(object_id.i);
+        Object *object = object_get(objects_scope, object_id);
+        FaceArray faces;
+        JK_ARRAY_FROM_SPAN(faces, assets, object->faces);
+
+        for (int32_t face_index = 0; face_index < faces.count; face_index++) {
+            if (face_index < tex_ctx->material_indexes.count) {
+                int32_t mat_i = tex_ctx->material_indexes.e[face_index];
+                JK_ASSERT(0 <= mat_i && mat_i < tex_ctx->ids.count);
+                faces.e[face_index].texture_id = tex_ctx->ids.e[tex_ctx->ids.count - 1 - mat_i];
+            } else {
+                faces.e[face_index].texture_id = tex_ctx->ids.e[0];
+            }
+        }
+    }
+
+    jk_arena_scope_end(scratch);
 }
 
 JkSpan arena_scope_span(JkArenaScope scope) {
@@ -1062,14 +1112,13 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     fbx_id_map = jk_hash_table_create_capacity(32);
     texture_id_map = jk_hash_table_create_capacity(32);
 
-    if (jk_buffer_compare((JkBuffer){.size = JK_SIZEOF(header->magic), .data = header->magic},
-                JKS("Kaydara FBX Binary  "))
-            != 0) {
+    if (!jk_string_equal((JkBuffer){.size = JK_SIZEOF(header->magic), .data = header->magic},
+                JKS("Kaydara FBX Binary  "))) {
         JK_LOGF(JK_LOG_ERROR, jkfn("'"), jkfs(file_path), jkfn("': unrecognized file format"));
         return 1;
     }
 
-    Assets *assets = jk_arena_push(&result_arena, JK_SIZEOF(*assets));
+    Assets *assets = jk_arena_push_zero(&result_arena, JK_SIZEOF(*assets));
 
     // Fill out the rest of the shapes array with font data
     JK_ARENA_SCOPE(&scratch_arena) {
@@ -1132,9 +1181,8 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
                 switch (vertices[i].type) {
                 case STBTT_vmove:
                 case STBTT_vline: {
-                    commands[i].type = vertices[i].type == STBTT_vmove
-                            ? JK_SHAPES_PEN_COMMAND_MOVE
-                            : JK_SHAPES_PEN_COMMAND_LINE;
+                    commands[i].type = vertices[i].type == STBTT_vmove ? JK_SHAPES_PEN_COMMAND_MOVE
+                                                                       : JK_SHAPES_PEN_COMMAND_LINE;
                     commands[i].v[0].x = (float)vertices[i].x;
                     commands[i].v[0].y = (float)-vertices[i].y;
                 } break;
@@ -1166,7 +1214,7 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     }
 
     assets->textures.offset = result_arena.pos;
-    Texture *error_texture = jk_arena_push(&result_arena, JK_SIZEOF(*error_texture));
+    Texture *error_texture = jk_arena_push_zero(&result_arena, JK_SIZEOF(*error_texture));
     error_texture->bg = (JkColor){.r = 0xff, .g = 0x00, .b = 0xff, .a = 0xff};
     c->texture_count++;
 
@@ -1215,11 +1263,11 @@ int32_t jk_platform_entry_point(int32_t argc, char **argv) {
     }
 
     JkArenaScope objects_scope = jk_arena_scope_begin(&result_arena);
-    jk_arena_push(objects_scope.arena, JK_SIZEOF(Object)); // Push nil object
+    jk_arena_push_zero(objects_scope.arena, JK_SIZEOF(Object)); // Push nil object
     for (int64_t i = 0; i < thing_count; i++) {
         Thing *thing = things + i;
         if (!JK_FLAG_GET(thing->flags, THING_FLAG_HAS_PARENT)) {
-            process_thing(objects_scope, vertices_base, thing, (ObjectId){0});
+            process_thing(assets, objects_scope, vertices_base, thing, (ObjectId){0}, 0);
         }
     }
     assets->objects = arena_scope_span(objects_scope);
