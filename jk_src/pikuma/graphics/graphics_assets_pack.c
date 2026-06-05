@@ -14,7 +14,7 @@
 #define SVG_SIDE_LENGTH 64
 #define SDF_SUBPIXEL_PRECISION (1 / 64.0f)
 
-static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/house.fbx");
+static JkBuffer file_path = JKSI("../jk_assets/pikuma/graphics/mountains.fbx");
 static JkCoordinateSystem coordinate_system = {JK_LEFT, JK_BACKWARD, JK_UP};
 
 static JkMat4 conversion_matrix;
@@ -38,9 +38,9 @@ typedef enum ThingFlag {
     THING_FLAG_HAS_PARENT,
     THING_FLAG_MODEL,
     THING_FLAG_SCALE,
-    THING_FLAG_COLLIDE,
+    THING_FLAG_NOCOLLIDE,
     THING_FLAG_FLAT,
-    THING_FLAG_WALKABLE,
+    THING_FLAG_HIDE,
     THING_FLAG_SPAWN,
 } ThingFlag;
 
@@ -428,14 +428,15 @@ int64_t generate_sdf_texture(Context *context, JkBuffer name) {
                     JkFloatArray numbers = svg_parse_numbers(arena, piece_string, &pos);
                     JK_ASSERT(numbers.count && numbers.count % 2 == 0);
                     for (int64_t i = 0; i < numbers.count; i += 2) {
+                        b32 move = c == 'M' && i == 0;
                         JkShapesPenCommand *new_command =
                                 jk_arena_push_zero(scratch.arena, JK_SIZEOF(*new_command));
                         new_command->type =
-                                c == 'M' ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
+                                move ? JK_SHAPES_PEN_COMMAND_MOVE : JK_SHAPES_PEN_COMMAND_LINE;
                         new_command->v[0] = (JkVec2){numbers.e[i], numbers.e[i + 1]};
                         prev_pos = new_command->v[0];
 
-                        if (c == 'M') {
+                        if (move) {
                             first_pos = new_command->v[0];
                         }
                     }
@@ -645,7 +646,9 @@ static int32_t texture_get(Context *c, JkBuffer image_file_name) {
     if (value) {
         return *value;
     } else {
-        return generate_sdf_texture(c, name);
+        int64_t texture_id = generate_sdf_texture(c, name);
+        jk_hash_table_put(texture_id_map, hash, texture_id);
+        return texture_id;
     }
 }
 
@@ -760,6 +763,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             }
         } else if (jk_string_equal(name, JKS("C"))) {
             b32 valid = 1;
+            b32 ignore = 0;
             int64_t child_fbx_id = -1;
             int64_t parent_fbx_id = -1;
 
@@ -779,7 +783,22 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             valid = valid && node->name[cursor++] == 'L';
             if (valid) {
                 parent_fbx_id = *(int64_t *)(node->name + cursor);
-                thing_connect(child_fbx_id, parent_fbx_id);
+                cursor += JK_SIZEOF(parent_fbx_id);
+            }
+
+            if (valid && 3 < node->property_count) {
+                valid = valid && node->name[cursor++] == 'S';
+                if (valid) {
+                    JkBuffer type = fbx_prop_string_read(node->name, &cursor);
+                    if (jk_string_equal(type, JKS("TransparencyFactor"))) {
+                        ignore = 1;
+                    }
+                }
+            }
+            if (valid) {
+                if (!ignore) {
+                    thing_connect(child_fbx_id, parent_fbx_id);
+                }
             } else {
                 jk_log(JK_LOG_ERROR, JKS("process_fbx_nodes: Problem parsing connection"));
             }
@@ -798,9 +817,9 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
         } else if (jk_string_equal(name, JKS("P"))) {
             b32 proceed = 1;
             b32 has_repeat_size = 0;
-            b32 has_collide = 0;
+            b32 has_nocollide = 0;
             b32 has_flat = 0;
-            b32 has_walkable = 0;
+            b32 has_hide = 0;
 
             TransformType type = 0;
 
@@ -817,12 +836,12 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     type = TRANSFORM_SCALE;
                 } else if (jk_string_equal(string, JKS("repeat_size"))) {
                     has_repeat_size = 1;
-                } else if (jk_string_equal(string, JKS("collide"))) {
-                    has_collide = 1;
+                } else if (jk_string_equal(string, JKS("nocollide"))) {
+                    has_nocollide = 1;
                 } else if (jk_string_equal(string, JKS("flat"))) {
                     has_flat = 1;
-                } else if (jk_string_equal(string, JKS("walkable"))) {
-                    has_walkable = 1;
+                } else if (jk_string_equal(string, JKS("hide"))) {
+                    has_hide = 1;
                 } else {
                     proceed = 0;
                 }
@@ -841,10 +860,10 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 proceed = 0;
             }
 
-            if (proceed && has_collide) {
+            if (proceed && has_nocollide) {
                 if (node->name[cursor++] == 'I') {
-                    int32_t collide = *(int32_t *)(node->name + cursor);
-                    JK_FLAG_SET(thing->flags, THING_FLAG_COLLIDE, collide);
+                    int32_t nocollide = *(int32_t *)(node->name + cursor);
+                    JK_FLAG_SET(thing->flags, THING_FLAG_NOCOLLIDE, nocollide);
                 }
                 proceed = 0;
             }
@@ -857,10 +876,10 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 proceed = 0;
             }
 
-            if (proceed && has_walkable) {
+            if (proceed && has_hide) {
                 if (node->name[cursor++] == 'I') {
-                    int32_t walkable = *(int32_t *)(node->name + cursor);
-                    JK_FLAG_SET(thing->flags, THING_FLAG_WALKABLE, walkable);
+                    int32_t hide = *(int32_t *)(node->name + cursor);
+                    JK_FLAG_SET(thing->flags, THING_FLAG_HIDE, hide);
                 }
                 proceed = 0;
             }
@@ -1017,24 +1036,22 @@ static void process_thing(Assets *assets,
         if (thing->repeat_size) {
             object->repeat_size = thing->repeat_size;
         }
-        if (JK_FLAG_GET(thing->flags, THING_FLAG_COLLIDE)) {
-            JK_FLAG_SET(object->flags, OBJ_COLLIDE, 1);
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_NOCOLLIDE)) {
+            JK_FLAG_SET(object->flags, OBJ_NOCOLLIDE, 1);
         }
         if (JK_FLAG_GET(thing->flags, THING_FLAG_FLAT)) {
             JK_FLAG_SET(object->flags, OBJ_FLAT, 1);
         }
-        if (JK_FLAG_GET(thing->flags, THING_FLAG_WALKABLE)) {
-            JK_FLAG_SET(object->flags, OBJ_WALKABLE, 1);
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_HIDE)) {
+            JK_FLAG_SET(object->flags, OBJ_HIDE, 1);
         }
         if (JK_FLAG_GET(thing->flags, THING_FLAG_SPAWN)) {
             JK_FLAG_SET(object->flags, OBJ_SPAWN, 1);
         }
     }
 
-    if (thing->texture_id) {
-        JK_ASSERT(tex_ctx);
+    if (tex_ctx && thing->texture_id) {
         JK_ASSERT(tex_ctx->ids.count < MAX_TEXTURES);
-
         tex_ctx->ids.e[tex_ctx->ids.count++] = thing->texture_id;
     }
 
@@ -1060,7 +1077,11 @@ static void process_thing(Assets *assets,
                 JK_ASSERT(0 <= mat_i && mat_i < tex_ctx->ids.count);
                 faces.e[face_index].texture_id = tex_ctx->ids.e[tex_ctx->ids.count - 1 - mat_i];
             } else {
-                faces.e[face_index].texture_id = tex_ctx->ids.e[0];
+                if (0 < tex_ctx->ids.count) {
+                    faces.e[face_index].texture_id = tex_ctx->ids.e[tex_ctx->ids.count - 1];
+                } else {
+                    faces.e[face_index].texture_id = 0;
+                }
             }
         }
     }

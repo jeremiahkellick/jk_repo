@@ -21,7 +21,7 @@
 #define EPSILON 0x1.0p-14
 #define SYNTHETIC_OFFSET (1 << 13)
 
-#define NAV_STEP_HEIGHT jk_q16_from_f32(0.75f)
+#define NAV_STEP_HEIGHT jk_q16_from_f32(0.60f)
 #define NAV_HEIGHT jk_q16_from_f32(1.875f)
 
 static float const nav_density = 0.125f;
@@ -30,7 +30,7 @@ static JkIntVec2 const nav_dimensions = {15, 15};
 static JkColor bg_color = {.r = 0x89, .g = 0xb5, .b = 0xd5, .a = 0xff};
 
 static float const player_radius = 0.25;
-static float const player_height = 1.75f;
+static float const player_height = 1.8f;
 static float const player_eye_height = 1.4f;
 static JkVec3 light_dir = {-1, 2, -1};
 static JkVec3 light_normal;
@@ -1171,89 +1171,92 @@ static void triangle_fill(
                     JkF32x8 in_front = jk_f32x8_less_than(z_buffer, s_interpolants->e[S_Z]);
                     JkF32x8 visible = jk_f32x8_andnot(outside_triangle, in_front);
                     if (jk_f32x8_any(visible)) {
-                        jk_f32x8_store(env->z_buffer + index,
-                                jk_f32x8_blend(z_buffer, s_interpolants->e[S_Z], visible));
-
                         if (!found_color) {
                             found_color = 1;
 
-                            JkF32x8 inv_z = jk_f32x8_div(jk_f32x8_broadcast(1), pixel_z);
+                            if (texture->channel_count) {
+                                JkF32x8 inv_z = jk_f32x8_div(jk_f32x8_broadcast(1), pixel_z);
 
-                            JkF32x8 uv[2];
-                            JkF32x8 frac[2];
-                            JkI256 coords[2][2];
-                            for (int32_t axis = 0; axis < 2; axis++) {
-                                uv[axis] = jk_f32x8_mul(p_interpolants.e[P_U + axis], inv_z);
+                                JkF32x8 uv[2];
+                                JkF32x8 frac[2];
+                                JkI256 coords[2][2];
+                                for (int32_t axis = 0; axis < 2; axis++) {
+                                    uv[axis] = jk_f32x8_sub(
+                                            jk_f32x8_mul(p_interpolants.e[P_U + axis], inv_z),
+                                            jk_f32x8_broadcast(0.5f / TEXTURE_SIDE_LENGTH));
 
-                                JkF32x8 tex = jk_f32x8_sub(
-                                        jk_f32x8_mul(jk_f32x8_broadcast(TEXTURE_SIDE_LENGTH),
-                                                jk_f32x8_sub(uv[axis], jk_f32x8_floor(uv[axis]))),
-                                        jk_f32x8_broadcast(0.5));
-                                frac[axis] = jk_f32x8_sub(tex, jk_f32x8_floor(tex));
-                                coords[axis][0] = jk_i256_and(jk_i32x8_from_f32x8_truncate(tex),
-                                        jk_i256_broadcast_i32(TEXTURE_MASK));
-                                coords[axis][1] = jk_i256_and(
-                                        jk_i256_add_i32(coords[axis][0], jk_i256_broadcast_i32(1)),
-                                        jk_i256_broadcast_i32(TEXTURE_MASK));
-                            }
-
-                            JkF32x8 pixel_size = jk_f32x8_broadcast(0);
-                            for (int32_t axis = 0; axis < 2; axis++) {
-                                for (int32_t tex_axis = 0; tex_axis < 2; tex_axis++) {
-                                    JkF32x8 dUV =
-                                            jk_f32x8_broadcast(inv_deriv[2 * axis + tex_axis]);
-                                    JkF32x8 dZ = jk_f32x8_broadcast(inv_deriv_z[axis]);
-                                    JkF32x8 deriv = jk_f32x8_mul(inv_z,
-                                            jk_f32x8_sub(dUV, jk_f32x8_mul(uv[tex_axis], dZ)));
-                                    pixel_size = jk_f32x8_add(pixel_size, jk_f32x8_abs(deriv));
+                                    JkF32x8 tex = jk_f32x8_mul(
+                                            jk_f32x8_broadcast(TEXTURE_SIDE_LENGTH),
+                                            jk_f32x8_sub(uv[axis], jk_f32x8_floor(uv[axis])));
+                                    frac[axis] = jk_f32x8_sub(tex, jk_f32x8_floor(tex));
+                                    coords[axis][0] = jk_i256_and(jk_i32x8_from_f32x8_truncate(tex),
+                                            jk_i256_broadcast_i32(TEXTURE_MASK));
+                                    coords[axis][1] = jk_i256_and(jk_i256_add_i32(coords[axis][0],
+                                                                          jk_i256_broadcast_i32(1)),
+                                            jk_i256_broadcast_i32(TEXTURE_MASK));
                                 }
-                            }
-                            pixel_size = jk_f32x8_mul(pixel_size, jk_f32x8_broadcast(0.5));
-                            pixel_size = jk_f32x8_min(
-                                    pixel_size, jk_f32x8_broadcast(18.4f / TEXTURE_SIDE_LENGTH));
 
-                            JkI256 dist[4];
-                            for (int32_t row_i = 0; row_i < 2; row_i++) {
-                                JkI256 row =
-                                        JK_I256_SHIFT_LEFT_I32(coords[1][row_i], TEXTURE_POW_2);
-                                for (int32_t col_i = 0; col_i < 2; col_i++) {
-                                    dist[2 * row_i + col_i] = jk_i256_from_f32x8_reinterpret(
-                                            jk_f32x8_gather(texture->data,
-                                                    jk_i256_add_i32(row, coords[0][col_i])));
+                                JkF32x8 pixel_size = jk_f32x8_broadcast(0);
+                                for (int32_t axis = 0; axis < 2; axis++) {
+                                    for (int32_t tex_axis = 0; tex_axis < 2; tex_axis++) {
+                                        JkF32x8 dUV =
+                                                jk_f32x8_broadcast(inv_deriv[2 * axis + tex_axis]);
+                                        JkF32x8 dZ = jk_f32x8_broadcast(inv_deriv_z[axis]);
+                                        JkF32x8 deriv = jk_f32x8_mul(inv_z,
+                                                jk_f32x8_sub(dUV, jk_f32x8_mul(uv[tex_axis], dZ)));
+                                        pixel_size = jk_f32x8_add(pixel_size, jk_f32x8_abs(deriv));
+                                    }
                                 }
-                            }
+                                pixel_size = jk_f32x8_mul(pixel_size, jk_f32x8_broadcast(0.5));
+                                pixel_size = jk_f32x8_min(pixel_size,
+                                        jk_f32x8_broadcast(18.4f / TEXTURE_SIDE_LENGTH));
 
-                            for (int64_t channel_index = 0;
-                                    jk_f32x8_any(jk_f32x8_less_than(
-                                            pixel_color.e[3], jk_f32x8_broadcast(1)))
-                                    && channel_index < texture->channel_count;
-                                    channel_index++) {
-                                JkF32x8 distance = bilerp(dist, channel_index, frac[0], frac[1]);
-                                JkF32x8 dir = jk_f32x8_sub(
-                                        jk_f32x8_mul(jk_f32x8_broadcast(2.0f / 255), distance),
-                                        jk_f32x8_broadcast(1));
-                                JkF32x8 spread_pixels = jk_f32x8_mul(
-                                        jk_f32x8_broadcast(SDF_SPREAD / TEXTURE_SIDE_LENGTH),
-                                        jk_f32x8_reciprocal_approx(pixel_size));
-
-                                JkF32x8 coverage = jk_f32x8_add(
-                                        jk_f32x8_broadcast(0.5), jk_f32x8_mul(dir, spread_pixels));
-                                coverage = jk_f32x8_max(coverage, jk_f32x8_broadcast(0));
-                                coverage = jk_f32x8_min(coverage, jk_f32x8_broadcast(1));
-                                ColorF32x8x4 color = colors[channel_index];
-                                color.e[3] = jk_f32x8_mul(color.e[3], coverage);
-                                color_blend(&pixel_color, color);
-                            }
-                            if (jk_f32x8_any(jk_f32x8_less_than(
-                                        pixel_color.e[3], jk_f32x8_broadcast(1)))) {
-                                color_blend(&pixel_color, bg);
-                            }
-                            if (jk_f32x8_any(jk_f32x8_less_than(
-                                        pixel_color.e[3], jk_f32x8_broadcast(0.95)))) {
-                                JkF32x8 inv = jk_f32x8_reciprocal_approx(pixel_color.e[3]);
-                                for (int64_t i = 0; i < 3; i++) {
-                                    pixel_color.e[i] = jk_f32x8_mul(pixel_color.e[i], inv);
+                                JkI256 dist[4];
+                                for (int32_t row_i = 0; row_i < 2; row_i++) {
+                                    JkI256 row =
+                                            JK_I256_SHIFT_LEFT_I32(coords[1][row_i], TEXTURE_POW_2);
+                                    for (int32_t col_i = 0; col_i < 2; col_i++) {
+                                        dist[2 * row_i + col_i] = jk_i256_from_f32x8_reinterpret(
+                                                jk_f32x8_gather(texture->data,
+                                                        jk_i256_add_i32(row, coords[0][col_i])));
+                                    }
                                 }
+
+                                for (int64_t channel_index = 0;
+                                        jk_f32x8_any(jk_f32x8_less_than(
+                                                pixel_color.e[3], jk_f32x8_broadcast(1)))
+                                        && channel_index < texture->channel_count;
+                                        channel_index++) {
+                                    JkF32x8 distance =
+                                            bilerp(dist, channel_index, frac[0], frac[1]);
+                                    JkF32x8 dir = jk_f32x8_sub(
+                                            jk_f32x8_mul(jk_f32x8_broadcast(2.0f / 255), distance),
+                                            jk_f32x8_broadcast(1));
+                                    JkF32x8 spread_pixels = jk_f32x8_mul(
+                                            jk_f32x8_broadcast(SDF_SPREAD / TEXTURE_SIDE_LENGTH),
+                                            jk_f32x8_reciprocal_approx(pixel_size));
+
+                                    JkF32x8 coverage = jk_f32x8_add(jk_f32x8_broadcast(0.5),
+                                            jk_f32x8_mul(dir, spread_pixels));
+                                    coverage = jk_f32x8_max(coverage, jk_f32x8_broadcast(0));
+                                    coverage = jk_f32x8_min(coverage, jk_f32x8_broadcast(1));
+                                    ColorF32x8x4 color = colors[channel_index];
+                                    color.e[3] = jk_f32x8_mul(color.e[3], coverage);
+                                    color_blend(&pixel_color, color);
+                                }
+                                if (jk_f32x8_any(jk_f32x8_less_than(
+                                            pixel_color.e[3], jk_f32x8_broadcast(1)))) {
+                                    color_blend(&pixel_color, bg);
+                                }
+                                if (jk_f32x8_any(jk_f32x8_less_than(
+                                            pixel_color.e[3], jk_f32x8_broadcast(0.95)))) {
+                                    JkF32x8 inv = jk_f32x8_reciprocal_approx(pixel_color.e[3]);
+                                    for (int64_t i = 0; i < 3; i++) {
+                                        pixel_color.e[i] = jk_f32x8_mul(pixel_color.e[i], inv);
+                                    }
+                                }
+                            } else {
+                                pixel_color = bg;
                             }
                             JkF32x8 light = jk_f32x8_blend(jk_f32x8_broadcast(1),
                                     jk_f32x8_broadcast(1.05),
@@ -1285,6 +1288,8 @@ static void triangle_fill(
                                 visible, jk_f32x8_less_than(alpha_threshold, pixel_color.e[3]));
 
                         JkF32x8 color_buffer = jk_f32x8_load((float *)(env->draw_buffer + index));
+                        jk_f32x8_store(env->z_buffer + index,
+                                jk_f32x8_blend(z_buffer, s_interpolants->e[S_Z], should_draw));
                         jk_f32x8_store((float *)(env->draw_buffer + index),
                                 jk_f32x8_blend(color_buffer,
                                         jk_f32x8_from_i256_reinterpret(color_i32),
@@ -1631,6 +1636,10 @@ void render(JkContext *context, Environment *env) {
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
 
+            if (JK_FLAG_GET(object->flags, OBJ_NOCOLLIDE)) {
+                continue;
+            }
+
             JkVec3Array vertices;
             JK_ARRAY_FROM_SPAN(vertices, env->assets, object->vertices);
 
@@ -1912,6 +1921,10 @@ void render(JkContext *context, Environment *env) {
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
 
+            if (JK_FLAG_GET(object->flags, OBJ_HIDE)) {
+                continue;
+            }
+
             JkArenaScope object_scope = jk_arena_scope_begin(scratch0.arena);
 
             JkVec3Array vertices;
@@ -1965,6 +1978,7 @@ void render(JkContext *context, Environment *env) {
             for (int64_t face_index = 0; face_index < faces.count; face_index++) {
                 JkArenaScope face_scope = jk_arena_scope_begin(scratch0.arena);
                 Face face = faces.e[face_index];
+                Texture *texture = textures.e + face.texture_id;
 
                 JkVec2 uv[3];
                 if (object->repeat_size) {
@@ -2058,7 +2072,14 @@ void render(JkContext *context, Environment *env) {
                         tri.t[i] = vs.e[indexes[i]].t;
                         tri.light[i] = vs.e[indexes[i]].light;
                     }
-                    if (!clockwise_left_handed(tri.v[0], tri.v[1], tri.v[2])) {
+                    b32 counter_clockwise = !clockwise_left_handed(tri.v[0], tri.v[1], tri.v[2]);
+                    if (!counter_clockwise && texture->bg.a != 0xff) {
+                        JK_SWAP(tri.v[1], tri.v[2], JkVec3);
+                        JK_SWAP(tri.t[1], tri.t[2], JkVec2);
+                        JK_SWAP(tri.light[1], tri.light[2], float);
+                        counter_clockwise = 1;
+                    }
+                    if (counter_clockwise) {
                         JkVec2 coords_2d[3];
                         for (int64_t i = 0; i < 3; i++) {
                             coords_2d[i] = jk_vec2_from_3(tri.v[i]);
@@ -2175,13 +2196,14 @@ void render(JkContext *context, Environment *env) {
             quicksort_triangle_node_ptrs(triangles);
 
             for (int64_t i = 0; i < triangles.count; i++) {
+                Texture *texture = textures.e + triangles.e[i]->texture_id;
                 float min_z = 1;
                 float max_z = 0;
                 for (int64_t vert_index = 0; vert_index < 3; vert_index++) {
                     min_z = JK_MIN(min_z, triangles.e[i]->tri.v[vert_index].z);
                     max_z = JK_MAX(max_z, triangles.e[i]->tri.v[vert_index].z);
                 }
-                if (JK_FLAG_GET(triangles.e[i]->flags, TRIANGLE_TRIVIAL)) {
+                if (texture->bg.a == 0xff && JK_FLAG_GET(triangles.e[i]->flags, TRIANGLE_TRIVIAL)) {
                     tile_occlude_z = JK_MAX(tile_occlude_z, min_z);
                 }
                 if (tile_occlude_z <= max_z) {
