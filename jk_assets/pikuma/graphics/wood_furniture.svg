@@ -7,38 +7,38 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   inkscape:export-ydpi="1536"
-   inkscape:export-xdpi="1536"
-   inkscape:export-filename="W:\jk_assets\pikuma\graphics\tower.png"
-   width="64"
-   height="64"
-   viewBox="0 0 64 64"
-   version="1.1"
-   id="svg840"
+   sodipodi:docname="wood_furniture.svg"
    inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
-   sodipodi:docname="tower.svg">
+   id="svg840"
+   version="1.1"
+   viewBox="0 0 64 64"
+   height="64"
+   width="64"
+   inkscape:export-filename="W:\jk_assets\pikuma\graphics\wood_furniture.png"
+   inkscape:export-xdpi="1536"
+   inkscape:export-ydpi="1536">
   <defs
      id="defs834" />
   <sodipodi:namedview
-     units="px"
-     id="base"
-     pagecolor="#413350"
-     bordercolor="#666666"
-     borderopacity="1.0"
-     inkscape:pageopacity="1"
-     inkscape:pageshadow="2"
-     inkscape:zoom="7.9195959"
-     inkscape:cx="26.551543"
-     inkscape:cy="39.186752"
-     inkscape:document-units="px"
-     inkscape:current-layer="layer1"
-     inkscape:document-rotation="0"
+     inkscape:window-maximized="0"
+     inkscape:window-y="261"
+     inkscape:window-x="3816"
+     inkscape:window-height="1208"
+     inkscape:window-width="1424"
      showgrid="false"
-     inkscape:window-width="2560"
-     inkscape:window-height="1361"
-     inkscape:window-x="2391"
-     inkscape:window-y="-9"
-     inkscape:window-maximized="1" />
+     inkscape:document-rotation="0"
+     inkscape:current-layer="layer1"
+     inkscape:document-units="px"
+     inkscape:cy="39.186752"
+     inkscape:cx="26.551543"
+     inkscape:zoom="7.9195959"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="1"
+     borderopacity="1.0"
+     bordercolor="#666666"
+     pagecolor="#915d36"
+     id="base"
+     units="px" />
   <metadata
      id="metadata837">
     <rdf:RDF>
@@ -52,7 +52,7 @@
     </rdf:RDF>
   </metadata>
   <g
-     inkscape:label="Layer 1"
+     id="layer1"
      inkscape:groupmode="layer"
-     id="layer1" />
+     inkscape:label="Layer 1" />
 </svg>
