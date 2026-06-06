@@ -38,6 +38,7 @@ typedef enum Flag {
 typedef enum EnvironmentFlag {
     ENV_FLAG_RUNNING,
     ENV_FLAG_DEBUG_DISPLAY,
+    ENV_FLAG_NAV_VIEW,
 } EnvironmentFlag;
 
 typedef struct Face {

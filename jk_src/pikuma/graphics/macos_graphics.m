@@ -90,7 +90,7 @@ static char const *const shaders_code =
         "#include <metal_stdlib>\n"
         "using namespace metal;\n"
         "\n"
-        "constexpr sampler texture_sampler (coord::pixel, min_filter::nearest, mag_filter::nearest);\n"
+        "constexpr sampler texture_sampler (coord::pixel, min_filter::linear, mag_filter::linear);\n"
         "\n"
         "struct Vertex {\n"
         "    float4 position [[position]];\n"
@@ -456,9 +456,16 @@ static CVReturn display_link_callback(CVDisplayLinkRef displayLink,
 
 - (void)drawRect:(NSRect)dirtyRect
 {
-    JkIntVec2 window_dimensions = {self.drawableSize.width, self.drawableSize.height};
-    g.env.input.dimensions.x = JK_MAX(256, JK_MIN(window_dimensions.x, DRAW_BUFFER_SIDE_LENGTH));
-    g.env.input.dimensions.y = JK_MAX(256, JK_MIN(window_dimensions.y, DRAW_BUFFER_SIDE_LENGTH));
+    JkIntVec2 window_dimensions = {
+        self.drawableSize.width,
+        self.drawableSize.height,
+    };
+    if (1080 < window_dimensions.y) {
+        window_dimensions.x = 1080 * window_dimensions.x / window_dimensions.y;
+        window_dimensions.y = 1080;
+    }
+    g.env.input.dimensions.x = JK_MAX(256, window_dimensions.x);
+    g.env.input.dimensions.y = JK_MAX(256, window_dimensions.y);
 
     if (self.window) {
         NSPoint mouse_location = [NSEvent mouseLocation];
