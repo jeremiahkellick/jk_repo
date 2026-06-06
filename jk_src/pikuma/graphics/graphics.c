@@ -17,6 +17,8 @@
 #define WALK_SPEED 3.0f
 #define SPRINT_SPEED 5.25f
 
+#define WINDMILL_SPEED (-JK_PI / 32)
+
 #define Q16_EPSILON (1 << 8)
 #define EPSILON 0x1.0p-14
 #define SYNTHETIC_OFFSET (1 << 13)
@@ -34,6 +36,7 @@ static float const player_eye_height = 1.4f;
 static JkVec3 light_dir = {-1, 2, -1};
 static JkVec3 light_normal;
 static int32_t rotation_seconds = 8;
+static JkVec4 windmill_rotation = {88, 0, 0, 0};
 
 static float sample_offsets[2][SAMPLE_COUNT] = {
     {0.5, 0x0.4p0f, 0x0.Ep0f, 0x0.6p0f},
@@ -1577,6 +1580,15 @@ void render(JkContext *context, Environment *env) {
         ObjectArray objects;
         JK_ARRAY_FROM_SPAN(objects, env->assets, env->assets->objects);
 
+        if (windmill_rotation.x == 88) {
+            for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
+                Object *object = objects.e + object_id.i;
+                if (JK_FLAG_GET(object->flags, OBJ_SPIN)) {
+                    windmill_rotation = object->transform.rotation;
+                }
+            }
+        }
+
         if (!JK_FLAG_GET(env->state.flags, FLAG_INITIALIZED)) {
             env->state.flags = JK_MASK(FLAG_INITIALIZED);
             env->state.camera_yaw = 5 * JK_PI / 4;
@@ -1637,6 +1649,12 @@ void render(JkContext *context, Environment *env) {
 
         for (ObjectId object_id = {1}; object_id.i < objects.count; object_id.i++) {
             Object *object = objects.e + object_id.i;
+
+            if (JK_FLAG_GET(object->flags, OBJ_SPIN)) {
+                float angle = frame_id * DELTA_TIME * WINDMILL_SPEED;
+                object->transform.rotation = jk_quat_mul(windmill_rotation,
+                        jk_quat_angle_axis(angle, (JkVec3){1, 0, 0}));
+            }
 
             if (JK_FLAG_GET(object->flags, OBJ_NOCOLLIDE)) {
                 continue;

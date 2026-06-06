@@ -42,6 +42,7 @@ typedef enum ThingFlag {
     THING_FLAG_FLAT,
     THING_FLAG_HIDE,
     THING_FLAG_SPAWN,
+    THING_FLAG_SPIN,
 } ThingFlag;
 
 struct Thing {
@@ -820,6 +821,7 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
             b32 has_nocollide = 0;
             b32 has_flat = 0;
             b32 has_hide = 0;
+            b32 has_spin = 0;
 
             TransformType type = 0;
 
@@ -842,6 +844,8 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                     has_flat = 1;
                 } else if (jk_string_equal(string, JKS("hide"))) {
                     has_hide = 1;
+                } else if (jk_string_equal(string, JKS("spin"))) {
+                    has_spin = 1;
                 } else {
                     proceed = 0;
                 }
@@ -880,6 +884,14 @@ static void process_fbx_nodes(Context *c, JkBuffer file, int64_t pos, Thing *thi
                 if (node->name[cursor++] == 'I') {
                     int32_t hide = *(int32_t *)(node->name + cursor);
                     JK_FLAG_SET(thing->flags, THING_FLAG_HIDE, hide);
+                }
+                proceed = 0;
+            }
+
+            if (proceed && has_spin) {
+                if (node->name[cursor++] == 'I') {
+                    int32_t spin = *(int32_t *)(node->name + cursor);
+                    JK_FLAG_SET(thing->flags, THING_FLAG_SPIN, spin);
                 }
                 proceed = 0;
             }
@@ -1047,6 +1059,9 @@ static void process_thing(Assets *assets,
         }
         if (JK_FLAG_GET(thing->flags, THING_FLAG_SPAWN)) {
             JK_FLAG_SET(object->flags, OBJ_SPAWN, 1);
+        }
+        if (JK_FLAG_GET(thing->flags, THING_FLAG_SPIN)) {
+            JK_FLAG_SET(object->flags, OBJ_SPIN, 1);
         }
     }
 
