@@ -1,0 +1,84 @@
+Grammar expansions are writen like _name. Slashes indicate regular expressions (e.g. /[A-Z]+/).
+Question marks ? indicate optional elements. Ellipses ... indicate pattern continuation. All other
+text is literal.
+
+_root
+    _declarations
+
+_declarations
+    _declaration _declarations?
+
+_declaration
+    _enum
+    _flags
+    _struct
+    _field
+
+_enum
+    enum _identifier _attribute_container? { _enumerants } ;?
+
+_flags
+    flags _identifier _attribute_container? { _enumerants } ;?
+
+_enumerants
+    _identifier ,?
+    _identifier , _enumerants
+
+_struct
+    struct _identifier _attribute_container? { _fields } ;?
+
+_fields
+    _field _fields?
+
+_field
+    _identifier : _type _attribute_container? ;
+
+_type
+    _identifier
+    _identifier [ _array_size ]
+    _integer_type _scale? _offset?
+    _integer_type [ _array_size ]
+    ( _integer_type _scale? _offset? ) [ _array_size ]
+
+_integer_type
+    s1
+    s2
+    ...
+    s32
+    u1
+    u2
+    ...
+    u32
+
+_scale
+    * _number
+
+_offset
+    + _number
+
+_array_size
+    /[0-9]+/
+    _identifier
+
+_number
+    /[0-9](\.[0-9]+)?/
+    /[0-9]?\.[0-9]+/
+
+_identifer
+    /[a-zA-Z_][a-zA-Z0-9_]*/
+
+_attribute_container
+    @( _attributes )
+
+_attributes
+    _attribute ,?
+    _attribute , _attributes
+
+_attribute
+    _identifier_or_quoted_string
+    _identifier_or_quoted_string = _identifier_or_quoted_string
+
+_identifer_or_quoted_string
+    _identifier
+    /"[^"]*"/
+    /'[^']*'/

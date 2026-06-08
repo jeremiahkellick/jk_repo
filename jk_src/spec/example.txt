@@ -1,0 +1,2 @@
+struct /* comment */ enum flags s3 s47 u32 ident 10 12.34 12.24.56 .05 // line comment
+'string 1' "string {}'%&$*(@ 2" * + , ; [ ] { }  ( ) @ inval*id
